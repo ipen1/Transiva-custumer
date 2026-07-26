@@ -15,23 +15,18 @@ android {
         versionName '1.1'
     }
 
-    signingConfigs {
-        release {
-            storeFile file("transiva-release.jks")
-            storePassword System.getenv("KEYSTORE_PASSWORD")
-            keyAlias System.getenv("KEY_ALIAS")
-            keyPassword System.getenv("KEY_PASSWORD")
-            storeType "pkcs12"
-        }
-    }
-
     buildTypes {
         debug {
             debuggable true
         }
 
+        // TEMPORARY BUILD FOR GITHUB ACTIONS TESTING:
+        // Release is signed with Android's debug key so no production
+        // transiva-release.jks / GitHub signing secrets are required.
+        //
+        // Do NOT use this build for Play Store / production updates.
         release {
-            signingConfig signingConfigs.release
+            signingConfig signingConfigs.debug
             debuggable false
             minifyEnabled true
             shrinkResources true

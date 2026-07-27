@@ -238,7 +238,13 @@
             android:theme="@style/AppTheme"
             android:windowSoftInputMode="adjustResize" />
 
-        <activity android:name=".WebRtcCallActivity" android:exported="false" android:screenOrientation="portrait" android:theme="@style/AppTheme" />
+        <activity
+            android:name=".WebRtcCallActivity"
+            android:exported="false"
+            android:launchMode="singleTop"
+            android:screenOrientation="portrait"
+            android:configChanges="keyboard|keyboardHidden|orientation|screenSize|uiMode"
+            android:theme="@style/AppTheme" />
         <activity
             android:name=".CustomerChatRoomActivity"
             android:exported="false"

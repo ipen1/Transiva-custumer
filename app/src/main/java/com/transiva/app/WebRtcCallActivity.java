@@ -56,6 +56,12 @@ public class WebRtcCallActivity extends Activity {
     public static final String ACTION_CALL_STATE = "com.transiva.app.WEBRTC_CALL_STATE";
     public static final String EXTRA_CALL_ID = "call_id";
     public static final String EXTRA_CALL_STATUS = "call_status";
+    private static final String STATE_CALL_ID = "wr_call_id";
+    private static final String STATE_ORDER_ID = "wr_order_id";
+    private static final String STATE_SOURCE = "wr_source";
+    private static final String STATE_PEER = "wr_peer";
+    private static final String STATE_INCOMING = "wr_incoming";
+    private static final String STATE_ACCEPTED = "wr_accepted";
 
     private final Handler main = new Handler(Looper.getMainLooper());
     private final ExecutorService io = Executors.newSingleThreadExecutor();
@@ -124,15 +130,40 @@ public class WebRtcCallActivity extends Activity {
 
         session = new SessionManager(this);
         role = getApplicationContext().getPackageName().endsWith(".driver") ? "driver" : "customer";
-        readIntent();
+
+        if (savedInstanceState != null) {
+            callId = clean(savedInstanceState.getString(STATE_CALL_ID, ""));
+            orderId = clean(savedInstanceState.getString(STATE_ORDER_ID, ""));
+            orderSource = first(savedInstanceState.getString(STATE_SOURCE, ""), "orders");
+            peerName = first(savedInstanceState.getString(STATE_PEER, ""),
+                    role.equals("driver") ? "Customer" : "Driver");
+            incoming = savedInstanceState.getBoolean(STATE_INCOMING, false);
+            accepted = savedInstanceState.getBoolean(STATE_ACCEPTED, false);
+        } else {
+            readIntent();
+        }
+
         registerCallStateReceiver();
         setContentView(buildUi());
         configureAudioRoute();
 
         if (incoming) {
-            status("Panggilan masuk");
-            startRingtone();
+            if (accepted) {
+                acceptButton.setVisibility(View.GONE);
+                endButton.setText("Akhiri");
+                status("Menyambungkan kembali...");
+                main.post(pollTask);
+                ensureMicrophoneThenStart();
+            } else {
+                status("Panggilan masuk");
+                startRingtone();
+                main.post(pollTask);
+            }
+        } else if (!callId.isEmpty()) {
+            // Activity was recreated after the server already created the call.
+            status("Menyambungkan kembali...");
             main.post(pollTask);
+            ensureMicrophoneThenResume();
         } else {
             status("Menghubungkan...");
             ensureMicrophoneThenStart();
@@ -227,7 +258,12 @@ public class WebRtcCallActivity extends Activity {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
         if (requestCode == REQ_MIC) {
             if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-                if (incoming && accepted) loadIceAndStartPeer(); else if (!incoming) startOutgoingCall();
+                if (incoming && accepted) {
+                    loadIceAndStartPeer();
+                } else if (!incoming) {
+                    if (callId.isEmpty()) startOutgoingCall();
+                    else loadIceAndStartPeer();
+                }
             } else {
                 toast("Izin mikrofon diperlukan untuk panggilan online.");
                 finishCall(callId.isEmpty() ? "" : (incoming ? "reject" : "end"), true);
@@ -568,15 +604,49 @@ public class WebRtcCallActivity extends Activity {
 
     private void status(String text) { if (statusView != null) statusView.setText(text); }
     private void toast(String text) { Toast.makeText(this, text, Toast.LENGTH_LONG).show(); }
-    private void fail(Exception e) { runOnUiThread(() -> { toast(e.getMessage() == null ? "Panggilan gagal" : e.getMessage()); finishCall(callId.isEmpty() ? "" : "end", true); }); }
+    private void fail(Exception e) {
+        runOnUiThread(() -> {
+            String message = e == null || e.getMessage() == null
+                    ? "Panggilan gagal"
+                    : e.getMessage();
+            status("Gagal: " + message);
+            toast(message);
+
+            // Keep the call screen visible briefly so the actual reason is
+            // observable. If a server call already exists, terminate it cleanly.
+            main.postDelayed(
+                    () -> finishCall(callId.isEmpty() ? "" : "end", true),
+                    1200L
+            );
+        });
+    }
 
     @Override public void onBackPressed() { finishCall(callId.isEmpty() ? "" : (incoming && !accepted ? "reject" : "end"), true); }
     @Override protected void onDestroy() {
         unregisterCallStateReceiver();
-        if (!ended) finishCall(callId.isEmpty() ? "" : "end", false);
-        // Let an already queued terminal end/reject request finish.
+        main.removeCallbacks(pollTask);
+        stopRingtone();
+
+        // IMPORTANT:
+        // Android may destroy/recreate this Activity for reasons unrelated to
+        // the user's intent (permission UI, window/full-screen transitions,
+        // memory pressure, OEM behavior). Never send "end" from onDestroy().
+        // Only explicit UI actions and confirmed fatal call failures may end
+        // the server-side call.
+        releaseRtc();
         io.shutdown();
         super.onDestroy();
+    }
+
+    @Override
+    protected void onSaveInstanceState(Bundle outState) {
+        outState.putString(STATE_CALL_ID, callId);
+        outState.putString(STATE_ORDER_ID, orderId);
+        outState.putString(STATE_SOURCE, orderSource);
+        outState.putString(STATE_PEER, peerName);
+        outState.putBoolean(STATE_INCOMING, incoming);
+        outState.putBoolean(STATE_ACCEPTED, accepted);
+        super.onSaveInstanceState(outState);
     }
 
     private class PeerObserver implements PeerConnection.Observer {

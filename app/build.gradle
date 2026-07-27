@@ -8,11 +8,21 @@ android {
     compileSdk 35
 
     defaultConfig {
-        applicationId 'com.transiva.app'
+        applicationId 'com.transiva.customer'
         minSdk 23
         targetSdk 35
         versionCode 2
         versionName '1.1'
+    }
+
+    signingConfigs {
+        release {
+            storeFile file("transiva-release.jks")
+            storePassword System.getenv("KEYSTORE_PASSWORD")
+            keyAlias System.getenv("KEY_ALIAS")
+            keyPassword System.getenv("KEY_PASSWORD")
+            storeType "pkcs12"
+        }
     }
 
     buildTypes {
@@ -20,13 +30,8 @@ android {
             debuggable true
         }
 
-        // TEMPORARY BUILD FOR GITHUB ACTIONS TESTING:
-        // Release is signed with Android's debug key so no production
-        // transiva-release.jks / GitHub signing secrets are required.
-        //
-        // Do NOT use this build for Play Store / production updates.
         release {
-            signingConfig signingConfigs.debug
+            signingConfig signingConfigs.release
             debuggable false
             minifyEnabled true
             shrinkResources true

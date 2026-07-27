@@ -588,6 +588,10 @@ public class SessionManager {
         return prefs.getString("phone", "");
     }
 
+    public Context getAppContext() {
+        return appContext;
+    }
+
     public String getToken() {
         String token = firstNonEmpty(
                 prefs.getString("token", ""),

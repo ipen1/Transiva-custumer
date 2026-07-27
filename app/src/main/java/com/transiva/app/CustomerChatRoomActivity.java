@@ -262,6 +262,14 @@ public class CustomerChatRoomActivity extends Activity {
         Intent call = new Intent(this, WebRtcCallActivity.class);
         call.putExtra("order_id", orderId);
         call.putExtra("peer_name", participantName);
+        call.putExtra(
+                "source",
+                first(
+                        getIntent().getStringExtra("source"),
+                        getIntent().getStringExtra("order_source"),
+                        "orders"
+                )
+        );
         call.putExtra("incoming", false);
         startActivity(call);
     }

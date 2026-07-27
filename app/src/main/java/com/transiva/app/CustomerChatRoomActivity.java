@@ -254,6 +254,18 @@ public class CustomerChatRoomActivity extends Activity {
                         .isEnded(orderStatus);
     }
 
+    private void callDriver() {
+        if (orderId == null || orderId.trim().isEmpty()) {
+            Toast.makeText(this, "Order tidak valid", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        Intent call = new Intent(this, WebRtcCallActivity.class);
+        call.putExtra("order_id", orderId);
+        call.putExtra("peer_name", participantName);
+        call.putExtra("incoming", false);
+        startActivity(call);
+    }
+
     private View buildScreen() {
         FrameLayout page = new FrameLayout(this);
 
@@ -380,6 +392,19 @@ public class CustomerChatRoomActivity extends Activity {
         );
 
         header.addView(orderLabel);
+
+        if (!readOnly) {
+            TextView callButton = text("☎", 22, "#0B7CFF", true);
+            callButton.setGravity(Gravity.CENTER);
+            callButton.setContentDescription("Telepon driver");
+            callButton.setBackground(round("#EAF4FF", 15));
+            LinearLayout.LayoutParams callLp =
+                    new LinearLayout.LayoutParams(dp(46), dp(46));
+            callLp.setMargins(dp(7), 0, 0, 0);
+            header.addView(callButton, callLp);
+            callButton.setOnClickListener(v -> callDriver());
+        }
+
         root.addView(header);
 
         messagesScroll = new ScrollView(this);

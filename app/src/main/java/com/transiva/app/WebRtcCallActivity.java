@@ -63,6 +63,7 @@ public class WebRtcCallActivity extends Activity {
     private static final String STATE_INCOMING = "wr_incoming";
     private static final String STATE_ACCEPTED = "wr_accepted";
 
+
     private final Handler main = new Handler(Looper.getMainLooper());
     private final ExecutorService io = Executors.newSingleThreadExecutor();
     private final List<IceCandidate> pendingRemoteCandidates = new ArrayList<>();
@@ -135,8 +136,10 @@ public class WebRtcCallActivity extends Activity {
             callId = clean(savedInstanceState.getString(STATE_CALL_ID, ""));
             orderId = clean(savedInstanceState.getString(STATE_ORDER_ID, ""));
             orderSource = first(savedInstanceState.getString(STATE_SOURCE, ""), "orders");
-            peerName = first(savedInstanceState.getString(STATE_PEER, ""),
-                    role.equals("driver") ? "Customer" : "Driver");
+            peerName = first(
+                    savedInstanceState.getString(STATE_PEER, ""),
+                    role.equals("driver") ? "Customer" : "Driver"
+            );
             incoming = savedInstanceState.getBoolean(STATE_INCOMING, false);
             accepted = savedInstanceState.getBoolean(STATE_ACCEPTED, false);
         } else {
@@ -153,14 +156,14 @@ public class WebRtcCallActivity extends Activity {
                 endButton.setText("Akhiri");
                 status("Menyambungkan kembali...");
                 main.post(pollTask);
-                ensureMicrophoneThenStart();
+                ensureMicrophoneThenResume();
             } else {
                 status("Panggilan masuk");
                 startRingtone();
                 main.post(pollTask);
             }
         } else if (!callId.isEmpty()) {
-            // Activity was recreated after the server already created the call.
+            // Existing outgoing call after Android recreated this Activity.
             status("Menyambungkan kembali...");
             main.post(pollTask);
             ensureMicrophoneThenResume();
@@ -242,6 +245,18 @@ public class WebRtcCallActivity extends Activity {
         muteButton.setOnClickListener(v -> toggleMute());
         speakerButton.setOnClickListener(v -> toggleSpeaker());
         return root;
+    }
+
+    private void ensureMicrophoneThenResume() {
+        if (Build.VERSION.SDK_INT >= 23
+                && checkSelfPermission(Manifest.permission.RECORD_AUDIO)
+                != PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(new String[]{Manifest.permission.RECORD_AUDIO}, REQ_MIC);
+            return;
+        }
+
+        // callId already exists, therefore never create another server-side call.
+        loadIceAndStartPeer();
     }
 
     private void ensureMicrophoneThenStart() {
@@ -606,14 +621,13 @@ public class WebRtcCallActivity extends Activity {
     private void toast(String text) { Toast.makeText(this, text, Toast.LENGTH_LONG).show(); }
     private void fail(Exception e) {
         runOnUiThread(() -> {
-            String message = e == null || e.getMessage() == null
+            String message = (e == null || e.getMessage() == null || e.getMessage().trim().isEmpty())
                     ? "Panggilan gagal"
-                    : e.getMessage();
+                    : e.getMessage().trim();
             status("Gagal: " + message);
             toast(message);
 
-            // Keep the call screen visible briefly so the actual reason is
-            // observable. If a server call already exists, terminate it cleanly.
+            // Give the user enough time to see the actual failure reason.
             main.postDelayed(
                     () -> finishCall(callId.isEmpty() ? "" : "end", true),
                     1200L
@@ -621,21 +635,12 @@ public class WebRtcCallActivity extends Activity {
         });
     }
 
-    @Override public void onBackPressed() { finishCall(callId.isEmpty() ? "" : (incoming && !accepted ? "reject" : "end"), true); }
-    @Override protected void onDestroy() {
-        unregisterCallStateReceiver();
-        main.removeCallbacks(pollTask);
-        stopRingtone();
-
-        // IMPORTANT:
-        // Android may destroy/recreate this Activity for reasons unrelated to
-        // the user's intent (permission UI, window/full-screen transitions,
-        // memory pressure, OEM behavior). Never send "end" from onDestroy().
-        // Only explicit UI actions and confirmed fatal call failures may end
-        // the server-side call.
-        releaseRtc();
-        io.shutdown();
-        super.onDestroy();
+    @Override
+    public void onBackPressed() {
+        finishCall(
+                callId.isEmpty() ? "" : (incoming && !accepted ? "reject" : "end"),
+                true
+        );
     }
 
     @Override
@@ -647,6 +652,19 @@ public class WebRtcCallActivity extends Activity {
         outState.putBoolean(STATE_INCOMING, incoming);
         outState.putBoolean(STATE_ACCEPTED, accepted);
         super.onSaveInstanceState(outState);
+    }
+
+    @Override
+    protected void onDestroy() {
+        unregisterCallStateReceiver();
+        main.removeCallbacks(pollTask);
+        stopRingtone();
+
+        // Android/OEM may destroy and recreate this Activity without the user
+        // hanging up. Never send "end" from onDestroy().
+        releaseRtc();
+        io.shutdown();
+        super.onDestroy();
     }
 
     private class PeerObserver implements PeerConnection.Observer {

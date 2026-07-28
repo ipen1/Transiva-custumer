@@ -182,6 +182,34 @@ public class WebRtcCallActivity extends Activity {
         incoming = i.getBooleanExtra("incoming", !callId.isEmpty());
     }
 
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        if (intent == null) return;
+        setIntent(intent);
+
+        String nextCallId = clean(intent.getStringExtra("call_id"));
+        if (!nextCallId.isEmpty() && !callId.isEmpty() && !nextCallId.equals(callId)) {
+            // Never mix signaling from two calls in one Activity instance.
+            finishCall(callId.isEmpty() ? "" : (incoming && !accepted ? "reject" : "end"), true);
+            return;
+        }
+
+        if (!nextCallId.isEmpty()) callId = nextCallId;
+        orderId = first(intent.getStringExtra("order_id"), orderId);
+        orderSource = first(intent.getStringExtra("source"), intent.getStringExtra("order_source"), orderSource, "orders");
+        peerName = first(intent.getStringExtra("peer_name"), intent.getStringExtra("caller_name"), peerName);
+        incoming = intent.getBooleanExtra("incoming", incoming || !callId.isEmpty());
+
+        if (titleView != null && !peerName.isEmpty()) titleView.setText(peerName);
+        if (incoming && !accepted && !ended) {
+            status("Panggilan masuk");
+            startRingtone();
+            main.removeCallbacks(pollTask);
+            main.post(pollTask);
+        }
+    }
+
     private View buildUi() {
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
@@ -302,7 +330,7 @@ public class WebRtcCallActivity extends Activity {
                     main.post(pollTask);
                     loadIceAndStartPeer();
                 });
-            } catch (Exception e) { fail(e); }
+            } catch (Throwable e) { fail(e); }
         });
     }
 
@@ -317,7 +345,7 @@ public class WebRtcCallActivity extends Activity {
             try {
                 WebRtcSignalApi.post(session, basePayload("accept"));
                 runOnUiThread(this::ensureMicrophoneThenStart);
-            } catch (Exception e) { fail(e); }
+            } catch (Throwable e) { fail(e); }
         });
     }
 
@@ -358,7 +386,7 @@ public class WebRtcCallActivity extends Activity {
     }
 
     private void initializePeer(List<PeerConnection.IceServer> iceServers) {
-        if (ended) return;
+        if (ended || peerConnection != null || factory != null) return;
         try {
             PeerConnectionFactory.initialize(PeerConnectionFactory.InitializationOptions.builder(getApplicationContext()).createInitializationOptions());
             audioDeviceModule = JavaAudioDeviceModule.builder(getApplicationContext())
@@ -377,7 +405,7 @@ public class WebRtcCallActivity extends Activity {
             peerConnection.addTrack(localAudioTrack, Collections.singletonList("transiva_audio"));
             configureAudioRoute();
             if (!incoming) createOffer();
-        } catch (Exception e) { fail(e); }
+        } catch (Throwable e) { fail(e); }
     }
 
     private void createOffer() {
@@ -412,7 +440,7 @@ public class WebRtcCallActivity extends Activity {
     private void postSdp(String action, String sdp) {
         io.execute(() -> {
             try { JSONObject p = basePayload(action); p.put("sdp", sdp); WebRtcSignalApi.post(session, p); }
-            catch (Exception e) { fail(e); }
+            catch (Throwable e) { fail(e); }
         });
     }
 
@@ -619,7 +647,7 @@ public class WebRtcCallActivity extends Activity {
 
     private void status(String text) { if (statusView != null) statusView.setText(text); }
     private void toast(String text) { Toast.makeText(this, text, Toast.LENGTH_LONG).show(); }
-    private void fail(Exception e) {
+    private void fail(Throwable e) {
         runOnUiThread(() -> {
             String message = (e == null || e.getMessage() == null || e.getMessage().trim().isEmpty())
                     ? "Panggilan gagal"

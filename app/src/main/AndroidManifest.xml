@@ -241,8 +241,11 @@
         <activity
             android:name=".WebRtcCallActivity"
             android:exported="false"
+            android:excludeFromRecents="true"
             android:launchMode="singleTop"
             android:screenOrientation="portrait"
+            android:showWhenLocked="true"
+            android:turnScreenOn="true"
             android:configChanges="keyboard|keyboardHidden|orientation|screenSize|uiMode"
             android:theme="@style/AppTheme" />
         <activity

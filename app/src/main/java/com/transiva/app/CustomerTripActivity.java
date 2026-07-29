@@ -66,7 +66,7 @@ public class CustomerTripActivity extends Activity {
         }
     };
 
-    private WebView mapView;
+    private TransivaGoogleMapView mapView;
     private TextView statusText;
     private TextView driverNameText;
     private TextView driverTypeText;
@@ -244,49 +244,17 @@ public class CustomerTripActivity extends Activity {
         statusText.setPadding(dp(4), dp(10), dp(4), dp(8));
         card.addView(statusText, new LinearLayout.LayoutParams(-1, -2));
 
-        mapView = new WebView(this);
-        mapView.setBackgroundColor(Color.parseColor("#EAF4FF"));
-        mapView.setVerticalScrollBarEnabled(false);
-        mapView.setHorizontalScrollBarEnabled(false);
-        mapView.setOverScrollMode(View.OVER_SCROLL_NEVER);
-
-        WebSettings s = mapView.getSettings();
-        s.setJavaScriptEnabled(true);
-        s.setDomStorageEnabled(true);
-        s.setLoadWithOverviewMode(true);
-        s.setUseWideViewPort(true);
-        s.setCacheMode(WebSettings.LOAD_NO_CACHE);
-        s.setDatabaseEnabled(true);
-        s.setAllowFileAccess(true);
-        s.setAllowContentAccess(true);
-        if (android.os.Build.VERSION.SDK_INT >= 21) {
-            s.setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
-        }
-
-        mapView.setWebChromeClient(new WebChromeClient());
-        mapView.setWebViewClient(new WebViewClient() {
-            @Override public void onPageFinished(WebView view, String url) {
-                super.onPageFinished(view, url);
-                mainHandler.postDelayed(() -> {
-                    if (!mapReady) {
-                        mapReady = true;
-                        pushAllMarkersToMap();
-                    }
-                }, 1200);
-            }
-
-            @Override public void onReceivedError(WebView view, WebResourceRequest request, WebResourceError error) {
-                super.onReceivedError(view, request, error);
-                // Jangan hentikan tracking. Map bisa fallback saat JS siap.
-            }
-        });
-
-        mapView.addJavascriptInterface(new TripBridge(), "AndroidTrip");
-
+        mapView = new TransivaGoogleMapView(this, TransivaGoogleMapView.Mode.TRIP);
         LinearLayout.LayoutParams mlp = new LinearLayout.LayoutParams(-1, 0, 1);
         mlp.setMargins(0, dp(4), 0, dp(10));
         card.addView(mapView, mlp);
-        mapView.loadDataWithBaseURL(BASE_URL, mapHtml(), "text/html", "UTF-8", null);
+        mapView.initialize(null, new TransivaGoogleMapView.Listener() {
+            @Override public void onReady(double lat, double lng) {
+                mapReady = true;
+                pushAllMarkersToMap();
+            }
+            @Override public void onCenterChanged(double lat, double lng) { }
+        });
 
         tripInfoText = text("Menyiapkan rute perjalanan...", 12, "#64748B", false);
         tripInfoText.setPadding(dp(4), 0, dp(4), dp(8));
@@ -509,11 +477,11 @@ public class CustomerTripActivity extends Activity {
         lastDataAlreadyPushed = true;
 
         if (validCoord(pickupLat, pickupLng)) {
-            eval("setPickup(" + pickupLat + "," + pickupLng + ",'Lokasi Pickup')");
+            if (mapView != null) mapView.setPickup(pickupLat, pickupLng, "Lokasi Pickup");
         }
 
         if (validCoord(deliveryLat, deliveryLng)) {
-            eval("setDelivery(" + deliveryLat + "," + deliveryLng + ",'Lokasi Delivery')");
+            if (mapView != null) mapView.setDelivery(deliveryLat, deliveryLng, "Lokasi Delivery");
         }
 
         if (validCoord(lastDriverLat, lastDriverLng)) {
@@ -524,14 +492,14 @@ public class CustomerTripActivity extends Activity {
                 requestStableRoute(target[0], target[1], false);
             }
 
-            eval("setDriver(" + lastDriverLat + "," + lastDriverLng + "," + lastBearing + ",'" + activeDriverType + "','" + esc(lastDriverName) + "','" + esc(popup) + "')");
+            if (mapView != null) mapView.setTripDriver(lastDriverLat, lastDriverLng, lastBearing, "car".equals(activeDriverType), lastDriverName, popup);
         }
 
         if (firstFocus) {
             firstFocus = false;
-            eval("fitTrip()");
+            if (mapView != null) mapView.fitAll();
         } else {
-            eval("fitAll()");
+            if (mapView != null) mapView.fitAll();
         }
 
         if (!validCoord(lastDriverLat, lastDriverLng) && (validCoord(pickupLat, pickupLng) || validCoord(deliveryLat, deliveryLng))) {
@@ -554,7 +522,7 @@ public class CustomerTripActivity extends Activity {
                 StableRouteEngine.Result r=StableRouteEngine.fetch(fromLat,fromLng,toLat,toLng);
                 lastRouteFromLat=fromLat; lastRouteFromLng=fromLng; lastRouteToLat=toLat; lastRouteToLng=toLng; lastRouteStatus=status;
                 final String pts=r.pointsJson(); final double km=r.distanceMeters/1000d,sec=r.durationSeconds;
-                mainHandler.post(() -> eval("if(window.applyNativeRoute)applyNativeRoute("+JSONObject.quote(pts)+","+km+","+sec+",'"+esc(status)+"')"));
+                mainHandler.post(() -> { if (mapView != null) { mapView.drawOsrmRoute(r.latLngPoints, status); mapView.fitAll(); } if (tripInfoText != null && km > 0 && sec > 0) tripInfoText.setText("Estimasi rute driver: " + String.format(Locale.US, "%.1f", km) + " KM • " + Math.max(1, (int)Math.ceil(sec / 60.0)) + " menit"); });
             }catch(Exception ignored){} finally{ routeRequestInFlight=false; }
         },"transiva-route-customer").start();
     }
@@ -766,13 +734,6 @@ public class CustomerTripActivity extends Activity {
     }
 
 
-    private void eval(String js) {
-        if (mapView == null || !mapReady) return;
-        try {
-            mapView.evaluateJavascript(js, null);
-        } catch (Exception ignored) {}
-    }
-
     private void setLoading(boolean show) {
         if (progressBar != null) progressBar.setVisibility(show ? View.VISIBLE : View.GONE);
     }
@@ -872,12 +833,19 @@ public class CustomerTripActivity extends Activity {
     }
 
     @Override protected void onPause() {
+        if (mapView != null) mapView.onPauseMap();
         super.onPause();
         mainHandler.removeCallbacks(trackingRunnable);
     }
 
+    @Override protected void onStart() {
+        super.onStart();
+        if (mapView != null) mapView.onStartMap();
+    }
+
     @Override protected void onResume() {
         super.onResume();
+        if (mapView != null) mapView.onResumeMap();
         CustomerAppSettings.apply(this);
         if (trackingStarted && !finishedCountdownStarted) {
             fetchDriverPosition();
@@ -885,13 +853,21 @@ public class CustomerTripActivity extends Activity {
         }
     }
 
+    @Override protected void onLowMemory() {
+        super.onLowMemory();
+        if (mapView != null) mapView.onLowMemoryMap();
+    }
+
+    @Override protected void onStop() {
+        if (mapView != null) mapView.onStopMap();
+        super.onStop();
+    }
+
     @Override protected void onDestroy() {
         mainHandler.removeCallbacksAndMessages(null);
         try {
             if (mapView != null) {
-                mapView.stopLoading();
-                mapView.loadUrl("about:blank");
-                mapView.destroy();
+                mapView.onDestroyMap();
                 mapView = null;
             }
         } catch (Exception ignored) {}

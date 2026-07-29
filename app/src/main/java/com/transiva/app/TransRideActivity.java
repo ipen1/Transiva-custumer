@@ -63,7 +63,7 @@ public class TransRideActivity extends Activity {
 
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
 
-    private WebView mapView;
+    private TransivaGoogleMapView mapView;
     private TextView pickupText, deliveryText, modeText, fareText, paymentSummaryText, driverAvailabilityText;
     private TextView distanceInfoText, durationInfoText, originalPriceText, finalPriceText, discountInfoText;
     private Button voucherChoiceBtn, noteChoiceBtn, paymentChoiceBtn;
@@ -270,23 +270,22 @@ public class TransRideActivity extends Activity {
         mapLp.setMargins(0, dp(6), 0, dp(6));
         root.addView(mapBox, mapLp);
 
-        mapView = new WebView(this);
-        mapView.setBackgroundColor(Color.parseColor("#EAF4FF"));
-        mapView.setWebViewClient(new WebViewClient());
-        WebSettings settings = mapView.getSettings();
-        settings.setJavaScriptEnabled(true);
-        settings.setDomStorageEnabled(true);
-        settings.setLoadWithOverviewMode(true);
-        settings.setUseWideViewPort(true);
-        settings.setCacheMode(WebSettings.LOAD_NO_CACHE);
-        if (android.os.Build.VERSION.SDK_INT >= 21) {
-            settings.setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
-        }
-        mapView.addJavascriptInterface(new MapBridge(), "AndroidBike");
-
+        mapView = new TransivaGoogleMapView(this, TransivaGoogleMapView.Mode.PICKER);
         FrameLayout.LayoutParams webLp = new FrameLayout.LayoutParams(-1, -1);
         webLp.setMargins(dp(1), dp(1), dp(1), dp(1));
         mapBox.addView(mapView, webLp);
+        mapView.initialize(null, new TransivaGoogleMapView.Listener() {
+            @Override public void onReady(double lat, double lng) {
+                mapReady = true;
+                centerLat = lat; centerLng = lng; pickLat = lat; pickLng = lng;
+                goToMyLocation();
+                loadMapPlaces();
+                loadOnlineDrivers();
+            }
+            @Override public void onCenterChanged(double lat, double lng) {
+                centerLat = lat; centerLng = lng; pickLat = lat; pickLng = lng;
+            }
+        });
 
         gpsBtn = smallButton("⌖", "#FFFFFF", "#0B7CFF", "#9DCAFF");
         gpsBtn.setTextSize(18);
@@ -295,7 +294,6 @@ public class TransRideActivity extends Activity {
         gpsMapLp.setMargins(dp(10), 0, 0, dp(10));
         mapBox.addView(gpsBtn, gpsMapLp);
 
-        mapView.loadDataWithBaseURL(BASE_URL, mapHtml(), "text/html", "UTF-8", null);
 
         /* =========================
          * DRAIV-STYLE BOTTOM CARD
@@ -588,7 +586,7 @@ public class TransRideActivity extends Activity {
 
             pickupText.setText("Pickup: " + pickupAddress);
             pickupBtn.setText("●  Jemput\nMencari alamat...");
-            eval("setPickup(" + pickupLat + "," + pickupLng + ",'" + js(pickupAddress) + "')");
+            if (mapView != null) mapView.setPickup(pickupLat, pickupLng, pickupAddress);
 
             resolveAddressAsync(true, pickupLat, pickupLng);
             mode = "delivery";
@@ -599,7 +597,7 @@ public class TransRideActivity extends Activity {
 
             deliveryText.setText("Tujuan: " + deliveryAddress);
             deliveryBtn.setText("●  Tujuan\nMencari alamat...");
-            eval("setDelivery(" + deliveryLat + "," + deliveryLng + ",'" + js(deliveryAddress) + "')");
+            if (mapView != null) mapView.setDelivery(deliveryLat, deliveryLng, deliveryAddress);
 
             resolveAddressAsync(false, deliveryLat, deliveryLng);
         }
@@ -624,7 +622,7 @@ public class TransRideActivity extends Activity {
             }
             if (best != null) {
                 centerLat = best.getLatitude(); centerLng = best.getLongitude(); pickLat = centerLat; pickLng = centerLng;
-                eval("moveTo(" + centerLat + "," + centerLng + ",17)");
+                if (mapView != null) mapView.moveTo(centerLat, centerLng, 17f);
 
                 // Jangan otomatis menetapkan titik saat halaman baru dibuka.
                 // Marker center harus tetap pada mode Jemput sampai pengguna menekan Jemput.
@@ -681,7 +679,7 @@ public class TransRideActivity extends Activity {
                     deliveryBtn.setText("●  Tujuan\nMencari alamat...");
                     googleMapInput.setText("");
 
-                    eval("setDelivery(" + deliveryLat + "," + deliveryLng + ",'" + js(deliveryAddress) + "');moveTo(" + deliveryLat + "," + deliveryLng + ",17)");
+                    if (mapView != null) { mapView.setDelivery(deliveryLat, deliveryLng, deliveryAddress); mapView.moveTo(deliveryLat, deliveryLng, 17f); }
 
                     resolveAddressAsync(false, deliveryLat, deliveryLng);
                     mode = "delivery";
@@ -725,12 +723,12 @@ public class TransRideActivity extends Activity {
                     pickupAddress = address;
                     pickupText.setText("Pickup: " + address);
                     pickupBtn.setText("●  Jemput\n" + shortAddress(address));
-                    eval("setPickup(" + pickupLat + "," + pickupLng + ",'" + js(address) + "')");
+                    if (mapView != null) mapView.setPickup(pickupLat, pickupLng, address);
                 } else {
                     deliveryAddress = address;
                     deliveryText.setText("Tujuan: " + address);
                     deliveryBtn.setText("●  Tujuan\n" + shortAddress(address));
-                    eval("setDelivery(" + deliveryLat + "," + deliveryLng + ",'" + js(address) + "')");
+                    if (mapView != null) mapView.setDelivery(deliveryLat, deliveryLng, address);
                 }
 
                 // Quote harus dipanggil setelah koordinat kedua titik sudah tersimpan.
@@ -893,7 +891,7 @@ public class TransRideActivity extends Activity {
                 mainHandler.post(() -> {
                     if (destroyed || !mapReady) return;
 
-                    eval("clearPlaces()");
+                    if (mapView != null) mapView.clearPlaces();
                     drawPlaces(food.optJSONArray("businesses"), "TransFood");
                     drawPlaces(laundry.optJSONArray("laundries"), "TransLaundry");
                 });
@@ -925,7 +923,7 @@ public class TransRideActivity extends Activity {
                     ""
             );
 
-            eval("addPlace(" + lat + "," + lng + ",'" + js(name) + "','" + js(type) + "','" + js(address) + "')");
+            if (mapView != null) mapView.addPlace(lat, lng, name, type, address);
         }
     }
 
@@ -940,7 +938,7 @@ public class TransRideActivity extends Activity {
                 mainHandler.post(() -> {
                     if (destroyed || !mapReady) return;
 
-                    eval("clearDrivers()");
+                    if (mapView != null) mapView.clearOnlineDrivers();
 
                     boolean noDriversOnline = arr == null || arr.length() == 0;
                     if (driverAvailabilityText != null) {
@@ -967,7 +965,7 @@ public class TransRideActivity extends Activity {
                                 "Driver"
                         );
 
-                        eval("addDriver(" + lat + "," + lng + ",'" + js(name) + "')");
+                        if (mapView != null) mapView.addOnlineDriver(lat, lng, name, false);
                     }
                 });
             } catch (Exception ignored) {}
@@ -1169,6 +1167,7 @@ public class TransRideActivity extends Activity {
     }
 
     private void requestPaymentQuote() {
+        requestVisibleOsrmRoute();
         if (!validCoordinate(pickupLat, pickupLng)
                 || !validCoordinate(deliveryLat, deliveryLng)) {
             if (paymentSummaryText != null) {
@@ -1449,15 +1448,19 @@ public class TransRideActivity extends Activity {
 
         pickupBtn.setAlpha(pickupMode ? 1f : .80f);
         deliveryBtn.setAlpha(pickupMode ? .80f : 1f);
-
-        eval(
-                "setCenterMarker('"
-                        + (pickupMode ? "pickup" : "delivery")
-                        + "')"
-        );
+        if (mapView != null) mapView.setSelectionMode(pickupMode ? "pickup" : "delivery");
     }
 
-    private void eval(String js) { if (mapView != null && mapReady) try { mapView.evaluateJavascript(js, null); } catch (Exception ignored) {} }
+    private void requestVisibleOsrmRoute() {
+        if (!mapReady || mapView == null || !validCoord(pickupLat, pickupLng) || !validCoord(deliveryLat, deliveryLng)) return;
+        final double aLat = pickupLat, aLng = pickupLng, bLat = deliveryLat, bLng = deliveryLng;
+        new Thread(() -> {
+            try {
+                StableRouteEngine.Result route = StableRouteEngine.fetch(aLat, aLng, bLat, bLng);
+                mainHandler.post(() -> { if (!destroyed && mapView != null) mapView.drawRideRoute(route.latLngPoints); });
+            } catch (Exception ignored) {}
+        }, "transiva-google-osrm-preview").start();
+    }
     private boolean validCoord(double lat, double lng) { return Double.isFinite(lat) && Double.isFinite(lng) && lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180 && lat != 0 && lng != 0; }
     private void resetOrderButton() { ordering = false; setLoading(false); orderBtn.setEnabled(true); orderBtn.setText("🏍️ Order Motor"); }
     private void setLoading(boolean b) { if (progressBar != null) progressBar.setVisibility(b ? View.VISIBLE : View.GONE); }
@@ -1545,13 +1548,37 @@ public class TransRideActivity extends Activity {
     private GradientDrawable roundStroke(String color, String stroke, int radius, int width) { GradientDrawable gd = round(color, radius); gd.setStroke(dp(width), Color.parseColor(stroke)); return gd; }
     private int dp(int v) { return (int)(v * getResources().getDisplayMetrics().density + .5f); }
 
+    @Override protected void onStart() {
+        super.onStart();
+        if (mapView != null) mapView.onStartMap();
+    }
+
+    @Override protected void onResume() {
+        super.onResume();
+        if (mapView != null) mapView.onResumeMap();
+    }
+
+    @Override protected void onPause() {
+        if (mapView != null) mapView.onPauseMap();
+        super.onPause();
+    }
+
+    @Override protected void onLowMemory() {
+        super.onLowMemory();
+        if (mapView != null) mapView.onLowMemoryMap();
+    }
+
+    @Override protected void onStop() {
+        if (mapView != null) mapView.onStopMap();
+        super.onStop();
+    }
+
     @Override protected void onDestroy() {
         destroyed = true;
         try {
             mainHandler.removeCallbacksAndMessages(null);
             if (mapView != null) {
-                mapView.stopLoading();
-                mapView.destroy();
+                mapView.onDestroyMap();
                 mapView = null;
             }
         } catch (Exception ignored) {}

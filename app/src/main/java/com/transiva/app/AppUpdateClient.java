@@ -16,6 +16,7 @@ import java.nio.charset.StandardCharsets;
 /** Pemeriksa update APK Transiva yang dihosting sendiri. */
 public final class AppUpdateClient {
     public static final String UPDATE_ENDPOINT = "https://transiva.my.id/server/getVersion.php";
+    private static final String APP_TYPE = "customer";
 
     public interface Callback {
         void onResult(AppUpdateInfo info, boolean updateAvailable);
@@ -28,7 +29,7 @@ public final class AppUpdateClient {
         new Thread(() -> {
             HttpURLConnection connection = null;
             try {
-                connection = (HttpURLConnection) new URL(UPDATE_ENDPOINT + "?t=" + System.currentTimeMillis()).openConnection();
+                connection = (HttpURLConnection) new URL(UPDATE_ENDPOINT + "?app=" + APP_TYPE + "&t=" + System.currentTimeMillis()).openConnection();
                 connection.setRequestMethod("GET");
                 connection.setConnectTimeout(20000);
                 connection.setReadTimeout(20000);

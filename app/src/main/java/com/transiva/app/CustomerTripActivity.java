@@ -853,7 +853,7 @@ public class CustomerTripActivity extends Activity {
         }
     }
 
-    @Override protected void onLowMemory() {
+    @Override public void onLowMemory() {
         super.onLowMemory();
         if (mapView != null) mapView.onLowMemoryMap();
     }

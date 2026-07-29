@@ -1563,7 +1563,7 @@ public class TransRideActivity extends Activity {
         super.onPause();
     }
 
-    @Override protected void onLowMemory() {
+    @Override public void onLowMemory() {
         super.onLowMemory();
         if (mapView != null) mapView.onLowMemoryMap();
     }

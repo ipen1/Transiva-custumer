@@ -33,9 +33,13 @@ android {
         release {
             signingConfig signingConfigs.release
             debuggable false
-            minifyEnabled true
-            shrinkResources true
-            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+
+            // WebRTC stability fix:
+            // Keep release bytecode/resources unmodified, matching the driver build.
+            // The customer crash log stopped inside PeerConnectionFactory.initialize()
+            // only on the optimized customer release build.
+            minifyEnabled false
+            shrinkResources false
         }
     }
 }

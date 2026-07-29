@@ -290,8 +290,8 @@ public class PassengerCarActivity extends Activity {
         gpsBtn = smallButton("⌖", "#FFFFFF", "#0B7CFF", "#9DCAFF");
         gpsBtn.setTextSize(18);
         FrameLayout.LayoutParams gpsMapLp = new FrameLayout.LayoutParams(dp(42), dp(42));
-        gpsMapLp.gravity = Gravity.BOTTOM | Gravity.START;
-        gpsMapLp.setMargins(dp(10), 0, 0, dp(10));
+        gpsMapLp.gravity = Gravity.BOTTOM | Gravity.END;
+        gpsMapLp.setMargins(0, 0, dp(10), dp(10));
         mapBox.addView(gpsBtn, gpsMapLp);
 
 

@@ -21,6 +21,9 @@ import android.widget.ProgressBar;
 import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.EditText;
+import android.widget.CheckBox;
+import android.widget.RadioButton;
+import android.widget.RadioGroup;
 import android.text.Editable;
 import android.text.TextWatcher;
 
@@ -359,6 +362,11 @@ public class TransFoodActivity extends Activity {
         TextView price = text(rupiah(item.price), 14, "#0B7CFF", true);
         price.setPadding(0, dp(6), 0, 0);
         body.addView(price);
+        if (item.trackStock) {
+            TextView stock = text(item.stock <= 0 ? "Habis" : ("Stok " + item.stock), 11, item.stock <= 0 ? "#EF4444" : "#16A34A", true);
+            stock.setPadding(0, dp(3), 0, 0);
+            body.addView(stock);
+        }
 
         TextView open = text("Buka menu", 11, "#0B7CFF", true);
         open.setPadding(0, dp(5), 0, 0);
@@ -427,9 +435,16 @@ public class TransFoodActivity extends Activity {
         name.setMaxLines(2);
         body.addView(name);
 
-        TextView info = text(open ? ("⭐ " + r.optString("rating", "0.0") + " • " + firstNonEmpty(r.optString("duration"), "15 menit")) : "🔴 Tutup", 11, "#64748B", false);
+        String availabilityReason = firstNonEmpty(r.optString("availability_reason"), open ? "" : "Restoran sedang tidak menerima pesanan");
+        String todayHours = firstNonEmpty(r.optString("today_hours"), "");
+        TextView info = text(open ? ("⭐ " + r.optString("rating", "0.0") + " • " + firstNonEmpty(r.optString("duration"), "15 menit")) : ("🔴 " + availabilityReason), 11, "#64748B", false);
         info.setPadding(0, dp(5), 0, 0);
         body.addView(info);
+        if (!todayHours.isEmpty()) {
+            TextView hours = text("🕒 " + todayHours, 10, "#64748B", false);
+            hours.setPadding(0, dp(4), 0, 0);
+            body.addView(hours);
+        }
 
         TextView badge = text(open ? "Buka" : "Tutup", 10, open ? "#0B7CFF" : "#EF4444", true);
         badge.setGravity(Gravity.CENTER);
@@ -456,6 +471,17 @@ public class TransFoodActivity extends Activity {
         LinearLayout resto = card();
         resto.setPadding(dp(16), dp(14), dp(16), dp(14));
         resto.addView(text(firstNonEmpty(activeRestaurant.optString("name"), "Restoran"), 19, "#0B3A78", true));
+        boolean accepting = activeRestaurant.optInt("is_open", 1) == 1;
+        String reason = firstNonEmpty(activeRestaurant.optString("availability_reason"), accepting ? "Menerima pesanan" : "Restoran sedang tidak menerima pesanan");
+        TextView operational = text(accepting ? "🟢 Menerima pesanan" : ("🔴 " + reason), 13, accepting ? "#16A34A" : "#EF4444", true);
+        operational.setPadding(0, dp(5), 0, 0);
+        resto.addView(operational);
+        String todayHours = firstNonEmpty(activeRestaurant.optString("today_hours"), "");
+        if (!todayHours.isEmpty()) {
+            TextView hours = text("🕒 Jam hari ini: " + todayHours, 12, "#64748B", false);
+            hours.setPadding(0, dp(4), 0, 0);
+            resto.addView(hours);
+        }
         resto.addView(text((hasRestoLocation() ? "📍 Lokasi resto tersedia" : "⚠️ Lokasi resto belum tersedia"), 13, "#64748B", false));
         if (menuSearchQuery != null && menuSearchQuery.trim().length() > 0) {
             TextView fromSearch = text("Hasil pencarian: " + menuSearchQuery, 12, "#0B7CFF", true);
@@ -483,24 +509,55 @@ public class TransFoodActivity extends Activity {
 
     private void addMenuCard(JSONObject m) {
         boolean active = m.optInt("is_active", 1) == 1;
+        boolean trackStock = m.optInt("track_stock", 0) == 1;
+        int stock = m.optInt("stock", -1);
+        if (trackStock && stock <= 0) active = false;
+
         LinearLayout card = card();
         card.setOrientation(LinearLayout.HORIZONTAL);
         card.setPadding(dp(10), dp(10), dp(10), dp(10));
         card.setAlpha(active ? 1f : 0.55f);
+
         ImageView img = new ImageView(this);
         img.setScaleType(ImageView.ScaleType.CENTER_CROP);
         img.setBackgroundColor(Color.parseColor("#EAF4FF"));
         card.addView(img, new LinearLayout.LayoutParams(dp(92), dp(92)));
         loadImage(img, absoluteUrl(firstNonEmpty(m.optString("image"), "assets/no-image.png")));
+
         LinearLayout body = new LinearLayout(this);
         body.setOrientation(LinearLayout.VERTICAL);
         body.setPadding(dp(12), 0, 0, 0);
         card.addView(body, new LinearLayout.LayoutParams(0, -2, 1));
+
         body.addView(text(firstNonEmpty(m.optString("name"), "Menu"), 16, "#0F172A", true));
         body.addView(text(firstNonEmpty(m.optString("category"), "Menu"), 12, "#94A3B8", false));
+
+        String desc = firstNonEmpty(m.optString("description"), "");
+        if (!desc.isEmpty()) {
+            TextView d = text(desc, 12, "#64748B", false);
+            d.setMaxLines(3);
+            d.setPadding(0, dp(4), 0, 0);
+            body.addView(d);
+        }
+
         TextView price = text(rupiah(m.optDouble("price", 0)), 15, "#0B7CFF", true);
-        price.setPadding(0, dp(6), 0, dp(6));
+        price.setPadding(0, dp(6), 0, dp(4));
         body.addView(price);
+
+        if (trackStock) {
+            String stockText = stock <= 0 ? "Stok habis" : ("Stok tersisa: " + stock);
+            TextView st = text(stockText, 12, stock <= 0 ? "#EF4444" : (stock <= 5 ? "#D97706" : "#16A34A"), true);
+            st.setPadding(0, 0, 0, dp(4));
+            body.addView(st);
+        }
+
+        JSONArray options = m.optJSONArray("options");
+        if (hasSelectableOptions(options)) {
+            TextView opt = text(buildOptionPreview(options), 11, "#7C3AED", true);
+            opt.setPadding(0, dp(2), 0, dp(5));
+            body.addView(opt);
+        }
+
         if (!active) {
             body.addView(text("Tidak tersedia", 12, "#EF4444", true));
         } else {
@@ -515,10 +572,200 @@ public class TransFoodActivity extends Activity {
             qty.addView(value, new LinearLayout.LayoutParams(dp(46), dp(40)));
             qty.addView(plus, new LinearLayout.LayoutParams(dp(40), dp(40)));
             body.addView(qty);
-            minus.setOnClickListener(v -> { changeQty(m, -1); renderMenus(); });
-            plus.setOnClickListener(v -> { changeQty(m, 1); renderMenus(); });
+
+            minus.setOnClickListener(v -> {
+                removeOneFromCart(m.optInt("id", 0));
+                renderMenus();
+            });
+            plus.setOnClickListener(v -> {
+                int currentQty = getQty(m.optInt("id", 0));
+                if (trackStock && currentQty >= stock) {
+                    showInfo("Stok tidak cukup", "Stok " + firstNonEmpty(m.optString("name"), "menu") + " tersisa " + stock + ".");
+                    return;
+                }
+                if (hasSelectableOptions(options)) showOptionPicker(m);
+                else {
+                    addConfiguredItem(m, new JSONArray(), "", 0);
+                    renderMenus();
+                }
+            });
         }
         addWithMargin(card, 0, 0, 0, dp(12));
+    }
+
+    private boolean hasSelectableOptions(JSONArray groups) {
+        if (groups == null) return false;
+        for (int i = 0; i < groups.length(); i++) {
+            JSONObject g = groups.optJSONObject(i);
+            JSONArray items = g == null ? null : g.optJSONArray("items");
+            if (items != null && items.length() > 0) return true;
+        }
+        return false;
+    }
+
+    private String buildOptionPreview(JSONArray groups) {
+        if (groups == null) return "";
+        List<String> labels = new ArrayList<>();
+        for (int i = 0; i < groups.length(); i++) {
+            JSONObject g = groups.optJSONObject(i);
+            if (g == null) continue;
+            JSONArray items = g.optJSONArray("items");
+            if (items == null || items.length() == 0) continue;
+            labels.add(firstNonEmpty(g.optString("label"), g.optString("type"), "Pilihan"));
+        }
+        return labels.isEmpty() ? "" : ("Pilihan: " + android.text.TextUtils.join(" • ", labels));
+    }
+
+    private void showOptionPicker(JSONObject menu) {
+        JSONArray groups = menu.optJSONArray("options");
+        if (!hasSelectableOptions(groups)) {
+            addConfiguredItem(menu, new JSONArray(), "", 0);
+            renderMenus();
+            return;
+        }
+
+        LinearLayout box = new LinearLayout(this);
+        box.setOrientation(LinearLayout.VERTICAL);
+        box.setPadding(dp(8), dp(4), dp(8), 0);
+        final List<OptionSelection> controls = new ArrayList<>();
+
+        for (int i = 0; i < groups.length(); i++) {
+            JSONObject group = groups.optJSONObject(i);
+            if (group == null) continue;
+            JSONArray items = group.optJSONArray("items");
+            if (items == null || items.length() == 0) continue;
+
+            String type = firstNonEmpty(group.optString("type"), "option");
+            String label = firstNonEmpty(group.optString("label"), "Pilihan");
+            TextView title = text(label + ("variant".equalsIgnoreCase(type) ? " • pilih satu" : " • boleh lebih dari satu"), 14, "#0B3A78", true);
+            title.setPadding(0, dp(8), 0, dp(4));
+            box.addView(title);
+
+            OptionSelection selection = new OptionSelection();
+            selection.type = type;
+            selection.label = label;
+            selection.items = items;
+
+            if ("variant".equalsIgnoreCase(type)) {
+                RadioGroup rg = new RadioGroup(this);
+                rg.setOrientation(RadioGroup.VERTICAL);
+                for (int j = 0; j < items.length(); j++) {
+                    JSONObject item = items.optJSONObject(j);
+                    if (item == null) continue;
+                    RadioButton rb = new RadioButton(this);
+                    rb.setText(optionLabel(item));
+                    rb.setTag(j);
+                    rg.addView(rb);
+                    if (j == 0) rb.setChecked(true);
+                }
+                selection.radioGroup = rg;
+                box.addView(rg);
+            } else {
+                LinearLayout checks = new LinearLayout(this);
+                checks.setOrientation(LinearLayout.VERTICAL);
+                for (int j = 0; j < items.length(); j++) {
+                    JSONObject item = items.optJSONObject(j);
+                    if (item == null) continue;
+                    CheckBox cb = new CheckBox(this);
+                    cb.setText(optionLabel(item));
+                    cb.setTag(j);
+                    checks.addView(cb);
+                }
+                selection.checkBoxContainer = checks;
+                box.addView(checks);
+            }
+            controls.add(selection);
+        }
+
+        ScrollView scroll = new ScrollView(this);
+        scroll.addView(box);
+        new AlertDialog.Builder(this)
+                .setTitle(firstNonEmpty(menu.optString("name"), "Pilih opsi"))
+                .setView(scroll)
+                .setNegativeButton("Batal", null)
+                .setPositiveButton("Tambah", (d, w) -> {
+                    try {
+                        JSONArray selected = new JSONArray();
+                        List<String> names = new ArrayList<>();
+                        double extra = 0;
+
+                        for (OptionSelection c : controls) {
+                            if (c.radioGroup != null) {
+                                int checkedId = c.radioGroup.getCheckedRadioButtonId();
+                                RadioButton checked = c.radioGroup.findViewById(checkedId);
+                                if (checked != null) {
+                                    int idx = ((Integer) checked.getTag()).intValue();
+                                    JSONObject source = c.items.optJSONObject(idx);
+                                    if (source != null) {
+                                        JSONObject pick = new JSONObject();
+                                        pick.put("type", c.type);
+                                        pick.put("label", c.label);
+                                        pick.put("name", source.optString("name"));
+                                        selected.put(pick);
+                                        extra += source.optDouble("price", 0);
+                                        names.add(source.optString("name"));
+                                    }
+                                }
+                            } else if (c.checkBoxContainer != null) {
+                                for (int j = 0; j < c.checkBoxContainer.getChildCount(); j++) {
+                                    View child = c.checkBoxContainer.getChildAt(j);
+                                    if (!(child instanceof CheckBox) || !((CheckBox) child).isChecked()) continue;
+                                    int idx = ((Integer) child.getTag()).intValue();
+                                    JSONObject source = c.items.optJSONObject(idx);
+                                    if (source == null) continue;
+                                    JSONObject pick = new JSONObject();
+                                    pick.put("type", c.type);
+                                    pick.put("label", c.label);
+                                    pick.put("name", source.optString("name"));
+                                    selected.put(pick);
+                                    extra += source.optDouble("price", 0);
+                                    names.add(source.optString("name"));
+                                }
+                            }
+                        }
+                        addConfiguredItem(menu, selected, android.text.TextUtils.join(", ", names), extra);
+                        renderMenus();
+                    } catch (Exception e) {
+                        showInfo("Pilihan menu", "Gagal membaca pilihan menu.");
+                    }
+                })
+                .show();
+    }
+
+    private String optionLabel(JSONObject item) {
+        double extra = item.optDouble("price", 0);
+        return firstNonEmpty(item.optString("name"), "Pilihan") + (extra > 0 ? ("  +" + rupiah(extra)) : "");
+    }
+
+    private void addConfiguredItem(JSONObject menu, JSONArray selectedOptions, String optionText, double optionExtra) {
+        int id = menu.optInt("id", 0);
+        String key = id + "|" + selectedOptions.toString();
+        CartItem found = null;
+        for (CartItem c : cart) if (key.equals(c.key)) { found = c; break; }
+        if (found == null) {
+            found = new CartItem();
+            found.id = id;
+            found.restaurantId = menu.optInt("restaurant_id", activeRestaurant.optInt("id", 0));
+            found.name = firstNonEmpty(menu.optString("name"), "Menu");
+            found.basePrice = menu.optDouble("price", 0);
+            found.price = found.basePrice + Math.max(0, optionExtra);
+            found.qty = 0;
+            found.key = key;
+            found.optionText = optionText;
+            found.selectedOptions = selectedOptions;
+            cart.add(found);
+        }
+        found.qty++;
+    }
+
+    private void removeOneFromCart(int menuId) {
+        for (int i = cart.size() - 1; i >= 0; i--) {
+            CartItem c = cart.get(i);
+            if (c.id != menuId) continue;
+            c.qty--;
+            if (c.qty <= 0) cart.remove(i);
+            return;
+        }
     }
 
     private void buildCartBar() {
@@ -552,6 +799,10 @@ public class TransFoodActivity extends Activity {
         info.setPadding(dp(16), dp(14), dp(16), dp(14));
         info.addView(text("Resto", 12, "#64748B", true));
         info.addView(text(firstNonEmpty(activeRestaurant.optString("name"), "Restoran"), 16, "#0F172A", true));
+        String opReason = firstNonEmpty(activeRestaurant.optString("availability_reason"), "");
+        String opHours = firstNonEmpty(activeRestaurant.optString("today_hours"), "");
+        if (!opHours.isEmpty()) info.addView(text("🕒 " + opHours, 12, "#64748B", false));
+        if (activeRestaurant.optInt("is_open", 1) != 1 && !opReason.isEmpty()) info.addView(text("🔴 " + opReason, 12, "#EF4444", true));
         TextView jarak = text(distanceKm > 0 ? ("Jarak pengantaran: " + String.format(Locale.US, "%.2f", distanceKm) + " km") : "Lokasi belum lengkap, ongkir belum bisa dihitung", 13, distanceKm > 0 ? "#64748B" : "#EF4444", false);
         jarak.setPadding(0, dp(8), 0, 0);
         info.addView(jarak);
@@ -565,6 +816,11 @@ public class TransFoodActivity extends Activity {
             LinearLayout col = new LinearLayout(this);
             col.setOrientation(LinearLayout.VERTICAL);
             col.addView(text(item.name, 15, "#0F172A", true));
+            if (item.optionText != null && !item.optionText.isEmpty()) {
+                TextView options = text(item.optionText, 11, "#7C3AED", false);
+                options.setPadding(0, dp(2), 0, 0);
+                col.addView(options);
+            }
             col.addView(text(item.qty + " x " + rupiah(item.price), 12, "#64748B", false));
             row.addView(col, new LinearLayout.LayoutParams(0, -2, 1));
             row.addView(text(rupiah(item.price * item.qty), 14, "#0B7CFF", true));
@@ -608,7 +864,10 @@ public class TransFoodActivity extends Activity {
         total.addView(summaryLine("Total makanan", foodTotal()));
         total.addView(summaryLine("Ongkir", deliveryFee));
         total.addView(summaryLine("Total bayar", foodTotal() + deliveryFee));
-        Button order = primaryButton("Buat Pesanan");
+        boolean acceptingNow = activeRestaurant != null && activeRestaurant.optInt("is_open", 1) == 1;
+        Button order = primaryButton(acceptingNow ? "Buat Pesanan" : "Restoran Tidak Menerima Pesanan");
+        order.setEnabled(acceptingNow);
+        order.setAlpha(acceptingNow ? 1f : 0.55f);
         LinearLayout.LayoutParams olp = new LinearLayout.LayoutParams(-1, dp(52)); olp.setMargins(0, dp(12), 0, 0);
         total.addView(order, olp);
         order.setOnClickListener(v -> createFoodOrder());
@@ -665,6 +924,8 @@ public class TransFoodActivity extends Activity {
                             item.image = firstNonEmpty(m.optString("image"), "assets/no-image.png");
                             item.price = m.optDouble("price", 0);
                             item.active = m.optInt("is_active", 1) == 1;
+                            item.trackStock = m.optInt("track_stock", 0) == 1;
+                            item.stock = m.optInt("stock", -1);
                             if (item.active) fresh.add(item);
                         }
                     } catch (Exception ignored) {}
@@ -721,6 +982,10 @@ public class TransFoodActivity extends Activity {
     private void createFoodOrder() {
         if (userId <= 0) { showInfo("Login", "User ID tidak ditemukan. Silakan login ulang."); return; }
         if (activeRestaurant == null || activeRestaurant.optInt("id", 0) <= 0) { showInfo("Gagal", "Restoran tidak valid."); return; }
+        if (activeRestaurant.optInt("is_open", 1) != 1) {
+            showInfo("Restoran tidak menerima pesanan", firstNonEmpty(activeRestaurant.optString("availability_reason"), "Restoran sedang tutup atau pause."));
+            return;
+        }
         if (cart.isEmpty()) { showInfo("Keranjang kosong", "Tambahkan menu terlebih dahulu."); return; }
         setLoading(true);
         new Thread(() -> {
@@ -735,6 +1000,7 @@ public class TransFoodActivity extends Activity {
                     JSONObject o = new JSONObject();
                     o.put("id", c.id);
                     o.put("qty", c.qty);
+                    o.put("selected_options", c.selectedOptions == null ? new JSONArray() : c.selectedOptions);
                     items.put(o);
                 }
                 payload.put("items", items);
@@ -819,21 +1085,7 @@ public class TransFoodActivity extends Activity {
         return BASE_URL + value;
     }
 
-    private void changeQty(JSONObject menu, int delta) {
-        int id = menu.optInt("id", 0);
-        CartItem found = null;
-        for (CartItem c : cart) if (c.id == id) found = c;
-        if (found == null && delta > 0) {
-            found = new CartItem(); found.id = id; found.restaurantId = menu.optInt("restaurant_id", activeRestaurant.optInt("id", 0));
-            found.name = firstNonEmpty(menu.optString("name"), "Menu"); found.price = menu.optDouble("price", 0); found.qty = 0; cart.add(found);
-        }
-        if (found != null) {
-            found.qty += delta;
-            if (found.qty <= 0) cart.remove(found);
-        }
-    }
-
-    private int getQty(int id) { for (CartItem c : cart) if (c.id == id) return c.qty; return 0; }
+    private int getQty(int id) { int q = 0; for (CartItem c : cart) if (c.id == id) q += c.qty; return q; }
     private double foodTotal() { double t = 0; for (CartItem c : cart) t += c.price * c.qty; return t; }
     private boolean hasRestoLocation() { return activeRestaurant != null && activeRestaurant.optString("latitude").length() > 0 && activeRestaurant.optString("longitude").length() > 0; }
 
@@ -931,6 +1183,7 @@ public class TransFoodActivity extends Activity {
     private String rupiah(double v) { return "Rp " + NumberFormat.getNumberInstance(new Locale("id", "ID")).format((long) v); }
     private String firstNonEmpty(String... values) { if (values == null) return ""; for (String s : values) if (s != null && s.trim().length() > 0 && !"null".equalsIgnoreCase(s.trim())) return s.trim(); return ""; }
 
-    private static class MenuSearchItem { int restaurantId; int menuId; String restaurantName; String menuName; String category; String description; String image; double price; boolean active; JSONObject restaurant; }
-    private static class CartItem { int id; int restaurantId; String name; double price; int qty; }
+    private static class MenuSearchItem { int restaurantId; int menuId; String restaurantName; String menuName; String category; String description; String image; double price; boolean active; boolean trackStock; int stock; JSONObject restaurant; }
+    private static class CartItem { int id; int restaurantId; String name; double basePrice; double price; int qty; String key; String optionText; JSONArray selectedOptions; }
+    private static class OptionSelection { String type; String label; JSONArray items; RadioGroup radioGroup; LinearLayout checkBoxContainer; }
 }

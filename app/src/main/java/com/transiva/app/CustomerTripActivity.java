@@ -444,6 +444,17 @@ public class CustomerTripActivity extends Activity {
         driverPlateText.setText("🔢 Plat: " + plate);
         setStatusText(status, driverName, hasDriverLocation);
 
+        String orderType = firstNonEmpty(order.optString("order_type", ""), res.optString("order_type", "")).trim().toLowerCase(Locale.US);
+        String merchantStatus = firstNonEmpty(order.optString("merchant_status", ""), res.optString("merchant_status", "")).trim().toLowerCase(Locale.US);
+        int cookMinutes = Math.max(order.optInt("cook_minutes", 0), res.optInt("cook_minutes", 0));
+        if ("food".equals(orderType) && !merchantStatus.isEmpty()) {
+            String merchantLine = "";
+            if ("ready".equals(merchantStatus)) merchantLine = "🍽️ Pesanan sudah siap diambil dari merchant";
+            else if ("preparing".equals(merchantStatus)) merchantLine = "🍳 Merchant sedang menyiapkan pesanan" + (cookMinutes > 0 ? (" • estimasi " + cookMinutes + " menit") : "");
+            else if ("merchant_accepted".equals(merchantStatus)) merchantLine = "✅ Merchant menerima pesanan" + (cookMinutes > 0 ? (" • estimasi " + cookMinutes + " menit") : "");
+            if (!merchantLine.isEmpty()) statusText.setText(statusText.getText() + "\n" + merchantLine);
+        }
+
         saveTripPrefs();
 
         if (isFinishedStatus(status)) {

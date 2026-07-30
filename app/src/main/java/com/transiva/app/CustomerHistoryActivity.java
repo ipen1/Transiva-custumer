@@ -689,10 +689,8 @@ public class CustomerHistoryActivity extends Activity {
         addServiceChip("TransRide", "ride");
         addServiceChip("TransCar", "car");
         addServiceChip("TransFood", "food");
-        addServiceChip("Laundry", "laundry");
-        addServiceChip("Pickup", "pickup");
-        addServiceChip("TransTour", "tour");
-        addServiceChip("TransMart", "mart");
+        addServiceChip("TransSend", "pickup");
+        addServiceChip("TransShop", "mart");
     }
 
     private void addServiceChip(
@@ -2084,11 +2082,11 @@ public class CustomerHistoryActivity extends Activity {
         }
 
         if (type.contains("pickup")) {
-            return "Pickup";
+            return "TransSend";
         }
 
         if (type.contains("mart")) {
-            return "TransMart";
+            return "TransShop";
         }
 
         if (

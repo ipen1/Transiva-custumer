@@ -490,10 +490,10 @@ public class CustomerDashboardActivity extends Activity
             button = "Top Up ›";
             action = () -> startActivity(new Intent(this, CustomerTopUpActivity.class));
         } else if (weekend && hour >= 8 && hour < 18) {
-            title = "Ide untuk akhir pekan";
-            message = "Jelajahi destinasi menarik dari " + first(currentLocation, "lokasi Anda") + " bersama TransTour.";
-            button = "Jelajahi ›";
-            action = () -> openTrackedService("TransTour");
+            title = "Kebutuhan akhir pekan lebih praktis";
+            message = "Kirim barang dengan aman dari " + first(currentLocation, "lokasi Anda") + " menggunakan TransSend.";
+            button = "Kirim ›";
+            action = () -> openTrackedService("TransSend");
         } else if (hour >= 10 && hour < 14) {
             title = "Waktunya makan siang 🍜";
             message = "Temukan menu favorit dan merchant terdekat lewat TransFood.";
@@ -1233,11 +1233,6 @@ public class CustomerDashboardActivity extends Activity
                                 "TransFood",
                                 "ic_service_food",
                                 TransFoodActivity.class
-                        ),
-                        service(
-                                "TransTour",
-                                "ic_service_tour",
-                                TranstourActivity.class
                         )
                 )
         );
@@ -1245,30 +1240,16 @@ public class CustomerDashboardActivity extends Activity
         grid.addView(
                 serviceRow(
                         service(
-                                "Laundry",
-                                "ic_service_laundry",
-                                TransLaundryActivity.class
-                        ),
-                        service(
-                                "Pickup",
+                                "TransSend",
                                 "ic_service_pickup",
                                 TransPickupActivity.class
                         ),
                         serviceAction(
-                                "TransMart",
+                                "TransShop",
                                 "ic_service_mart",
                                 () -> Toast.makeText(
                                         this,
-                                        "TransMart segera tersedia",
-                                        Toast.LENGTH_SHORT
-                                ).show()
-                        ),
-                        serviceAction(
-                                "Lainnya",
-                                "ic_service_more",
-                                () -> Toast.makeText(
-                                        this,
-                                        "Layanan lainnya segera tersedia",
+                                        "TransShop segera tersedia",
                                         Toast.LENGTH_SHORT
                                 ).show()
                         )
@@ -1399,7 +1380,7 @@ public class CustomerDashboardActivity extends Activity
 
     private String favoriteServiceKey() {
         SharedPreferences prefs = getSharedPreferences(PREF_SMART_USAGE, MODE_PRIVATE);
-        String[] services = {"TransRide", "TransCar", "TransFood", "TransTour", "Laundry", "Pickup", "TransMart"};
+        String[] services = {"TransRide", "TransCar", "TransFood", "TransSend", "TransShop"};
         String favorite = "";
         int best = 0;
         for (String service : services) {
@@ -1423,14 +1404,12 @@ public class CustomerDashboardActivity extends Activity
             startActivity(new Intent(this, PassengerCarActivity.class));
         } else if ("TransFood".equalsIgnoreCase(serviceName)) {
             startActivity(new Intent(this, TransFoodActivity.class));
-        } else if ("TransTour".equalsIgnoreCase(serviceName)) {
-            startActivity(new Intent(this, TranstourActivity.class));
-        } else if ("Laundry".equalsIgnoreCase(serviceName)) {
-            startActivity(new Intent(this, TransLaundryActivity.class));
-        } else if ("Pickup".equalsIgnoreCase(serviceName)) {
+        } else if ("TransSend".equalsIgnoreCase(serviceName)
+                || "Pickup".equalsIgnoreCase(serviceName)) {
             startActivity(new Intent(this, TransPickupActivity.class));
-        } else if ("TransMart".equalsIgnoreCase(serviceName)) {
-            Toast.makeText(this, "TransMart segera tersedia", Toast.LENGTH_SHORT).show();
+        } else if ("TransShop".equalsIgnoreCase(serviceName)
+                || "TransMart".equalsIgnoreCase(serviceName)) {
+            Toast.makeText(this, "TransShop segera tersedia", Toast.LENGTH_SHORT).show();
         } else {
             startActivity(new Intent(this, TransRideActivity.class));
         }

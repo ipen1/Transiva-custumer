@@ -179,7 +179,7 @@ public class TransPickupActivity extends Activity {
         back.setOnClickListener(v -> finish());
         titleRow.addView(back, new LinearLayout.LayoutParams(dp(34), dp(30)));
 
-        TextView title = text("TransPickup", 18, "#0B3A78", true);
+        TextView title = text("TransSend", 18, "#0B3A78", true);
         title.setPadding(dp(9), 0, 0, 0);
         titleRow.addView(title, new LinearLayout.LayoutParams(0, -1, 1));
 
@@ -695,7 +695,7 @@ public class TransPickupActivity extends Activity {
             return;
         }
         ClipboardManager cm = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
-        if (cm != null) cm.setPrimaryClip(ClipData.newPlainText("OTP TransPickup", otpCode));
+        if (cm != null) cm.setPrimaryClip(ClipData.newPlainText("OTP TransSend", otpCode));
         android.widget.Toast.makeText(this, "OTP berhasil disalin", android.widget.Toast.LENGTH_SHORT).show();
     }
 

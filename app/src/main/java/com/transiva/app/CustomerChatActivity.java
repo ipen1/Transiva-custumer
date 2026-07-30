@@ -1521,11 +1521,11 @@ public class CustomerChatActivity extends Activity {
         }
 
         if (type.contains("pickup")) {
-            return "Pickup";
+            return "TransSend";
         }
 
         if (type.contains("mart")) {
-            return "TransMart";
+            return "TransShop";
         }
 
         return "TransRide";

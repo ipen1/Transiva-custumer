@@ -1,31 +1,35 @@
-# Transiva Customer Android
+TRANSIVA CUSTOMER - FIX API 36 + REGRESSION TEST + OVERLAY UX
+=============================================================
 
-Native Android app khusus **Customer Transiva**.
+Cara pakai:
+1. Backup project Anda.
+2. Ekstrak ZIP ini di root project Transiva Customer.
+3. Izinkan replace file dengan path yang sama.
+4. Pastikan Android SDK Platform 36 terpasang pada environment build.
+5. Build seperti biasa melalui workflow GitHub build-aab.yml.
 
-## Scope aktif
-- Login/register customer + PIN
-- Dashboard customer
-- TransRide / TransCar / TransPickup
-- TransFood / TransLaundry / Transtour
-- Pencarian driver dan customer trip
-- Chat customer, notifikasi FCM, wallet/top-up, riwayat, profil
-- Pemeriksaan & download update aplikasi
+Perubahan:
+- compileSdk 35 -> 36
+- targetSdk 35 -> 36
+- Android Gradle Plugin 8.6.1 -> 8.10.1
+- Gradle CI 8.9 -> 8.11.1
+- Java tetap 17
+- minSdk tetap 23
+- Menambahkan JUnit 4.13.2 dan regression test untuk state order/chat customer.
+- CI menjalankan testDebugUnitTest sebelum membuat APK/AAB release.
+- Splash tidak lagi meminta SYSTEM_ALERT_WINDOW / overlay.
+- Permission overlay tetap dipertahankan untuk kompatibilitas incoming WebRTC call.
+- Pengguna dapat mengaktifkan overlay secara opsional melalui Pengaturan Aplikasi > Panggilan Masuk.
+- Tanpa overlay, mekanisme full-screen call notification yang sudah ada tetap dipertahankan.
 
-## Pemisahan role
-Source dan komponen runtime khusus Driver, Merchant, dan Admin telah dikeluarkan dari aplikasi ini. Akun non-customer ditolak pada proses login agar tidak salah masuk ke dashboard customer.
+File yang di-replace/ditambahkan:
+- build.gradle
+- app/build.gradle
+- .github/workflows/build-aab.yml
+- app/src/main/java/com/transiva/app/SplashActivity.java
+- app/src/main/java/com/transiva/app/CustomerSettingsActivity.java
+- app/src/test/java/com/transiva/app/CustomerMessageStatusTest.java (file baru)
 
-## Build
-Project memakai Android Gradle Plugin 8.6.1, Gradle 8.9 (CI), Java 17, compile/target SDK 35.
-
-Release mengaktifkan R8 (`minifyEnabled`) dan resource shrinking untuk mengurangi ukuran APK/AAB dan membuang kode/resource yang tidak dipakai.
-
-### GitHub Actions secrets
-- `KEYSTORE_BASE64`
-- `KEYSTORE_PASSWORD`
-- `KEY_ALIAS`
-- `KEY_PASSWORD`
-
-Push ke branch `main` atau jalankan workflow manual untuk menghasilkan signed APK dan AAB.
-
-## Backend
-Backend tetap memakai API Transiva yang sama (`https://transiva.my.id/server/`). Pemisahan ini hanya memisahkan aplikasi Android berdasarkan role; database/order/chat/payment tetap dapat dipakai bersama.
+Catatan:
+- Tidak ada endpoint API, applicationId, signing config, minSdk, struktur order, FCM service,
+  WebRTC signaling, database, atau layout fitur utama yang diubah.

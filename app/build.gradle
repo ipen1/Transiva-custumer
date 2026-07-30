@@ -5,12 +5,12 @@ plugins {
 
 android {
     namespace 'com.transiva.app'
-    compileSdk 35
+    compileSdk 36
 
     defaultConfig {
         applicationId 'com.transiva.customer'
         minSdk 23
-        targetSdk 35
+        targetSdk 36
         versionCode 4
         versionName '1.3-7.30'
     }
@@ -45,6 +45,9 @@ android {
 }
 
 dependencies {
+    // Regression tests for critical customer order/chat state rules.
+    testImplementation 'junit:junit:4.13.2'
+
     // Native audio WebRTC (Maven Central)
     implementation 'io.github.webrtc-sdk:android:144.7559.09'
 

@@ -260,6 +260,14 @@ public class CustomerTripActivity extends Activity {
         tripInfoText.setPadding(dp(4), 0, dp(4), dp(8));
         card.addView(tripInfoText, new LinearLayout.LayoutParams(-1, -2));
 
+        Button liveBtn = outlineButton("📍 Lihat Live Driver");
+        liveBtn.setTextColor(Color.parseColor("#FFFFFF"));
+        liveBtn.setBackground(roundStroke("#0B7CFF", "#0B7CFF", dp(18), 1));
+        LinearLayout.LayoutParams liveLp = new LinearLayout.LayoutParams(-1, dp(50));
+        liveLp.setMargins(0, 0, 0, dp(8));
+        card.addView(liveBtn, liveLp);
+        liveBtn.setOnClickListener(v -> openLiveDriver());
+
         Button backBtn = outlineButton("Kembali");
         card.addView(backBtn, new LinearLayout.LayoutParams(-1, dp(48)));
         backBtn.setOnClickListener(v -> finish());
@@ -622,6 +630,22 @@ public class CustomerTripActivity extends Activity {
             startActivity(i);
         } catch (Exception ignored) {}
         finish();
+    }
+
+
+    private void openLiveDriver() {
+        if (orderId == null || orderId.trim().isEmpty()) {
+            showInfo("Live Driver", "ID order belum tersedia.");
+            return;
+        }
+        Intent i = new Intent(this, CustomerLiveDriverActivity.class);
+        i.putExtra("order_id", orderId);
+        i.putExtra("pickup_lat", pickupLat);
+        i.putExtra("pickup_lng", pickupLng);
+        i.putExtra("delivery_lat", deliveryLat);
+        i.putExtra("delivery_lng", deliveryLng);
+        i.putExtra("active_driver_type", activeDriverType);
+        startActivity(i);
     }
 
     private void saveTripPrefs() {

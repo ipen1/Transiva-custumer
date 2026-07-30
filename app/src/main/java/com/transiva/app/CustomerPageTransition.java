@@ -64,16 +64,8 @@ public final class CustomerPageTransition {
 
         activity.startActivity(intent);
 
-        boolean moveRight = toIndex > fromIndex;
-
-        activity.overridePendingTransition(
-                moveRight
-                        ? R.anim.transiva_page_enter_right
-                        : R.anim.transiva_page_enter_left,
-                moveRight
-                        ? R.anim.transiva_page_exit_left
-                        : R.anim.transiva_page_exit_right
-        );
+        // Sama seperti Merchant: perpindahan stabil dengan cross-fade, tanpa slide tajam.
+        activity.overridePendingTransition(android.R.anim.fade_in, android.R.anim.fade_out);
     }
 
     /**

@@ -1277,6 +1277,14 @@ public class CustomerHistoryActivity extends Activity {
 
         card.addView(meta, metaLp);
 
+        double originalPrice = order.optDouble("original_price", price);
+        String priceReason = order.optString("price_change_reason", "").trim();
+        if (originalPrice > 0 && price > 0 && Math.abs(originalPrice - price) > 0.5) {
+            TextView changed = text("Harga berubah " + rupiah(originalPrice) + " → " + rupiah(price) + (priceReason.isEmpty() ? "" : " • " + priceReason), 11, "#B45309", true);
+            changed.setPadding(0, dp(6), 0, 0);
+            card.addView(changed);
+        }
+
         LinearLayout actions =
                 new LinearLayout(this);
 

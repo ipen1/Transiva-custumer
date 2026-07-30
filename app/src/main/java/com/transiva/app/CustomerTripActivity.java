@@ -50,6 +50,7 @@ public class CustomerTripActivity extends Activity {
     private static final String BASE_URL = "https://transiva.my.id/";
     private static final String CHECK_STATUS_URL = BASE_URL + "server/check_order_status.php";
     private static final String PICKUP_STATUS_URL = BASE_URL + "server/get_pickup_order_status.php";
+    private static final String CUSTOMER_ACTION_URL = BASE_URL + "server/customer_order_action.php";
 
     // Pakai file Leaflet lokal/server sendiri, bukan CDN, agar stabil di WebView.
     private static final String LEAFLET_CSS = BASE_URL + "js/leaflet.css";
@@ -76,6 +77,8 @@ public class CustomerTripActivity extends Activity {
     private TextView tripInfoText;
     private ImageView driverPhotoView;
     private ProgressBar progressBar;
+    private TextView paymentInfoText;
+    private Button receivedButton, approvePriceButton, rejectPriceButton;
 
     private String orderId = "";
     private String activeDriverType = "motor";
@@ -253,6 +256,12 @@ public class CustomerTripActivity extends Activity {
         statusText = text("Menghubungkan lokasi driver...", 13, "#334155", true);
         statusText.setPadding(dp(4), dp(10), dp(4), dp(8));
         card.addView(statusText, new LinearLayout.LayoutParams(-1, -2));
+
+        paymentInfoText = text("", 13, "#0B3A78", true); paymentInfoText.setPadding(dp(12),dp(9),dp(12),dp(9)); paymentInfoText.setVisibility(View.GONE); card.addView(paymentInfoText,new LinearLayout.LayoutParams(-1,-2));
+        receivedButton = smallButton("✅ Terima Pesanan", "#DCFCE7", "#047857", "#86EFAC"); receivedButton.setVisibility(View.GONE); receivedButton.setOnClickListener(v -> sendCustomerAction("confirm_received")); LinearLayout.LayoutParams rlp=new LinearLayout.LayoutParams(-1,dp(50)); rlp.setMargins(0,dp(8),0,0); card.addView(receivedButton,rlp);
+        LinearLayout priceActions=new LinearLayout(this); priceActions.setOrientation(LinearLayout.HORIZONTAL); priceActions.setVisibility(View.GONE); priceActions.setTag("price_actions");
+        approvePriceButton=smallButton("Setujui Harga", "#DBEAFE", "#1D4ED8", "#93C5FD"); approvePriceButton.setOnClickListener(v->sendCustomerAction("approve_price")); priceActions.addView(approvePriceButton,new LinearLayout.LayoutParams(0,dp(48),1));
+        rejectPriceButton=smallButton("Tolak", "#FEE2E2", "#B91C1C", "#FCA5A5"); rejectPriceButton.setOnClickListener(v->sendCustomerAction("reject_price")); LinearLayout.LayoutParams rej=new LinearLayout.LayoutParams(0,dp(48),1); rej.setMargins(dp(8),0,0,0); priceActions.addView(rejectPriceButton,rej); LinearLayout.LayoutParams palp=new LinearLayout.LayoutParams(-1,-2); palp.setMargins(0,dp(8),0,0); card.addView(priceActions,palp);
 
         mapView = new TransivaGoogleMapView(this, TransivaGoogleMapView.Mode.TRIP);
         LinearLayout.LayoutParams mlp = new LinearLayout.LayoutParams(-1, 0, 1);
@@ -478,6 +487,7 @@ public class CustomerTripActivity extends Activity {
             if (!merchantLine.isEmpty()) statusText.setText(statusText.getText() + "\n" + merchantLine);
         }
 
+        updatePaymentControls(order, status);
         saveTripPrefs();
 
         if (isFinishedStatus(status)) {
@@ -540,6 +550,31 @@ public class CustomerTripActivity extends Activity {
             tripInfoText.setText("Titik pickup dan delivery siap. Menunggu lokasi driver terbaru...");
         }
     }
+
+    private void updatePaymentControls(JSONObject order,String status){
+        if(paymentInfoText==null||receivedButton==null) return;
+        String method=firstNonEmpty(order.optString("payment_method",""),"cash").toLowerCase(Locale.US);
+        boolean nonCash=method.equals("balance")||method.contains("transpay")||method.contains("transiva_pay")||method.equals("wallet")||method.equals("saldo");
+        double price=order.optDouble("price",0), original=order.optDouble("original_price",price), requested=order.optDouble("price_change_requested",0);
+        String change=order.optString("price_change_status","none").toLowerCase(Locale.US), reason=order.optString("price_change_reason","");
+        String line=(nonCash?"💳 TransPay • sudah dibayar":"💵 Tunai • bayar ke driver")+(price>0?" • "+rupiah(price):"");
+        if(original>0 && Math.abs(original-price)>0.5) line += "
+Harga berubah dari "+rupiah(original)+" menjadi "+rupiah(price)+(reason.isEmpty()?"":" • "+reason);
+        if(change.equals("pending")&&requested>0) line += "
+Driver mengajukan "+rupiah(requested)+(reason.isEmpty()?"":" • "+reason);
+        paymentInfoText.setText(line); paymentInfoText.setVisibility(View.VISIBLE); paymentInfoText.setBackground(round("#EFF6FF",dp(14)));
+        receivedButton.setVisibility(!nonCash && "arrived_delivery".equals(status) && order.optInt("customer_received",0)!=1 ? View.VISIBLE:View.GONE);
+        View priceActions=null; android.view.ViewParent par=approvePriceButton==null?null:approvePriceButton.getParent(); if(par instanceof View) priceActions=(View)par;
+        if(priceActions!=null) priceActions.setVisibility(change.equals("pending")?View.VISIBLE:View.GONE);
+    }
+    private void sendCustomerAction(String action){
+        if(orderId.isEmpty()) return; setLoading(true); new Thread(()->{ try{
+            JSONObject p=new JSONObject(); p.put("order_id",orderId); p.put("source",orderSource.contains("pickup")?"pickup_orders":"orders"); p.put("action",action);
+            JSONObject r=postJson(CUSTOMER_ACTION_URL,p); boolean ok=r.optBoolean("success",false); String m=firstNonEmpty(r.optString("message",""),ok?"Berhasil":"Gagal");
+            mainHandler.post(()->{setLoading(false); showInfo(ok?"Berhasil":"Gagal",m); if(ok) fetchDriverPosition();});
+        }catch(Exception e){mainHandler.post(()->{setLoading(false);showInfo("Gagal","Koneksi server bermasalah.");});}},"customer-action").start();
+    }
+    private String rupiah(double value){ return "Rp"+java.text.NumberFormat.getNumberInstance(new Locale("id","ID")).format(Math.round(value)); }
 
     private void requestStableRoute(double toLat,double toLng,boolean force){
         if(mapView==null || !mapReady || !validCoord(lastDriverLat,lastDriverLng) || !validCoord(toLat,toLng)) return;

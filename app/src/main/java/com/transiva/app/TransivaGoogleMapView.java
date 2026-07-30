@@ -44,6 +44,11 @@ public final class TransivaGoogleMapView extends FrameLayout implements OnMapRea
         void onCenterChanged(double lat, double lng);
     }
 
+    public interface GestureListener {
+        void onGestureStart();
+        void onGestureEnd();
+    }
+
     public enum Mode { PICKER, TRIP }
 
     private final MapView nativeMapView;
@@ -54,6 +59,7 @@ public final class TransivaGoogleMapView extends FrameLayout implements OnMapRea
 
     private GoogleMap googleMap;
     private Listener listener;
+    private GestureListener gestureListener;
     private Marker pickupMarker;
     private Marker deliveryMarker;
     private Marker tripDriverMarker;
@@ -90,6 +96,10 @@ public final class TransivaGoogleMapView extends FrameLayout implements OnMapRea
         }
     }
 
+    public void setGestureListener(GestureListener listener) {
+        this.gestureListener = listener;
+    }
+
     public void initialize(Bundle state, Listener listener) {
         this.listener = listener;
         nativeMapView.onCreate(state);
@@ -121,12 +131,19 @@ public final class TransivaGoogleMapView extends FrameLayout implements OnMapRea
         map.moveCamera(CameraUpdateFactory.newLatLngZoom(DEFAULT_CENTER, mode == Mode.PICKER ? 17f : 15f));
 
         if (mode == Mode.PICKER) {
+            map.setOnCameraMoveStartedListener(reason -> {
+                if (reason == GoogleMap.OnCameraMoveStartedListener.REASON_GESTURE
+                        && gestureListener != null) {
+                    gestureListener.onGestureStart();
+                }
+            });
             map.setOnCameraIdleListener(() -> {
                 if (googleMap == null) return;
                 LatLng c = googleMap.getCameraPosition().target;
                 if (listener != null && valid(c.latitude, c.longitude)) {
                     listener.onCenterChanged(c.latitude, c.longitude);
                 }
+                if (gestureListener != null) gestureListener.onGestureEnd();
             });
         }
 

@@ -125,12 +125,20 @@ public class TransPickupActivity extends Activity {
             @Override public void onCenterChanged(double lat, double lng) {
                 mapCenterLat = lat;
                 mapCenterLng = lng;
-                setBottomSheetHidden(true);
-                mainHandler.removeCallbacks(restoreSheetRunnable);
-                mainHandler.postDelayed(restoreSheetRunnable, 700);
                 if (mapModeText != null) {
                     mapModeText.setText("Geser peta lalu tekan Tetapkan titik");
                 }
+            }
+        });
+        mapView.setGestureListener(new TransivaGoogleMapView.GestureListener() {
+            @Override public void onGestureStart() {
+                mainHandler.removeCallbacks(restoreSheetRunnable);
+                setBottomSheetHidden(true);
+            }
+
+            @Override public void onGestureEnd() {
+                mainHandler.removeCallbacks(restoreSheetRunnable);
+                mainHandler.postDelayed(restoreSheetRunnable, 180L);
             }
         });
 
@@ -241,7 +249,12 @@ public class TransPickupActivity extends Activity {
     private void setBottomSheetHidden(boolean hidden) {
         if (bottomSheet == null) return;
         float target = hidden ? bottomSheet.getHeight() - dp(34) : 0f;
-        bottomSheet.animate().translationY(target).setDuration(hidden ? 150 : 190).start();
+        bottomSheet.animate().cancel();
+        if (hidden) {
+            bottomSheet.setTranslationY(target);
+        } else {
+            bottomSheet.animate().translationY(0f).setDuration(180L).start();
+        }
     }
 
     private Button compactMapButton(String label, String accent) {

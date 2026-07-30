@@ -56,6 +56,12 @@ public class TransPickupActivity extends Activity {
     private FrameLayout page;
     private LinearLayout root;
     private ProgressBar progressBar;
+    private TransivaGoogleMapView mapView;
+    private TextView mapModeText;
+    private Button pickupMapBtn, deliveryMapBtn, confirmPointBtn, gpsMapBtn;
+    private boolean mapReady = false;
+    private String mapSelectionMode = "pickup";
+    private double mapCenterLat = -0.018137, mapCenterLng = 120.087380;
 
     private EditText pickupAddressInput, destinationInput, itemNameInput, itemValueInput, receiverNameInput, receiverPhoneInput, noteInput;
     private TextView pickupCoordText, deliveryCoordText, priceText, distanceText, otpText;
@@ -76,14 +82,13 @@ public class TransPickupActivity extends Activity {
     @Override protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         try {
-            getWindow().setStatusBarColor(Color.WHITE);
-            getWindow().setNavigationBarColor(Color.WHITE);
-            if (android.os.Build.VERSION.SDK_INT >= 23) getWindow().getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR);
+            getWindow().setStatusBarColor(Color.parseColor("#071426"));
+            getWindow().setNavigationBarColor(Color.parseColor("#071426"));
+            if (android.os.Build.VERSION.SDK_INT >= 23) getWindow().getDecorView().setSystemUiVisibility(0);
         } catch (Exception ignored) {}
         loadSession();
         buildBase();
         buildForm();
-        loadPickupLocation();
     }
 
     private void loadSession() {
@@ -102,33 +107,245 @@ public class TransPickupActivity extends Activity {
 
     private void buildBase() {
         page = new FrameLayout(this);
-        page.setBackgroundColor(Color.parseColor("#F7FAFF"));
-        ScrollView scroll = new ScrollView(this);
-        page.addView(scroll, new FrameLayout.LayoutParams(-1, -1));
-        root = new LinearLayout(this);
-        root.setOrientation(LinearLayout.VERTICAL);
-        root.setPadding(dp(16), dp(18), dp(16), dp(30));
-        scroll.addView(root, new ScrollView.LayoutParams(-1, -2));
+        page.setBackgroundColor(Color.parseColor("#071426"));
+
+        mapView = new TransivaGoogleMapView(this, TransivaGoogleMapView.Mode.PICKER);
+        page.addView(mapView, new FrameLayout.LayoutParams(-1, -1));
+        mapView.initialize(null, new TransivaGoogleMapView.Listener() {
+            @Override public void onReady(double lat, double lng) {
+                mapReady = true;
+                mapCenterLat = lat;
+                mapCenterLng = lng;
+                mapView.setSelectionMode(mapSelectionMode);
+                loadPickupLocation();
+            }
+
+            @Override public void onCenterChanged(double lat, double lng) {
+                mapCenterLat = lat;
+                mapCenterLng = lng;
+                if (mapModeText != null) {
+                    mapModeText.setText("Geser peta lalu tekan Tetapkan titik");
+                }
+            }
+        });
+
+        buildMapHeader();
+        buildBottomSheet();
+
         progressBar = new ProgressBar(this);
         progressBar.setVisibility(View.GONE);
         FrameLayout.LayoutParams p = new FrameLayout.LayoutParams(dp(52), dp(52));
         p.gravity = Gravity.CENTER;
         page.addView(progressBar, p);
+
         setContentView(page);
         CustomerAppSettings.apply(this);
     }
 
+
+    private void buildMapHeader() {
+        LinearLayout header = new LinearLayout(this);
+        header.setOrientation(LinearLayout.VERTICAL);
+        header.setPadding(dp(10), dp(8), dp(10), dp(8));
+        header.setBackground(roundStroke("#F4FFFFFF", "#D7E6F8", dp(18), 1));
+
+        FrameLayout.LayoutParams headerLp = new FrameLayout.LayoutParams(-1, -2);
+        headerLp.gravity = Gravity.TOP;
+        headerLp.setMargins(dp(10), dp(10), dp(10), 0);
+        page.addView(header, headerLp);
+
+        LinearLayout titleRow = new LinearLayout(this);
+        titleRow.setGravity(Gravity.CENTER_VERTICAL);
+        header.addView(titleRow, new LinearLayout.LayoutParams(-1, dp(34)));
+
+        Button back = outlineButton("‹");
+        back.setTextSize(28);
+        back.setPadding(0, 0, 0, dp(3));
+        back.setOnClickListener(v -> finish());
+        titleRow.addView(back, new LinearLayout.LayoutParams(dp(38), dp(34)));
+
+        TextView title = text("TransPickup", 18, "#0B3A78", true);
+        title.setPadding(dp(9), 0, 0, 0);
+        titleRow.addView(title, new LinearLayout.LayoutParams(0, -1, 1));
+
+        mapModeText = text("Pilih titik jemput", 11, "#64748B", false);
+        mapModeText.setGravity(Gravity.END | Gravity.CENTER_VERTICAL);
+        titleRow.addView(mapModeText, new LinearLayout.LayoutParams(0, -1, 1.25f));
+
+        LinearLayout pointRow = new LinearLayout(this);
+        pointRow.setOrientation(LinearLayout.HORIZONTAL);
+        LinearLayout.LayoutParams pointLp = new LinearLayout.LayoutParams(-1, dp(48));
+        pointLp.setMargins(0, dp(6), 0, 0);
+        header.addView(pointRow, pointLp);
+
+        pickupMapBtn = compactMapButton("●  Jemput", "#16A34A");
+        deliveryMapBtn = compactMapButton("●  Antar", "#EF4444");
+        pointRow.addView(pickupMapBtn, new LinearLayout.LayoutParams(0, -1, 1));
+        LinearLayout.LayoutParams dlp = new LinearLayout.LayoutParams(0, -1, 1);
+        dlp.setMargins(dp(6), 0, 0, 0);
+        pointRow.addView(deliveryMapBtn, dlp);
+
+        pickupMapBtn.setOnClickListener(v -> selectMapMode("pickup"));
+        deliveryMapBtn.setOnClickListener(v -> selectMapMode("delivery"));
+
+        confirmPointBtn = primaryButton("Tetapkan titik jemput");
+        FrameLayout.LayoutParams confirmLp = new FrameLayout.LayoutParams(dp(190), dp(48));
+        confirmLp.gravity = Gravity.CENTER_HORIZONTAL | Gravity.TOP;
+        confirmLp.setMargins(0, dp(108), 0, 0);
+        page.addView(confirmPointBtn, confirmLp);
+        confirmPointBtn.setOnClickListener(v -> confirmMapPoint());
+
+        gpsMapBtn = outlineButton("⌖");
+        gpsMapBtn.setTextSize(21);
+        FrameLayout.LayoutParams gpsLp = new FrameLayout.LayoutParams(dp(46), dp(46));
+        gpsLp.gravity = Gravity.END | Gravity.TOP;
+        gpsLp.setMargins(0, dp(166), dp(14), 0);
+        page.addView(gpsMapBtn, gpsLp);
+        gpsMapBtn.setOnClickListener(v -> loadPickupLocation());
+
+        selectMapMode("pickup");
+    }
+
+    private void buildBottomSheet() {
+        LinearLayout sheet = new LinearLayout(this);
+        sheet.setOrientation(LinearLayout.VERTICAL);
+        sheet.setPadding(dp(10), dp(8), dp(10), dp(8));
+        sheet.setBackground(roundStroke("#F7FAFF", "#C7DBF2", dp(24), 1));
+        sheet.setElevation(dp(8));
+
+        FrameLayout.LayoutParams sheetLp = new FrameLayout.LayoutParams(-1, dp(338));
+        sheetLp.gravity = Gravity.BOTTOM;
+        sheetLp.setMargins(dp(8), 0, dp(8), dp(8));
+        page.addView(sheet, sheetLp);
+
+        TextView handle = text("━", 24, "#94A3B8", true);
+        handle.setGravity(Gravity.CENTER);
+        sheet.addView(handle, new LinearLayout.LayoutParams(-1, dp(26)));
+
+        ScrollView scroll = new ScrollView(this);
+        scroll.setFillViewport(false);
+        sheet.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1));
+
+        root = new LinearLayout(this);
+        root.setOrientation(LinearLayout.VERTICAL);
+        root.setPadding(dp(2), 0, dp(2), dp(18));
+        scroll.addView(root, new ScrollView.LayoutParams(-1, -2));
+    }
+
+    private Button compactMapButton(String label, String accent) {
+        Button b = new Button(this);
+        b.setText(label);
+        b.setAllCaps(false);
+        b.setTextSize(12);
+        b.setTypeface(Typeface.DEFAULT_BOLD);
+        b.setTextColor(Color.parseColor("#0B3A78"));
+        b.setBackground(roundStroke("#FFFFFF", accent, dp(14), 1));
+        return b;
+    }
+
+    private void selectMapMode(String mode) {
+        mapSelectionMode = "delivery".equals(mode) ? "delivery" : "pickup";
+        boolean pickupMode = "pickup".equals(mapSelectionMode);
+
+        if (mapView != null) mapView.setSelectionMode(mapSelectionMode);
+        if (mapModeText != null) {
+            mapModeText.setText(pickupMode ? "Pilih titik jemput" : "Pilih titik antar");
+        }
+        if (confirmPointBtn != null) {
+            confirmPointBtn.setText(pickupMode ? "Tetapkan titik jemput" : "Tetapkan titik antar");
+        }
+        if (pickupMapBtn != null) setChoice(pickupMapBtn, pickupMode);
+        if (deliveryMapBtn != null) setChoice(deliveryMapBtn, !pickupMode);
+
+        double lat = pickupMode ? pickupLat : deliveryLat;
+        double lng = pickupMode ? pickupLng : deliveryLng;
+        if (mapReady && validCoordinate(lat, lng)) {
+            mapView.moveTo(lat, lng, 17f);
+        }
+    }
+
+    private void confirmMapPoint() {
+        if (!validCoordinate(mapCenterLat, mapCenterLng)) {
+            showInfo("Peta", "Geser peta ke lokasi yang benar terlebih dahulu.");
+            return;
+        }
+
+        if ("pickup".equals(mapSelectionMode)) {
+            pickupLat = mapCenterLat;
+            pickupLng = mapCenterLng;
+            if (mapView != null) mapView.setPickup(pickupLat, pickupLng, "Lokasi Jemput");
+            if (pickupCoordText != null) {
+                pickupCoordText.setText("📍 " + formatCoordinate(pickupLat, pickupLng));
+            }
+            reverseGeocode(true, pickupLat, pickupLng);
+            selectMapMode("delivery");
+        } else {
+            deliveryLat = mapCenterLat;
+            deliveryLng = mapCenterLng;
+            if (mapView != null) mapView.setDelivery(deliveryLat, deliveryLng, "Lokasi Antar");
+            if (deliveryCoordText != null) {
+                deliveryCoordText.setText("📍 " + formatCoordinate(deliveryLat, deliveryLng));
+            }
+            reverseGeocode(false, deliveryLat, deliveryLng);
+            if (validLocation()) {
+                drawPickupRoute();
+                calculateOngkir();
+            }
+        }
+        updateChoices();
+    }
+
+    private void reverseGeocode(boolean pickup, double lat, double lng) {
+        new Thread(() -> {
+            String address = "";
+            try {
+                Geocoder geo = new Geocoder(this, new Locale("id", "ID"));
+                List<Address> list = geo.getFromLocation(lat, lng, 1);
+                if (list != null && !list.isEmpty()) {
+                    Address a = list.get(0);
+                    address = firstNonEmpty(
+                            a.getAddressLine(0),
+                            a.getFeatureName(),
+                            a.getLocality(),
+                            formatCoordinate(lat, lng)
+                    );
+                }
+            } catch (Exception ignored) {}
+
+            final String finalAddress = firstNonEmpty(address, formatCoordinate(lat, lng));
+            mainHandler.post(() -> {
+                if (pickup && pickupAddressInput != null) pickupAddressInput.setText(finalAddress);
+                if (!pickup && destinationInput != null) destinationInput.setText(finalAddress);
+            });
+        }, "transpickup-reverse-geocode").start();
+    }
+
+    private void drawPickupRoute() {
+        if (mapView == null || !validLocation()) return;
+        new Thread(() -> {
+            try {
+                StableRouteEngine.Result route = StableRouteEngine.fetch(
+                        pickupLat, pickupLng, deliveryLat, deliveryLng
+                );
+                mainHandler.post(() -> {
+                    if (mapView != null) mapView.drawRideRoute(route.latLngPoints);
+                });
+            } catch (Exception ignored) {}
+        }, "transpickup-route").start();
+    }
+
+    private String formatCoordinate(double lat, double lng) {
+        return String.format(Locale.US, "%.6f, %.6f", lat, lng);
+    }
+
+    private boolean validCoordinate(double lat, double lng) {
+        return Double.isFinite(lat) && Double.isFinite(lng)
+                && lat != 0d && lng != 0d
+                && Math.abs(lat) <= 90d && Math.abs(lng) <= 180d;
+    }
+
     private void buildForm() {
         root.removeAllViews();
-        buildTopBar("TransPickup", "Kirim paket instan dengan driver Transiva", true);
-        LinearLayout hero = card();
-        hero.setPadding(dp(16), dp(14), dp(16), dp(14));
-        hero.setBackground(roundGradient("#FFFFFF", "#EAF4FF", dp(24)));
-        hero.addView(text("📦 Titip Kirim Barang", 21, "#0B3A78", true));
-        TextView sub = text("Ongkir dihitung aman di server. Sertakan OTP penerima untuk menyelesaikan pengiriman.", 13, "#64748B", false);
-        sub.setPadding(0, dp(6), 0, 0);
-        hero.addView(sub);
-        addWithMargin(hero, 0, 0, 0, dp(14));
 
         buildLocationCard();
         buildItemCard();
@@ -139,33 +356,35 @@ public class TransPickupActivity extends Activity {
 
     private void buildLocationCard() {
         LinearLayout card = card();
-        card.setPadding(dp(16), dp(14), dp(16), dp(14));
-        card.addView(text("Lokasi", 17, "#0B3A78", true));
+        card.setPadding(dp(14), dp(12), dp(14), dp(12));
+        card.addView(text("Titik Jemput & Antar", 16, "#0B3A78", true));
 
         pickupAddressInput = edit("Alamat penjemputan");
         pickupAddressInput.setText("Lokasi saya saat ini");
-        addInner(card, pickupAddressInput, dp(10));
-        pickupCoordText = text("📍 Mengambil titik jemput...", 12, "#64748B", false);
-        pickupCoordText.setPadding(0, dp(6), 0, dp(8));
+        addInner(card, pickupAddressInput, dp(8));
+
+        pickupCoordText = text("📍 Geser peta dan tetapkan titik jemput", 11, "#64748B", false);
+        pickupCoordText.setPadding(0, dp(5), 0, dp(8));
         card.addView(pickupCoordText);
-        Button current = outlineButton("Gunakan lokasi saya");
-        current.setOnClickListener(v -> loadPickupLocation());
-        card.addView(current, new LinearLayout.LayoutParams(-1, dp(48)));
 
         destinationInput = edit("Alamat tujuan / nama tempat tujuan");
-        destinationInput.setSingleLine(false);
-        destinationInput.setMinLines(1);
+        destinationInput.setSingleLine(true);
         destinationInput.setImeOptions(EditorInfo.IME_ACTION_SEARCH);
-        addInner(card, destinationInput, dp(12));
-        deliveryCoordText = text("📍 Tujuan belum dipilih", 12, "#64748B", false);
-        deliveryCoordText.setPadding(0, dp(6), 0, dp(8));
-        card.addView(deliveryCoordText);
-        Button find = outlineButton("Cari titik tujuan dari alamat");
-        find.setOnClickListener(v -> geocodeDestination());
-        card.addView(find, new LinearLayout.LayoutParams(-1, dp(48)));
-        destinationInput.setOnEditorActionListener((v, actionId, event) -> { geocodeDestination(); return true; });
+        addInner(card, destinationInput, dp(6));
 
-        addWithMargin(card, 0, 0, 0, dp(14));
+        deliveryCoordText = text("📍 Geser peta dan tetapkan titik antar", 11, "#64748B", false);
+        deliveryCoordText.setPadding(0, dp(5), 0, dp(8));
+        card.addView(deliveryCoordText);
+
+        Button find = outlineButton("Cari alamat tujuan di peta");
+        find.setOnClickListener(v -> geocodeDestination());
+        card.addView(find, new LinearLayout.LayoutParams(-1, dp(46)));
+        destinationInput.setOnEditorActionListener((v, actionId, event) -> {
+            geocodeDestination();
+            return true;
+        });
+
+        addWithMargin(card, 0, 0, 0, dp(10));
     }
 
     private void buildItemCard() {
@@ -308,30 +527,71 @@ public class TransPickupActivity extends Activity {
     }
 
     private void setPickupLocation(Location loc) {
-        pickupLat = loc.getLatitude(); pickupLng = loc.getLongitude();
-        String text = "📍 " + String.format(Locale.US, "%.6f, %.6f", pickupLat, pickupLng);
-        if (pickupCoordText != null) pickupCoordText.setText(text);
-        try { new SessionManager(this).saveLastLocation(String.valueOf(pickupLat), String.valueOf(pickupLng)); } catch (Exception ignored) {}
+        pickupLat = loc.getLatitude();
+        pickupLng = loc.getLongitude();
+        mapCenterLat = pickupLat;
+        mapCenterLng = pickupLng;
+
+        if (pickupCoordText != null) {
+            pickupCoordText.setText("📍 " + formatCoordinate(pickupLat, pickupLng));
+        }
+        if (mapView != null && mapReady) {
+            mapView.setPickup(pickupLat, pickupLng, "Lokasi Jemput");
+            mapView.moveTo(pickupLat, pickupLng, 17f);
+        }
+        try {
+            new SessionManager(this).saveLastLocation(
+                    String.valueOf(pickupLat),
+                    String.valueOf(pickupLng)
+            );
+        } catch (Exception ignored) {}
+
+        reverseGeocode(true, pickupLat, pickupLng);
         updateChoices();
     }
 
     private void geocodeDestination() {
         String q = destinationInput == null ? "" : destinationInput.getText().toString().trim();
-        if (q.length() < 4) { showInfo("Tujuan", "Masukkan alamat tujuan lebih lengkap."); return; }
+        if (q.length() < 4) {
+            showInfo("Tujuan", "Masukkan alamat tujuan lebih lengkap.");
+            return;
+        }
+
         setLoading(true);
         new Thread(() -> {
             try {
                 Geocoder geo = new Geocoder(this, new Locale("id", "ID"));
                 List<Address> list = geo.getFromLocationName(q, 1);
                 if (list == null || list.isEmpty()) throw new Exception("Tujuan tidak ditemukan.");
+
                 Address a = list.get(0);
-                deliveryLat = a.getLatitude(); deliveryLng = a.getLongitude();
-                String label = "📍 " + String.format(Locale.US, "%.6f, %.6f", deliveryLat, deliveryLng);
-                mainHandler.post(() -> { setLoading(false); deliveryCoordText.setText(label); updateChoices(); calculateOngkir(); });
+                deliveryLat = a.getLatitude();
+                deliveryLng = a.getLongitude();
+                mapCenterLat = deliveryLat;
+                mapCenterLng = deliveryLng;
+
+                String label = "📍 " + formatCoordinate(deliveryLat, deliveryLng);
+                mainHandler.post(() -> {
+                    setLoading(false);
+                    deliveryCoordText.setText(label);
+                    selectMapMode("delivery");
+                    if (mapView != null) {
+                        mapView.setDelivery(deliveryLat, deliveryLng, q);
+                        mapView.moveTo(deliveryLat, deliveryLng, 17f);
+                    }
+                    updateChoices();
+                    if (validLocation()) {
+                        drawPickupRoute();
+                        calculateOngkir();
+                    }
+                });
             } catch (Exception e) {
-                mainHandler.post(() -> { setLoading(false); showInfo("Tujuan", "Alamat tujuan belum ditemukan. Coba tulis lebih lengkap, misalnya nama kecamatan/kabupaten."); });
+                mainHandler.post(() -> {
+                    setLoading(false);
+                    showInfo("Tujuan", "Alamat tujuan belum ditemukan. Coba tulis lebih lengkap.");
+                });
             }
-        }).start();
+        }, "transpickup-geocode").start();
     }
 
     private void calculateOngkir() {
@@ -423,6 +683,42 @@ public class TransPickupActivity extends Activity {
     }
 
     private String readStream(InputStream is) throws Exception { if (is == null) return "{}"; BufferedReader br = new BufferedReader(new InputStreamReader(is, StandardCharsets.UTF_8)); StringBuilder sb = new StringBuilder(); String line; while ((line = br.readLine()) != null) sb.append(line); br.close(); return sb.toString(); }
+
+
+    @Override protected void onStart() {
+        super.onStart();
+        if (mapView != null) mapView.onStartMap();
+    }
+
+    @Override protected void onResume() {
+        super.onResume();
+        CustomerAppSettings.apply(this);
+        if (mapView != null) mapView.onResumeMap();
+    }
+
+    @Override protected void onPause() {
+        if (mapView != null) mapView.onPauseMap();
+        super.onPause();
+    }
+
+    @Override public void onLowMemory() {
+        super.onLowMemory();
+        if (mapView != null) mapView.onLowMemoryMap();
+    }
+
+    @Override protected void onStop() {
+        if (mapView != null) mapView.onStopMap();
+        super.onStop();
+    }
+
+    @Override protected void onDestroy() {
+        mainHandler.removeCallbacksAndMessages(null);
+        if (mapView != null) {
+            mapView.onDestroyMap();
+            mapView = null;
+        }
+        super.onDestroy();
+    }
 
     @Override public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) { super.onRequestPermissionsResult(requestCode, permissions, grantResults); if (requestCode == REQ_LOCATION) loadPickupLocation(); }
     @Override public void onBackPressed() { finish(); }

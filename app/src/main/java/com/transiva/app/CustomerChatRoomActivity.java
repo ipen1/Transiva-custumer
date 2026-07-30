@@ -99,6 +99,8 @@ public class CustomerChatRoomActivity extends Activity {
     private LinearLayout inputCard;
 
     private String orderId = "";
+    private String orderDbId = "";
+    private String orderSource = "orders";
     private String roomId = "";
     private String participantName = "";
     private String orderType = "";
@@ -209,6 +211,9 @@ public class CustomerChatRoomActivity extends Activity {
                 ),
                 ""
         );
+
+        orderDbId = first(getIntent().getStringExtra("order_db_id"), getIntent().getStringExtra("id"), "");
+        orderSource = first(getIntent().getStringExtra("order_source"), getIntent().getStringExtra("source"), "orders");
 
         roomId = normalizeRoom(
                 first(
@@ -1387,7 +1392,7 @@ public class CustomerChatRoomActivity extends Activity {
                 String audioUrl = upload.optString("url", upload.optString("audio_url", ""));
                 JSONObject payload = new JSONObject();
                 payload.put("room_id", roomId); payload.put("sender_type", "customer");
-                payload.put("order_id", orderId); payload.put("message", ChatVoiceNote.encode(audioUrl, durationMs));
+                payload.put("order_id", orderId); payload.put("order_db_id", orderDbId); payload.put("source", orderSource); payload.put("message", ChatVoiceNote.encode(audioUrl, durationMs));
                 JSONObject sent = CustomerMessageApi.post(SEND_CHAT_URL, payload);
                 mainHandler.post(() -> {
                     uploading = false; voiceButton.setEnabled(!readOnly); voiceButton.setText("🎙");
@@ -1445,6 +1450,9 @@ public class CustomerChatRoomActivity extends Activity {
                                 roomId,
                                 StandardCharsets.UTF_8.name()
                         )
+                                + "&source=" + URLEncoder.encode(orderSource, StandardCharsets.UTF_8.name())
+                                + "&order_id=" + URLEncoder.encode(orderId, StandardCharsets.UTF_8.name())
+                                + "&order_db_id=" + URLEncoder.encode(orderDbId, StandardCharsets.UTF_8.name())
 ;
 
                 if (requestedLastId > 0) {
@@ -2127,7 +2135,7 @@ public class CustomerChatRoomActivity extends Activity {
                 payload.put("room_id", roomId);
                 payload.put("sender_type", "customer");
                 payload.put("message", originalMessage);
-                payload.put("order_id", orderId);
+                payload.put("order_id", orderId); payload.put("order_db_id", orderDbId); payload.put("source", orderSource);
 
                 JSONObject response = CustomerMessageApi.post(
                         SEND_CHAT_URL,
@@ -2163,7 +2171,10 @@ public class CustomerChatRoomActivity extends Activity {
                         + URLEncoder.encode(
                                 roomId,
                                 StandardCharsets.UTF_8.name()
-                        );
+                        )
+                        + "&source=" + URLEncoder.encode(orderSource, StandardCharsets.UTF_8.name())
+                        + "&order_id=" + URLEncoder.encode(orderId, StandardCharsets.UTF_8.name())
+                        + "&order_db_id=" + URLEncoder.encode(orderDbId, StandardCharsets.UTF_8.name());
 
                 JSONObject response = CustomerMessageApi.get(endpoint);
                 JSONArray array = response.optJSONArray("messages");

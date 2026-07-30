@@ -1318,6 +1318,9 @@ public class CustomerChatActivity extends Activity {
                 )
         );
 
+        intent.putExtra("order_db_id", first(item.optString("order_db_id"), item.optString("id")));
+        intent.putExtra("order_source", item.optString("source", "orders"));
+
         intent.putExtra(
                 "driver_name",
                 item.optString(

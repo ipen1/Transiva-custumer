@@ -161,6 +161,13 @@ public final class TransivaGoogleMapView extends FrameLayout implements OnMapRea
         }
     }
 
+    /** Menampilkan pin pemilih hanya saat pengguna sedang memilih titik. */
+    public void showCenterPin(boolean show) {
+        if (centerPin != null) {
+            centerPin.setVisibility(show ? VISIBLE : GONE);
+        }
+    }
+
     public LatLng getCenter() {
         if (googleMap == null) return DEFAULT_CENTER;
         return googleMap.getCameraPosition().target;

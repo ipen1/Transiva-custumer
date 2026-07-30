@@ -603,6 +603,9 @@ public class TransRideActivity extends Activity {
         }
 
         updateModeUI();
+        if ("delivery".equals(mode) && validCoord(deliveryLat, deliveryLng) && mapView != null) {
+            mapView.showCenterPin(false);
+        }
     }
 
     private void goToMyLocation() {
@@ -1448,7 +1451,10 @@ public class TransRideActivity extends Activity {
 
         pickupBtn.setAlpha(pickupMode ? 1f : .80f);
         deliveryBtn.setAlpha(pickupMode ? .80f : 1f);
-        if (mapView != null) mapView.setSelectionMode(pickupMode ? "pickup" : "delivery");
+        if (mapView != null) {
+            mapView.setSelectionMode(pickupMode ? "pickup" : "delivery");
+            mapView.showCenterPin(true);
+        }
     }
 
     private void requestVisibleOsrmRoute() {

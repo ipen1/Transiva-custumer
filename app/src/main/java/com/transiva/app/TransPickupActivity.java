@@ -262,7 +262,10 @@ public class TransPickupActivity extends Activity {
         mapSelectionMode = "delivery".equals(mode) ? "delivery" : "pickup";
         boolean pickupMode = "pickup".equals(mapSelectionMode);
 
-        if (mapView != null) mapView.setSelectionMode(mapSelectionMode);
+        if (mapView != null) {
+            mapView.setSelectionMode(mapSelectionMode);
+            mapView.showCenterPin(true);
+        }
         if (mapModeText != null) {
             mapModeText.setText(pickupMode ? "Geser pin untuk pickup" : "Geser pin untuk tujuan");
         }
@@ -302,6 +305,7 @@ public class TransPickupActivity extends Activity {
                 deliveryCoordText.setText("📍 " + formatCoordinate(deliveryLat, deliveryLng));
             }
             reverseGeocode(false, deliveryLat, deliveryLng);
+            if (mapView != null) mapView.showCenterPin(false);
             if (validLocation()) {
                 drawPickupRoute();
                 calculateOngkir();

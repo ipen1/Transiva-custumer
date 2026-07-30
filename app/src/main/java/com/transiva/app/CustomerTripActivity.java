@@ -5,6 +5,7 @@ import android.app.AlertDialog;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
+import android.net.Uri;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.Bitmap;
@@ -48,6 +49,7 @@ public class CustomerTripActivity extends Activity {
 
     private static final String BASE_URL = "https://transiva.my.id/";
     private static final String CHECK_STATUS_URL = BASE_URL + "server/check_order_status.php";
+    private static final String PICKUP_STATUS_URL = BASE_URL + "server/get_pickup_order_status.php";
 
     // Pakai file Leaflet lokal/server sendiri, bukan CDN, agar stabil di WebView.
     private static final String LEAFLET_CSS = BASE_URL + "js/leaflet.css";
@@ -77,6 +79,7 @@ public class CustomerTripActivity extends Activity {
 
     private String orderId = "";
     private String activeDriverType = "motor";
+    private String orderSource = "orders";
 
     private boolean mapReady = false;
     private boolean firstFocus = true;
@@ -152,6 +155,13 @@ public class CustomerTripActivity extends Activity {
         pickupLng = getDoubleExtraOrPref(i, sp, "pickup_lng", 0);
         deliveryLat = getDoubleExtraOrPref(i, sp, "delivery_lat", 0);
         deliveryLng = getDoubleExtraOrPref(i, sp, "delivery_lng", 0);
+
+        orderSource = firstNonEmpty(
+                i.getStringExtra("order_source"),
+                i.getStringExtra("source"),
+                sp.getString("active_order_source", "orders"),
+                "orders"
+        ).toLowerCase(Locale.US);
 
         activeDriverType = firstNonEmpty(
                 i.getStringExtra("active_driver_type"),
@@ -367,8 +377,13 @@ public class CustomerTripActivity extends Activity {
 
         new Thread(() -> {
             try {
-                JSONObject payload = new JSONObject().put("order_id", orderId);
-                JSONObject res = postJson(CHECK_STATUS_URL, payload);
+                JSONObject res;
+                if (orderSource.contains("pickup")) {
+                    res = getJson(PICKUP_STATUS_URL + "?order_id=" + Uri.encode(orderId));
+                } else {
+                    JSONObject payload = new JSONObject().put("order_id", orderId);
+                    res = postJson(CHECK_STATUS_URL, payload);
+                }
                 mainHandler.post(() -> {
                     setLoading(false);
                     if (res.optBoolean("success", false)) {
@@ -675,6 +690,24 @@ public class CustomerTripActivity extends Activity {
                     .remove("active_order_price")
                     .apply();
         } catch (Exception ignored) {}
+    }
+
+    private JSONObject getJson(String urlText) throws Exception {
+        HttpURLConnection conn = null;
+        try {
+            conn = (HttpURLConnection) new URL(urlText).openConnection();
+            conn.setRequestMethod("GET");
+            conn.setConnectTimeout(TIMEOUT_MS);
+            conn.setReadTimeout(TIMEOUT_MS);
+            conn.setUseCaches(false);
+            conn.setRequestProperty("Accept", "application/json");
+            int code = conn.getResponseCode();
+            InputStream is = code >= 200 && code < 400 ? conn.getInputStream() : conn.getErrorStream();
+            String body = readStream(is).trim();
+            return body.isEmpty() ? new JSONObject() : new JSONObject(body);
+        } finally {
+            if (conn != null) conn.disconnect();
+        }
     }
 
     private JSONObject postJson(String urlText, JSONObject payload) throws Exception {

@@ -1827,6 +1827,15 @@ public class CustomerHistoryActivity extends Activity {
             );
 
             trip.putExtra(
+                    "order_source",
+                    first(
+                            order.optString("source"),
+                            order.optString("_transiva_table"),
+                            "orders"
+                    )
+            );
+
+            trip.putExtra(
                     "pickup_lat",
                     order.optDouble(
                             "pickup_lat",

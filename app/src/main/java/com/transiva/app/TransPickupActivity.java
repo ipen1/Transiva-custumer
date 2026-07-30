@@ -55,6 +55,8 @@ public class TransPickupActivity extends Activity {
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
     private FrameLayout page;
     private LinearLayout root;
+    private LinearLayout bottomSheet;
+    private final Runnable restoreSheetRunnable = () -> setBottomSheetHidden(false);
     private ProgressBar progressBar;
     private TransivaGoogleMapView mapView;
     private TextView mapModeText;
@@ -123,6 +125,9 @@ public class TransPickupActivity extends Activity {
             @Override public void onCenterChanged(double lat, double lng) {
                 mapCenterLat = lat;
                 mapCenterLng = lng;
+                setBottomSheetHidden(true);
+                mainHandler.removeCallbacks(restoreSheetRunnable);
+                mainHandler.postDelayed(restoreSheetRunnable, 700);
                 if (mapModeText != null) {
                     mapModeText.setText("Geser peta lalu tekan Tetapkan titik");
                 }
@@ -146,23 +151,23 @@ public class TransPickupActivity extends Activity {
     private void buildMapHeader() {
         LinearLayout header = new LinearLayout(this);
         header.setOrientation(LinearLayout.VERTICAL);
-        header.setPadding(dp(10), dp(8), dp(10), dp(8));
+        header.setPadding(dp(8), dp(5), dp(8), dp(5));
         header.setBackground(roundStroke("#F4FFFFFF", "#D7E6F8", dp(18), 1));
 
         FrameLayout.LayoutParams headerLp = new FrameLayout.LayoutParams(-1, -2);
         headerLp.gravity = Gravity.TOP;
-        headerLp.setMargins(dp(10), dp(10), dp(10), 0);
+        headerLp.setMargins(dp(8), dp(7), dp(8), 0);
         page.addView(header, headerLp);
 
         LinearLayout titleRow = new LinearLayout(this);
         titleRow.setGravity(Gravity.CENTER_VERTICAL);
-        header.addView(titleRow, new LinearLayout.LayoutParams(-1, dp(34)));
+        header.addView(titleRow, new LinearLayout.LayoutParams(-1, dp(30)));
 
         Button back = outlineButton("‹");
         back.setTextSize(28);
         back.setPadding(0, 0, 0, dp(3));
         back.setOnClickListener(v -> finish());
-        titleRow.addView(back, new LinearLayout.LayoutParams(dp(38), dp(34)));
+        titleRow.addView(back, new LinearLayout.LayoutParams(dp(34), dp(30)));
 
         TextView title = text("TransPickup", 18, "#0B3A78", true);
         title.setPadding(dp(9), 0, 0, 0);
@@ -174,7 +179,7 @@ public class TransPickupActivity extends Activity {
 
         LinearLayout pointRow = new LinearLayout(this);
         pointRow.setOrientation(LinearLayout.HORIZONTAL);
-        LinearLayout.LayoutParams pointLp = new LinearLayout.LayoutParams(-1, dp(48));
+        LinearLayout.LayoutParams pointLp = new LinearLayout.LayoutParams(-1, dp(40));
         pointLp.setMargins(0, dp(6), 0, 0);
         header.addView(pointRow, pointLp);
 
@@ -189,9 +194,9 @@ public class TransPickupActivity extends Activity {
         deliveryMapBtn.setOnClickListener(v -> selectMapMode("delivery"));
 
         confirmPointBtn = primaryButton("Tetapkan titik jemput");
-        FrameLayout.LayoutParams confirmLp = new FrameLayout.LayoutParams(dp(190), dp(48));
+        FrameLayout.LayoutParams confirmLp = new FrameLayout.LayoutParams(dp(176), dp(42));
         confirmLp.gravity = Gravity.CENTER_HORIZONTAL | Gravity.TOP;
-        confirmLp.setMargins(0, dp(108), 0, 0);
+        confirmLp.setMargins(0, dp(88), 0, 0);
         page.addView(confirmPointBtn, confirmLp);
         confirmPointBtn.setOnClickListener(v -> confirmMapPoint());
 
@@ -199,7 +204,7 @@ public class TransPickupActivity extends Activity {
         gpsMapBtn.setTextSize(21);
         FrameLayout.LayoutParams gpsLp = new FrameLayout.LayoutParams(dp(46), dp(46));
         gpsLp.gravity = Gravity.END | Gravity.TOP;
-        gpsLp.setMargins(0, dp(166), dp(14), 0);
+        gpsLp.setMargins(0, dp(136), dp(12), 0);
         page.addView(gpsMapBtn, gpsLp);
         gpsMapBtn.setOnClickListener(v -> loadPickupLocation());
 
@@ -208,14 +213,15 @@ public class TransPickupActivity extends Activity {
 
     private void buildBottomSheet() {
         LinearLayout sheet = new LinearLayout(this);
+        bottomSheet = sheet;
         sheet.setOrientation(LinearLayout.VERTICAL);
         sheet.setPadding(dp(10), dp(8), dp(10), dp(8));
         sheet.setBackground(roundStroke("#F7FAFF", "#C7DBF2", dp(24), 1));
         sheet.setElevation(dp(8));
 
-        FrameLayout.LayoutParams sheetLp = new FrameLayout.LayoutParams(-1, dp(338));
+        FrameLayout.LayoutParams sheetLp = new FrameLayout.LayoutParams(-1, dp(300));
         sheetLp.gravity = Gravity.BOTTOM;
-        sheetLp.setMargins(dp(8), 0, dp(8), dp(8));
+        sheetLp.setMargins(dp(7), 0, dp(7), dp(6));
         page.addView(sheet, sheetLp);
 
         TextView handle = text("━", 24, "#94A3B8", true);
@@ -230,6 +236,12 @@ public class TransPickupActivity extends Activity {
         root.setOrientation(LinearLayout.VERTICAL);
         root.setPadding(dp(2), 0, dp(2), dp(18));
         scroll.addView(root, new ScrollView.LayoutParams(-1, -2));
+    }
+
+    private void setBottomSheetHidden(boolean hidden) {
+        if (bottomSheet == null) return;
+        float target = hidden ? bottomSheet.getHeight() - dp(34) : 0f;
+        bottomSheet.animate().translationY(target).setDuration(hidden ? 150 : 190).start();
     }
 
     private Button compactMapButton(String label, String accent) {

@@ -6,6 +6,9 @@ import android.content.Intent;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
+import android.net.Uri;
+import android.os.Build;
+import android.provider.Settings;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
@@ -34,6 +37,7 @@ public class CustomerSettingsActivity extends Activity {
     private final Handler main = new Handler(Looper.getMainLooper());
     private SessionManager session;
     private TextView deviceName, deviceDetail, deviceStatus;
+    private TextView overlayStatus;
     private Button disconnectButton;
     private ProgressBar progress;
     private boolean deviceLoading;
@@ -49,6 +53,7 @@ public class CustomerSettingsActivity extends Activity {
     @Override protected void onResume() {
         super.onResume();
         CustomerAppSettings.apply(this);
+        updateOverlayStatus();
     }
 
     private LinearLayout buildScreen() {
@@ -84,6 +89,25 @@ public class CustomerSettingsActivity extends Activity {
             recreate();
         }));
         root.addView(preferenceCard);
+
+        root.addView(sectionTitle("Panggilan Masuk"), marginTop(18));
+        LinearLayout callCard = card();
+        LinearLayout overlayRow = new LinearLayout(this);
+        overlayRow.setGravity(Gravity.CENTER_VERTICAL);
+        overlayRow.setPadding(0, dp(4), 0, dp(4));
+        LinearLayout overlayLabels = new LinearLayout(this);
+        overlayLabels.setOrientation(LinearLayout.VERTICAL);
+        overlayLabels.addView(text("Tampil di atas aplikasi lain", 15, "#0B3A78", true));
+        overlayLabels.addView(text("Opsional • membantu layar panggilan tampil saat Transiva berada di latar belakang", 11, "#64748B", false));
+        overlayRow.addView(overlayLabels, new LinearLayout.LayoutParams(0, -2, 1));
+        overlayStatus = text("OPSIONAL", 10, "#0B7CFF", true);
+        overlayStatus.setPadding(dp(9), dp(5), dp(9), dp(5));
+        overlayStatus.setBackground(round("#EAF4FF", 12));
+        overlayRow.addView(overlayStatus);
+        overlayRow.setOnClickListener(v -> explainOverlayPermission());
+        callCard.addView(overlayRow);
+        root.addView(callCard);
+        updateOverlayStatus();
 
         root.addView(sectionTitle("Pembaruan"), marginTop(18));
         LinearLayout updateCard = card();
@@ -135,6 +159,45 @@ public class CustomerSettingsActivity extends Activity {
         row.addView(labels, new LinearLayout.LayoutParams(0, -2, 1));
         Switch toggle = new Switch(this); toggle.setChecked(checked); toggle.setOnCheckedChangeListener(listener);
         row.addView(toggle); return row;
+    }
+
+    private void updateOverlayStatus() {
+        if (overlayStatus == null) return;
+        boolean enabled = Build.VERSION.SDK_INT < Build.VERSION_CODES.M || Settings.canDrawOverlays(this);
+        overlayStatus.setText(enabled ? "AKTIF" : "OPSIONAL");
+        overlayStatus.setTextColor(Color.parseColor(enabled ? "#07864B" : "#0B7CFF"));
+        overlayStatus.setBackground(round(enabled ? "#EAFBF2" : "#EAF4FF", 12));
+    }
+
+    private void explainOverlayPermission() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) {
+            Toast.makeText(this, "Perangkat ini tidak memerlukan izin tambahan.", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        if (Settings.canDrawOverlays(this)) {
+            new AlertDialog.Builder(this)
+                    .setTitle("Izin panggilan sudah aktif")
+                    .setMessage("Transiva dapat membantu menampilkan layar panggilan saat aplikasi berada di latar belakang. Anda dapat menonaktifkannya kapan saja melalui pengaturan Android.")
+                    .setNegativeButton("Tutup", null)
+                    .setPositiveButton("Buka pengaturan", (d, w) -> openOverlaySettings())
+                    .show();
+            return;
+        }
+        new AlertDialog.Builder(this)
+                .setTitle("Izin opsional untuk panggilan")
+                .setMessage("Aktifkan hanya bila Anda ingin layar panggilan Transiva lebih mudah muncul ketika aplikasi sedang berada di latar belakang. Tanpa izin ini, notifikasi panggilan tetap digunakan.")
+                .setNegativeButton("Nanti", null)
+                .setPositiveButton("Aktifkan", (d, w) -> openOverlaySettings())
+                .show();
+    }
+
+    private void openOverlaySettings() {
+        try {
+            Intent intent = new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:" + getPackageName()));
+            startActivity(intent);
+        } catch (Throwable e) {
+            Toast.makeText(this, "Pengaturan izin tidak tersedia pada perangkat ini.", Toast.LENGTH_LONG).show();
+        }
     }
 
     private void loadConnectedDevice() {

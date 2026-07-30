@@ -1,10 +1,6 @@
 package com.transiva.app;
 
 import android.app.Activity;
-import android.provider.Settings;
-import android.os.Build;
-import android.net.Uri;
-import android.app.AlertDialog;
 import android.content.Intent;
 import android.graphics.Color;
 import android.os.Bundle;
@@ -16,7 +12,6 @@ import android.widget.ImageView;
 import android.widget.ImageView.ScaleType;
 
 public class SplashActivity extends Activity {
-    private boolean overlaySettingsOpened;
     private boolean routed;
 
     private static final int SPLASH_DELAY = 1600;
@@ -47,38 +42,10 @@ public class SplashActivity extends Activity {
 
         setContentView(layout);
 
-        new Handler(Looper.getMainLooper()).postDelayed(this::checkOverlayThenRoute, SPLASH_DELAY);
-    }
-
-    private void checkOverlayThenRoute() {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M || Settings.canDrawOverlays(this)) {
-            routeNext();
-            return;
-        }
-        new AlertDialog.Builder(this)
-                .setTitle("Izinkan tampil di atas aplikasi lain")
-                .setMessage("Izin ini membantu layar panggilan Transiva langsung muncul saat ada telepon masuk, termasuk ketika Anda sedang membuka aplikasi lain. Aktifkan 'Tampil di atas aplikasi lain' untuk Transiva.")
-                .setCancelable(false)
-                .setPositiveButton("Buka pengaturan", (d, w) -> {
-                    try {
-                        Intent i = new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
-                                Uri.parse("package:" + getPackageName()));
-                        overlaySettingsOpened = true;
-                        startActivity(i);
-                    } catch (Throwable ignored) {
-                        routeNext();
-                    }
-                })
-                .setNegativeButton("Nanti", (d, w) -> routeNext())
-                .show();
-    }
-
-    @Override protected void onResume() {
-        super.onResume();
-        if (overlaySettingsOpened && !routed) {
-            overlaySettingsOpened = false;
-            new Handler(Looper.getMainLooper()).postDelayed(this::routeNext, 250L);
-        }
+        // Never block first launch with the special overlay permission.
+        // Incoming calls still use Android full-screen call notifications; users can
+        // optionally enable overlay from Pengaturan Aplikasi.
+        new Handler(Looper.getMainLooper()).postDelayed(this::routeNext, SPLASH_DELAY);
     }
 
     private void routeNext() {

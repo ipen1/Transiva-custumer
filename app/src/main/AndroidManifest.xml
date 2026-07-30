@@ -209,6 +209,12 @@
             android:theme="@style/AppTheme" />
 
         <activity
+            android:name=".CustomerLiveDriverActivity"
+            android:exported="false"
+            android:screenOrientation="portrait"
+            android:theme="@style/AppTheme" />
+
+        <activity
             android:name=".TransLaundryActivity"
             android:exported="false"
             android:screenOrientation="portrait"

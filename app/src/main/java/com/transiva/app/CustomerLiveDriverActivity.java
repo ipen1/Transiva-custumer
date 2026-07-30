@@ -4,6 +4,8 @@ import android.annotation.SuppressLint;
 import android.app.Activity;
 import android.content.Intent;
 import android.content.SharedPreferences;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
@@ -11,6 +13,7 @@ import android.location.Location;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
+import android.util.Base64;
 import android.view.Gravity;
 import android.view.View;
 import android.webkit.WebChromeClient;
@@ -26,6 +29,7 @@ import android.widget.TextView;
 import org.json.JSONObject;
 
 import java.io.BufferedReader;
+import java.io.ByteArrayOutputStream;
 import java.io.BufferedWriter;
 import java.io.InputStream;
 import java.io.InputStreamReader;
@@ -283,6 +287,9 @@ public final class CustomerLiveDriverActivity extends Activity {
                 ? "https://tiles.openfreemap.org/styles/dark"
                 : "https://tiles.openfreemap.org/styles/liberty";
 
+        String carImage = drawableDataUrl("map_car_top");
+        String motorImage = drawableDataUrl("map_motor_top");
+
         return "<!doctype html><html><head>"
                 + "<meta charset='utf-8'>"
                 + "<meta name='viewport' content='width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no'>"
@@ -290,78 +297,110 @@ public final class CustomerLiveDriverActivity extends Activity {
                 + "<script src='https://unpkg.com/maplibre-gl@5.6.1/dist/maplibre-gl.js'></script>"
                 + "<style>"
                 + "html,body,#map{width:100%;height:100%;margin:0;padding:0;overflow:hidden;background:#071426}"
-                + ".maplibregl-ctrl-bottom-left,.maplibregl-ctrl-bottom-right,"
-                + ".maplibregl-ctrl-top-left,.maplibregl-ctrl-top-right{display:none!important}"
-                + ".vehicle{width:42px;height:42px;display:flex;align-items:center;justify-content:center;"
-                + "border-radius:50%;background:#fff;border:3px solid #1476ff;"
-                + "box-shadow:0 4px 16px rgba(0,0,0,.38);font-size:23px;"
-                + "will-change:transform;transform-origin:center center}"
+                + ".maplibregl-ctrl-bottom-left,.maplibregl-ctrl-bottom-right,.maplibregl-ctrl-top-left,.maplibregl-ctrl-top-right{display:none!important}"
+                + ".vehicle{width:52px;height:52px;display:flex;align-items:center;justify-content:center;"
+                + "will-change:transform;transform-origin:center center;filter:drop-shadow(0 4px 5px rgba(0,0,0,.38))}"
+                + ".vehicle img{width:100%;height:100%;object-fit:contain;display:block;pointer-events:none}"
                 + ".target{width:20px;height:20px;border-radius:50%;background:#fff;"
                 + "border:5px solid #1476ff;box-shadow:0 3px 10px rgba(0,0,0,.32)}"
                 + "</style></head><body><div id='map'></div>"
                 + "<script>"
+                + "const CAR_IMG='" + carImage + "',MOTOR_IMG='" + motorImage + "';"
                 + "const map=new maplibregl.Map({container:'map',style:'" + styleUrl + "',"
                 + "center:[120.0,-0.9],zoom:15.8,pitch:44,bearing:0,"
                 + "attributionControl:false,dragRotate:true,pitchWithRotate:true,"
                 + "maxPitch:60,fadeDuration:0});"
                 + "let driverMarker=null,pickupMarker=null,deliveryMarker=null;"
-                + "let currentLng=0,currentLat=0,targetLng=0,targetLat=0;"
-                + "let currentBearing=0,targetBearing=0,animStart=0,animDuration=1800;"
-                + "let follow=true,vehicleType='motor';"
+                + "let displayLng=0,displayLat=0,serverLng=0,serverLat=0;"
+                + "let prevServerLng=0,prevServerLat=0,lastServerAt=0;"
+                + "let velocityLng=0,velocityLat=0,speedMps=0;"
+                + "let displayBearing=0,serverBearing=0,follow=true,vehicleType='motor';"
+                + "let routeCoords=[],routeCum=[],routeLength=0,serverProgress=-1;"
+                + "let animationStarted=false,lastFrameAt=0;"
                 + "function angleDelta(a,b){return ((b-a+540)%360)-180}"
-                + "function vehicleEl(type){const e=document.createElement('div');"
-                + "e.className='vehicle';e.textContent=type==='car'?'🚘':'🏍️';return e}"
+                + "function meters(a,b,c,d){const R=6371000,p1=a*Math.PI/180,p2=c*Math.PI/180;"
+                + "const dp=(c-a)*Math.PI/180,dl=(d-b)*Math.PI/180;"
+                + "const q=Math.sin(dp/2)**2+Math.cos(p1)*Math.cos(p2)*Math.sin(dl/2)**2;return 2*R*Math.atan2(Math.sqrt(q),Math.sqrt(1-q))}"
+                + "function bearing(a,b,c,d){const p1=a*Math.PI/180,p2=c*Math.PI/180,dl=(d-b)*Math.PI/180;"
+                + "return (Math.atan2(Math.sin(dl)*Math.cos(p2),Math.cos(p1)*Math.sin(p2)-Math.sin(p1)*Math.cos(p2)*Math.cos(dl))*180/Math.PI+360)%360}"
+                + "function vehicleEl(type){const e=document.createElement('div');e.className='vehicle';"
+                + "const img=document.createElement('img');img.alt=type==='car'?'mobil':'motor';img.src=type==='car'?CAR_IMG:MOTOR_IMG;e.appendChild(img);return e}"
                 + "function targetEl(){const e=document.createElement('div');e.className='target';return e}"
-                + "function ensureDriver(type){"
-                + "if(driverMarker&&vehicleType===type)return;"
-                + "vehicleType=type;"
-                + "if(driverMarker)driverMarker.remove();"
-                + "driverMarker=new maplibregl.Marker({element:vehicleEl(type),anchor:'center',rotationAlignment:'map'});"
-                + "if(currentLng&&currentLat)driverMarker.setLngLat([currentLng,currentLat]).addTo(map)}"
-                + "function setTarget(kind,lng,lat){"
-                + "if(!lng||!lat)return;"
-                + "let m=kind==='pickup'?pickupMarker:deliveryMarker;"
+                + "function ensureDriver(type){if(driverMarker&&vehicleType===type)return;vehicleType=type;"
+                + "if(driverMarker)driverMarker.remove();driverMarker=new maplibregl.Marker({element:vehicleEl(type),anchor:'center',rotationAlignment:'map'});"
+                + "if(displayLng&&displayLat)driverMarker.setLngLat([displayLng,displayLat]).addTo(map)}"
+                + "function setTarget(kind,lng,lat){if(!lng||!lat)return;let m=kind==='pickup'?pickupMarker:deliveryMarker;"
                 + "if(!m){m=new maplibregl.Marker({element:targetEl(),anchor:'center'}).setLngLat([lng,lat]).addTo(map);"
                 + "if(kind==='pickup')pickupMarker=m;else deliveryMarker=m}else m.setLngLat([lng,lat])}"
-                + "function updateDriver(lng,lat,bearing,type){"
-                + "if(!lng||!lat)return;"
-                + "ensureDriver(type);"
-                + "if(!currentLng||!currentLat){currentLng=lng;currentLat=lat;targetLng=lng;targetLat=lat;"
-                + "currentBearing=bearing||0;targetBearing=currentBearing;"
-                + "driverMarker.setLngLat([lng,lat]).addTo(map);"
-                + "map.jumpTo({center:[lng,lat],zoom:17.1,pitch:46,bearing:currentBearing});return}"
-                + "targetLng=lng;targetLat=lat;targetBearing=bearing||targetBearing;"
-                + "animStart=performance.now();requestAnimationFrame(tick)}"
-                + "let ticking=false;"
-                + "function tick(now){if(ticking)return;ticking=true;"
-                + "requestAnimationFrame(function frame(t){"
-                + "let p=Math.min(1,(t-animStart)/animDuration);"
-                + "let eased=1-Math.pow(1-p,3);"
-                + "currentLng=currentLng+(targetLng-currentLng)*Math.min(.16+.34*eased,.46);"
-                + "currentLat=currentLat+(targetLat-currentLat)*Math.min(.16+.34*eased,.46);"
-                + "currentBearing=(currentBearing+angleDelta(currentBearing,targetBearing)*.13+360)%360;"
-                + "if(driverMarker){driverMarker.setLngLat([currentLng,currentLat]);"
-                + "driverMarker.setRotation(currentBearing)}"
-                + "if(follow){map.easeTo({center:[currentLng,currentLat],bearing:currentBearing,"
-                + "zoom:17.1,pitch:46,duration:90,easing:x=>x})}"
-                + "if(p<1||Math.abs(targetLng-currentLng)>.000001||Math.abs(targetLat-currentLat)>.000001)"
-                + "requestAnimationFrame(frame);else ticking=false;"
-                + "});}"
-                + "function drawRoute(points){"
-                + "if(!Array.isArray(points)||points.length<2)return;"
-                + "const coords=points.map(p=>[Number(p[1]),Number(p[0])]);"
-                + "const data={type:'Feature',properties:{},geometry:{type:'LineString',coordinates:coords}};"
-                + "if(map.getSource('route'))map.getSource('route').setData(data);"
-                + "else{map.addSource('route',{type:'geojson',data:data});"
-                + "map.addLayer({id:'route-shadow',type:'line',source:'route',layout:{'line-join':'round','line-cap':'round'},"
-                + "paint:{'line-color':'#071426','line-width':11,'line-opacity':.58}});"
-                + "map.addLayer({id:'route',type:'line',source:'route',layout:{'line-join':'round','line-cap':'round'},"
-                + "paint:{'line-color':'#1476ff','line-width':7,'line-opacity':.96}})}}"
-                + "map.on('dragstart',()=>follow=false);"
-                + "map.on('zoomstart',()=>follow=false);"
-                + "map.on('load',()=>{follow=true;});"
+                + "function rebuildRoute(){routeCum=[];routeLength=0;if(routeCoords.length){routeCum.push(0);"
+                + "for(let i=1;i<routeCoords.length;i++){routeLength+=meters(routeCoords[i-1][1],routeCoords[i-1][0],routeCoords[i][1],routeCoords[i][0]);routeCum.push(routeLength)}}}"
+                + "function projectRoute(lng,lat){if(routeCoords.length<2)return null;let best=null,bestD=1e12;"
+                + "const k=Math.cos(lat*Math.PI/180);for(let i=0;i<routeCoords.length-1;i++){const a=routeCoords[i],b=routeCoords[i+1];"
+                + "const ax=a[0]*k,ay=a[1],bx=b[0]*k,by=b[1],px=lng*k,py=lat;const dx=bx-ax,dy=by-ay;"
+                + "let t=((px-ax)*dx+(py-ay)*dy)/(dx*dx+dy*dy||1);t=Math.max(0,Math.min(1,t));"
+                + "const qlng=a[0]+(b[0]-a[0])*t,qlat=a[1]+(b[1]-a[1])*t,d=meters(lat,lng,qlat,qlng);"
+                + "if(d<bestD){const seg=meters(a[1],a[0],b[1],b[0]);bestD=d;best={lng:qlng,lat:qlat,progress:routeCum[i]+seg*t,bearing:bearing(a[1],a[0],b[1],b[0]),distance:d}}}"
+                + "return best}"
+                + "function pointAt(progress){if(routeCoords.length<2)return null;progress=Math.max(0,Math.min(routeLength,progress));"
+                + "let i=1;while(i<routeCum.length&&routeCum[i]<progress)i++;i=Math.min(i,routeCoords.length-1);"
+                + "const a=routeCoords[i-1],b=routeCoords[i],seg=Math.max(.01,routeCum[i]-routeCum[i-1]);const t=(progress-routeCum[i-1])/seg;"
+                + "return{lng:a[0]+(b[0]-a[0])*t,lat:a[1]+(b[1]-a[1])*t,bearing:bearing(a[1],a[0],b[1],b[0])}}"
+                + "function updateDriver(lng,lat,bearingValue,type,speedKmh){if(!lng||!lat)return;ensureDriver(type);const now=performance.now();"
+                + "if(serverLng&&serverLat&&lastServerAt){const dt=Math.max(.25,(now-lastServerAt)/1000);velocityLng=(lng-serverLng)/dt;velocityLat=(lat-serverLat)/dt}"
+                + "prevServerLng=serverLng;prevServerLat=serverLat;serverLng=lng;serverLat=lat;lastServerAt=now;serverBearing=Number(bearingValue)||serverBearing;"
+                + "speedMps=Math.max(0,Math.min(55,(Number(speedKmh)||0)/3.6));const snap=projectRoute(lng,lat);"
+                + "if(snap&&snap.distance<55){serverLng=snap.lng;serverLat=snap.lat;serverProgress=snap.progress;serverBearing=snap.bearing}else serverProgress=-1;"
+                + "if(!displayLng||!displayLat){displayLng=serverLng;displayLat=serverLat;displayBearing=serverBearing;driverMarker.setLngLat([displayLng,displayLat]).addTo(map);"
+                + "map.jumpTo({center:[displayLng,displayLat],zoom:17.1,pitch:46,bearing:displayBearing})}startAnimation()}"
+                + "function startAnimation(){if(animationStarted)return;animationStarted=true;requestAnimationFrame(frame)}"
+                + "function frame(now){const dt=Math.min(.05,Math.max(.008,lastFrameAt?(now-lastFrameAt)/1000:.016));lastFrameAt=now;"
+                + "const age=Math.max(0,Math.min(2.6,lastServerAt?(now-lastServerAt)/1000:0));let desiredLng=serverLng,desiredLat=serverLat,desiredBearing=serverBearing;"
+                + "if(serverProgress>=0&&routeCoords.length>1){const p=pointAt(serverProgress+speedMps*age);if(p){desiredLng=p.lng;desiredLat=p.lat;desiredBearing=p.bearing}}"
+                + "else if(speedMps>.6){desiredLng=serverLng+velocityLng*age;desiredLat=serverLat+velocityLat*age}"
+                + "if(displayLng&&displayLat){const d=meters(displayLat,displayLng,desiredLat,desiredLng);let tau=d>35?.16:(speedMps>8?.30:.42);"
+                + "const alpha=1-Math.exp(-dt/tau);displayLng+=(desiredLng-displayLng)*alpha;displayLat+=(desiredLat-displayLat)*alpha;"
+                + "displayBearing=(displayBearing+angleDelta(displayBearing,desiredBearing)*(1-Math.exp(-dt/.24))+360)%360}"
+                + "if(driverMarker&&displayLng&&displayLat){driverMarker.setLngLat([displayLng,displayLat]);driverMarker.setRotation(displayBearing)}"
+                + "if(follow&&displayLng&&displayLat){map.jumpTo({center:[displayLng,displayLat],bearing:displayBearing,zoom:17.1,pitch:46})}requestAnimationFrame(frame)}"
+                + "function drawRoute(points){if(!Array.isArray(points)||points.length<2)return;routeCoords=points.map(p=>[Number(p[1]),Number(p[0])]);rebuildRoute();"
+                + "const data={type:'Feature',properties:{},geometry:{type:'LineString',coordinates:routeCoords}};"
+                + "if(map.getSource('route'))map.getSource('route').setData(data);else{map.addSource('route',{type:'geojson',data:data});"
+                + "map.addLayer({id:'route-shadow',type:'line',source:'route',layout:{'line-join':'round','line-cap':'round'},paint:{'line-color':'#071426','line-width':11,'line-opacity':.58}});"
+                + "map.addLayer({id:'route',type:'line',source:'route',layout:{'line-join':'round','line-cap':'round'},paint:{'line-color':'#1476ff','line-width':7,'line-opacity':.96}})}"
+                + "if(serverLng&&serverLat){const s=projectRoute(serverLng,serverLat);if(s&&s.distance<55){serverProgress=s.progress;serverLng=s.lng;serverLat=s.lat}}}"
+                + "map.on('dragstart',()=>follow=false);map.on('zoomstart',()=>follow=false);map.on('load',()=>{follow=true;startAnimation()});"
                 + "window.TransivaLive={updateDriver,setTarget,drawRoute,setFollow:(v)=>{follow=!!v}};"
                 + "</script></body></html>";
+    }
+
+    private String drawableDataUrl(String drawableName) {
+        try {
+            int id = getResources().getIdentifier(
+                    drawableName,
+                    "drawable",
+                    getPackageName()
+            );
+            if (id <= 0) return "";
+
+            Bitmap bitmap = BitmapFactory.decodeResource(
+                    getResources(),
+                    id
+            );
+            if (bitmap == null) return "";
+
+            ByteArrayOutputStream output =
+                    new ByteArrayOutputStream();
+            bitmap.compress(Bitmap.CompressFormat.PNG, 100, output);
+            String encoded = Base64.encodeToString(
+                    output.toByteArray(),
+                    Base64.NO_WRAP
+            );
+            output.close();
+            bitmap.recycle();
+            return "data:image/png;base64," + encoded;
+        } catch (Exception ignored) {
+            return "";
+        }
     }
 
     private void fetchStatus() {
@@ -582,7 +621,9 @@ public final class CustomerLiveDriverActivity extends Activity {
                     + driverLat + ","
                     + bearing + ",'"
                     + ("car".equals(driverType) ? "car" : "motor")
-                    + "');");
+                    + "',"
+                    + speedKmh
+                    + ");");
 
             requestRouteIfNeeded();
         }

@@ -558,10 +558,8 @@ public class CustomerTripActivity extends Activity {
         double price=order.optDouble("price",0), original=order.optDouble("original_price",price), requested=order.optDouble("price_change_requested",0);
         String change=order.optString("price_change_status","none").toLowerCase(Locale.US), reason=order.optString("price_change_reason","");
         String line=(nonCash?"💳 TransPay • sudah dibayar":"💵 Tunai • bayar ke driver")+(price>0?" • "+rupiah(price):"");
-        if(original>0 && Math.abs(original-price)>0.5) line += "
-Harga berubah dari "+rupiah(original)+" menjadi "+rupiah(price)+(reason.isEmpty()?"":" • "+reason);
-        if(change.equals("pending")&&requested>0) line += "
-Driver mengajukan "+rupiah(requested)+(reason.isEmpty()?"":" • "+reason);
+        if(original>0 && Math.abs(original-price)>0.5) line += "\nHarga berubah dari " + rupiah(original) + " menjadi " + rupiah(price) + (reason.isEmpty() ? "" : " • " + reason);
+        if(change.equals("pending") && requested > 0) line += "\nDriver mengajukan " + rupiah(requested) + (reason.isEmpty() ? "" : " • " + reason);
         paymentInfoText.setText(line); paymentInfoText.setVisibility(View.VISIBLE); paymentInfoText.setBackground(round("#EFF6FF",dp(14)));
         receivedButton.setVisibility(!nonCash && "arrived_delivery".equals(status) && order.optInt("customer_received",0)!=1 ? View.VISIBLE:View.GONE);
         View priceActions=null; android.view.ViewParent par=approvePriceButton==null?null:approvePriceButton.getParent(); if(par instanceof View) priceActions=(View)par;

@@ -50,6 +50,7 @@ public class SplashActivity extends Activity {
 
     private void routeNext() {
         if (routed) return;
+        if (MockLocationGuard.protect(this)) return;
         routed = true;
         SessionManager session = new SessionManager(this);
         Intent intent;

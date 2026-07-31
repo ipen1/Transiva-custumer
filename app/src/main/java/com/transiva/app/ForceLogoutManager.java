@@ -11,6 +11,7 @@ public final class ForceLogoutManager {
     public static void execute(Context context, String reason) {
         if (context == null) return;
         Context app = context.getApplicationContext();
+        CustomerChatNotificationPoller.stop();
         String cleanReason = reason == null || reason.trim().isEmpty() ? "SESSION_REVOKED" : reason.trim();
 
         try {

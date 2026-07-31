@@ -41,6 +41,7 @@ public final class CustomerChatNotificationPoller {
     private static Context appContext;
     private static int userId;
     private static boolean running;
+    private static boolean requestInFlight;
     private static String openRoom = "";
 
     private CustomerChatNotificationPoller() {
@@ -70,6 +71,16 @@ public final class CustomerChatNotificationPoller {
 
         running = true;
         HANDLER.post(checkRunnable);
+    }
+
+
+    public static synchronized void stop() {
+        running = false;
+        requestInFlight = false;
+        userId = 0;
+        openRoom = "";
+        appContext = null;
+        HANDLER.removeCallbacks(checkRunnable);
     }
 
     public static void setOpenRoom(
@@ -152,7 +163,9 @@ public final class CustomerChatNotificationPoller {
                         0
                 );
 
-        new Thread(() -> {
+        if (requestInFlight) return;
+        requestInFlight = true;
+        TransivaNetworkExecutor.execute(() -> {
             try {
                 String endpoint =
                         "https://transiva.my.id/"
@@ -242,8 +255,10 @@ public final class CustomerChatNotificationPoller {
                 }
 
             } catch (Exception ignored) {
+            } finally {
+                requestInFlight = false;
             }
-        }).start();
+        });
     }
 
     private static void showNotification(

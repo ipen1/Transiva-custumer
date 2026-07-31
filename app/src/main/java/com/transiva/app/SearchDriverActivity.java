@@ -238,7 +238,14 @@ public class SearchDriverActivity extends Activity {
         miniMap.setBackgroundColor(Color.TRANSPARENT);
         WebSettings settings = miniMap.getSettings();
         settings.setJavaScriptEnabled(true);
+        settings.setAllowFileAccess(false);
+        settings.setAllowContentAccess(false);
+        settings.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
         settings.setDomStorageEnabled(true);
+        miniMap.setWebViewClient(new WebViewClient() {
+            @Override public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) { return true; }
+            @Override public boolean shouldOverrideUrlLoading(WebView view, String url) { return true; }
+        });
         settings.setLoadWithOverviewMode(true);
         settings.setUseWideViewPort(true);
         LinearLayout.LayoutParams mapLp = new LinearLayout.LayoutParams(-1, dp(230));

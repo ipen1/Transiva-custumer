@@ -17,6 +17,9 @@ import android.util.Base64;
 import android.view.Gravity;
 import android.view.View;
 import android.webkit.WebChromeClient;
+import android.webkit.WebResourceError;
+import android.webkit.WebResourceRequest;
+import android.webkit.WebResourceResponse;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
@@ -75,6 +78,7 @@ public final class CustomerLiveDriverActivity extends Activity {
     private long previousRawAt;
 
     private boolean mapReady;
+    private boolean fallbackMapLoaded;
     private boolean requestInFlight;
     private boolean routeInFlight;
     private long lastRouteAt;
@@ -156,6 +160,12 @@ public final class CustomerLiveDriverActivity extends Activity {
                 mapReady = true;
                 loading.setVisibility(View.GONE);
                 renderMap();
+            }
+            @Override public void onReceivedError(WebView view, WebResourceRequest request, WebResourceError error) {
+                if (request != null && request.isForMainFrame()) loadFallbackMap();
+            }
+            @Override public void onReceivedHttpError(WebView view, WebResourceRequest request, WebResourceResponse response) {
+                if (request != null && request.isForMainFrame()) loadFallbackMap();
             }
         });
 
@@ -279,6 +289,36 @@ public final class CustomerLiveDriverActivity extends Activity {
 
         setContentView(page);
         CustomerAppSettings.apply(this);
+    }
+
+    private void loadFallbackMap() {
+        if (fallbackMapLoaded || mapWebView == null) return;
+        fallbackMapLoaded = true;
+        mapReady = false;
+        mapWebView.loadDataWithBaseURL("https://transiva.my.id/", createFallbackMapHtml(), "text/html", "UTF-8", null);
+        if (statusText != null) statusText.setText("Mode peta ringan aktif. Lokasi driver tetap diperbarui.");
+    }
+
+    /** Local zero-CDN fallback so tracking never becomes a blank screen. */
+    private String createFallbackMapHtml() {
+        return "<!doctype html><html><head><meta name='viewport' content='width=device-width,initial-scale=1'>"
+                + "<style>html,body{margin:0;height:100%;overflow:hidden;background:#071426}canvas{width:100%;height:100%}"
+                + ".tag{position:fixed;top:92px;left:16px;background:#dbeafe;color:#0b2038;padding:7px 10px;border-radius:12px;font:600 11px sans-serif}</style></head>"
+                + "<body><canvas id='c'></canvas><div class='tag'>Peta ringan • tracking tetap aktif</div><script>"
+                + "const c=document.getElementById('c'),x=c.getContext('2d');let d=null,p=null,t=null,r=[];"
+                + "function rs(){c.width=innerWidth*devicePixelRatio;c.height=innerHeight*devicePixelRatio;draw()}addEventListener('resize',rs);"
+                + "function xy(q){if(!q)return null;let pts=[d,p,t].concat(r.map(z=>({lng:z[1],lat:z[0]}))).filter(Boolean);"
+                + "let minx=Math.min(...pts.map(v=>v.lng)),maxx=Math.max(...pts.map(v=>v.lng)),miny=Math.min(...pts.map(v=>v.lat)),maxy=Math.max(...pts.map(v=>v.lat));"
+                + "let sx=(c.width*.78)/Math.max(.00001,maxx-minx),sy=(c.height*.62)/Math.max(.00001,maxy-miny),s=Math.min(sx,sy);"
+                + "return[c.width*.11+(q.lng-minx)*s,c.height*.18+(maxy-q.lat)*s]}"
+                + "function dot(q,col,rad){let a=xy(q);if(!a)return;x.beginPath();x.arc(a[0],a[1],rad*devicePixelRatio,0,7);x.fillStyle=col;x.fill()}"
+                + "function draw(){x.fillStyle='#071426';x.fillRect(0,0,c.width,c.height);x.strokeStyle='#102b48';x.lineWidth=devicePixelRatio;"
+                + "for(let i=0;i<c.width;i+=42*devicePixelRatio){x.beginPath();x.moveTo(i,0);x.lineTo(i,c.height);x.stroke()}"
+                + "for(let i=0;i<c.height;i+=42*devicePixelRatio){x.beginPath();x.moveTo(0,i);x.lineTo(c.width,i);x.stroke()}"
+                + "if(r.length>1){x.strokeStyle='#1476ff';x.lineWidth=6*devicePixelRatio;x.lineCap='round';x.beginPath();r.forEach((z,i)=>{let a=xy({lat:z[0],lng:z[1]});if(a)(i?x.lineTo(...a):x.moveTo(...a))});x.stroke()}"
+                + "dot(p,'#22c55e',8);dot(t,'#ef4444',8);dot(d,'#38bdf8',11)}"
+                + "window.TransivaLive={updateDriver:(lng,lat)=>{d={lng:+lng,lat:+lat};draw()},setTarget:(k,lng,lat)=>{if(k==='pickup')p={lng:+lng,lat:+lat};else t={lng:+lng,lat:+lat};draw()},drawRoute:(a)=>{r=a||[];draw()},setFollow:()=>{}};rs();"
+                + "</script></body></html>";
     }
 
     private String createMapHtml() {

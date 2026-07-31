@@ -209,6 +209,7 @@ public class SessionManager {
 
     public void forceLogout(String reason) {
         try {
+            CustomerChatNotificationPoller.stop();
             String fcmToken = prefs.getString("fcm_token", "");
             long fcmSavedAt = prefs.getLong("fcm_token_saved_at", 0L);
 

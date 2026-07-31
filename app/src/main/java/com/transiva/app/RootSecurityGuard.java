@@ -78,23 +78,26 @@ public final class RootSecurityGuard {
     }
 
     private static Detection detect(Context context) {
-        if (hasKnownPackage(context)) return Detection.blocked("Aplikasi root atau hooking terdeteksi.");
-        for (String path : ROOT_PATHS) if (new File(path).exists()) return Detection.blocked("Komponen root terdeteksi pada perangkat.");
+        int score = 0;
+        StringBuilder evidence = new StringBuilder();
+        if (hasKnownPackage(context)) { score += 1; evidence.append("manager root terpasang; "); }
+        int pathHits = 0;
+        for (String path : ROOT_PATHS) if (new File(path).exists()) pathHits++;
+        if (pathHits > 0) { score += Math.min(3, pathHits); evidence.append("komponen root ditemukan; "); }
 
         String tags = Build.TAGS == null ? "" : Build.TAGS.toLowerCase(Locale.US);
-        if (tags.contains("test-keys")) return Detection.blocked("Sistem perangkat memakai build tidak resmi (test-keys).");
-
+        if (tags.contains("test-keys")) { score += 1; evidence.append("test-keys; "); }
         String props = readCommand("getprop");
-        if (props.contains("[ro.debuggable]: [1]") || props.contains("[ro.secure]: [0]")) {
-            return Detection.blocked("Konfigurasi sistem tidak aman terdeteksi.");
-        }
+        if (props.contains("[ro.debuggable]: [1]") || props.contains("[ro.secure]: [0]")) { score += 2; evidence.append("properti sistem tidak aman; "); }
         String whichSu = readCommand("sh", "-c", "command -v su 2>/dev/null").trim();
-        if (!whichSu.isEmpty()) return Detection.blocked("Akses superuser terdeteksi.");
+        if (!whichSu.isEmpty()) { score += 3; evidence.append("binary su aktif; "); }
 
         String maps = readFile("/proc/self/maps").toLowerCase(Locale.US);
-        List<String> hooks = Arrays.asList("xposed", "lsposed", "zygisk", "frida", "substrate");
-        for (String hook : hooks) if (maps.contains(hook)) return Detection.blocked("Framework modifikasi aplikasi terdeteksi: " + hook + ".");
-        return Detection.clean();
+        for (String hook : Arrays.asList("xposed", "lsposed", "zygisk", "frida", "substrate")) {
+            if (maps.contains(hook)) { score += 3; evidence.append(hook).append(" aktif; "); break; }
+        }
+        // A single weak signal no longer blocks custom ROM or an installed-but-disabled manager.
+        return score >= 4 ? Detection.blocked("Indikasi modifikasi sistem terkonfirmasi (skor " + score + "): " + evidence) : Detection.clean();
     }
 
     private static boolean hasKnownPackage(Context context) {

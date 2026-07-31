@@ -26,6 +26,8 @@ import android.webkit.WebViewClient;
 import android.widget.Button;
 import android.widget.FrameLayout;
 import android.widget.ImageView;
+import android.widget.EditText;
+import android.widget.RatingBar;
 import android.widget.LinearLayout;
 import android.widget.ProgressBar;
 import android.widget.TextView;
@@ -51,6 +53,7 @@ public class CustomerTripActivity extends Activity {
     private static final String CHECK_STATUS_URL = BASE_URL + "server/check_order_status.php";
     private static final String PICKUP_STATUS_URL = BASE_URL + "server/get_pickup_order_status.php";
     private static final String CUSTOMER_ACTION_URL = BASE_URL + "server/customer_order_action.php";
+    private static final String SAVE_REVIEW_URL = BASE_URL + "server/save_driver_review.php";
 
     // Pakai file Leaflet lokal/server sendiri, bukan CDN, agar stabil di WebView.
     private static final String LEAFLET_CSS = BASE_URL + "js/leaflet.css";
@@ -83,11 +86,13 @@ public class CustomerTripActivity extends Activity {
     private String orderId = "";
     private String activeDriverType = "motor";
     private String orderSource = "orders";
+    private boolean trackingOnly = false;
 
     private boolean mapReady = false;
     private boolean firstFocus = true;
     private boolean trackingStarted = false;
     private boolean finishedCountdownStarted = false;
+    private boolean reviewDialogShown = false;
     private boolean lastDataAlreadyPushed = false;
 
     private int finishSeconds = 5;
@@ -120,6 +125,16 @@ public class CustomerTripActivity extends Activity {
 
         readIntentAndSavedData();
         buildLayout();
+        if (trackingOnly) {
+            if (driverNameText != null) driverNameText.setVisibility(View.GONE);
+            if (driverTypeText != null) driverTypeText.setVisibility(View.GONE);
+            if (driverPlateText != null) driverPlateText.setVisibility(View.GONE);
+            if (driverPhotoView != null) driverPhotoView.setVisibility(View.GONE);
+            if (paymentInfoText != null) paymentInfoText.setVisibility(View.GONE);
+            if (receivedButton != null) receivedButton.setVisibility(View.GONE);
+            if (approvePriceButton != null) approvePriceButton.setVisibility(View.GONE);
+            if (rejectPriceButton != null) rejectPriceButton.setVisibility(View.GONE);
+        }
 
         if (orderId.length() == 0) {
             showInfo("Order tidak ditemukan", "ID order tidak ditemukan. Silakan ulangi order.");
@@ -147,6 +162,8 @@ public class CustomerTripActivity extends Activity {
     private void readIntentAndSavedData() {
         SharedPreferences sp = getSharedPreferences("transiva", MODE_PRIVATE);
         Intent i = getIntent();
+
+        trackingOnly = i.getBooleanExtra("tracking_only", false);
 
         orderId = firstNonEmpty(
                 i.getStringExtra("order_id"),
@@ -491,7 +508,7 @@ public class CustomerTripActivity extends Activity {
         saveTripPrefs();
 
         if (isFinishedStatus(status)) {
-            startFinishCountdown();
+            showDriverReviewDialog(order);
             return;
         }
 
@@ -552,6 +569,7 @@ public class CustomerTripActivity extends Activity {
     }
 
     private void updatePaymentControls(JSONObject order,String status){
+        if (trackingOnly) return;
         if(paymentInfoText==null||receivedButton==null) return;
         String method=firstNonEmpty(order.optString("payment_method",""),"cash").toLowerCase(Locale.US);
         boolean nonCash=method.equals("balance")||method.contains("transpay")||method.contains("transiva_pay")||method.equals("wallet")||method.equals("saldo");
@@ -561,7 +579,7 @@ public class CustomerTripActivity extends Activity {
         if(original>0 && Math.abs(original-price)>0.5) line += "\nHarga berubah dari " + rupiah(original) + " menjadi " + rupiah(price) + (reason.isEmpty() ? "" : " • " + reason);
         if(change.equals("pending") && requested > 0) line += "\nDriver mengajukan " + rupiah(requested) + (reason.isEmpty() ? "" : " • " + reason);
         paymentInfoText.setText(line); paymentInfoText.setVisibility(View.VISIBLE); paymentInfoText.setBackground(round("#EFF6FF",dp(14)));
-        receivedButton.setVisibility(!nonCash && "arrived_delivery".equals(status) && order.optInt("customer_received",0)!=1 ? View.VISIBLE:View.GONE);
+        receivedButton.setVisibility("arrived_delivery".equals(status) && order.optInt("customer_received",0)!=1 ? View.VISIBLE:View.GONE);
         View priceActions=null; android.view.ViewParent par=approvePriceButton==null?null:approvePriceButton.getParent(); if(par instanceof View) priceActions=(View)par;
         if(priceActions!=null) priceActions.setVisibility(change.equals("pending")?View.VISIBLE:View.GONE);
     }
@@ -648,6 +666,62 @@ public class CustomerTripActivity extends Activity {
         if ("arrived_delivery".equals(status)) return "🏁 Sudah tiba di delivery";
         if (isFinishedStatus(status)) return "✅ Order selesai";
         return "Sedang menuju pickup";
+    }
+
+
+    private void showDriverReviewDialog(JSONObject order) {
+        if (reviewDialogShown || isFinishing()) return;
+        if (order.optInt("rating", 0) > 0) { goHomeAfterFinished(); return; }
+        reviewDialogShown = true;
+        LinearLayout box = new LinearLayout(this);
+        box.setOrientation(LinearLayout.VERTICAL);
+        box.setPadding(dp(20), dp(8), dp(20), 0);
+        TextView prompt = new TextView(this);
+        prompt.setText("Bagaimana pelayanan " + firstNonEmpty(order.optString("driver_name"), order.optString("driver"), "driver") + "?");
+        prompt.setTextSize(16);
+        prompt.setTextColor(Color.parseColor("#0B3A78"));
+        box.addView(prompt);
+        RatingBar stars = new RatingBar(this, null, android.R.attr.ratingBarStyle);
+        stars.setNumStars(5); stars.setStepSize(1f); stars.setRating(5f);
+        box.addView(stars, new LinearLayout.LayoutParams(-2,-2));
+        EditText review = new EditText(this);
+        review.setHint("Tulis ulasan (opsional)"); review.setMinLines(2); review.setMaxLines(4);
+        box.addView(review, new LinearLayout.LayoutParams(-1,-2));
+        AlertDialog dialog = new AlertDialog.Builder(this)
+                .setTitle("Beri Rating Driver")
+                .setView(box)
+                .setCancelable(false)
+                .setNegativeButton("Lewati", (d,w) -> goHomeAfterFinished())
+                .setPositiveButton("Kirim", null)
+                .create();
+        dialog.setOnShowListener(x -> dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
+            int rating = Math.max(1, Math.round(stars.getRating()));
+            submitDriverReview(rating, review.getText().toString().trim(), dialog);
+        }));
+        dialog.show();
+    }
+
+    private void submitDriverReview(int rating, String review, AlertDialog dialog) {
+        setLoading(true);
+        new Thread(() -> {
+            try {
+                JSONObject body = new JSONObject();
+                body.put("order_id", orderId);
+                body.put("source", orderSource.contains("pickup") ? "pickup_orders" : "orders");
+                body.put("rating", rating);
+                body.put("review", review);
+                JSONObject res = postJson(SAVE_REVIEW_URL, body);
+                boolean ok = res.optBoolean("success", false);
+                String msg = firstNonEmpty(res.optString("message"), ok ? "Terima kasih atas ulasannya." : "Rating gagal disimpan.");
+                mainHandler.post(() -> {
+                    setLoading(false);
+                    if (ok) { dialog.dismiss(); showInfo("Terima kasih", msg); mainHandler.postDelayed(this::goHomeAfterFinished, 700); }
+                    else showInfo("Gagal", msg);
+                });
+            } catch (Exception e) {
+                mainHandler.post(() -> { setLoading(false); showInfo("Gagal", "Koneksi server bermasalah."); });
+            }
+        }, "save-driver-review").start();
     }
 
     private void startFinishCountdown() {

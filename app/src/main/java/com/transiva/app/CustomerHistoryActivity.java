@@ -1277,14 +1277,6 @@ public class CustomerHistoryActivity extends Activity {
 
         card.addView(meta, metaLp);
 
-        double originalPrice = order.optDouble("original_price", price);
-        String priceReason = order.optString("price_change_reason", "").trim();
-        if (originalPrice > 0 && price > 0 && Math.abs(originalPrice - price) > 0.5) {
-            TextView changed = text("Harga berubah " + rupiah(originalPrice) + " → " + rupiah(price) + (priceReason.isEmpty() ? "" : " • " + priceReason), 11, "#B45309", true);
-            changed.setPadding(0, dp(6), 0, 0);
-            card.addView(changed);
-        }
-
         LinearLayout actions =
                 new LinearLayout(this);
 
@@ -1730,6 +1722,23 @@ public class CustomerHistoryActivity extends Activity {
         }
     }
 
+    private String priceChangeDetail(JSONObject order) {
+        double now = orderPrice(order);
+        double original = order.optDouble("original_price", now);
+        double requested = order.optDouble("price_change_requested", 0);
+        String status = order.optString("price_change_status", "none");
+        String reason = order.optString("price_change_reason", "").trim();
+        StringBuilder b = new StringBuilder();
+        if (original > 0 && now > 0 && Math.abs(original-now) > 0.5) {
+            b.append("\nPerubahan harga: ").append(rupiah(original)).append(" → ").append(rupiah(now));
+            if (!reason.isEmpty()) b.append("\nAlasan driver: ").append(reason);
+        } else if ("pending".equalsIgnoreCase(status) && requested > 0) {
+            b.append("\nPengajuan harga: ").append(rupiah(requested));
+            if (!reason.isEmpty()) b.append("\nAlasan driver: ").append(reason);
+        }
+        return b.toString();
+    }
+
     private void showOrderDetail(
             JSONObject order
     ) {
@@ -1786,10 +1795,17 @@ public class CustomerHistoryActivity extends Activity {
                         ),
                         "Belum ada"
                 )
+                        + "\nKendaraan: "
+                        + first(order.optString("driver_type"), order.optString("vehicle_type"), "-")
+                        + "\nPlat: "
+                        + first(order.optString("driver_plate"), order.optString("plate"), "-")
+                        + "\nRating driver: "
+                        + (order.optDouble("driver_rating", 0) > 0 ? String.format(Locale.US, "%.1f", order.optDouble("driver_rating",0)) : "-")
                         + "\nTanggal: "
                         + displayDate(order)
                         + "\nTotal: "
-                        + rupiah(orderPrice(order));
+                        + rupiah(orderPrice(order))
+                        + priceChangeDetail(order);
 
         new AlertDialog.Builder(this)
                 .setTitle("Detail Aktivitas")
@@ -1872,6 +1888,8 @@ public class CustomerHistoryActivity extends Activity {
                             0
                     )
             );
+
+            trip.putExtra("tracking_only", true);
 
             trip.putExtra(
                     "active_driver_type",

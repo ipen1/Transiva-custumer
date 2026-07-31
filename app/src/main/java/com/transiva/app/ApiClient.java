@@ -17,6 +17,10 @@ import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
 import java.net.HttpURLConnection;
 import java.net.URL;
+import java.net.SocketTimeoutException;
+import java.net.UnknownHostException;
+
+import javax.net.ssl.SSLException;
 
 public class ApiClient {
 
@@ -58,9 +62,12 @@ public class ApiClient {
             final String jsonBody,
             final String callbackId
     ) {
-        new Thread(() -> {
+        TransivaNetworkExecutor.execute(() -> {
 
             HttpURLConnection conn = null;
+            long startedAt = android.os.SystemClock.elapsedRealtime();
+            String cleanMethodForReport = safe(method, "GET").toUpperCase();
+            String cleanPathForReport = cleanPath(path);
 
             try {
                 String cleanMethod = safe(method, "GET").toUpperCase();
@@ -105,6 +112,8 @@ public class ApiClient {
                 }
 
                 int status = conn.getResponseCode();
+                long durationMs = android.os.SystemClock.elapsedRealtime() - startedAt;
+                TransivaCrashReporter.recordHttpStatus(status, cleanMethod, cleanPath, durationMs);
 
                 InputStream stream =
                         status >= 200 && status < 400
@@ -124,14 +133,23 @@ public class ApiClient {
                 result.put("response", parseAny(raw));
 
                 if (!isJson(raw)) {
+                    if (status >= 400 || (raw != null && !raw.trim().isEmpty())) {
+                        TransivaCrashReporter.recordInvalidResponse(cleanPath, status);
+                    }
                     result.put("message", shortText(cleanServerText(raw)));
                     result.put("raw_response", shortText(cleanServerText(raw)));
                 }
 
                 sendToWeb("api_response", result.toString());
 
+            } catch (SocketTimeoutException | UnknownHostException | SSLException e) {
+                TransivaCrashReporter.recordNetworkFailure(e, cleanMethodForReport, cleanPathForReport);
+                sendToWeb(
+                        "api_error",
+                        makeError("request", e, callbackId)
+                );
             } catch (Exception e) {
-                TransivaCrashReporter.record(e, "api_request");
+                TransivaCrashReporter.recordNetworkFailure(e, cleanMethodForReport, cleanPathForReport);
                 sendToWeb(
                         "api_error",
                         makeError("request", e, callbackId)
@@ -142,7 +160,7 @@ public class ApiClient {
                 } catch (Exception ignored) {}
             }
 
-        }).start();
+        });
     }
 
     private String cleanPath(String path) {
@@ -270,7 +288,9 @@ public class ApiClient {
 
                 webView.evaluateJavascript(js, null);
 
-            } catch (Exception ignored) {}
+            } catch (Exception e) {
+                TransivaCrashReporter.recordBridgeFailure(e, eventName);
+            }
         });
     }
 

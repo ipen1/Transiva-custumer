@@ -131,6 +131,7 @@ public class ApiClient {
                 sendToWeb("api_response", result.toString());
 
             } catch (Exception e) {
+                TransivaCrashReporter.record(e, "api_request");
                 sendToWeb(
                         "api_error",
                         makeError("request", e, callbackId)

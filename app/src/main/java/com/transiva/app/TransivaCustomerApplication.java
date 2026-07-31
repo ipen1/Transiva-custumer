@@ -12,11 +12,15 @@ public class TransivaCustomerApplication extends Application implements Applicat
 
     @Override public void onCreate() {
         super.onCreate();
+        TransivaCrashReporter.initialize(this);
+        TransivaCrashReporter.user(this);
         AdaptiveTlsPinning.install(this);
         registerActivityLifecycleCallbacks(this);
     }
 
     @Override public void onActivityResumed(Activity activity) {
+        TransivaCrashReporter.screen(activity);
+        TransivaCrashReporter.user(activity);
         if (activity instanceof SplashActivity) return;
         main.postDelayed(() -> {
             if (!activity.isFinishing()) {

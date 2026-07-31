@@ -41,6 +41,17 @@
         android:name="android.hardware.location.gps"
         android:required="false" />
 
+    
+    <queries>
+        <package android:name="com.topjohnwu.magisk" />
+        <package android:name="io.github.vvb2060.magisk" />
+        <package android:name="me.weishu.kernelsu" />
+        <package android:name="com.rifsxd.ksunext" />
+        <package android:name="me.bmax.apatch" />
+        <package android:name="org.lsposed.manager" />
+        <package android:name="de.robv.android.xposed.installer" />
+    </queries>
+
     <application
         android:name=".TransivaCustomerApplication"
         android:allowBackup="false"

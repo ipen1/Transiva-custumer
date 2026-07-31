@@ -2159,6 +2159,10 @@ public class CustomerHistoryActivity extends Activity {
             String status
     ) {
         return status.equals("taken")
+                || status.equals("driver_accepted")
+                || status.equals("accepted")
+                || status.equals("driver_assigned")
+                || status.equals("assigned")
                 || status.equals("arrived_pickup")
                 || status.equals("on_delivery")
                 || status.equals("arrived_delivery");

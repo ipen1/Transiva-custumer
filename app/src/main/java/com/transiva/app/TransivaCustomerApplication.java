@@ -12,13 +12,17 @@ public class TransivaCustomerApplication extends Application implements Applicat
 
     @Override public void onCreate() {
         super.onCreate();
+        AdaptiveTlsPinning.install(this);
         registerActivityLifecycleCallbacks(this);
     }
 
     @Override public void onActivityResumed(Activity activity) {
         if (activity instanceof SplashActivity) return;
         main.postDelayed(() -> {
-            if (!activity.isFinishing()) MockLocationGuard.protect(activity);
+            if (!activity.isFinishing()) {
+                RootSecurityGuard.protect(activity);
+                MockLocationGuard.protect(activity);
+            }
         }, 250L);
     }
 

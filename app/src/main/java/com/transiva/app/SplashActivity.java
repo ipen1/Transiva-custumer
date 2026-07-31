@@ -36,7 +36,8 @@ public class SplashActivity extends Activity {
     private void startSecurityCheck() {
         if (routed || securityCheckStarted || isFinishing()) return;
         securityCheckStarted = true;
-        MockLocationGuard.checkBeforeContinue(this, this::routeNext);
+        RootSecurityGuard.checkBeforeContinue(this,
+                () -> MockLocationGuard.checkBeforeContinue(this, this::routeNext));
     }
 
     @Override

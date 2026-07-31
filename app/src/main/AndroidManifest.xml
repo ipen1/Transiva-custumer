@@ -203,6 +203,11 @@
             android:theme="@style/AppTheme" />
 
         <activity
+            android:name=".CustomerOrderDetailActivity"
+            android:screenOrientation="portrait"
+            android:exported="false" />
+
+        <activity
             android:name=".CustomerTripActivity"
             android:exported="false"
             android:screenOrientation="portrait"

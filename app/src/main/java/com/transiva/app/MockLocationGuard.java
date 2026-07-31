@@ -12,77 +12,83 @@ import android.content.pm.PackageManager;
 import android.location.Location;
 import android.location.LocationListener;
 import android.location.LocationManager;
-import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.provider.Settings;
+import android.view.Window;
+import android.widget.Toast;
 
 import java.lang.ref.WeakReference;
 import java.util.List;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-/**
- * Stable mock-location protection.
- *
- * Checks two independent signals:
- * 1. An installed application currently has Android's MOCK_LOCATION app-op.
- *    This catches Fake GPS even before the fake-location app is started.
- * 2. A fresh Location object is explicitly marked as mock by Android.
- *
- * No blocked state is persisted. Every resume/check reads Android again, so a
- * previously selected fake-location app does not remain "stuck" after it is
- * disabled in Developer options.
- */
+/** Stable mock-location guard. Heavy package/AppOps checks never run on the UI thread. */
 public final class MockLocationGuard {
     private static final Handler MAIN = new Handler(Looper.getMainLooper());
+    private static final ExecutorService WORKER = Executors.newSingleThreadExecutor();
     private static final AtomicBoolean CHECK_RUNNING = new AtomicBoolean(false);
     private static final long LISTEN_TIMEOUT_MS = 6_000L;
-    private static final long MAX_LAST_LOCATION_AGE_MS = 12_000L;
+    private static final long MAX_LAST_LOCATION_AGE_MS = 10_000L;
 
     private static WeakReference<AlertDialog> activeDialog = new WeakReference<>(null);
     private static WeakReference<Activity> activeActivity = new WeakReference<>(null);
 
     private MockLocationGuard() { }
 
+    /** Compatibility entry point for normal screens. Check is asynchronous. */
     public static boolean protect(Activity activity) {
-        if (!isUsable(activity)) return false;
-
-        // Never trust an old static flag. Re-read the real Android state.
-        Detection result = detectNow(activity);
-        if (result.blocked) {
-            showBlockingDialog(activity, result.message);
-            return true;
-        }
-
-        dismissBlockingDialog();
-        listenForFreshMockLocation(activity);
+        checkAsync(activity, null);
         return false;
     }
 
-    /** Runs a fresh check after returning from Developer options. */
+    /** Splash uses this and continues only when the device is clean. */
+    public static void checkBeforeContinue(Activity activity, Runnable onAllowed) {
+        checkAsync(activity, onAllowed);
+    }
+
     public static void recheck(Activity activity) {
-        if (!isUsable(activity) || !CHECK_RUNNING.compareAndSet(false, true)) return;
-        MAIN.post(() -> {
+        checkAsync(activity, null);
+    }
+
+    private static void checkAsync(Activity activity, Runnable onAllowed) {
+        if (!isUsable(activity)) return;
+        if (!CHECK_RUNNING.compareAndSet(false, true)) {
+            // A check is already running. Retry shortly so Splash cannot remain waiting forever.
+            if (onAllowed != null) MAIN.postDelayed(() -> checkAsync(activity, onAllowed), 350L);
+            return;
+        }
+
+        Context appContext = activity.getApplicationContext();
+        WORKER.execute(() -> {
+            Detection result;
             try {
-                Detection result = detectNow(activity);
-                if (result.blocked) {
-                    showBlockingDialog(activity, result.message);
+                result = detectNow(appContext);
+            } catch (Throwable ignored) {
+                result = Detection.allowed(); // never freeze app because an OEM blocks AppOps
+            }
+
+            Detection finalResult = result;
+            MAIN.post(() -> {
+                CHECK_RUNNING.set(false);
+                if (!isUsable(activity)) return;
+                if (finalResult.blocked) {
+                    showBlockingDialogWhenReady(activity, finalResult.message, 0);
                 } else {
                     dismissBlockingDialog();
+                    listenForFreshMockLocation(activity);
+                    if (onAllowed != null) onAllowed.run();
                 }
-            } finally {
-                CHECK_RUNNING.set(false);
-            }
+            });
         });
     }
 
     public static boolean isMock(Location location) {
         if (location == null) return false;
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            return location.isMock();
-        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) return location.isMock();
         return location.isFromMockProvider();
     }
 
@@ -90,41 +96,24 @@ public final class MockLocationGuard {
         String packageName = findEnabledMockLocationApp(context);
         if (packageName != null) {
             String label = appLabel(context, packageName);
-            return Detection.blocked(
-                    "Aplikasi lokasi palsu masih dipilih di Opsi Developer"
-                            + (label.isEmpty() ? "." : ": " + label + ".")
-                            + "\n\nNonaktifkan pilihan aplikasi lokasi palsu agar Transiva dapat digunakan."
-            );
+            return Detection.blocked("Aplikasi lokasi palsu masih dipilih di Opsi Developer"
+                    + (label.isEmpty() ? "." : ": " + label + ".")
+                    + "\n\nNonaktifkan pilihan aplikasi lokasi palsu, lalu tekan Periksa Lagi.");
         }
-
-        // Legacy Android only. Modern Android is handled with AppOps above.
         if (legacyMockSettingEnabled(context)) {
             return Detection.blocked("Fitur lokasi palsu masih aktif pada perangkat.");
         }
-
-        // Only inspect recent cached positions. Old mock cache is deliberately
-        // ignored to prevent a false lock after Fake GPS has been disabled.
         if (hasRecentMockLastKnownLocation(context)) {
-            return Detection.blocked(
-                    "Perangkat baru saja mengirim lokasi palsu. Tunggu GPS memperoleh lokasi asli, lalu tekan Periksa Lagi."
-            );
+            return Detection.blocked("Perangkat baru saja mengirim lokasi palsu. Matikan Fake GPS, tunggu lokasi asli terbaca, lalu tekan Periksa Lagi.");
         }
-
         return Detection.allowed();
     }
 
-    /**
-     * Returns the package currently granted OPSTR_MOCK_LOCATION, or null.
-     * QUERY_ALL_PACKAGES in the manifest is used so Android 11+ does not hide
-     * the selected third-party application from this check.
-     */
     private static String findEnabledMockLocationApp(Context context) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) return null;
-
         AppOpsManager appOps = (AppOpsManager) context.getSystemService(Context.APP_OPS_SERVICE);
         PackageManager pm = context.getPackageManager();
         if (appOps == null || pm == null) return null;
-
         try {
             List<ApplicationInfo> apps;
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -133,35 +122,17 @@ public final class MockLocationGuard {
                 //noinspection deprecation
                 apps = pm.getInstalledApplications(0);
             }
-
             for (ApplicationInfo info : apps) {
                 if (info == null || context.getPackageName().equals(info.packageName)) continue;
-
                 int mode;
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                    mode = appOps.unsafeCheckOpNoThrow(
-                            AppOpsManager.OPSTR_MOCK_LOCATION,
-                            info.uid,
-                            info.packageName
-                    );
+                    mode = appOps.unsafeCheckOpNoThrow(AppOpsManager.OPSTR_MOCK_LOCATION, info.uid, info.packageName);
                 } else {
-                    mode = appOps.checkOpNoThrow(
-                            AppOpsManager.OPSTR_MOCK_LOCATION,
-                            info.uid,
-                            info.packageName
-                    );
+                    mode = appOps.checkOpNoThrow(AppOpsManager.OPSTR_MOCK_LOCATION, info.uid, info.packageName);
                 }
-
-                if (mode == AppOpsManager.MODE_ALLOWED) {
-                    return info.packageName;
-                }
+                if (mode == AppOpsManager.MODE_ALLOWED) return info.packageName;
             }
-        } catch (SecurityException ignored) {
-            // Some OEM ROMs restrict AppOps inspection. The location-object
-            // check below remains active as the fallback.
-        } catch (Throwable ignored) {
-            // Do not crash the app on vendor-specific PackageManager behavior.
-        }
+        } catch (Throwable ignored) { }
         return null;
     }
 
@@ -177,22 +148,14 @@ public final class MockLocationGuard {
             }
             CharSequence label = pm.getApplicationLabel(info);
             return label == null ? "" : label.toString().trim();
-        } catch (Throwable ignored) {
-            return "";
-        }
+        } catch (Throwable ignored) { return ""; }
     }
 
     private static boolean legacyMockSettingEnabled(Context context) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) return false;
         try {
-            String value = Settings.Secure.getString(
-                    context.getContentResolver(),
-                    Settings.Secure.ALLOW_MOCK_LOCATION
-            );
-            return "1".equals(value);
-        } catch (Throwable ignored) {
-            return false;
-        }
+            return "1".equals(Settings.Secure.getString(context.getContentResolver(), Settings.Secure.ALLOW_MOCK_LOCATION));
+        } catch (Throwable ignored) { return false; }
     }
 
     private static boolean hasRecentMockLastKnownLocation(Context context) {
@@ -202,7 +165,6 @@ public final class MockLocationGuard {
             if (manager == null) return false;
             List<String> providers = manager.getAllProviders();
             if (providers == null) return false;
-
             long now = System.currentTimeMillis();
             for (String provider : providers) {
                 try {
@@ -210,135 +172,110 @@ public final class MockLocationGuard {
                     if (location == null || !isMock(location)) continue;
                     long age = Math.abs(now - location.getTime());
                     if (location.getTime() > 0 && age <= MAX_LAST_LOCATION_AGE_MS) return true;
-                } catch (SecurityException ignored) {
-                    return false;
-                } catch (Throwable ignored) {
-                    // Continue checking other providers.
-                }
+                } catch (Throwable ignored) { }
             }
-        } catch (Throwable ignored) {
-            // Fail open if vendor ROM does not expose provider state.
-        }
+        } catch (Throwable ignored) { }
         return false;
     }
 
     private static void listenForFreshMockLocation(Activity activity) {
-        if (!hasLocationPermission(activity)) return;
-        final LocationManager manager =
-                (LocationManager) activity.getSystemService(Context.LOCATION_SERVICE);
+        if (!hasLocationPermission(activity) || !isUsable(activity)) return;
+        LocationManager manager = (LocationManager) activity.getSystemService(Context.LOCATION_SERVICE);
         if (manager == null) return;
-
-        final LocationListener listener = new LocationListener() {
-            @Override
-            public void onLocationChanged(Location location) {
+        LocationListener listener = new LocationListener() {
+            @Override public void onLocationChanged(Location location) {
                 if (isMock(location)) {
                     removeSafely(manager, this);
-                    showBlockingDialog(activity,
-                            "Android mendeteksi lokasi yang dikirim sebagai lokasi palsu. Matikan Fake GPS dan hapus pilihan aplikasi lokasi palsu di Opsi Developer.");
+                    showBlockingDialogWhenReady(activity, "Android mendeteksi lokasi palsu. Matikan Fake GPS dan hapus pilihan aplikasi lokasi palsu di Opsi Developer.", 0);
                 }
             }
-
             @Override public void onStatusChanged(String provider, int status, Bundle extras) { }
             @Override public void onProviderEnabled(String provider) { }
             @Override public void onProviderDisabled(String provider) { }
         };
-
         boolean registered = false;
         try {
             if (manager.isProviderEnabled(LocationManager.GPS_PROVIDER)) {
-                manager.requestLocationUpdates(
-                        LocationManager.GPS_PROVIDER, 0L, 0f, listener, Looper.getMainLooper());
+                manager.requestLocationUpdates(LocationManager.GPS_PROVIDER, 0L, 0f, listener, Looper.getMainLooper());
                 registered = true;
             }
         } catch (Throwable ignored) { }
         try {
             if (manager.isProviderEnabled(LocationManager.NETWORK_PROVIDER)) {
-                manager.requestLocationUpdates(
-                        LocationManager.NETWORK_PROVIDER, 0L, 0f, listener, Looper.getMainLooper());
+                manager.requestLocationUpdates(LocationManager.NETWORK_PROVIDER, 0L, 0f, listener, Looper.getMainLooper());
                 registered = true;
             }
         } catch (Throwable ignored) { }
-        try {
-            manager.requestLocationUpdates(
-                    LocationManager.PASSIVE_PROVIDER, 0L, 0f, listener, Looper.getMainLooper());
-            registered = true;
-        } catch (Throwable ignored) { }
+        if (registered) MAIN.postDelayed(() -> removeSafely(manager, listener), LISTEN_TIMEOUT_MS);
+    }
 
-        if (registered) {
-            MAIN.postDelayed(() -> removeSafely(manager, listener), LISTEN_TIMEOUT_MS);
+    private static void showBlockingDialogWhenReady(Activity activity, String reason, int attempt) {
+        if (!isUsable(activity)) return;
+        Window window = activity.getWindow();
+        boolean ready = window != null && window.getDecorView() != null && window.getDecorView().isAttachedToWindow()
+                && activity.hasWindowFocus();
+        if (!ready && attempt < 12) {
+            MAIN.postDelayed(() -> showBlockingDialogWhenReady(activity, reason, attempt + 1), 150L);
+            return;
         }
+        showBlockingDialog(activity, reason);
     }
 
     private static void showBlockingDialog(Activity activity, String reason) {
         if (!isUsable(activity)) return;
-
         AlertDialog existing = activeDialog.get();
         Activity owner = activeActivity.get();
         if (existing != null && existing.isShowing() && owner == activity) return;
         dismissBlockingDialog();
-
-        activity.runOnUiThread(() -> {
-            if (!isUsable(activity)) return;
-            try {
-                AlertDialog dialog = new AlertDialog.Builder(activity)
-                        .setTitle("Lokasi palsu terdeteksi")
-                        .setMessage(reason)
-                        .setCancelable(false)
-                        .setPositiveButton("Buka Opsi Developer", null)
-                        .setNegativeButton("Tutup aplikasi", (d, which) -> activity.finishAffinity())
-                        .setNeutralButton("Periksa Lagi", null)
-                        .create();
-
-                dialog.setOnShowListener(d -> {
-                    dialog.getButton(DialogInterface.BUTTON_POSITIVE).setOnClickListener(v ->
-                            openDeveloperSettings(activity));
-                    dialog.getButton(DialogInterface.BUTTON_NEUTRAL).setOnClickListener(v ->
-                            recheck(activity));
-                });
-                dialog.setOnDismissListener(d -> {
-                    if (activeDialog.get() == dialog) {
-                        activeDialog.clear();
-                        activeActivity.clear();
-                    }
-                });
-                activeDialog = new WeakReference<>(dialog);
-                activeActivity = new WeakReference<>(activity);
-                dialog.show();
-            } catch (Throwable ignored) {
-                activity.finishAffinity();
-            }
-        });
+        try {
+            AlertDialog dialog = new AlertDialog.Builder(activity)
+                    .setTitle("Lokasi palsu terdeteksi")
+                    .setMessage(reason)
+                    .setCancelable(false)
+                    .setPositiveButton("Buka Opsi Developer", null)
+                    .setNegativeButton("Tutup aplikasi", (d, which) -> activity.finishAffinity())
+                    .setNeutralButton("Periksa Lagi", null)
+                    .create();
+            dialog.setOnShowListener(d -> {
+                dialog.getButton(DialogInterface.BUTTON_POSITIVE).setOnClickListener(v -> openDeveloperSettings(activity));
+                dialog.getButton(DialogInterface.BUTTON_NEUTRAL).setOnClickListener(v -> recheck(activity));
+            });
+            dialog.setOnDismissListener(d -> {
+                if (activeDialog.get() == dialog) {
+                    activeDialog.clear();
+                    activeActivity.clear();
+                }
+            });
+            activeDialog = new WeakReference<>(dialog);
+            activeActivity = new WeakReference<>(activity);
+            dialog.show();
+        } catch (Throwable error) {
+            Toast.makeText(activity, "Lokasi palsu terdeteksi. Nonaktifkan Fake GPS.", Toast.LENGTH_LONG).show();
+            MAIN.postDelayed(activity::finishAffinity, 1800L);
+        }
     }
 
     private static void openDeveloperSettings(Activity activity) {
         try {
-            Intent intent = new Intent(Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS);
-            activity.startActivity(intent);
+            activity.startActivity(new Intent(Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS));
         } catch (Throwable first) {
-            try {
-                Intent intent = new Intent(Settings.ACTION_SETTINGS);
-                activity.startActivity(intent);
-            } catch (Throwable ignored) { }
+            try { activity.startActivity(new Intent(Settings.ACTION_SETTINGS)); } catch (Throwable ignored) { }
         }
     }
 
     private static void dismissBlockingDialog() {
-        MAIN.post(() -> {
-            AlertDialog dialog = activeDialog.get();
-            if (dialog != null && dialog.isShowing()) {
-                try { dialog.dismiss(); } catch (Throwable ignored) { }
-            }
-            activeDialog.clear();
-            activeActivity.clear();
-        });
+        AlertDialog dialog = activeDialog.get();
+        if (dialog != null && dialog.isShowing()) {
+            try { dialog.dismiss(); } catch (Throwable ignored) { }
+        }
+        activeDialog.clear();
+        activeActivity.clear();
     }
 
     private static boolean hasLocationPermission(Context context) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) return true;
-        return context.checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION)
-                == PackageManager.PERMISSION_GRANTED
-                || context.checkSelfPermission(Manifest.permission.ACCESS_COARSE_LOCATION)
-                == PackageManager.PERMISSION_GRANTED;
+        return context.checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
+                || context.checkSelfPermission(Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED;
     }
 
     private static boolean isUsable(Activity activity) {
@@ -353,12 +290,7 @@ public final class MockLocationGuard {
     private static final class Detection {
         final boolean blocked;
         final String message;
-
-        private Detection(boolean blocked, String message) {
-            this.blocked = blocked;
-            this.message = message;
-        }
-
+        private Detection(boolean blocked, String message) { this.blocked = blocked; this.message = message; }
         static Detection blocked(String message) { return new Detection(true, message); }
         static Detection allowed() { return new Detection(false, ""); }
     }

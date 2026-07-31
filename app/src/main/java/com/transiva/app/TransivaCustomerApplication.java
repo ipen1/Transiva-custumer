@@ -3,20 +3,23 @@ package com.transiva.app;
 import android.app.Activity;
 import android.app.Application;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
 
-/** Applies mock-location protection to every customer screen. */
-public class TransivaCustomerApplication extends Application
-        implements Application.ActivityLifecycleCallbacks {
+/** Runs the guard on normal screens. Splash owns its own blocking startup check. */
+public class TransivaCustomerApplication extends Application implements Application.ActivityLifecycleCallbacks {
+    private final Handler main = new Handler(Looper.getMainLooper());
 
-    @Override
-    public void onCreate() {
+    @Override public void onCreate() {
         super.onCreate();
         registerActivityLifecycleCallbacks(this);
     }
 
-    @Override
-    public void onActivityResumed(Activity activity) {
-        MockLocationGuard.protect(activity);
+    @Override public void onActivityResumed(Activity activity) {
+        if (activity instanceof SplashActivity) return;
+        main.postDelayed(() -> {
+            if (!activity.isFinishing()) MockLocationGuard.protect(activity);
+        }, 250L);
     }
 
     @Override public void onActivityCreated(Activity activity, Bundle state) { }

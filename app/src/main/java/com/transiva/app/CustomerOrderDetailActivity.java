@@ -138,7 +138,16 @@ public class CustomerOrderDetailActivity extends Activity {
 
     private ImageView photoBox(String raw){ ImageView v=new ImageView(this); v.setScaleType(ImageView.ScaleType.CENTER_CROP); v.setImageResource(android.R.drawable.ic_menu_gallery); v.setBackground(round("#EAF2FB",18)); String u=absoluteUrl(raw); if(!u.isEmpty()) loadImage(v,u); return v; }
     private void loadImage(ImageView v,String u){ new Thread(()->{ try(InputStream in=new URL(u).openStream()){ Bitmap b=BitmapFactory.decodeStream(in); if(b!=null) main.post(()->v.setImageBitmap(b)); }catch(Exception ignored){} },"detail-photo").start(); }
-    private String absoluteUrl(String p){ if(p==null||p.trim().isEmpty())return ""; p=p.trim(); if(p.startsWith("http://")||p.startsWith("https://"))return p; while(p.startsWith("/"))p=p.substring(1); return BASE_URL+p; }
+    private String absoluteUrl(String p){
+        if(p==null||p.trim().isEmpty()) return "";
+        p=p.trim();
+        if(p.startsWith("http://")||p.startsWith("https://")) return p;
+        while(p.startsWith("/")) p=p.substring(1);
+        // Samakan dengan DriverProfileActivity: file driver tersimpan di server/uploads/drivers/...
+        if(p.startsWith("uploads/")) return BASE_URL+"server/"+p;
+        if(p.startsWith("server/")) return BASE_URL+p;
+        return BASE_URL+p;
+    }
     private JSONObject post(String url,JSONObject payload)throws Exception{ HttpURLConnection c=(HttpURLConnection)new URL(url).openConnection(); c.setConnectTimeout(20000);c.setReadTimeout(20000);c.setRequestMethod("POST");c.setDoOutput(true);c.setRequestProperty("Content-Type","application/json; charset=UTF-8"); try(OutputStream o=c.getOutputStream()){o.write(payload.toString().getBytes(StandardCharsets.UTF_8));} InputStream in=c.getResponseCode()>=400?c.getErrorStream():c.getInputStream(); StringBuilder b=new StringBuilder(); try(BufferedReader r=new BufferedReader(new InputStreamReader(in))){String line;while((line=r.readLine())!=null)b.append(line);} c.disconnect(); return new JSONObject(b.toString()); }
 
     private LinearLayout card(){LinearLayout x=new LinearLayout(this);x.setOrientation(LinearLayout.VERTICAL);x.setPadding(dp(18),dp(18),dp(18),dp(18));x.setBackground(round("#FFFFFF",22));return x;}

@@ -1739,82 +1739,11 @@ public class CustomerHistoryActivity extends Activity {
         return b.toString();
     }
 
-    private void showOrderDetail(
-            JSONObject order
-    ) {
-        String detail =
-                "Order ID: "
-                        + first(
-                        order.optString(
-                                "order_id"
-                        ),
-                        order.optString("id"),
-                        "-"
-                )
-                        + "\nLayanan: "
-                        + serviceName(order)
-                        + "\nStatus: "
-                        + statusLabel(
-                        normalizedStatus(
-                                order.optString(
-                                        "status"
-                                )
-                        )
-                )
-                        + "\nPickup: "
-                        + first(
-                        order.optString(
-                                "pickup_address"
-                        ),
-                        order.optString(
-                                "from_address"
-                        ),
-                        order.optString(
-                                "restaurant_name"
-                        ),
-                        "-"
-                )
-                        + "\nTujuan: "
-                        + first(
-                        order.optString(
-                                "delivery_address"
-                        ),
-                        order.optString(
-                                "to_address"
-                        ),
-                        order.optString(
-                                "destination"
-                        ),
-                        "-"
-                )
-                        + "\nDriver: "
-                        + first(
-                        order.optString("driver"),
-                        order.optString(
-                                "driver_username"
-                        ),
-                        "Belum ada"
-                )
-                        + "\nKendaraan: "
-                        + first(order.optString("driver_type"), order.optString("vehicle_type"), "-")
-                        + "\nPlat: "
-                        + first(order.optString("driver_plate"), order.optString("plate"), "-")
-                        + "\nRating driver: "
-                        + (order.optDouble("driver_rating", 0) > 0 ? String.format(Locale.US, "%.1f", order.optDouble("driver_rating",0)) : "-")
-                        + "\nTanggal: "
-                        + displayDate(order)
-                        + "\nTotal: "
-                        + rupiah(orderPrice(order))
-                        + priceChangeDetail(order);
-
-        new AlertDialog.Builder(this)
-                .setTitle("Detail Aktivitas")
-                .setMessage(detail)
-                .setPositiveButton(
-                        "Tutup",
-                        null
-                )
-                .show();
+    private void showOrderDetail(JSONObject order) {
+        Intent detail = new Intent(this, CustomerOrderDetailActivity.class);
+        detail.putExtra("order_json", order.toString());
+        startActivity(detail);
+        overridePendingTransition(android.R.anim.fade_in, android.R.anim.fade_out);
     }
 
     private void openActiveOrder(

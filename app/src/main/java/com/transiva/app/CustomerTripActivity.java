@@ -304,6 +304,17 @@ public class CustomerTripActivity extends Activity {
         card.addView(liveBtn, liveLp);
         liveBtn.setOnClickListener(v -> openLiveDriver());
 
+        LinearLayout safetyRow = new LinearLayout(this);
+        safetyRow.setOrientation(LinearLayout.HORIZONTAL);
+        Button shareBtn = outlineButton("🔗 Bagikan Trip");
+        Button sosBtn = outlineButton("🆘 SOS");
+        safetyRow.addView(shareBtn, new LinearLayout.LayoutParams(0, dp(48), 1));
+        LinearLayout.LayoutParams sosLp = new LinearLayout.LayoutParams(0, dp(48), 1); sosLp.setMargins(dp(8),0,0,0);
+        safetyRow.addView(sosBtn, sosLp);
+        LinearLayout.LayoutParams safetyLp = new LinearLayout.LayoutParams(-1, -2); safetyLp.setMargins(0,0,0,dp(8)); card.addView(safetyRow, safetyLp);
+        shareBtn.setOnClickListener(v -> shareTrip());
+        sosBtn.setOnClickListener(v -> openSos());
+
         Button backBtn = outlineButton("Kembali");
         card.addView(backBtn, new LinearLayout.LayoutParams(-1, dp(48)));
         backBtn.setOnClickListener(v -> finish());
@@ -757,6 +768,26 @@ public class CustomerTripActivity extends Activity {
         finish();
     }
 
+
+    private void shareTrip() {
+        try {
+            StringBuilder text = new StringBuilder("Pantau perjalanan Transiva saya. Order #").append(orderId);
+            if (validCoord(lastDriverLat, lastDriverLng)) text.append("\nLokasi driver: https://maps.google.com/?q=").append(lastDriverLat).append(",").append(lastDriverLng);
+            else if (validCoord(pickupLat, pickupLng)) text.append("\nTitik jemput: https://maps.google.com/?q=").append(pickupLat).append(",").append(pickupLng);
+            Intent send = new Intent(Intent.ACTION_SEND); send.setType("text/plain"); send.putExtra(Intent.EXTRA_TEXT, text.toString());
+            startActivity(Intent.createChooser(send, "Bagikan perjalanan"));
+        } catch (Exception e) { showInfo("Bagikan Trip", "Tidak dapat membuka menu berbagi."); }
+    }
+
+    private void openSos() {
+        new AlertDialog.Builder(this).setTitle("🆘 Bantuan Darurat")
+                .setMessage("Hubungi layanan darurat hanya saat benar-benar diperlukan. Anda juga dapat membagikan perjalanan kepada keluarga.")
+                .setNeutralButton("Bagikan Trip", (d,w) -> shareTrip())
+                .setNegativeButton("Batal", null)
+                .setPositiveButton("Telepon 112", (d,w) -> {
+                    try { startActivity(new Intent(Intent.ACTION_DIAL, Uri.parse("tel:112"))); } catch (Exception ignored) { }
+                }).show();
+    }
 
     private void openLiveDriver() {
         if (orderId == null || orderId.trim().isEmpty()) {

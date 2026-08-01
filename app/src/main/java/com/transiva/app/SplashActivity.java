@@ -54,6 +54,7 @@ public class SplashActivity extends Activity {
         if (routed || isFinishing()) return;
         routed = true;
         SessionManager session = new SessionManager(this);
+        if (session.isLoggedIn() && ActiveOrderRecovery.route(this)) return;
         Intent intent = !session.isLoggedIn()
                 ? new Intent(this, LoginActivity.class)
                 : new Intent(this, PinActivity.class).putExtra("native_role", "customer");

@@ -362,8 +362,9 @@ public class SearchDriverActivity extends Activity {
                     type = "bike";
                 }
 
+                final String resolvedType = type;
                 JSONObject payload = new JSONObject();
-                payload.put("type", type);
+                payload.put("type", resolvedType);
                 JSONObject res = postJson(BASE_URL + "server/get_idle_drivers.php", payload);
 
                 if (!res.optBoolean("success", false)) {
@@ -382,13 +383,70 @@ public class SearchDriverActivity extends Activity {
                     } else if (drivers.size() > 0) {
                         setSubtitle("Ada " + drivers.size() + " driver aktif, menunggu GPS akurat");
                     } else {
-                        setSubtitle("Belum ada driver aktif di sekitar Anda");
+                        checkOnlineDriverAvailability(resolvedType);
                     }
                 });
             } catch (Exception e) {
                 mainHandler.post(() -> setSubtitle("Koneksi gagal mengambil driver"));
             }
         }).start();
+    }
+
+    private void checkOnlineDriverAvailability(String type) {
+        new Thread(() -> {
+            try {
+                JSONObject onlineRes = getJson(BASE_URL + "server/get_map_drivers.php?type="
+                        + Uri.encode(type) + "&v=" + System.currentTimeMillis());
+                JSONArray onlineDrivers = onlineRes.optJSONArray("drivers");
+                int onlineCount = onlineDrivers == null ? 0 : onlineDrivers.length();
+                int availableCount = 0;
+                if (onlineDrivers != null) {
+                    for (int i = 0; i < onlineDrivers.length(); i++) {
+                        JSONObject driver = onlineDrivers.optJSONObject(i);
+                        if (driver != null && !isDriverBusy(driver)) availableCount++;
+                    }
+                }
+                final String message;
+                if (onlineCount == 0) {
+                    message = "Driver sedang bersiap online";
+                } else if (availableCount == 0) {
+                    message = "Semua Driver Sedang Menjalani Orderan, pesanan Anda langsung masuk antrian";
+                } else {
+                    message = "Mencari driver terdekat untuk pesanan Anda";
+                }
+                mainHandler.post(() -> setSubtitle(message));
+            } catch (Exception e) {
+                mainHandler.post(() -> setSubtitle("Mencari driver terdekat untuk pesanan Anda"));
+            }
+        }).start();
+    }
+
+    private boolean isDriverBusy(JSONObject driver) {
+        Object raw = driver.opt("is_busy");
+        if (raw == null || raw == JSONObject.NULL) raw = driver.opt("busy");
+        if (raw == null || raw == JSONObject.NULL) raw = driver.opt("status");
+        String value = String.valueOf(raw == null ? "" : raw).trim().toLowerCase(Locale.US);
+        return "1".equals(value) || "true".equals(value) || "busy".equals(value)
+                || "sibuk".equals(value) || "on_trip".equals(value)
+                || "in_progress".equals(value) || "driver_accepted".equals(value);
+    }
+
+    private JSONObject getJson(String urlText) throws Exception {
+        HttpURLConnection conn = null;
+        try {
+            conn = (HttpURLConnection) new URL(urlText).openConnection();
+            conn.setRequestMethod("GET");
+            conn.setConnectTimeout(TIMEOUT_MS);
+            conn.setReadTimeout(TIMEOUT_MS);
+            conn.setUseCaches(false);
+            conn.setRequestProperty("Accept", "application/json");
+            int code = conn.getResponseCode();
+            InputStream is = code >= 200 && code < 400 ? conn.getInputStream() : conn.getErrorStream();
+            String body = readStream(is).trim();
+            return body.length() == 0 ? new JSONObject() : new JSONObject(body);
+        } finally {
+            if (conn != null) conn.disconnect();
+        }
     }
 
     private List<RadarDriver> parseDrivers(JSONArray arr) {

@@ -943,11 +943,26 @@ public class PassengerCarActivity extends Activity {
 
                     if (mapView != null) mapView.clearOnlineDrivers();
 
-                    boolean noDriversOnline = arr == null || arr.length() == 0;
+                    int onlineCount = arr == null ? 0 : arr.length();
+                    int availableCount = 0;
+                    if (arr != null) {
+                        for (int i = 0; i < arr.length(); i++) {
+                            JSONObject driver = arr.optJSONObject(i);
+                            if (driver != null && !isDriverBusy(driver)) availableCount++;
+                        }
+                    }
+                    boolean noDriversOnline = onlineCount == 0;
+                    boolean allDriversBusy = onlineCount > 0 && availableCount == 0;
                     if (driverAvailabilityText != null) {
-                        driverAvailabilityText.setVisibility(noDriversOnline ? View.VISIBLE : View.GONE);
+                        driverAvailabilityText.setVisibility((noDriversOnline || allDriversBusy) ? View.VISIBLE : View.GONE);
                         if (noDriversOnline) {
-                            driverAvailabilityText.setText("Tidak ada driver Transcar yang online");
+                            driverAvailabilityText.setText("Driver sedang bersiap online");
+                            driverAvailabilityText.setTextColor(Color.parseColor("#B45309"));
+                            driverAvailabilityText.setBackground(roundStroke("#FFF7ED", "#FED7AA", dp(10), 1));
+                        } else if (allDriversBusy) {
+                            driverAvailabilityText.setText("Semua Driver Sedang Menjalani Orderan, Order sekarang pesanan langsung masuk antrian");
+                            driverAvailabilityText.setTextColor(Color.parseColor("#1D4ED8"));
+                            driverAvailabilityText.setBackground(roundStroke("#EFF6FF", "#BFDBFE", dp(10), 1));
                         }
                     }
 
@@ -1468,6 +1483,17 @@ public class PassengerCarActivity extends Activity {
         }, "transiva-google-osrm-preview").start();
     }
     private boolean validCoord(double lat, double lng) { return Double.isFinite(lat) && Double.isFinite(lng) && lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180 && lat != 0 && lng != 0; }
+    private boolean isDriverBusy(JSONObject driver) {
+        if (driver == null) return false;
+        Object raw = driver.opt("is_busy");
+        if (raw == null || raw == JSONObject.NULL) raw = driver.opt("busy");
+        if (raw == null || raw == JSONObject.NULL) raw = driver.opt("status");
+        String value = String.valueOf(raw == null ? "" : raw).trim().toLowerCase(Locale.US);
+        return "1".equals(value) || "true".equals(value) || "busy".equals(value)
+                || "sibuk".equals(value) || "on_trip".equals(value)
+                || "in_progress".equals(value) || "driver_accepted".equals(value);
+    }
+
     private void resetOrderButton() { ordering = false; setLoading(false); orderBtn.setEnabled(true); orderBtn.setText("🚘 Order Mobil"); }
     private void setLoading(boolean b) { if (progressBar != null) progressBar.setVisibility(b ? View.VISIBLE : View.GONE); }
     private int checkSelfPermissionCompat(String p) { return android.os.Build.VERSION.SDK_INT >= 23 ? checkSelfPermission(p) : PackageManager.PERMISSION_GRANTED; }

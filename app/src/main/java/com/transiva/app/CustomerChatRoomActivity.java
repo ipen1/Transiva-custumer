@@ -2,9 +2,7 @@ package com.transiva.app;
 
 import android.Manifest;
 import android.app.Activity;
-import android.app.ActivityManager;
 import android.app.AlertDialog;
-import android.app.KeyguardManager;
 import android.app.Dialog;
 import android.content.ClipData;
 import android.content.ContentValues;
@@ -23,8 +21,6 @@ import android.os.Bundle;
 import android.provider.MediaStore;
 import android.os.Handler;
 import android.os.Looper;
-import android.os.PowerManager;
-import android.os.SystemClock;
 import android.util.SparseArray;
 import android.view.animation.DecelerateInterpolator;
 import android.os.Environment;
@@ -116,21 +112,6 @@ public class CustomerChatRoomActivity extends Activity {
     private boolean uploading;
     private boolean destroyed;
     private boolean chatVisible;
-    private volatile long focusedSinceElapsedMs = 0L;
-    private volatile int readVisibilityGeneration = 0;
-    private volatile int pendingReadThroughId = 0;
-    private static final long MIN_READ_VISIBILITY_MS = 1200L;
-
-    /*
-     * Receipt dijadwalkan ulang setelah Chat Room benar-benar fokus.
-     * Dengan begitu status Dibaca berubah tanpa menunggu pesan balasan.
-     */
-    private final Runnable readReceiptRunnable =
-            () -> {
-                int throughId = pendingReadThroughId;
-                if (throughId <= 0 || !isChatActuallyVisible()) return;
-                sendReadReceiptNow(throughId);
-            };
     private int lastId;
     private boolean firstLoad = true;
     private final SparseArray<TextView> receiptViews = new SparseArray<>();
@@ -1632,111 +1613,30 @@ public class CustomerChatRoomActivity extends Activity {
             scrollBottom();
         }
 
-        if (lastId > 0) {
-            scheduleMessagesReadThrough(lastId);
+        if (chatVisible && hasWindowFocus() && lastId > 0) {
+            markMessagesReadThrough(lastId);
         }
     }
 
-    private boolean isChatActuallyVisible() {
-        if (destroyed || !chatVisible || !hasWindowFocus()) return false;
-
-        PowerManager powerManager =
-                (PowerManager) getSystemService(POWER_SERVICE);
-        if (powerManager != null && !powerManager.isInteractive()) return false;
-
-        KeyguardManager keyguardManager =
-                (KeyguardManager) getSystemService(KEYGUARD_SERVICE);
-        if (keyguardManager != null && keyguardManager.isKeyguardLocked()) return false;
-
-        View decor = getWindow() == null ? null : getWindow().getDecorView();
-        if (decor == null || decor.getWindowVisibility() != View.VISIBLE || !decor.isShown()) return false;
-
-        ActivityManager.RunningAppProcessInfo processInfo =
-                new ActivityManager.RunningAppProcessInfo();
-        ActivityManager.getMyMemoryState(processInfo);
-        if (processInfo.importance != ActivityManager.RunningAppProcessInfo.IMPORTANCE_FOREGROUND) return false;
-
-        long focusedFor =
-                SystemClock.elapsedRealtime() - focusedSinceElapsedMs;
-        return focusedSinceElapsedMs > 0L
-                && focusedFor >= MIN_READ_VISIBILITY_MS;
-    }
-
-    private void scheduleMessagesReadThrough(int readThroughId) {
-        if (readThroughId <= 0 || readOnly || destroyed) return;
-
-        pendingReadThroughId = Math.max(pendingReadThroughId, readThroughId);
-        mainHandler.removeCallbacks(readReceiptRunnable);
-
-        if (!chatVisible || !hasWindowFocus()) return;
-
-        long focusedFor = focusedSinceElapsedMs > 0L
-                ? SystemClock.elapsedRealtime() - focusedSinceElapsedMs
-                : 0L;
-        long delay = Math.max(0L, MIN_READ_VISIBILITY_MS - focusedFor);
-        mainHandler.postDelayed(readReceiptRunnable, delay);
-    }
-
-    private void sendReadReceiptNow(int readThroughId) {
-        if (readThroughId <= 0 || !isChatActuallyVisible()) return;
-
-        final int generation = readVisibilityGeneration;
-        final long visibleMs = Math.max(
-                MIN_READ_VISIBILITY_MS,
-                SystemClock.elapsedRealtime() - focusedSinceElapsedMs
-        );
+    private void markMessagesReadThrough(int readThroughId) {
+        if (!chatVisible || !hasWindowFocus() || readThroughId <= 0 || destroyed) return;
 
         new Thread(() -> {
             try {
-                if (generation != readVisibilityGeneration || !isChatActuallyVisible()) return;
+                // Beri waktu singkat agar pesan benar-benar sempat tampil di layar.
+                Thread.sleep(350L);
+                if (!chatVisible || !hasWindowFocus() || destroyed) return;
 
                 String endpoint = GET_CHAT_URL
                         + "?room_id=" + URLEncoder.encode(roomId, StandardCharsets.UTF_8.name())
                         + "&viewer_type=customer"
                         + "&mark_read=1"
-                        + "&read_source=chat_room_foreground_v3"
-                        + "&visible_ms=" + visibleMs
                         + "&read_through_id=" + readThroughId;
-
-                String raw = CustomerMessageApi.get(endpoint);
-                JSONObject result = new JSONObject(raw == null ? "{}" : raw);
-
-                if (result.optBoolean("success", false)) {
-                    if (pendingReadThroughId <= readThroughId) {
-                        pendingReadThroughId = 0;
-                    }
-                    mainHandler.postDelayed(() -> {
-                        if (!destroyed && chatVisible) loadMessages(false);
-                    }, 250L);
-                } else {
-                    mainHandler.postDelayed(
-                            () -> scheduleMessagesReadThrough(readThroughId),
-                            800L
-                    );
-                }
+                CustomerMessageApi.get(endpoint);
             } catch (Exception ignored) {
-                mainHandler.postDelayed(
-                        () -> scheduleMessagesReadThrough(readThroughId),
-                        1200L
-                );
+                // Read receipt will be retried on the next visible refresh.
             }
         }, "chat-read-ack").start();
-    }
-
-    @Override
-    public void onWindowFocusChanged(boolean hasFocus) {
-        super.onWindowFocusChanged(hasFocus);
-
-        readVisibilityGeneration++;
-        mainHandler.removeCallbacks(readReceiptRunnable);
-        if (hasFocus && chatVisible) {
-            focusedSinceElapsedMs = SystemClock.elapsedRealtime();
-            if (lastId > 0) {
-                scheduleMessagesReadThrough(lastId);
-            }
-        } else {
-            focusedSinceElapsedMs = 0L;
-        }
     }
 
     private void addBubble(JSONObject message, boolean animate) {
@@ -1880,7 +1780,7 @@ public class CustomerChatRoomActivity extends Activity {
         String time = formatTime(message.optString("created_at", ""));
         if (!time.isEmpty()) {
             String receipt = mine
-                    ? (message.optInt("is_read", message.optString("read_at", "").trim().isEmpty() ? 0 : 1) == 0
+                    ? (message.optString("read_at", "").trim().isEmpty()
                     ? "  ✓ Terkirim" : "  ✓✓ Dibaca")
                     : "";
             TextView timestamp = text(time + receipt, 9, "#94A3B8", false);
@@ -1904,7 +1804,7 @@ public class CustomerChatRoomActivity extends Activity {
         if (!"customer".equals(sender)) return;
 
         String time = formatTime(message.optString("created_at", ""));
-        boolean read = message.optInt("is_read", message.optString("read_at", "").trim().isEmpty() ? 0 : 1) == 1;
+        boolean read = !message.optString("read_at", "").trim().isEmpty();
         String next = time + (read ? "  ✓✓ Dibaca" : "  ✓ Terkirim");
         if (!next.contentEquals(receipt.getText())) {
             receipt.setText(next);
@@ -2579,18 +2479,12 @@ public class CustomerChatRoomActivity extends Activity {
     protected void onResume() {
         super.onResume();
         chatVisible = true;
-        readVisibilityGeneration++;
-        focusedSinceElapsedMs = hasWindowFocus()
-                ? SystemClock.elapsedRealtime() : 0L;
         CustomerAppSettings.apply(this);
 
         CustomerChatNotificationPoller.setOpenRoom(roomId);
         mainHandler.removeCallbacks(refreshRunnable);
         if (!readOnly) {
             loadMessages(false);
-            if (lastId > 0) {
-                scheduleMessagesReadThrough(lastId);
-            }
             mainHandler.postDelayed(refreshRunnable, REFRESH_MS);
         }
     }
@@ -2598,10 +2492,7 @@ public class CustomerChatRoomActivity extends Activity {
     @Override
     protected void onPause() {
         chatVisible = false;
-        readVisibilityGeneration++;
-        focusedSinceElapsedMs = 0L;
         mainHandler.removeCallbacks(refreshRunnable);
-        mainHandler.removeCallbacks(readReceiptRunnable);
         CustomerChatNotificationPoller.clearOpenRoom(roomId);
         super.onPause();
     }
@@ -2613,7 +2504,6 @@ public class CustomerChatRoomActivity extends Activity {
         mainHandler.removeCallbacks(
                 refreshRunnable
         );
-        mainHandler.removeCallbacks(readReceiptRunnable);
 
         super.onDestroy();
     }

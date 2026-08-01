@@ -492,6 +492,9 @@ public class CustomerTripActivity extends Activity {
         driverTypeText.setText("car".equals(activeDriverType) ? "🚘 Mobil / Car" : "🏍️ Motor / Bike");
         driverPlateText.setText("🔢 Plat: " + plate);
         setStatusText(status, driverName, hasDriverLocation);
+        // Data driver dan tombol aksi berubah dari polling server; pastikan view baru/
+        // yang diperbarui tetap menggunakan tema customer yang sedang aktif.
+        CustomerAppSettings.applyToView(this, driverNameText.getRootView());
 
         String orderType = firstNonEmpty(order.optString("order_type", ""), res.optString("order_type", "")).trim().toLowerCase(Locale.US);
         String merchantStatus = firstNonEmpty(order.optString("merchant_status", ""), res.optString("merchant_status", "")).trim().toLowerCase(Locale.US);

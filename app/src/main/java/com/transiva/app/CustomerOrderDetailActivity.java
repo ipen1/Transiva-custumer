@@ -57,6 +57,12 @@ public class CustomerOrderDetailActivity extends Activity {
         buildUi();
     }
 
+    @Override protected void onResume() {
+        super.onResume();
+        // Menangani perubahan tema saat halaman detail masih berada di back stack.
+        CustomerAppSettings.apply(this);
+    }
+
     private void buildUi() {
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
@@ -96,6 +102,7 @@ public class CustomerOrderDetailActivity extends Activity {
         progress.setVisibility(View.GONE);
         root.addView(progress, new LinearLayout.LayoutParams(-1, dp(4)));
         setContentView(root);
+        CustomerAppSettings.apply(this);
         render();
     }
 
@@ -208,6 +215,11 @@ public class CustomerOrderDetailActivity extends Activity {
         addCard(actionBox);
 
         if (isFinishedStatus(statusRaw)) addReviewCard();
+
+        // Card driver, foto, panel informasi, dan review dibuat ulang secara dinamis.
+        // Terapkan kembali tema customer agar semua view baru langsung mengikuti
+        // pilihan Mode Gelap tanpa perlu menutup halaman.
+        CustomerAppSettings.applyToView(this, body);
     }
 
     private void addReviewCard() {

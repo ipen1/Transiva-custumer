@@ -118,7 +118,19 @@ public class CustomerChatRoomActivity extends Activity {
     private boolean chatVisible;
     private volatile long focusedSinceElapsedMs = 0L;
     private volatile int readVisibilityGeneration = 0;
-    private static final long MIN_READ_VISIBILITY_MS = 1500L;
+    private volatile int pendingReadThroughId = 0;
+    private static final long MIN_READ_VISIBILITY_MS = 1200L;
+
+    /*
+     * Receipt dijadwalkan ulang setelah Chat Room benar-benar fokus.
+     * Dengan begitu status Dibaca berubah tanpa menunggu pesan balasan.
+     */
+    private final Runnable readReceiptRunnable =
+            () -> {
+                int throughId = pendingReadThroughId;
+                if (throughId <= 0 || !isChatActuallyVisible()) return;
+                sendReadReceiptNow(throughId);
+            };
     private int lastId;
     private boolean firstLoad = true;
     private final SparseArray<TextView> receiptViews = new SparseArray<>();
@@ -1620,8 +1632,8 @@ public class CustomerChatRoomActivity extends Activity {
             scrollBottom();
         }
 
-        if (chatVisible && hasWindowFocus() && lastId > 0) {
-            markMessagesReadThrough(lastId);
+        if (lastId > 0) {
+            scheduleMessagesReadThrough(lastId);
         }
     }
 
@@ -1650,31 +1662,63 @@ public class CustomerChatRoomActivity extends Activity {
                 && focusedFor >= MIN_READ_VISIBILITY_MS;
     }
 
-    private void markMessagesReadThrough(int readThroughId) {
+    private void scheduleMessagesReadThrough(int readThroughId) {
+        if (readThroughId <= 0 || readOnly || destroyed) return;
+
+        pendingReadThroughId = Math.max(pendingReadThroughId, readThroughId);
+        mainHandler.removeCallbacks(readReceiptRunnable);
+
+        if (!chatVisible || !hasWindowFocus()) return;
+
+        long focusedFor = focusedSinceElapsedMs > 0L
+                ? SystemClock.elapsedRealtime() - focusedSinceElapsedMs
+                : 0L;
+        long delay = Math.max(0L, MIN_READ_VISIBILITY_MS - focusedFor);
+        mainHandler.postDelayed(readReceiptRunnable, delay);
+    }
+
+    private void sendReadReceiptNow(int readThroughId) {
         if (readThroughId <= 0 || !isChatActuallyVisible()) return;
 
         final int generation = readVisibilityGeneration;
+        final long visibleMs = Math.max(
+                MIN_READ_VISIBILITY_MS,
+                SystemClock.elapsedRealtime() - focusedSinceElapsedMs
+        );
+
         new Thread(() -> {
             try {
-                // Wajib terlihat dan fokus terus-menerus. Membuka panel notifikasi,
-                // layar terkunci, atau hanya melihat preview tidak mengirim receipt.
-                Thread.sleep(MIN_READ_VISIBILITY_MS);
-
                 if (generation != readVisibilityGeneration || !isChatActuallyVisible()) return;
-
-                long visibleMs =
-                        SystemClock.elapsedRealtime() - focusedSinceElapsedMs;
 
                 String endpoint = GET_CHAT_URL
                         + "?room_id=" + URLEncoder.encode(roomId, StandardCharsets.UTF_8.name())
                         + "&viewer_type=customer"
                         + "&mark_read=1"
-                        + "&read_source=chat_room_foreground_v2"
+                        + "&read_source=chat_room_foreground_v3"
                         + "&visible_ms=" + visibleMs
                         + "&read_through_id=" + readThroughId;
-                CustomerMessageApi.get(endpoint);
+
+                String raw = CustomerMessageApi.get(endpoint);
+                JSONObject result = new JSONObject(raw == null ? "{}" : raw);
+
+                if (result.optBoolean("success", false)) {
+                    if (pendingReadThroughId <= readThroughId) {
+                        pendingReadThroughId = 0;
+                    }
+                    mainHandler.postDelayed(() -> {
+                        if (!destroyed && chatVisible) loadMessages(false);
+                    }, 250L);
+                } else {
+                    mainHandler.postDelayed(
+                            () -> scheduleMessagesReadThrough(readThroughId),
+                            800L
+                    );
+                }
             } catch (Exception ignored) {
-                // Dicoba lagi pada refresh berikutnya saat chat benar-benar terlihat.
+                mainHandler.postDelayed(
+                        () -> scheduleMessagesReadThrough(readThroughId),
+                        1200L
+                );
             }
         }, "chat-read-ack").start();
     }
@@ -1684,8 +1728,12 @@ public class CustomerChatRoomActivity extends Activity {
         super.onWindowFocusChanged(hasFocus);
 
         readVisibilityGeneration++;
+        mainHandler.removeCallbacks(readReceiptRunnable);
         if (hasFocus && chatVisible) {
             focusedSinceElapsedMs = SystemClock.elapsedRealtime();
+            if (lastId > 0) {
+                scheduleMessagesReadThrough(lastId);
+            }
         } else {
             focusedSinceElapsedMs = 0L;
         }
@@ -2540,6 +2588,9 @@ public class CustomerChatRoomActivity extends Activity {
         mainHandler.removeCallbacks(refreshRunnable);
         if (!readOnly) {
             loadMessages(false);
+            if (lastId > 0) {
+                scheduleMessagesReadThrough(lastId);
+            }
             mainHandler.postDelayed(refreshRunnable, REFRESH_MS);
         }
     }
@@ -2550,6 +2601,7 @@ public class CustomerChatRoomActivity extends Activity {
         readVisibilityGeneration++;
         focusedSinceElapsedMs = 0L;
         mainHandler.removeCallbacks(refreshRunnable);
+        mainHandler.removeCallbacks(readReceiptRunnable);
         CustomerChatNotificationPoller.clearOpenRoom(roomId);
         super.onPause();
     }
@@ -2561,6 +2613,7 @@ public class CustomerChatRoomActivity extends Activity {
         mainHandler.removeCallbacks(
                 refreshRunnable
         );
+        mainHandler.removeCallbacks(readReceiptRunnable);
 
         super.onDestroy();
     }

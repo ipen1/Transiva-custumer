@@ -126,6 +126,7 @@ public class PassengerCarActivity extends Activity {
 
         readUser();
         buildLayout();
+        applySharedLocationIntent();
         requestLocationIfNeeded();
     }
 
@@ -641,6 +642,82 @@ public class PassengerCarActivity extends Activity {
         } finally {
             setLoading(false);
         }
+    }
+
+
+    /** Applies a WhatsApp/Google Maps location received through SharedLocationActivity. */
+    private void applySharedLocationIntent() {
+        Intent intent = getIntent();
+        if (intent == null) return;
+
+        String shared = intent.getStringExtra("shared_location_uri");
+        String role = intent.getStringExtra("shared_location_role");
+        if (shared == null || shared.trim().isEmpty()) return;
+
+        final boolean asPickup = "pickup".equalsIgnoreCase(role);
+        final String rawLocation = shared.trim();
+        setLoading(true);
+
+        new Thread(() -> {
+            String resolved = rawLocation;
+            try {
+                if (resolved.startsWith("geo:")) {
+                    resolved = resolved.substring(4);
+                }
+
+                if (resolved.contains("maps.app.goo.gl") || resolved.contains("goo.gl/maps")) {
+                    JSONObject response = postJson(
+                            RESOLVE_MAPS_URL,
+                            new JSONObject().put("url", resolved)
+                    );
+                    if (response.optBoolean("success", false)
+                            && !response.optString("url", "").isEmpty()) {
+                        resolved = response.optString("url");
+                    }
+                }
+
+                final double[] coordinate = extractLatLng(resolved);
+                mainHandler.post(() -> {
+                    setLoading(false);
+                    if (coordinate == null || !validCoord(coordinate[0], coordinate[1])) {
+                        toastDialog("Lokasi dari WhatsApp/Google Maps tidak bisa dibaca.");
+                        return;
+                    }
+
+                    if (asPickup) {
+                        pickupLat = coordinate[0];
+                        pickupLng = coordinate[1];
+                        pickupAddress = "Mencari alamat jemput...";
+                        pickupText.setText("Pickup: " + pickupAddress);
+                        pickupBtn.setText("●  Jemput\\nMencari alamat...");
+                        mode = "pickup";
+                        if (mapView != null) {
+                            mapView.setPickup(pickupLat, pickupLng, pickupAddress);
+                            mapView.moveTo(pickupLat, pickupLng, 17f);
+                        }
+                        resolveAddressAsync(true, pickupLat, pickupLng);
+                    } else {
+                        deliveryLat = coordinate[0];
+                        deliveryLng = coordinate[1];
+                        deliveryAddress = "Mencari alamat tujuan...";
+                        deliveryText.setText("Tujuan: " + deliveryAddress);
+                        deliveryBtn.setText("●  Tujuan\\nMencari alamat...");
+                        mode = "delivery";
+                        if (mapView != null) {
+                            mapView.setDelivery(deliveryLat, deliveryLng, deliveryAddress);
+                            mapView.moveTo(deliveryLat, deliveryLng, 17f);
+                        }
+                        resolveAddressAsync(false, deliveryLat, deliveryLng);
+                    }
+                    updateModeUI();
+                });
+            } catch (Exception ignored) {
+                mainHandler.post(() -> {
+                    setLoading(false);
+                    toastDialog("Gagal membuka lokasi yang dibagikan.");
+                });
+            }
+        }, "shared-location-resolver").start();
     }
 
     private void useGoogleMapLink() {

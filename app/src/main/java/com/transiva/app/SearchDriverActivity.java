@@ -3,6 +3,9 @@ package com.transiva.app;
 import android.Manifest;
 import android.app.Activity;
 import android.app.AlertDialog;
+import android.animation.AnimatorSet;
+import android.animation.ObjectAnimator;
+import android.animation.ValueAnimator;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
@@ -21,9 +24,12 @@ import android.net.Uri;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
+import android.os.CountDownTimer;
 import android.provider.Settings;
 import android.view.Gravity;
 import android.view.View;
+import android.view.animation.AccelerateDecelerateInterpolator;
+import android.view.animation.OvershootInterpolator;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
@@ -60,7 +66,12 @@ public class SearchDriverActivity extends Activity {
 
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
 
+    private FrameLayout pageRoot;
     private RadarView radarView;
+    private TextView countdownText;
+    private TextView countdownLabel;
+    private CountDownTimer matchCountdown;
+    private long countdownRemainingMs = 30000L;
     private TextView titleText;
     private TextView subtitleText;
     private TextView driverNameText;
@@ -123,7 +134,8 @@ public class SearchDriverActivity extends Activity {
 
     private void buildLayout() {
         FrameLayout page = new FrameLayout(this);
-        page.setBackgroundColor(Color.parseColor("#F3F8FF"));
+        pageRoot = page;
+        page.setBackground(roundGradient("#020817", "#071A36", 0));
 
         ScrollView scroll = new ScrollView(this);
         scroll.setFillViewport(true);
@@ -135,24 +147,43 @@ public class SearchDriverActivity extends Activity {
         root.setPadding(dp(18), dp(24), dp(18), dp(24));
         scroll.addView(root, new ScrollView.LayoutParams(-1, -2));
 
-        TextView appTitle = text("Transiva", 14, "#0B7CFF", true);
+        TextView appTitle = text("TRANSIVA • MATCHMAKING", 13, "#53B7FF", true);
         appTitle.setGravity(Gravity.CENTER);
         root.addView(appTitle, new LinearLayout.LayoutParams(-1, -2));
 
-        titleText = text("Mencari Driver...", 26, "#0B3A78", true);
+        titleText = text("MENCARI DRIVER TERBAIK", 25, "#FFF0B7", true);
         titleText.setGravity(Gravity.CENTER);
         LinearLayout.LayoutParams titleLp = new LinearLayout.LayoutParams(-1, -2);
         titleLp.setMargins(0, dp(12), 0, dp(6));
         root.addView(titleText, titleLp);
 
-        subtitleText = text("Mengambil lokasi & mencari driver terdekat", 14, "#64748B", false);
+        subtitleText = text("Mencocokkan Anda dengan driver terdekat", 14, "#D5E8FF", false);
         subtitleText.setGravity(Gravity.CENTER);
         root.addView(subtitleText, new LinearLayout.LayoutParams(-1, -2));
 
         radarView = new RadarView(this);
-        LinearLayout.LayoutParams radarLp = new LinearLayout.LayoutParams(dp(290), dp(290));
-        radarLp.setMargins(0, dp(22), 0, dp(18));
+        LinearLayout.LayoutParams radarLp = new LinearLayout.LayoutParams(dp(310), dp(310));
+        radarLp.setMargins(0, dp(20), 0, dp(10));
         root.addView(radarView, radarLp);
+
+        countdownLabel = text("ESTIMASI MATCH", 11, "#8FCBFF", true);
+        countdownLabel.setGravity(Gravity.CENTER);
+        root.addView(countdownLabel, new LinearLayout.LayoutParams(-1, -2));
+
+        countdownText = text("00:30", 38, "#FFF1A6", true);
+        countdownText.setGravity(Gravity.CENTER);
+        countdownText.setPadding(dp(18), dp(7), dp(18), dp(7));
+        countdownText.setBackground(roundStroke("#101F3B", "#D4A83A", dp(18), 1));
+        LinearLayout.LayoutParams countdownLp = new LinearLayout.LayoutParams(dp(180), -2);
+        countdownLp.gravity = Gravity.CENTER_HORIZONTAL;
+        countdownLp.setMargins(0, dp(6), 0, dp(10));
+        root.addView(countdownText, countdownLp);
+
+        TextView secureLine = text("🛡 Pesanan aman • Driver terverifikasi", 12, "#B8D7F7", false);
+        secureLine.setGravity(Gravity.CENTER);
+        LinearLayout.LayoutParams secureLp = new LinearLayout.LayoutParams(-1, -2);
+        secureLp.setMargins(0, 0, 0, dp(16));
+        root.addView(secureLine, secureLp);
 
         cancelBtn = new Button(this);
         cancelBtn.setAllCaps(false);
@@ -327,12 +358,116 @@ public class SearchDriverActivity extends Activity {
     }
 
     private void startLoops() {
+        startMatchCountdown();
         mainHandler.removeCallbacks(driverRadarRunnable);
         mainHandler.removeCallbacks(checkOrderRunnable);
         loadIdleDriversToRadar();
         checkOrderStatus();
         mainHandler.postDelayed(driverRadarRunnable, 5000);
         mainHandler.postDelayed(checkOrderRunnable, 3000);
+    }
+
+    private void startMatchCountdown() {
+        stopMatchCountdown();
+        countdownRemainingMs = 30000L;
+        if (countdownText != null) countdownText.setText("00:30");
+        matchCountdown = new CountDownTimer(30000L, 1000L) {
+            @Override public void onTick(long millisUntilFinished) {
+                countdownRemainingMs = millisUntilFinished;
+                int seconds = Math.max(0, (int) Math.ceil(millisUntilFinished / 1000.0));
+                if (countdownText != null) {
+                    countdownText.setText(String.format(Locale.US, "00:%02d", seconds));
+                    float pulse = seconds <= 5 ? 1.08f : 1.0f;
+                    countdownText.animate().scaleX(pulse).scaleY(pulse).setDuration(180).withEndAction(() ->
+                            countdownText.animate().scaleX(1f).scaleY(1f).setDuration(180).start()).start();
+                }
+            }
+
+            @Override public void onFinish() {
+                if (destroyed || isCanceling || driverFound) return;
+                if (countdownText != null) countdownText.setText("00:00");
+                if (countdownLabel != null) countdownLabel.setText("MEMPERLUAS PENCARIAN...");
+                setSubtitle("Belum cocok, sistem memperluas pencarian driver");
+                mainHandler.postDelayed(() -> {
+                    if (!destroyed && !isCanceling && !driverFound) {
+                        if (countdownLabel != null) countdownLabel.setText("ESTIMASI MATCH");
+                        startMatchCountdown();
+                    }
+                }, 900L);
+            }
+        }.start();
+    }
+
+    private void stopMatchCountdown() {
+        if (matchCountdown != null) {
+            matchCountdown.cancel();
+            matchCountdown = null;
+        }
+    }
+
+    private void playDriverAcceptedEffect() {
+        if (pageRoot == null || destroyed) return;
+
+        FrameLayout overlay = new FrameLayout(this);
+        overlay.setClickable(true);
+        overlay.setBackgroundColor(Color.argb(238, 1, 8, 24));
+
+        LinearLayout box = new LinearLayout(this);
+        box.setOrientation(LinearLayout.VERTICAL);
+        box.setGravity(Gravity.CENTER);
+        box.setPadding(dp(26), dp(30), dp(26), dp(30));
+        box.setBackground(roundStroke("#071B3C", "#F4C85A", dp(28), 2));
+
+        TextView icon = text("✓", 48, "#FFFFFF", true);
+        icon.setGravity(Gravity.CENTER);
+        icon.setBackground(roundGradient("#10B981", "#0B7CFF", dp(48)));
+        box.addView(icon, new LinearLayout.LayoutParams(dp(96), dp(96)));
+
+        TextView found = text("MATCH FOUND", 28, "#FFF1A6", true);
+        found.setGravity(Gravity.CENTER);
+        LinearLayout.LayoutParams foundLp = new LinearLayout.LayoutParams(-1, -2);
+        foundLp.setMargins(0, dp(18), 0, dp(6));
+        box.addView(found, foundLp);
+
+        TextView desc = text("Driver menerima pesanan Anda", 15, "#D7E9FF", false);
+        desc.setGravity(Gravity.CENTER);
+        box.addView(desc, new LinearLayout.LayoutParams(-1, -2));
+
+        FrameLayout.LayoutParams boxLp = new FrameLayout.LayoutParams(-1, -2);
+        boxLp.gravity = Gravity.CENTER;
+        boxLp.setMargins(dp(28), 0, dp(28), 0);
+        overlay.addView(box, boxLp);
+        pageRoot.addView(overlay, new FrameLayout.LayoutParams(-1, -1));
+
+        overlay.setAlpha(0f);
+        box.setScaleX(.55f); box.setScaleY(.55f);
+        icon.setScaleX(.2f); icon.setScaleY(.2f);
+
+        AnimatorSet enter = new AnimatorSet();
+        ObjectAnimator fade = ObjectAnimator.ofFloat(overlay, View.ALPHA, 0f, 1f);
+        ObjectAnimator sx = ObjectAnimator.ofFloat(box, View.SCALE_X, .55f, 1f);
+        ObjectAnimator sy = ObjectAnimator.ofFloat(box, View.SCALE_Y, .55f, 1f);
+        enter.playTogether(fade, sx, sy);
+        enter.setDuration(480L);
+        enter.setInterpolator(new OvershootInterpolator(1.15f));
+        enter.start();
+
+        icon.animate().scaleX(1f).scaleY(1f).setStartDelay(180L).setDuration(420L)
+                .setInterpolator(new OvershootInterpolator(1.6f)).start();
+
+        ValueAnimator glow = ValueAnimator.ofFloat(1f, 1.12f, 1f);
+        glow.setDuration(720L);
+        glow.setRepeatCount(1);
+        glow.setInterpolator(new AccelerateDecelerateInterpolator());
+        glow.addUpdateListener(a -> {
+            float v = (float) a.getAnimatedValue();
+            icon.setScaleX(v); icon.setScaleY(v);
+        });
+        glow.start();
+
+        mainHandler.postDelayed(() -> overlay.animate().alpha(0f).setDuration(380L).withEndAction(() -> {
+            try { pageRoot.removeView(overlay); } catch (Exception ignored) {}
+        }).start(), 1500L);
     }
 
     private void loadIdleDriversToRadar() {
@@ -362,9 +497,8 @@ public class SearchDriverActivity extends Activity {
                     type = "bike";
                 }
 
-                final String resolvedType = type;
                 JSONObject payload = new JSONObject();
-                payload.put("type", resolvedType);
+                payload.put("type", type);
                 JSONObject res = postJson(BASE_URL + "server/get_idle_drivers.php", payload);
 
                 if (!res.optBoolean("success", false)) {
@@ -383,70 +517,13 @@ public class SearchDriverActivity extends Activity {
                     } else if (drivers.size() > 0) {
                         setSubtitle("Ada " + drivers.size() + " driver aktif, menunggu GPS akurat");
                     } else {
-                        checkOnlineDriverAvailability(resolvedType);
+                        setSubtitle("Belum ada driver aktif di sekitar Anda");
                     }
                 });
             } catch (Exception e) {
                 mainHandler.post(() -> setSubtitle("Koneksi gagal mengambil driver"));
             }
         }).start();
-    }
-
-    private void checkOnlineDriverAvailability(String type) {
-        new Thread(() -> {
-            try {
-                JSONObject onlineRes = getJson(BASE_URL + "server/get_map_drivers.php?type="
-                        + Uri.encode(type) + "&v=" + System.currentTimeMillis());
-                JSONArray onlineDrivers = onlineRes.optJSONArray("drivers");
-                int onlineCount = onlineDrivers == null ? 0 : onlineDrivers.length();
-                int availableCount = 0;
-                if (onlineDrivers != null) {
-                    for (int i = 0; i < onlineDrivers.length(); i++) {
-                        JSONObject driver = onlineDrivers.optJSONObject(i);
-                        if (driver != null && !isDriverBusy(driver)) availableCount++;
-                    }
-                }
-                final String message;
-                if (onlineCount == 0) {
-                    message = "Driver sedang bersiap online";
-                } else if (availableCount == 0) {
-                    message = "Semua Driver Sedang Menjalani Orderan, pesanan Anda langsung masuk antrian";
-                } else {
-                    message = "Mencari driver terdekat untuk pesanan Anda";
-                }
-                mainHandler.post(() -> setSubtitle(message));
-            } catch (Exception e) {
-                mainHandler.post(() -> setSubtitle("Mencari driver terdekat untuk pesanan Anda"));
-            }
-        }).start();
-    }
-
-    private boolean isDriverBusy(JSONObject driver) {
-        Object raw = driver.opt("is_busy");
-        if (raw == null || raw == JSONObject.NULL) raw = driver.opt("busy");
-        if (raw == null || raw == JSONObject.NULL) raw = driver.opt("status");
-        String value = String.valueOf(raw == null ? "" : raw).trim().toLowerCase(Locale.US);
-        return "1".equals(value) || "true".equals(value) || "busy".equals(value)
-                || "sibuk".equals(value) || "on_trip".equals(value)
-                || "in_progress".equals(value) || "driver_accepted".equals(value);
-    }
-
-    private JSONObject getJson(String urlText) throws Exception {
-        HttpURLConnection conn = null;
-        try {
-            conn = (HttpURLConnection) new URL(urlText).openConnection();
-            conn.setRequestMethod("GET");
-            conn.setConnectTimeout(TIMEOUT_MS);
-            conn.setReadTimeout(TIMEOUT_MS);
-            conn.setUseCaches(false);
-            conn.setRequestProperty("Accept", "application/json");
-            int code = conn.getResponseCode();
-            InputStream is = code >= 200 && code < 400 ? conn.getInputStream() : conn.getErrorStream();
-            String body = readStream(is).trim();
-            return body.length() == 0 ? new JSONObject() : new JSONObject(body);
-        } finally {
-            if (conn != null) conn.disconnect();
-        }
     }
 
     private List<RadarDriver> parseDrivers(JSONArray arr) {
@@ -539,13 +616,20 @@ public class SearchDriverActivity extends Activity {
     private void showDriver(JSONObject data) {
         if (isCanceling || driverFound || destroyed) return;
         driverFound = true;
+        stopMatchCountdown();
         destroyLoopsKeepScreen();
         radarView.stopRadar();
+        playDriverAcceptedEffect();
 
         titleText.setText("Driver Menerima Pesanan");
         setSubtitle("Yeay! Driver Anda sudah terhubung dan segera menuju pickup");
         cancelBtn.setVisibility(View.GONE);
         driverCard.setVisibility(View.VISIBLE);
+        driverCard.setAlpha(0f);
+        driverCard.setScaleX(.88f);
+        driverCard.setScaleY(.88f);
+        driverCard.animate().alpha(1f).scaleX(1f).scaleY(1f).setStartDelay(850L).setDuration(520L)
+                .setInterpolator(new OvershootInterpolator(1.08f)).start();
 
         JSONObject driver = data.optJSONObject("driver");
         if (driver == null) driver = new JSONObject();
@@ -881,12 +965,14 @@ public class SearchDriverActivity extends Activity {
     }
 
     private void destroyLoops() {
+        stopMatchCountdown();
         destroyed = true;
         mainHandler.removeCallbacks(driverRadarRunnable);
         mainHandler.removeCallbacks(checkOrderRunnable);
     }
 
     private void destroyLoopsKeepScreen() {
+        stopMatchCountdown();
         mainHandler.removeCallbacks(driverRadarRunnable);
         mainHandler.removeCallbacks(checkOrderRunnable);
     }
@@ -1075,30 +1161,32 @@ public class SearchDriverActivity extends Activity {
             float r = Math.min(w, h) / 2f - dp(12);
 
             paint.setStyle(Paint.Style.FILL);
-            paint.setColor(Color.WHITE);
-            paint.setShadowLayer(dp(16), 0, dp(8), Color.argb(35, 15, 23, 42));
+            paint.setColor(Color.parseColor("#071A35"));
+            paint.setShadowLayer(dp(24), 0, 0, Color.argb(160, 0, 132, 255));
             canvas.drawCircle(cx, cy, r, paint);
             paint.clearShadowLayer();
 
             paint.setStyle(Paint.Style.STROKE);
             paint.setStrokeWidth(dp(1));
-            paint.setColor(Color.parseColor("#D7E6F8"));
+            paint.setColor(Color.parseColor("#245589"));
             canvas.drawCircle(cx, cy, r * .35f, paint);
             canvas.drawCircle(cx, cy, r * .62f, paint);
             canvas.drawCircle(cx, cy, r * .88f, paint);
 
             paint.setStyle(Paint.Style.FILL);
-            paint.setColor(Color.argb(45, 11, 124, 255));
+            paint.setColor(Color.argb(95, 0, 157, 255));
             RectF arc = new RectF(cx - r, cy - r, cx + r, cy + r);
             canvas.drawArc(arc, sweep, 34, true, paint);
 
             paint.setColor(Color.parseColor("#0B7CFF"));
+            paint.setShadowLayer(dp(18), 0, 0, Color.parseColor("#00C8FF"));
             canvas.drawCircle(cx, cy, dp(32), paint);
+            paint.clearShadowLayer();
             paint.setColor(Color.WHITE);
             paint.setTextAlign(Paint.Align.CENTER);
             paint.setTypeface(Typeface.DEFAULT_BOLD);
             paint.setTextSize(dp(15));
-            canvas.drawText("YOU", cx, cy + dp(5), paint);
+            canvas.drawText("ANDA", cx, cy + dp(5), paint);
 
             for (int i = 0; i < drivers.size() && i < 8; i++) {
                 RadarDriver d = drivers.get(i);
@@ -1111,12 +1199,12 @@ public class SearchDriverActivity extends Activity {
                 float y = (float) (cy + Math.sin(angle) * radius);
 
                 paint.setStyle(Paint.Style.FILL);
-                paint.setColor(Color.parseColor("#22C55E"));
+                paint.setColor(Color.parseColor("#F4C85A"));
                 canvas.drawCircle(x, y, dp(8), paint);
                 paint.setColor(Color.WHITE);
                 canvas.drawCircle(x, y, dp(4), paint);
 
-                paint.setColor(Color.parseColor("#0B3A78"));
+                paint.setColor(Color.parseColor("#D8ECFF"));
                 paint.setTextSize(dp(10));
                 paint.setTypeface(Typeface.DEFAULT_BOLD);
                 String label = d.name.length() > 8 ? d.name.substring(0, 8) : d.name;

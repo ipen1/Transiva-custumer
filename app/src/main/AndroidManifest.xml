@@ -261,9 +261,29 @@
 
         <activity
             android:name=".CustomerTripActivity"
-            android:exported="false"
+            android:exported="true"
             android:screenOrientation="portrait"
-            android:theme="@style/AppTheme" />
+            android:theme="@style/AppTheme">
+
+            <!-- Deep link perjalanan live Transiva -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="transiva" android:host="trip" />
+            </intent-filter>
+
+            <!-- Link web dibagikan melalui WhatsApp; dapat langsung diarahkan ke aplikasi. -->
+            <intent-filter android:autoVerify="false">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data
+                    android:scheme="https"
+                    android:host="transiva.my.id"
+                    android:pathPrefix="/share_trip.php" />
+            </intent-filter>
+        </activity>
 
         <activity
             android:name=".CustomerLiveDriverActivity"

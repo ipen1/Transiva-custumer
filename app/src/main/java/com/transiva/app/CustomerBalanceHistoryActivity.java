@@ -839,7 +839,7 @@ public class CustomerBalanceHistoryActivity
 
         header.addView(
                 text(
-                        "Mutasi Saldo",
+                        "Riwayat Transaksi",
                         16,
                         "#0B3A78",
                         true
@@ -929,6 +929,8 @@ public class CustomerBalanceHistoryActivity
         addFilter("in", "Pemasukan");
         addFilter("out", "Pengeluaran");
         addFilter("pending", "Diproses");
+        addFilter("cash", "Cash");
+        addFilter("transpay", "Transpay");
     }
 
     private void addFilter(
@@ -1160,6 +1162,12 @@ public class CustomerBalanceHistoryActivity
                             ""
                     );
 
+            String paymentChannel =
+                    item.optString(
+                            "payment_channel",
+                            "transpay"
+                    ).toLowerCase(Locale.ROOT);
+
             boolean matches =
                     filter.equals("all")
                             || (
@@ -1173,6 +1181,14 @@ public class CustomerBalanceHistoryActivity
                             || (
                             filter.equals("pending")
                                     && status.equals("pending")
+                    )
+                            || (
+                            filter.equals("cash")
+                                    && paymentChannel.equals("cash")
+                    )
+                            || (
+                            filter.equals("transpay")
+                                    && paymentChannel.equals("transpay")
                     );
 
             if (matches) {
@@ -1346,6 +1362,9 @@ public class CustomerBalanceHistoryActivity
         );
 
         info.addView(description);
+
+        String channelLabel = item.optString("payment_label", "Transpay");
+        info.addView(text(channelLabel, 9, "#0B7CFF", true));
 
         info.addView(
                 text(

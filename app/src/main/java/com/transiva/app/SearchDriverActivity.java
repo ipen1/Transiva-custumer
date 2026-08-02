@@ -303,6 +303,7 @@ public class SearchDriverActivity extends Activity {
         }
 
         saveStringPref("active_order_id", activeOrderId);
+        CustomerRedispatchService.start(this, activeOrderId);
 
         if (checkSelfPermissionSafe(Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED
                 && checkSelfPermissionSafe(Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
@@ -584,6 +585,7 @@ public class SearchDriverActivity extends Activity {
                 }
 
                 if (status.equals("canceled") || status.equals("cancelled")) {
+                    CustomerRedispatchService.stop(this);
                     clearOrderPrefs();
                     mainHandler.post(() -> {
                         destroyLoops();
@@ -614,6 +616,7 @@ public class SearchDriverActivity extends Activity {
     }
 
     private void showDriver(JSONObject data) {
+        CustomerRedispatchService.stop(this);
         if (isCanceling || driverFound || destroyed) return;
         driverFound = true;
         stopMatchCountdown();
@@ -879,6 +882,7 @@ public class SearchDriverActivity extends Activity {
     }
 
     private void cancelOrder() {
+        CustomerRedispatchService.stop(this);
         if (isCanceling) return;
         isCanceling = true;
         destroyLoopsKeepScreen();

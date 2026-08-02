@@ -71,7 +71,7 @@ public class SearchDriverActivity extends Activity {
     private TextView countdownText;
     private TextView countdownLabel;
     private CountDownTimer matchCountdown;
-    private long countdownRemainingMs = 30000L;
+    private long countdownRemainingMs = 15000L;
     private TextView titleText;
     private TextView subtitleText;
     private TextView driverNameText;
@@ -170,7 +170,7 @@ public class SearchDriverActivity extends Activity {
         countdownLabel.setGravity(Gravity.CENTER);
         root.addView(countdownLabel, new LinearLayout.LayoutParams(-1, -2));
 
-        countdownText = text("00:30", 38, "#FFF1A6", true);
+        countdownText = text("00:15", 38, "#FFF1A6", true);
         countdownText.setGravity(Gravity.CENTER);
         countdownText.setPadding(dp(18), dp(7), dp(18), dp(7));
         countdownText.setBackground(roundStroke("#101F3B", "#D4A83A", dp(18), 1));
@@ -369,9 +369,9 @@ public class SearchDriverActivity extends Activity {
 
     private void startMatchCountdown() {
         stopMatchCountdown();
-        countdownRemainingMs = 30000L;
-        if (countdownText != null) countdownText.setText("00:30");
-        matchCountdown = new CountDownTimer(30000L, 1000L) {
+        countdownRemainingMs = 15000L;
+        if (countdownText != null) countdownText.setText("00:15");
+        matchCountdown = new CountDownTimer(15000L, 1000L) {
             @Override public void onTick(long millisUntilFinished) {
                 countdownRemainingMs = millisUntilFinished;
                 int seconds = Math.max(0, (int) Math.ceil(millisUntilFinished / 1000.0));

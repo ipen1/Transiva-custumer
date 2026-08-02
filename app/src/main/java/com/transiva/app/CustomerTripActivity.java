@@ -54,6 +54,7 @@ public class CustomerTripActivity extends Activity {
     private static final String PICKUP_STATUS_URL = BASE_URL + "server/get_pickup_order_status.php";
     private static final String CUSTOMER_ACTION_URL = BASE_URL + "server/customer_order_action.php";
     private static final String SAVE_REVIEW_URL = BASE_URL + "server/save_driver_review.php";
+    private static final String SHARE_TRIP_URL = BASE_URL + "share_trip.php";
 
     // Pakai file Leaflet lokal/server sendiri, bukan CDN, agar stabil di WebView.
     private static final String LEAFLET_CSS = BASE_URL + "js/leaflet.css";
@@ -165,7 +166,22 @@ public class CustomerTripActivity extends Activity {
 
         trackingOnly = i.getBooleanExtra("tracking_only", false);
 
+        String deepLinkOrderId = "";
+        try {
+            Uri data = i.getData();
+            if (data != null) {
+                deepLinkOrderId = firstNonEmpty(
+                        data.getQueryParameter("order_id"),
+                        data.getQueryParameter("order"),
+                        data.getLastPathSegment()
+                );
+                // Link yang dibagikan dibuka sebagai penonton, bukan sebagai pemilik order.
+                trackingOnly = true;
+            }
+        } catch (Exception ignored) { }
+
         orderId = firstNonEmpty(
+                deepLinkOrderId,
                 i.getStringExtra("order_id"),
                 i.getStringExtra("active_order_id"),
                 sp.getString("active_order_id", "")
@@ -771,12 +787,19 @@ public class CustomerTripActivity extends Activity {
 
     private void shareTrip() {
         try {
-            StringBuilder text = new StringBuilder("Pantau perjalanan Transiva saya. Order #").append(orderId);
-            if (validCoord(lastDriverLat, lastDriverLng)) text.append("\nLokasi driver: https://maps.google.com/?q=").append(lastDriverLat).append(",").append(lastDriverLng);
-            else if (validCoord(pickupLat, pickupLng)) text.append("\nTitik jemput: https://maps.google.com/?q=").append(pickupLat).append(",").append(pickupLng);
-            Intent send = new Intent(Intent.ACTION_SEND); send.setType("text/plain"); send.putExtra(Intent.EXTRA_TEXT, text.toString());
-            startActivity(Intent.createChooser(send, "Bagikan perjalanan"));
-        } catch (Exception e) { showInfo("Bagikan Trip", "Tidak dapat membuka menu berbagi."); }
+            String liveUrl = SHARE_TRIP_URL + "?order_id=" + Uri.encode(orderId);
+            String text = "Pantau perjalanan Transiva saya secara real-time."
+                    + "\nOrder #" + orderId
+                    + "\nBuka perjalanan live: " + liveUrl;
+
+            Intent send = new Intent(Intent.ACTION_SEND);
+            send.setType("text/plain");
+            send.putExtra(Intent.EXTRA_SUBJECT, "Perjalanan Live Transiva");
+            send.putExtra(Intent.EXTRA_TEXT, text);
+            startActivity(Intent.createChooser(send, "Bagikan perjalanan live"));
+        } catch (Exception e) {
+            showInfo("Bagikan Trip", "Tidak dapat membuka menu berbagi.");
+        }
     }
 
     private void openSos() {
@@ -809,6 +832,7 @@ public class CustomerTripActivity extends Activity {
             getSharedPreferences("transiva", MODE_PRIVATE).edit()
                     .putString("active_order_id", orderId)
                     .putString("active_driver_type", activeDriverType)
+                    .putString("active_order_status", lastStatus == null ? "" : lastStatus)
                     .putString("pickup_lat", String.valueOf(pickupLat))
                     .putString("pickup_lng", String.valueOf(pickupLng))
                     .putString("delivery_lat", String.valueOf(deliveryLat))
@@ -826,6 +850,7 @@ public class CustomerTripActivity extends Activity {
                     .remove("delivery_lat")
                     .remove("delivery_lng")
                     .remove("active_driver_type")
+                    .remove("active_order_status")
                     .remove("active_order_type")
                     .remove("active_service_name")
                     .remove("active_order_price")
@@ -1039,6 +1064,22 @@ public class CustomerTripActivity extends Activity {
                     .setPositiveButton("OK", null)
                     .show();
         } catch (Exception ignored) {}
+    }
+
+    @Override
+    public void onBackPressed() {
+        // Saat layar trip dipulihkan sebagai root task setelah force-close, tombol kembali
+        // tetap membawa customer ke dashboard dan tidak langsung menutup aplikasi.
+        if (trackingOnly) {
+            finish();
+            return;
+        }
+        try {
+            Intent home = new Intent(this, CustomerDashboardActivity.class);
+            home.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+            startActivity(home);
+        } catch (Exception ignored) { }
+        finish();
     }
 
     @Override protected void onPause() {

@@ -13,13 +13,10 @@ public final class ActiveOrderRecovery {
             SharedPreferences sp = activity.getSharedPreferences("transiva", Activity.MODE_PRIVATE);
             String orderId = clean(sp.getString("active_order_id", ""));
             if (orderId.isEmpty()) return false;
-            String status = clean(sp.getString("active_order_status", "")).toLowerCase();
-            Intent i;
-            if (status.isEmpty() || status.equals("pending") || status.contains("search")) {
-                i = new Intent(activity, SearchDriverActivity.class);
-            } else {
-                i = new Intent(activity, CustomerTripActivity.class);
-            }
+            // Satu order aktif harus selalu dipulihkan ke layar aktivitas/trip.
+            // CustomerTripActivity dapat menampilkan status menunggu driver, sehingga tidak
+            // perlu mengirim customer kembali ke SearchDriverActivity setelah force-close.
+            Intent i = new Intent(activity, CustomerTripActivity.class);
             i.putExtra("order_id", orderId);
             i.putExtra("active_order_id", orderId);
             i.putExtra("order_source", sp.getString("active_order_source", "orders"));

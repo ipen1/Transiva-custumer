@@ -256,7 +256,7 @@ public class CustomerTripActivity extends Activity {
 
         Button close = smallButton("×", "#FEE2E2", "#DC2626", "#FECACA");
         head.addView(close, new LinearLayout.LayoutParams(dp(42), dp(42)));
-        close.setOnClickListener(v -> finish());
+        close.setOnClickListener(v -> goToHome());
 
         LinearLayout driverBox = new LinearLayout(this);
         driverBox.setOrientation(LinearLayout.HORIZONTAL);
@@ -333,7 +333,7 @@ public class CustomerTripActivity extends Activity {
 
         Button backBtn = outlineButton("Kembali");
         card.addView(backBtn, new LinearLayout.LayoutParams(-1, dp(48)));
-        backBtn.setOnClickListener(v -> finish());
+        backBtn.setOnClickListener(v -> goToHome());
 
         progressBar = new ProgressBar(this);
         progressBar.setVisibility(View.GONE);
@@ -1066,20 +1066,29 @@ public class CustomerTripActivity extends Activity {
         } catch (Exception ignored) {}
     }
 
-    @Override
-    public void onBackPressed() {
-        // Saat layar trip dipulihkan sebagai root task setelah force-close, tombol kembali
-        // tetap membawa customer ke dashboard dan tidak langsung menutup aplikasi.
-        if (trackingOnly) {
-            finish();
-            return;
-        }
+    private void goToHome() {
+        // Buat ulang task dashboard secara eksplisit. Ini tetap bekerja ketika layar trip
+        // menjadi root activity setelah aplikasi dipulihkan atau dibuka dari deep link.
         try {
             Intent home = new Intent(this, CustomerDashboardActivity.class);
-            home.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+            home.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK
+                    | Intent.FLAG_ACTIVITY_CLEAR_TASK
+                    | Intent.FLAG_ACTIVITY_CLEAR_TOP);
             startActivity(home);
-        } catch (Exception ignored) { }
-        finish();
+            overridePendingTransition(0, 0);
+        } catch (Exception firstError) {
+            try {
+                Intent splash = new Intent(this, SplashActivity.class);
+                splash.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
+                startActivity(splash);
+            } catch (Exception ignored) { }
+        }
+        finishAffinity();
+    }
+
+    @Override
+    public void onBackPressed() {
+        goToHome();
     }
 
     @Override protected void onPause() {

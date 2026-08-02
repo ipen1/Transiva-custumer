@@ -54,10 +54,21 @@ public class SplashActivity extends Activity {
         if (routed || isFinishing()) return;
         routed = true;
         SessionManager session = new SessionManager(this);
-        if (session.isLoggedIn() && ActiveOrderRecovery.route(this)) return;
-        Intent intent = !session.isLoggedIn()
-                ? new Intent(this, LoginActivity.class)
-                : new Intent(this, PinActivity.class).putExtra("native_role", "customer");
+        if (!session.isLoggedIn()) {
+            openRoot(new Intent(this, LoginActivity.class));
+            return;
+        }
+
+        // SharedPreferences dapat tertinggal setelah order selesai. Karena itu,
+        // pastikan order benar-benar masih aktif di server sebelum membuka trip.
+        ActiveOrderRecovery.route(this, session, routedToTrip -> {
+            if (!routedToTrip && !isFinishing()) {
+                openRoot(new Intent(this, CustomerDashboardActivity.class));
+            }
+        });
+    }
+
+    private void openRoot(Intent intent) {
         intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
         startActivity(intent);
         finish();

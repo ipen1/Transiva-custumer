@@ -69,7 +69,7 @@ public class TransPickupActivity extends Activity {
 
     private EditText pickupAddressInput, destinationInput, itemNameInput, itemValueInput, receiverNameInput, receiverPhoneInput, noteInput;
     private TextView pickupCoordText, deliveryCoordText, priceText, distanceText, otpText;
-    private Button bikeBtn, carBtn, smallBtn, mediumBtn, bigBtn, cargoBtn, fragileYesBtn, fragileNoBtn, cashBtn, balanceBtn, calculateBtn, orderBtn;
+    private Button bikeBtn, smallBtn, mediumBtn, fragileYesBtn, fragileNoBtn, cashBtn, balanceBtn, calculateBtn, orderBtn;
 
     private String username = "User";
     private int userId = 0;
@@ -217,7 +217,7 @@ public class TransPickupActivity extends Activity {
         sheet.setBackground(roundStroke("#F7FAFF", "#C7DBF2", dp(24), 1));
         sheet.setElevation(dp(8));
 
-        FrameLayout.LayoutParams sheetLp = new FrameLayout.LayoutParams(-1, dp(300));
+        FrameLayout.LayoutParams sheetLp = new FrameLayout.LayoutParams(-1, dp(330));
         sheetLp.gravity = Gravity.BOTTOM;
         sheetLp.setMargins(dp(7), 0, dp(7), dp(6));
         page.addView(sheet, sheetLp);
@@ -232,7 +232,7 @@ public class TransPickupActivity extends Activity {
 
         root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
-        root.setPadding(dp(2), 0, dp(2), dp(18));
+        root.setPadding(dp(2), 0, dp(2), dp(8));
         scroll.addView(root, new ScrollView.LayoutParams(-1, -2));
     }
 
@@ -364,6 +364,8 @@ public class TransPickupActivity extends Activity {
     }
 
     private void buildForm() {
+        vehicleType = "bike";
+        if (!"medium".equals(packageSize)) packageSize = "small";
         root.removeAllViews();
 
         buildLocationCard();
@@ -404,65 +406,68 @@ public class TransPickupActivity extends Activity {
 
     private void buildItemCard() {
         LinearLayout card = card();
-        card.setPadding(dp(16), dp(14), dp(16), dp(14));
-        card.addView(text("Detail Barang", 17, "#0B3A78", true));
+        card.setPadding(dp(12), dp(10), dp(12), dp(10));
+        card.addView(text("Detail Barang", 15, "#0B3A78", true));
         itemNameInput = edit("Nama barang, contoh: Dokumen / paket baju");
-        addInner(card, itemNameInput, dp(10));
+        addInner(card, itemNameInput, dp(6));
         itemValueInput = edit("Nilai barang, contoh: 50000");
         itemValueInput.setInputType(android.text.InputType.TYPE_CLASS_NUMBER);
-        addInner(card, itemValueInput, dp(10));
+        addInner(card, itemValueInput, dp(6));
         receiverNameInput = edit("Nama penerima");
-        addInner(card, receiverNameInput, dp(10));
+        addInner(card, receiverNameInput, dp(6));
         receiverPhoneInput = edit("Nomor HP penerima");
         receiverPhoneInput.setInputType(android.text.InputType.TYPE_CLASS_PHONE);
-        addInner(card, receiverPhoneInput, dp(10));
+        addInner(card, receiverPhoneInput, dp(6));
         noteInput = edit("Catatan untuk driver");
-        noteInput.setSingleLine(false); noteInput.setMinLines(2);
-        addInner(card, noteInput, dp(10));
-        addWithMargin(card, 0, 0, 0, dp(14));
+        noteInput.setSingleLine(true); noteInput.setMinLines(1);
+        addInner(card, noteInput, dp(6));
+        addWithMargin(card, 0, 0, 0, dp(8));
     }
 
     private void buildOptionCard() {
         LinearLayout card = card();
-        card.setPadding(dp(16), dp(14), dp(16), dp(14));
-        card.addView(text("Ukuran Paket", 17, "#0B3A78", true));
-        LinearLayout row1 = row();
-        smallBtn = choiceButton("📄 Kecil\n< 2 kg", true);
-        mediumBtn = choiceButton("📦 Sedang\n2-5 kg", false);
-        addChoice(row1, smallBtn, mediumBtn);
-        card.addView(row1);
-        LinearLayout row2 = row();
-        bigBtn = choiceButton("🧳 Besar\n5-20 kg", false);
-        cargoBtn = choiceButton("🚚 Cargo\n>20 kg", false);
-        addChoice(row2, bigBtn, cargoBtn);
-        LinearLayout.LayoutParams r2lp = new LinearLayout.LayoutParams(-1, -2); r2lp.setMargins(0, dp(10), 0, 0);
-        card.addView(row2, r2lp);
+        card.setPadding(dp(12), dp(10), dp(12), dp(10));
+
+        LinearLayout titleRow = row();
+        titleRow.setGravity(Gravity.CENTER_VERTICAL);
+        TextView title = text("Ukuran Paket", 15, "#0B3A78", true);
+        titleRow.addView(title, new LinearLayout.LayoutParams(0, dp(34), 1f));
+        TextView motorOnly = text("🏍 Motor saja", 12, "#0B7CFF", true);
+        motorOnly.setGravity(Gravity.CENTER);
+        motorOnly.setBackground(roundStroke("#EAF4FF", "#B9DAFF", dp(14), 1));
+        titleRow.addView(motorOnly, new LinearLayout.LayoutParams(dp(112), dp(32)));
+        card.addView(titleRow);
+
+        LinearLayout sizeRow = row();
+        smallBtn = choiceButton("📄 Kecil  < 2 kg", true);
+        mediumBtn = choiceButton("📦 Sedang  2–5 kg", false);
+        addChoice(sizeRow, smallBtn, mediumBtn);
+        LinearLayout.LayoutParams sizeLp = new LinearLayout.LayoutParams(-1, -2);
+        sizeLp.setMargins(0, dp(6), 0, 0);
+        card.addView(sizeRow, sizeLp);
         smallBtn.setOnClickListener(v -> { packageSize = "small"; updateChoices(); });
         mediumBtn.setOnClickListener(v -> { packageSize = "medium"; updateChoices(); });
-        bigBtn.setOnClickListener(v -> { packageSize = "big"; updateChoices(); });
-        cargoBtn.setOnClickListener(v -> { packageSize = "cargo"; updateChoices(); });
 
-        TextView vehicleTitle = text("Kendaraan", 17, "#0B3A78", true); vehicleTitle.setPadding(0, dp(16), 0, 0); card.addView(vehicleTitle);
-        LinearLayout vrow = row();
-        bikeBtn = choiceButton("🏍️ Motor\nCepat", true);
-        carBtn = choiceButton("🚗 Mobil\nBesar", false);
-        addChoice(vrow, bikeBtn, carBtn);
-        LinearLayout.LayoutParams vlp = new LinearLayout.LayoutParams(-1, -2); vlp.setMargins(0, dp(10), 0, 0);
-        card.addView(vrow, vlp);
-        bikeBtn.setOnClickListener(v -> { vehicleType = "bike"; updateChoices(); });
-        carBtn.setOnClickListener(v -> { vehicleType = "car"; updateChoices(); });
-
-        TextView fragileTitle = text("Barang mudah pecah?", 15, "#0B3A78", true); fragileTitle.setPadding(0, dp(16), 0, 0); card.addView(fragileTitle);
-        LinearLayout frow = row();
+        LinearLayout fragileRow = row();
+        fragileRow.setGravity(Gravity.CENTER_VERTICAL);
+        TextView fragileTitle = text("Mudah pecah?", 13, "#0B3A78", true);
+        fragileRow.addView(fragileTitle, new LinearLayout.LayoutParams(0, dp(42), 0.7f));
         fragileNoBtn = choiceButton("Tidak", true);
         fragileYesBtn = choiceButton("Ya", false);
-        addChoice(frow, fragileNoBtn, fragileYesBtn);
-        LinearLayout.LayoutParams flp = new LinearLayout.LayoutParams(-1, -2); flp.setMargins(0, dp(10), 0, 0);
-        card.addView(frow, flp);
+        fragileRow.addView(fragileNoBtn, new LinearLayout.LayoutParams(0, dp(42), 0.65f));
+        LinearLayout.LayoutParams yesLp = new LinearLayout.LayoutParams(0, dp(42), 0.65f);
+        yesLp.setMargins(dp(6), 0, 0, 0);
+        fragileRow.addView(fragileYesBtn, yesLp);
+        LinearLayout.LayoutParams fragileLp = new LinearLayout.LayoutParams(-1, -2);
+        fragileLp.setMargins(0, dp(7), 0, 0);
+        card.addView(fragileRow, fragileLp);
         fragileNoBtn.setOnClickListener(v -> { fragile = false; updateChoices(); });
         fragileYesBtn.setOnClickListener(v -> { fragile = true; updateChoices(); });
 
-        addWithMargin(card, 0, 0, 0, dp(14));
+        // Kontrak TransSend saat ini motor-only.
+        bikeBtn = null;
+        vehicleType = "bike";
+        addWithMargin(card, 0, 0, 0, dp(8));
     }
 
     private void buildPaymentCard() {
@@ -477,7 +482,7 @@ public class TransPickupActivity extends Activity {
         card.addView(row, lp);
         cashBtn.setOnClickListener(v -> { paymentMethod = "cash"; updateChoices(); });
         balanceBtn.setOnClickListener(v -> { paymentMethod = "balance"; updateChoices(); });
-        addWithMargin(card, 0, 0, 0, dp(14));
+        addWithMargin(card, 0, 0, 0, dp(8));
     }
 
     private void buildSummaryCard() {
@@ -507,8 +512,8 @@ public class TransPickupActivity extends Activity {
     }
 
     private void updateChoices() {
-        setChoice(smallBtn, "small".equals(packageSize)); setChoice(mediumBtn, "medium".equals(packageSize)); setChoice(bigBtn, "big".equals(packageSize)); setChoice(cargoBtn, "cargo".equals(packageSize));
-        setChoice(bikeBtn, "bike".equals(vehicleType)); setChoice(carBtn, "car".equals(vehicleType));
+        setChoice(smallBtn, "small".equals(packageSize)); setChoice(mediumBtn, "medium".equals(packageSize));
+        setChoice(bikeBtn, true);
         setChoice(fragileNoBtn, !fragile); setChoice(fragileYesBtn, fragile);
         setChoice(cashBtn, "cash".equals(paymentMethod)); setChoice(balanceBtn, "balance".equals(paymentMethod));
         deliveryFee = 0; distanceKm = 0;

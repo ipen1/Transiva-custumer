@@ -187,22 +187,39 @@ public class TransPickupActivity extends Activity {
         mapModeText.setGravity(Gravity.END | Gravity.CENTER_VERTICAL);
         titleRow.addView(mapModeText, new LinearLayout.LayoutParams(0, -1, 1.25f));
 
-        // Alur seperti TransRide/TransCar: satu pin tengah, pickup lalu otomatis tujuan.
-        pickupMapBtn = null;
-        deliveryMapBtn = null;
+        // Pemilihan rute dibuat sama seperti TransRide/TransCar.
+        LinearLayout pointRow = new LinearLayout(this);
+        pointRow.setOrientation(LinearLayout.HORIZONTAL);
+        LinearLayout.LayoutParams pointRowLp = new LinearLayout.LayoutParams(-1, dp(52));
+        pointRowLp.setMargins(0, dp(5), 0, 0);
+        header.addView(pointRow, pointRowLp);
 
-        confirmPointBtn = primaryButton("Tetapkan titik jemput");
-        FrameLayout.LayoutParams confirmLp = new FrameLayout.LayoutParams(dp(176), dp(42));
-        confirmLp.gravity = Gravity.CENTER_HORIZONTAL | Gravity.TOP;
-        confirmLp.setMargins(0, dp(48), 0, 0);
-        page.addView(confirmPointBtn, confirmLp);
-        confirmPointBtn.setOnClickListener(v -> confirmMapPoint());
+        pickupMapBtn = compactMapButton("●  Jemput\nBelum dipilih", "#16A34A");
+        deliveryMapBtn = compactMapButton("●  Tujuan\nBelum dipilih", "#EF4444");
+        pickupMapBtn.setGravity(Gravity.START | Gravity.CENTER_VERTICAL);
+        deliveryMapBtn.setGravity(Gravity.START | Gravity.CENTER_VERTICAL);
+        pickupMapBtn.setPadding(dp(12), 0, dp(8), 0);
+        deliveryMapBtn.setPadding(dp(12), 0, dp(8), 0);
+
+        pointRow.addView(pickupMapBtn, new LinearLayout.LayoutParams(0, -1, 1));
+        LinearLayout.LayoutParams deliveryLp = new LinearLayout.LayoutParams(0, -1, 1);
+        deliveryLp.setMargins(dp(6), 0, 0, 0);
+        pointRow.addView(deliveryMapBtn, deliveryLp);
+
+        pickupMapBtn.setOnClickListener(v -> reopenPointSelection("pickup"));
+        deliveryMapBtn.setOnClickListener(v -> reopenPointSelection("delivery"));
+
+        // Klik tulisan/pin tengah langsung menetapkan titik, lalu otomatis lanjut ke tujuan.
+        mapView.setCenterActionListener(() -> {
+            if (validLocation()) createPickupOrder();
+            else confirmMapPoint();
+        });
 
         gpsMapBtn = outlineButton("⌖");
         gpsMapBtn.setTextSize(21);
         FrameLayout.LayoutParams gpsLp = new FrameLayout.LayoutParams(dp(46), dp(46));
         gpsLp.gravity = Gravity.END | Gravity.TOP;
-        gpsLp.setMargins(0, dp(96), dp(12), 0);
+        gpsLp.setMargins(0, dp(126), dp(12), 0);
         page.addView(gpsMapBtn, gpsLp);
         gpsMapBtn.setOnClickListener(v -> loadPickupLocation());
 
@@ -269,9 +286,6 @@ public class TransPickupActivity extends Activity {
         if (mapModeText != null) {
             mapModeText.setText(pickupMode ? "Geser pin untuk pickup" : "Geser pin untuk tujuan");
         }
-        if (confirmPointBtn != null) {
-            confirmPointBtn.setText(pickupMode ? "Pilih Pickup" : "Pilih Tujuan");
-        }
         if (pickupMapBtn != null) setChoice(pickupMapBtn, pickupMode);
         if (deliveryMapBtn != null) setChoice(deliveryMapBtn, !pickupMode);
 
@@ -280,6 +294,35 @@ public class TransPickupActivity extends Activity {
         if (mapReady && validCoordinate(lat, lng)) {
             mapView.moveTo(lat, lng, 17f);
         }
+    }
+
+    private void reopenPointSelection(String requestedMode) {
+        boolean pickupMode = !"delivery".equals(requestedMode);
+        if (mapView != null) {
+            mapView.showOrderAction(false, null);
+            if (pickupMode) mapView.clearPickup();
+            else mapView.clearDelivery();
+            mapView.clearRoute();
+        }
+
+        if (pickupMode) {
+            pickupLat = 0d;
+            pickupLng = 0d;
+            if (pickupMapBtn != null) pickupMapBtn.setText("●  Jemput\nBelum dipilih");
+            if (pickupCoordText != null) pickupCoordText.setText("📍 Geser peta lalu klik Jemput di lokasi ini");
+        } else {
+            deliveryLat = 0d;
+            deliveryLng = 0d;
+            if (deliveryMapBtn != null) deliveryMapBtn.setText("●  Tujuan\nBelum dipilih");
+            if (deliveryCoordText != null) deliveryCoordText.setText("📍 Geser peta lalu klik Antar ke lokasi ini");
+        }
+
+        deliveryFee = 0d;
+        distanceKm = 0d;
+        if (priceText != null) priceText.setText("Ongkir: hitung dulu");
+        if (distanceText != null) distanceText.setText("Jarak: -");
+        if (orderBtn != null) { orderBtn.setEnabled(false); orderBtn.setAlpha(0.55f); }
+        selectMapMode(pickupMode ? "pickup" : "delivery");
     }
 
     private void confirmMapPoint() {
@@ -295,6 +338,7 @@ public class TransPickupActivity extends Activity {
             if (pickupCoordText != null) {
                 pickupCoordText.setText("📍 " + formatCoordinate(pickupLat, pickupLng));
             }
+            if (pickupMapBtn != null) pickupMapBtn.setText("●  Jemput\n" + shortCoordinate(pickupLat, pickupLng));
             reverseGeocode(true, pickupLat, pickupLng);
             selectMapMode("delivery");
         } else {
@@ -304,11 +348,13 @@ public class TransPickupActivity extends Activity {
             if (deliveryCoordText != null) {
                 deliveryCoordText.setText("📍 " + formatCoordinate(deliveryLat, deliveryLng));
             }
+            if (deliveryMapBtn != null) deliveryMapBtn.setText("●  Tujuan\n" + shortCoordinate(deliveryLat, deliveryLng));
             reverseGeocode(false, deliveryLat, deliveryLng);
-            if (mapView != null) mapView.showCenterPin(false);
             if (validLocation()) {
                 drawPickupRoute();
                 calculateOngkir();
+                if (mapView != null) mapView.showOrderAction(true, "PESAN SEKARANG");
+                if (mapModeText != null) mapModeText.setText("Rute siap, tekan Pesan Sekarang");
             }
         }
         updateChoices();
@@ -335,6 +381,9 @@ public class TransPickupActivity extends Activity {
             mainHandler.post(() -> {
                 if (pickup && pickupAddressInput != null) pickupAddressInput.setText(finalAddress);
                 if (!pickup && destinationInput != null) destinationInput.setText(finalAddress);
+                String compact = finalAddress.length() > 24 ? finalAddress.substring(0, 24) + "…" : finalAddress;
+                if (pickup && pickupMapBtn != null) pickupMapBtn.setText("●  Jemput\n" + compact);
+                if (!pickup && deliveryMapBtn != null) deliveryMapBtn.setText("●  Tujuan\n" + compact);
             });
         }, "transpickup-reverse-geocode").start();
     }
@@ -355,6 +404,10 @@ public class TransPickupActivity extends Activity {
 
     private String formatCoordinate(double lat, double lng) {
         return String.format(Locale.US, "%.6f, %.6f", lat, lng);
+    }
+
+    private String shortCoordinate(double lat, double lng) {
+        return String.format(Locale.US, "%.4f, %.4f", lat, lng);
     }
 
     private boolean validCoordinate(double lat, double lng) {
@@ -382,6 +435,9 @@ public class TransPickupActivity extends Activity {
 
         pickupAddressInput = edit("Alamat penjemputan");
         pickupAddressInput.setText("Lokasi saya saat ini");
+        pickupAddressInput.setFocusable(false);
+        pickupAddressInput.setClickable(true);
+        pickupAddressInput.setOnClickListener(v -> reopenPointSelection("pickup"));
         addInner(card, pickupAddressInput, dp(8));
 
         pickupCoordText = text("📍 Geser peta dan tetapkan titik jemput", 11, "#64748B", false);
@@ -398,7 +454,8 @@ public class TransPickupActivity extends Activity {
         card.addView(deliveryCoordText);
 
         destinationInput.setFocusable(false);
-        destinationInput.setClickable(false);
+        destinationInput.setClickable(true);
+        destinationInput.setOnClickListener(v -> reopenPointSelection("delivery"));
         destinationInput.setHint("Alamat tujuan terisi otomatis dari pin peta");
 
         addWithMargin(card, 0, 0, 0, dp(10));
@@ -505,7 +562,7 @@ public class TransPickupActivity extends Activity {
         orderBtn.setEnabled(false); orderBtn.setAlpha(0.55f);
         card.addView(calculateBtn, new LinearLayout.LayoutParams(-1, dp(50)));
         LinearLayout.LayoutParams olp = new LinearLayout.LayoutParams(-1, dp(52)); olp.setMargins(0, dp(10), 0, 0);
-        card.addView(orderBtn, olp);
+        orderBtn.setVisibility(View.GONE);
         calculateBtn.setOnClickListener(v -> calculateOngkir());
         orderBtn.setOnClickListener(v -> createPickupOrder());
         addWithMargin(card, 0, 0, 0, dp(20));

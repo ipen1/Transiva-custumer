@@ -211,7 +211,10 @@ public class TransPickupActivity extends Activity {
 
         // Klik tulisan/pin tengah langsung menetapkan titik, lalu otomatis lanjut ke tujuan.
         mapView.setCenterActionListener(() -> {
-            if (validLocation()) createPickupOrder();
+            // Jangan memakai validLocation() untuk menentukan fungsi tombol.
+            // Saat tombol sudah berubah menjadi mode order, langsung proses order.
+            // Ini mencegah alert tujuan palsu walaupun tujuan sudah dipilih.
+            if ("order".equals(mapSelectionMode)) createPickupOrder();
             else confirmMapPoint();
         });
 
@@ -353,6 +356,7 @@ public class TransPickupActivity extends Activity {
             if (validLocation()) {
                 drawPickupRoute();
                 calculateOngkir();
+                mapSelectionMode = "order";
                 if (mapView != null) mapView.showOrderAction(true, "PESAN SEKARANG");
                 if (mapModeText != null) mapModeText.setText("Rute siap, tekan Pesan Sekarang");
             }
@@ -458,7 +462,11 @@ public class TransPickupActivity extends Activity {
         destinationInput.setOnClickListener(v -> reopenPointSelection("delivery"));
         destinationInput.setHint("Alamat tujuan terisi otomatis dari pin peta");
 
-        addWithMargin(card, 0, 0, 0, dp(10));
+        // Lokasi sudah ditampilkan pada kartu header peta. Card lama dipertahankan
+        // hanya sebagai penyimpan field internal agar proses order tetap kompatibel,
+        // tetapi tidak lagi ditampilkan kepada pengguna.
+        card.setVisibility(View.GONE);
+        addWithMargin(card, 0, 0, 0, 0);
     }
 
     private void buildItemCard() {
@@ -750,8 +758,14 @@ public class TransPickupActivity extends Activity {
     }
 
     private boolean validLocation() {
-        if (pickupLat == 0 || pickupLng == 0) { showInfo("Lokasi Jemput", "Titik jemput belum valid."); return false; }
-        if (deliveryLat == 0 || deliveryLng == 0) { showInfo("Lokasi Tujuan", "Cari titik tujuan terlebih dahulu."); return false; }
+        if (!validCoordinate(pickupLat, pickupLng)) {
+            showInfo("Lokasi Jemput", "Titik jemput belum valid.");
+            return false;
+        }
+        if (!validCoordinate(deliveryLat, deliveryLng)) {
+            showInfo("Lokasi Tujuan", "Titik tujuan belum valid. Pilih kembali tujuan pada peta.");
+            return false;
+        }
         return true;
     }
 

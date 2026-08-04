@@ -196,6 +196,7 @@ public final class TransivaGoogleMapView extends FrameLayout implements OnMapRea
 
     public void setSelectionMode(String mode) {
         selectionMode = "delivery".equals(mode) ? "delivery" : "pickup";
+        updateCenterActionPosition(false);
         setOrderFocus(false);
         if (centerPin != null) {
             boolean delivery = "delivery".equals(selectionMode);
@@ -220,6 +221,7 @@ public final class TransivaGoogleMapView extends FrameLayout implements OnMapRea
 
     public void showOrderAction(boolean show, String text) {
         selectionMode = show ? "order" : selectionMode;
+        updateCenterActionPosition(show);
         setOrderFocus(show);
         if (centerPin != null) centerPin.setVisibility(GONE);
         if (centerAction != null) {
@@ -229,6 +231,21 @@ public final class TransivaGoogleMapView extends FrameLayout implements OnMapRea
         }
     }
 
+
+    /**
+     * Label pickup/tujuan tetap berada di atas marka. Ketika berubah menjadi
+     * tombol order, margin dikosongkan sehingga tombol tepat di tengah peta.
+     */
+    private void updateCenterActionPosition(boolean orderMode) {
+        if (centerAction == null) return;
+        android.view.ViewGroup.LayoutParams rawParams = centerAction.getLayoutParams();
+        if (!(rawParams instanceof FrameLayout.LayoutParams)) return;
+
+        FrameLayout.LayoutParams params = (FrameLayout.LayoutParams) rawParams;
+        params.gravity = Gravity.CENTER;
+        params.bottomMargin = orderMode ? 0 : dp(54) + dp(34);
+        centerAction.setLayoutParams(params);
+    }
 
     private void setOrderFocus(boolean focused) {
         if (focusShade != null) {

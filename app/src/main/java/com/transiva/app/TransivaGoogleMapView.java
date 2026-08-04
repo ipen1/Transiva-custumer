@@ -64,6 +64,7 @@ public final class TransivaGoogleMapView extends FrameLayout implements OnMapRea
     private final List<Marker> driverMarkers = new ArrayList<>();
     private final ImageView centerPin;
     private final TextView centerAction;
+    private final android.view.View focusShade;
 
     private GoogleMap googleMap;
     private Listener listener;
@@ -91,6 +92,11 @@ public final class TransivaGoogleMapView extends FrameLayout implements OnMapRea
         addView(nativeMapView, new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT));
 
         if (mode == Mode.PICKER) {
+            focusShade = new android.view.View(context);
+            focusShade.setBackgroundColor(Color.argb(92, 0, 0, 0));
+            focusShade.setVisibility(GONE);
+            focusShade.setClickable(false);
+            addView(focusShade, new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT));
             centerPin = new ImageView(context);
             centerPin.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
             centerPin.setImageResource(R.drawable.map_pickup_pin);
@@ -123,6 +129,7 @@ public final class TransivaGoogleMapView extends FrameLayout implements OnMapRea
         } else {
             centerPin = null;
             centerAction = null;
+            focusShade = null;
         }
     }
 
@@ -189,6 +196,7 @@ public final class TransivaGoogleMapView extends FrameLayout implements OnMapRea
 
     public void setSelectionMode(String mode) {
         selectionMode = "delivery".equals(mode) ? "delivery" : "pickup";
+        setOrderFocus(false);
         if (centerPin != null) {
             boolean delivery = "delivery".equals(selectionMode);
             centerPin.setImageResource(delivery
@@ -212,11 +220,55 @@ public final class TransivaGoogleMapView extends FrameLayout implements OnMapRea
 
     public void showOrderAction(boolean show, String text) {
         selectionMode = show ? "order" : selectionMode;
+        setOrderFocus(show);
         if (centerPin != null) centerPin.setVisibility(GONE);
         if (centerAction != null) {
             centerAction.setText(text == null || text.trim().isEmpty() ? "PESAN SEKARANG" : text);
             centerAction.setBackground(actionBackground("#0B7CFF"));
             centerAction.setVisibility(show ? VISIBLE : GONE);
+        }
+    }
+
+
+    private void setOrderFocus(boolean focused) {
+        if (focusShade != null) {
+            focusShade.animate().cancel();
+            if (focused) {
+                focusShade.setAlpha(0f);
+                focusShade.setVisibility(VISIBLE);
+                focusShade.animate().alpha(1f).setDuration(180L).start();
+            } else {
+                focusShade.setVisibility(GONE);
+                focusShade.setAlpha(1f);
+            }
+        }
+        if (centerAction != null) {
+            centerAction.setElevation(dp(focused ? 12 : 5));
+            centerAction.setScaleX(focused ? 1.08f : 1f);
+            centerAction.setScaleY(focused ? 1.08f : 1f);
+        }
+    }
+
+    public void clearPickup() {
+        if (pickupMarker != null) {
+            pickupMarker.remove();
+            pickupMarker = null;
+        }
+        clearRoute();
+    }
+
+    public void clearDelivery() {
+        if (deliveryMarker != null) {
+            deliveryMarker.remove();
+            deliveryMarker = null;
+        }
+        clearRoute();
+    }
+
+    public void clearRoute() {
+        if (routePolyline != null) {
+            routePolyline.remove();
+            routePolyline = null;
         }
     }
 

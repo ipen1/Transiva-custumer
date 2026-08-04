@@ -486,9 +486,11 @@ public class PassengerCarActivity extends Activity {
         if ("pickup".equals(requestedMode)) {
             pickupLat = 0;
             pickupLng = 0;
+            if (mapView != null) mapView.clearPickup();
         } else {
             deliveryLat = 0;
             deliveryLng = 0;
+            if (mapView != null) mapView.clearDelivery();
         }
         updateModeUI();
     }
@@ -1032,11 +1034,11 @@ public class PassengerCarActivity extends Activity {
                     if (driverAvailabilityText != null) {
                         driverAvailabilityText.setVisibility((noDriversOnline || allDriversBusy) ? View.VISIBLE : View.GONE);
                         if (noDriversOnline) {
-                            driverAvailabilityText.setText("Driver sedang bersiap online");
+                            driverAvailabilityText.setText("Semua driver menjalankan tugas, orderan tetap kami terima");
                             driverAvailabilityText.setTextColor(Color.parseColor("#B45309"));
                             driverAvailabilityText.setBackground(roundStroke("#FFF7ED", "#FED7AA", dp(10), 1));
                         } else if (allDriversBusy) {
-                            driverAvailabilityText.setText("Semua Driver Sedang Menjalani Orderan, Order sekarang pesanan langsung masuk antrian");
+                            driverAvailabilityText.setText("Semua driver menjalankan tugas, orderan tetap kami terima");
                             driverAvailabilityText.setTextColor(Color.parseColor("#1D4ED8"));
                             driverAvailabilityText.setBackground(roundStroke("#EFF6FF", "#BFDBFE", dp(10), 1));
                         }

@@ -287,6 +287,10 @@ public class TransRideActivity extends Activity {
                 centerLat = lat; centerLng = lng; pickLat = lat; pickLng = lng;
             }
         });
+        mapView.setCenterActionListener(() -> {
+            if (validCoord(pickupLat, pickupLng) && validCoord(deliveryLat, deliveryLng)) createOrder();
+            else setPointFromCenter();
+        });
 
         gpsBtn = smallButton("⌖", "#FFFFFF", "#0B7CFF", "#9DCAFF");
         gpsBtn.setTextSize(18);
@@ -384,10 +388,9 @@ public class TransRideActivity extends Activity {
         paymentSummaryText = text("", 8, "#64748B", false);
         paymentSummaryText.setVisibility(View.GONE);
 
-        orderBtn = smallButton("🏍  PESAN SEKARANG", "#0B7CFF", "#FFFFFF", "#0B7CFF");
-        orderBtn.setTextSize(13);
-        orderBtn.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
-        bottomCard.addView(orderBtn, new LinearLayout.LayoutParams(-1, dp(48)));
+        // Tombol order lama di bawah dipertahankan sebagai pengendali internal, tetapi tidak ditampilkan.
+        orderBtn = smallButton("PESAN SEKARANG", "#0B7CFF", "#FFFFFF", "#0B7CFF");
+        orderBtn.setVisibility(View.GONE);
 
         progressBar = new ProgressBar(this);
         progressBar.setVisibility(View.GONE);
@@ -477,19 +480,17 @@ public class TransRideActivity extends Activity {
         useLinkBtn.setOnClickListener(v -> useGoogleMapLink());
     }
 
-    /**
-     * Klik pertama pada tombol yang tidak aktif hanya mengganti mode marker center.
-     * Klik kedua pada tombol yang sudah aktif menetapkan titik di posisi tengah peta.
-     * Dengan pola ini pengguna selalu dapat kembali memilih ulang Jemput atau Tujuan.
-     */
+    /** Tombol ringkasan di atas mengaktifkan pemilihan ulang titik terkait. */
     private void handlePointButtonClick(String requestedMode) {
-        if (!requestedMode.equals(mode)) {
-            mode = requestedMode;
-            updateModeUI();
-            return;
+        mode = requestedMode;
+        if ("pickup".equals(requestedMode)) {
+            pickupLat = 0;
+            pickupLng = 0;
+        } else {
+            deliveryLat = 0;
+            deliveryLng = 0;
         }
-
-        setPointFromCenter();
+        updateModeUI();
     }
 
     private String mapHtml() {
@@ -604,9 +605,7 @@ public class TransRideActivity extends Activity {
         }
 
         updateModeUI();
-        if ("delivery".equals(mode) && validCoord(deliveryLat, deliveryLng) && mapView != null) {
-            mapView.showCenterPin(false);
-        }
+
     }
 
     private void goToMyLocation() {
@@ -1535,17 +1534,22 @@ public class TransRideActivity extends Activity {
     private void updateModeUI() {
         boolean pickupMode = "pickup".equals(mode);
 
+        boolean routeComplete = validCoord(pickupLat, pickupLng) && validCoord(deliveryLat, deliveryLng);
         modeText.setText(
-                pickupMode
-                        ? "Geser peta lalu tekan Jemput"
-                        : "Geser peta lalu tekan Tujuan"
+                routeComplete
+                        ? "Rute siap, tekan Pesan Sekarang"
+                        : (pickupMode ? "Geser peta lalu klik marka Jemput" : "Geser peta lalu klik marka Tujuan")
         );
 
         pickupBtn.setAlpha(pickupMode ? 1f : .80f);
         deliveryBtn.setAlpha(pickupMode ? .80f : 1f);
         if (mapView != null) {
-            mapView.setSelectionMode(pickupMode ? "pickup" : "delivery");
-            mapView.showCenterPin(true);
+            if (routeComplete) {
+                mapView.showOrderAction(true, "PESAN SEKARANG");
+            } else {
+                mapView.setSelectionMode(pickupMode ? "pickup" : "delivery");
+                mapView.showCenterPin(true);
+            }
         }
     }
 

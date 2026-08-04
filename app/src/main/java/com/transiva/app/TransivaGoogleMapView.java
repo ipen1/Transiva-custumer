@@ -9,6 +9,9 @@ import android.os.Bundle;
 import android.view.Gravity;
 import android.widget.FrameLayout;
 import android.widget.ImageView;
+import android.widget.TextView;
+import android.graphics.Typeface;
+import android.graphics.drawable.GradientDrawable;
 
 import com.google.android.gms.maps.CameraUpdateFactory;
 import com.google.android.gms.maps.GoogleMap;
@@ -49,6 +52,10 @@ public final class TransivaGoogleMapView extends FrameLayout implements OnMapRea
         void onGestureEnd();
     }
 
+    public interface CenterActionListener {
+        void onCenterAction();
+    }
+
     public enum Mode { PICKER, TRIP }
 
     private final MapView nativeMapView;
@@ -56,10 +63,12 @@ public final class TransivaGoogleMapView extends FrameLayout implements OnMapRea
     private final List<Marker> placeMarkers = new ArrayList<>();
     private final List<Marker> driverMarkers = new ArrayList<>();
     private final ImageView centerPin;
+    private final TextView centerAction;
 
     private GoogleMap googleMap;
     private Listener listener;
     private GestureListener gestureListener;
+    private CenterActionListener centerActionListener;
     private Marker pickupMarker;
     private Marker deliveryMarker;
     private Marker tripDriverMarker;
@@ -88,16 +97,41 @@ public final class TransivaGoogleMapView extends FrameLayout implements OnMapRea
             int w = dp(42), h = dp(54);
             LayoutParams lp = new LayoutParams(w, h);
             lp.gravity = Gravity.CENTER;
-            // Pin tip points to the exact camera center.
+            // Ukuran dan posisi marka lama dipertahankan.
             lp.bottomMargin = h / 2;
             addView(centerPin, lp);
+
+            centerAction = new TextView(context);
+            centerAction.setText("Jemput di lokasi ini");
+            centerAction.setTextColor(Color.WHITE);
+            centerAction.setTextSize(12);
+            centerAction.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+            centerAction.setGravity(Gravity.CENTER);
+            centerAction.setPadding(dp(14), dp(8), dp(14), dp(8));
+            centerAction.setBackground(actionBackground("#16A34A"));
+            centerAction.setElevation(dp(5));
+            centerAction.setOnClickListener(v -> {
+                if (centerActionListener != null) centerActionListener.onCenterAction();
+            });
+            centerPin.setOnClickListener(v -> {
+                if (centerActionListener != null) centerActionListener.onCenterAction();
+            });
+            LayoutParams actionLp = new LayoutParams(LayoutParams.WRAP_CONTENT, dp(38));
+            actionLp.gravity = Gravity.CENTER;
+            actionLp.bottomMargin = h + dp(34);
+            addView(centerAction, actionLp);
         } else {
             centerPin = null;
+            centerAction = null;
         }
     }
 
     public void setGestureListener(GestureListener listener) {
         this.gestureListener = listener;
+    }
+
+    public void setCenterActionListener(CenterActionListener listener) {
+        this.centerActionListener = listener;
     }
 
     public void initialize(Bundle state, Listener listener) {
@@ -156,8 +190,13 @@ public final class TransivaGoogleMapView extends FrameLayout implements OnMapRea
     public void setSelectionMode(String mode) {
         selectionMode = "delivery".equals(mode) ? "delivery" : "pickup";
         if (centerPin != null) {
-            centerPin.setImageResource("delivery".equals(selectionMode)
+            boolean delivery = "delivery".equals(selectionMode);
+            centerPin.setImageResource(delivery
                     ? R.drawable.map_destination_pin : R.drawable.map_pickup_pin);
+            if (centerAction != null) {
+                centerAction.setText(delivery ? "Antar ke lokasi ini" : "Jemput di lokasi ini");
+                centerAction.setBackground(actionBackground(delivery ? "#EF4444" : "#16A34A"));
+            }
         }
     }
 
@@ -166,6 +205,27 @@ public final class TransivaGoogleMapView extends FrameLayout implements OnMapRea
         if (centerPin != null) {
             centerPin.setVisibility(show ? VISIBLE : GONE);
         }
+        if (centerAction != null && !"order".equals(selectionMode)) {
+            centerAction.setVisibility(show ? VISIBLE : GONE);
+        }
+    }
+
+    public void showOrderAction(boolean show, String text) {
+        selectionMode = show ? "order" : selectionMode;
+        if (centerPin != null) centerPin.setVisibility(GONE);
+        if (centerAction != null) {
+            centerAction.setText(text == null || text.trim().isEmpty() ? "PESAN SEKARANG" : text);
+            centerAction.setBackground(actionBackground("#0B7CFF"));
+            centerAction.setVisibility(show ? VISIBLE : GONE);
+        }
+    }
+
+    private GradientDrawable actionBackground(String color) {
+        GradientDrawable d = new GradientDrawable();
+        d.setColor(Color.parseColor(color));
+        d.setCornerRadius(dp(19));
+        d.setStroke(dp(1), Color.argb(70, 255, 255, 255));
+        return d;
     }
 
     public LatLng getCenter() {

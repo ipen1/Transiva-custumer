@@ -12,7 +12,7 @@ public final class OrderStatusPresentation {
             case "pending": return isFood(t) ? "Menunggu Merchant" : (isCar(t) ? "Menunggu Driver Mobil" : "Menunggu Driver");
             case "merchant_accepted": return "Diterima Merchant";
             case "merchant_rejected": return "Ditolak Merchant";
-            case "taken": return "Driver Menuju Pickup";
+            case "taken": case "accepted": case "driver_accepted": case "assigned": case "taken_by_driver": return "Driver Menuju Pickup";
             case "arrived_pickup": return isFood(t) ? "Driver Tiba di Restoran" : "Driver Tiba di Pickup";
             case "on_delivery": return isFood(t) ? "Menuju Lokasi Customer" : "Menuju Lokasi Tujuan";
             case "arrived_delivery": return isFood(t) ? "Driver Tiba di Customer" : "Driver Tiba di Tujuan";
@@ -31,7 +31,7 @@ public final class OrderStatusPresentation {
             case "pending": return isFood(t)?"Menunggu merchant mengonfirmasi pesanan":(isCar(t)?"Menunggu driver mobil menerima order":"Menunggu driver menerima order");
             case "merchant_accepted": return "Merchant sedang menyiapkan pesanan dan menunggu driver";
             case "merchant_rejected": return "Merchant menolak pesanan";
-            case "taken": return isFood(t)?d+" sedang menuju restoran":d+" sedang menuju lokasi pickup";
+            case "taken": case "accepted": case "driver_accepted": case "assigned": case "taken_by_driver": return isFood(t)?d+" sedang menuju restoran":d+" sedang menuju lokasi pickup";
             case "arrived_pickup": return isFood(t)?d+" sudah tiba di restoran":d+" sudah tiba di lokasi pickup";
             case "on_delivery": return isFood(t)?d+" sedang mengantar pesanan ke customer":d+" sedang menuju lokasi tujuan";
             case "arrived_delivery": return isFood(t)?d+" sudah tiba di lokasi customer":d+" sudah tiba di lokasi tujuan";

@@ -3,6 +3,9 @@ package com.transiva.app;
 import android.app.Activity;
 import android.app.AlertDialog;
 import android.content.Intent;
+import android.content.ClipData;
+import android.content.ClipboardManager;
+import android.content.Context;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
@@ -78,6 +81,23 @@ public class CustomerHistoryActivity extends Activity {
     private String selectedService = "all";
     private String searchQuery = "";
     private boolean loading;
+    private boolean activityVisible;
+    private static final long REALTIME_REFRESH_MS = 5000L;
+
+    private final Runnable realtimeRefresh = new Runnable() {
+        @Override
+        public void run() {
+            if (!activityVisible) {
+                return;
+            }
+
+            if (!loading && listBox != null) {
+                loadHistory(true);
+            }
+
+            mainHandler.postDelayed(this, REALTIME_REFRESH_MS);
+        }
+    };
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -101,10 +121,29 @@ public class CustomerHistoryActivity extends Activity {
     protected void onResume() {
         super.onResume();
         CustomerAppSettings.apply(this);
+        activityVisible = true;
+
+        mainHandler.removeCallbacks(realtimeRefresh);
 
         if (!loading && listBox != null) {
-            loadHistory();
+            loadHistory(true);
         }
+
+        mainHandler.postDelayed(realtimeRefresh, REALTIME_REFRESH_MS);
+    }
+
+    @Override
+    protected void onPause() {
+        activityVisible = false;
+        mainHandler.removeCallbacks(realtimeRefresh);
+        super.onPause();
+    }
+
+    @Override
+    protected void onDestroy() {
+        activityVisible = false;
+        mainHandler.removeCallbacksAndMessages(null);
+        super.onDestroy();
     }
 
     private void loadSession() {
@@ -1132,6 +1171,49 @@ public class CustomerHistoryActivity extends Activity {
 
         card.addView(top);
 
+        // Khusus TransSend: OTP ditampilkan kepada customer, bukan tombol konfirmasi terima.
+        String deliveryOtp = order.optString("delivery_otp", "").trim();
+        if (isPickupOrder(order) && isActiveStatus(status) && !deliveryOtp.isEmpty()) {
+            LinearLayout otpBox = new LinearLayout(this);
+            otpBox.setOrientation(LinearLayout.VERTICAL);
+            otpBox.setPadding(dp(13), dp(10), dp(13), dp(10));
+            otpBox.setBackground(roundStroke("#EFF8FF", "#79BFFF", 14, 1));
+
+            otpBox.addView(text("Kode OTP TransSend", 10, "#52708F", true));
+
+            LinearLayout otpRow = new LinearLayout(this);
+            otpRow.setGravity(Gravity.CENTER_VERTICAL);
+
+            TextView otpValue = text(deliveryOtp, 22, "#0B5EB7", true);
+            otpValue.setLetterSpacing(0.12f);
+            otpValue.setTextIsSelectable(true);
+            otpRow.addView(otpValue, new LinearLayout.LayoutParams(0, -2, 1));
+
+            Button copyOtp = outlineButton("Salin");
+            copyOtp.setOnClickListener(view -> copyOtpToClipboard(deliveryOtp));
+            LinearLayout.LayoutParams copyLp = new LinearLayout.LayoutParams(dp(82), dp(38));
+            copyLp.setMargins(dp(8), 0, 0, 0);
+            otpRow.addView(copyOtp, copyLp);
+
+            LinearLayout.LayoutParams otpRowLp = new LinearLayout.LayoutParams(-1, -2);
+            otpRowLp.setMargins(0, dp(3), 0, 0);
+            otpBox.addView(otpRow, otpRowLp);
+
+            TextView otpHint = text(
+                    "Berikan kode ini kepada driver setelah paket benar-benar Anda terima.",
+                    10,
+                    "#64748B",
+                    false
+            );
+            LinearLayout.LayoutParams hintLp = new LinearLayout.LayoutParams(-1, -2);
+            hintLp.setMargins(0, dp(4), 0, 0);
+            otpBox.addView(otpHint, hintLp);
+
+            LinearLayout.LayoutParams otpLp = new LinearLayout.LayoutParams(-1, -2);
+            otpLp.setMargins(0, dp(10), 0, 0);
+            card.addView(otpBox, otpLp);
+        }
+
         String mainLine = orderMainLine(order);
 
         if (!mainLine.isEmpty()) {
@@ -1312,7 +1394,9 @@ public class CustomerHistoryActivity extends Activity {
         if (isActiveStatus(status)) {
             boolean customerReceived = order.optInt("customer_received", 0) == 1;
 
-            if ("arrived_delivery".equals(status) && !customerReceived) {
+            if ("arrived_delivery".equals(status)
+                    && !customerReceived
+                    && supportsReceiveButton(order)) {
                 Button receive = primaryButton("Terima Pesanan");
 
                 receive.setOnClickListener(
@@ -1703,6 +1787,10 @@ public class CustomerHistoryActivity extends Activity {
     }
 
     private void loadHistory() {
+        loadHistory(false);
+    }
+
+    private void loadHistory(boolean silent) {
         if (loading) {
             return;
         }
@@ -1716,8 +1804,10 @@ public class CustomerHistoryActivity extends Activity {
         }
 
         loading = true;
-        progressBar.setVisibility(View.VISIBLE);
-        renderOrders();
+        if (!silent) {
+            progressBar.setVisibility(View.VISIBLE);
+            renderOrders();
+        }
 
         new Thread(() -> {
             try {
@@ -1779,9 +1869,11 @@ public class CustomerHistoryActivity extends Activity {
 
                     renderOrders();
 
-                    toast(
-                            "Gagal memuat aktivitas. Periksa koneksi."
-                    );
+                    if (!silent) {
+                        toast(
+                                "Gagal memuat aktivitas. Periksa koneksi."
+                        );
+                    }
                 });
             }
         }).start();
@@ -2431,6 +2523,44 @@ public class CustomerHistoryActivity extends Activity {
                 order.optString("description"),
                 ""
         );
+    }
+
+    private boolean isPickupOrder(JSONObject order) {
+        String type = serviceType(order).toLowerCase(Locale.ROOT);
+        String source = order.optString("source", "").toLowerCase(Locale.ROOT);
+        String table = order.optString("_transiva_table", "").toLowerCase(Locale.ROOT);
+
+        return type.contains("pickup")
+                || type.contains("send")
+                || source.contains("pickup_orders")
+                || table.contains("pickup_orders");
+    }
+
+    private boolean supportsReceiveButton(JSONObject order) {
+        if (isPickupOrder(order)) {
+            return false;
+        }
+
+        String type = serviceType(order).toLowerCase(Locale.ROOT);
+        return type.contains("ride")
+                || type.contains("car")
+                || type.contains("mobil")
+                || type.contains("food");
+    }
+
+    private void copyOtpToClipboard(String otp) {
+        try {
+            ClipboardManager clipboard = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
+            if (clipboard == null) {
+                toast("Tidak dapat mengakses clipboard.");
+                return;
+            }
+
+            clipboard.setPrimaryClip(ClipData.newPlainText("OTP TransSend", otp));
+            toast("Kode OTP berhasil disalin.");
+        } catch (Exception ignored) {
+            toast("Gagal menyalin kode OTP.");
+        }
     }
 
     private String shortText(String value) {

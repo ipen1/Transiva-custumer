@@ -158,6 +158,21 @@ public class CustomerOrderDetailActivity extends Activity {
         routePanel.addView(infoRow("Tujuan", first(order.optString("delivery_address"), order.optString("to_address"), order.optString("destination"), "-"), "🏁"));
         routePanel.addView(divider());
         routePanel.addView(infoRow("Pembayaran", paymentLabel(order.optString("payment_method")), "💳"));
+
+        String deliveryOtp = order.optString("delivery_otp", "").trim();
+        if (isPickupOrder() && !isFinishedStatus(statusRaw) && !deliveryOtp.isEmpty()) {
+            routePanel.addView(divider());
+            routePanel.addView(infoRow("Kode OTP TransSend", deliveryOtp, "🔐"));
+
+            TextView otpHint = text(
+                    "Berikan kode OTP kepada driver hanya setelah paket benar-benar Anda terima.",
+                    12,
+                    Color.parseColor("#52667D"),
+                    false
+            );
+            otpHint.setPadding(dp(14), dp(10), dp(14), 0);
+            routePanel.addView(otpHint);
+        }
         route.addView(routePanel);
 
         LinearLayout totalBox = new LinearLayout(this);
@@ -415,6 +430,22 @@ public class CustomerOrderDetailActivity extends Activity {
     private String priceStatus(String s) { if ("pending".equals(s)) return "Menunggu konfirmasi Anda"; if ("approved".equals(s)) return "Disetujui"; if ("rejected".equals(s)) return "Ditolak"; return "Tidak ada pengajuan"; }
     private String prettyStatus(String s) { s = first(s, "-").replace('_', ' '); StringBuilder b = new StringBuilder(); for (String p : s.split(" ")) { if (p.isEmpty()) continue; if (b.length() > 0) b.append(' '); b.append(Character.toUpperCase(p.charAt(0))).append(p.substring(1)); } return b.toString(); }
     private boolean isFinishedStatus(String s) { return "completed".equals(s) || "finished".equals(s) || "done".equals(s) || "delivered".equals(s); }
+    private boolean isPickupOrder() {
+        String service = first(
+                order.optString("service_name"),
+                order.optString("service_type"),
+                order.optString("order_type"),
+                order.optString("service"),
+                ""
+        ).toLowerCase(Locale.US);
+        String source = order.optString("source", "").toLowerCase(Locale.US);
+        String table = order.optString("_transiva_table", "").toLowerCase(Locale.US);
+        return service.contains("pickup")
+                || service.contains("send")
+                || source.contains("pickup_orders")
+                || table.contains("pickup_orders");
+    }
+
     private String serviceIcon(String s) { String v = s.toLowerCase(Locale.US); if (v.contains("food")) return "🍱"; if (v.contains("car")) return "🚘"; if (v.contains("ride") || v.contains("bike")) return "🏍️"; if (v.contains("send") || v.contains("pickup")) return "📦"; return "🧭"; }
     private int statusTextColor(String s) { if (isFinishedStatus(s)) return Color.parseColor("#047857"); if (s.contains("cancel")) return Color.parseColor("#B91C1C"); if (s.contains("arrived")) return Color.parseColor("#075985"); return Color.parseColor("#9A6700"); }
     private String statusBackground(String s) { if (isFinishedStatus(s)) return "#D1FAE5"; if (s.contains("cancel")) return "#FEE2E2"; if (s.contains("arrived")) return "#E0F2FE"; return "#FFF4D6"; }

@@ -1130,6 +1130,34 @@ public class CustomerHistoryActivity extends Activity {
 
         card.addView(top);
 
+        // OTP TransSend hanya ditampilkan kepada customer selama order masih aktif.
+        String deliveryOtp = order.optString("delivery_otp", "").trim();
+        if (isPickupOrder(order) && isActiveStatus(status) && !deliveryOtp.isEmpty()) {
+            LinearLayout otpBox = new LinearLayout(this);
+            otpBox.setOrientation(LinearLayout.VERTICAL);
+            otpBox.setPadding(dp(13), dp(10), dp(13), dp(10));
+            otpBox.setBackground(roundStroke("#EFF8FF", "#79BFFF", 14, 1));
+
+            TextView otpTitle = text("Kode OTP TransSend", 10, "#52708F", true);
+            otpBox.addView(otpTitle);
+
+            TextView otpValue = text(deliveryOtp, 22, "#0B5EB7", true);
+            otpValue.setLetterSpacing(0.12f);
+            otpValue.setTextIsSelectable(true);
+            LinearLayout.LayoutParams otpValueLp = new LinearLayout.LayoutParams(-1, -2);
+            otpValueLp.setMargins(0, dp(2), 0, 0);
+            otpBox.addView(otpValue, otpValueLp);
+
+            TextView otpHint = text("Berikan kode ini kepada driver saat paket sudah diterima.", 10, "#64748B", false);
+            LinearLayout.LayoutParams otpHintLp = new LinearLayout.LayoutParams(-1, -2);
+            otpHintLp.setMargins(0, dp(3), 0, 0);
+            otpBox.addView(otpHint, otpHintLp);
+
+            LinearLayout.LayoutParams otpLp = new LinearLayout.LayoutParams(-1, -2);
+            otpLp.setMargins(0, dp(10), 0, 0);
+            card.addView(otpBox, otpLp);
+        }
+
         String mainLine = orderMainLine(order);
 
         if (!mainLine.isEmpty()) {
@@ -2284,6 +2312,16 @@ public class CustomerHistoryActivity extends Activity {
                 order.optString("description"),
                 ""
         );
+    }
+
+    private boolean isPickupOrder(JSONObject order) {
+        String type = serviceType(order).toLowerCase(Locale.ROOT);
+        String source = order.optString("source", "").toLowerCase(Locale.ROOT);
+        String table = order.optString("_transiva_table", "").toLowerCase(Locale.ROOT);
+        return type.contains("pickup")
+                || type.contains("send")
+                || source.contains("pickup_orders")
+                || table.contains("pickup_orders");
     }
 
     private String shortText(String value) {

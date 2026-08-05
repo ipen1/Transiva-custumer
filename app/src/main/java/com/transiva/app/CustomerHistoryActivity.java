@@ -32,6 +32,7 @@ import org.json.JSONObject;
 import java.io.BufferedReader;
 import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.text.NumberFormat;
@@ -47,6 +48,7 @@ public class CustomerHistoryActivity extends Activity {
             "https://transiva.my.id/";
 
     private static final int TIMEOUT_MS = 20000;
+    private static final String ACTION_URL = BASE_URL + "server/customer_order_action.php";
 
     private static final String TAB_ACTIVE = "active";
     private static final String TAB_HISTORY = "history";
@@ -1130,34 +1132,6 @@ public class CustomerHistoryActivity extends Activity {
 
         card.addView(top);
 
-        // OTP TransSend hanya ditampilkan kepada customer selama order masih aktif.
-        String deliveryOtp = order.optString("delivery_otp", "").trim();
-        if (isPickupOrder(order) && isActiveStatus(status) && !deliveryOtp.isEmpty()) {
-            LinearLayout otpBox = new LinearLayout(this);
-            otpBox.setOrientation(LinearLayout.VERTICAL);
-            otpBox.setPadding(dp(13), dp(10), dp(13), dp(10));
-            otpBox.setBackground(roundStroke("#EFF8FF", "#79BFFF", 14, 1));
-
-            TextView otpTitle = text("Kode OTP TransSend", 10, "#52708F", true);
-            otpBox.addView(otpTitle);
-
-            TextView otpValue = text(deliveryOtp, 22, "#0B5EB7", true);
-            otpValue.setLetterSpacing(0.12f);
-            otpValue.setTextIsSelectable(true);
-            LinearLayout.LayoutParams otpValueLp = new LinearLayout.LayoutParams(-1, -2);
-            otpValueLp.setMargins(0, dp(2), 0, 0);
-            otpBox.addView(otpValue, otpValueLp);
-
-            TextView otpHint = text("Berikan kode ini kepada driver saat paket sudah diterima.", 10, "#64748B", false);
-            LinearLayout.LayoutParams otpHintLp = new LinearLayout.LayoutParams(-1, -2);
-            otpHintLp.setMargins(0, dp(3), 0, 0);
-            otpBox.addView(otpHint, otpHintLp);
-
-            LinearLayout.LayoutParams otpLp = new LinearLayout.LayoutParams(-1, -2);
-            otpLp.setMargins(0, dp(10), 0, 0);
-            card.addView(otpBox, otpLp);
-        }
-
         String mainLine = orderMainLine(order);
 
         if (!mainLine.isEmpty()) {
@@ -1336,7 +1310,32 @@ public class CustomerHistoryActivity extends Activity {
         );
 
         if (isActiveStatus(status)) {
-            if (canCustomerCancel(status)) {
+            boolean customerReceived = order.optInt("customer_received", 0) == 1;
+
+            if ("arrived_delivery".equals(status) && !customerReceived) {
+                Button receive = primaryButton("Terima Pesanan");
+
+                receive.setOnClickListener(
+                        view -> confirmReceivedFromActivity(order)
+                );
+
+                LinearLayout.LayoutParams receiveLp =
+                        new LinearLayout.LayoutParams(
+                                0,
+                                dp(42),
+                                1
+                        );
+
+                receiveLp.setMargins(
+                        dp(8),
+                        0,
+                        0,
+                        0
+                );
+
+                actions.addView(receive, receiveLp);
+
+            } else if (canCustomerCancel(status)) {
                 Button cancel =
                         dangerButton("Batalkan");
 
@@ -1413,6 +1412,126 @@ public class CustomerHistoryActivity extends Activity {
         card.addView(actions);
 
         return card;
+    }
+
+    private void confirmReceivedFromActivity(JSONObject order) {
+        new AlertDialog.Builder(this)
+                .setTitle("Terima pesanan ini?")
+                .setMessage("Pastikan pesanan sudah Anda terima dengan baik sebelum melakukan konfirmasi.")
+                .setNegativeButton("Batal", null)
+                .setPositiveButton("Ya, sudah diterima", (dialog, which) -> sendReceivedConfirmation(order))
+                .show();
+    }
+
+    private void sendReceivedConfirmation(JSONObject order) {
+        if (loading) {
+            return;
+        }
+
+        loading = true;
+        progressBar.setVisibility(View.VISIBLE);
+
+        new Thread(() -> {
+            try {
+                JSONObject payload = new JSONObject();
+                payload.put(
+                        "order_id",
+                        first(order.optString("order_id"), order.optString("id"))
+                );
+                payload.put(
+                        "source",
+                        order.optString("source", "").contains("pickup")
+                                ? "pickup_orders"
+                                : "orders"
+                );
+                payload.put("action", "confirm_received");
+
+                JSONObject response = postJson(ACTION_URL, payload);
+                boolean success = response.optBoolean("success", false);
+                String message = first(
+                        response.optString("message"),
+                        success ? "Pesanan berhasil dikonfirmasi diterima." : "Konfirmasi gagal."
+                );
+
+                mainHandler.post(() -> {
+                    loading = false;
+                    progressBar.setVisibility(View.GONE);
+
+                    if (success) {
+                        try {
+                            order.put("customer_received", 1);
+                        } catch (Exception ignored) {
+                        }
+                        renderOrders();
+                    }
+
+                    new AlertDialog.Builder(this)
+                            .setTitle(success ? "Berhasil" : "Gagal")
+                            .setMessage(message)
+                            .setPositiveButton("OK", null)
+                            .show();
+                });
+
+            } catch (Exception error) {
+                mainHandler.post(() -> {
+                    loading = false;
+                    progressBar.setVisibility(View.GONE);
+
+                    new AlertDialog.Builder(this)
+                            .setTitle("Gagal")
+                            .setMessage("Koneksi server bermasalah. Silakan coba kembali.")
+                            .setPositiveButton("OK", null)
+                            .show();
+                });
+            }
+        }, "activity-confirm-received").start();
+    }
+
+    private JSONObject postJson(String endpoint, JSONObject payload) throws Exception {
+        HttpURLConnection connection = null;
+
+        try {
+            connection = (HttpURLConnection) new URL(endpoint).openConnection();
+            connection.setRequestMethod("POST");
+            connection.setConnectTimeout(TIMEOUT_MS);
+            connection.setReadTimeout(TIMEOUT_MS);
+            connection.setDoOutput(true);
+            connection.setUseCaches(false);
+            connection.setRequestProperty("Accept", "application/json");
+            connection.setRequestProperty("Content-Type", "application/json; charset=UTF-8");
+
+            byte[] body = payload.toString().getBytes("UTF-8");
+            try (OutputStream output = connection.getOutputStream()) {
+                output.write(body);
+                output.flush();
+            }
+
+            int responseCode = connection.getResponseCode();
+            InputStream stream = responseCode >= 200 && responseCode < 400
+                    ? connection.getInputStream()
+                    : connection.getErrorStream();
+
+            if (stream == null) {
+                throw new IllegalStateException("Respons server kosong");
+            }
+
+            BufferedReader reader = new BufferedReader(
+                    new InputStreamReader(stream, "UTF-8")
+            );
+            StringBuilder responseBody = new StringBuilder();
+            String line;
+            while ((line = reader.readLine()) != null) {
+                responseBody.append(line);
+            }
+            reader.close();
+
+            return new JSONObject(responseBody.toString());
+
+        } finally {
+            if (connection != null) {
+                connection.disconnect();
+            }
+        }
     }
 
     private void addEmptyState(
@@ -2312,16 +2431,6 @@ public class CustomerHistoryActivity extends Activity {
                 order.optString("description"),
                 ""
         );
-    }
-
-    private boolean isPickupOrder(JSONObject order) {
-        String type = serviceType(order).toLowerCase(Locale.ROOT);
-        String source = order.optString("source", "").toLowerCase(Locale.ROOT);
-        String table = order.optString("_transiva_table", "").toLowerCase(Locale.ROOT);
-        return type.contains("pickup")
-                || type.contains("send")
-                || source.contains("pickup_orders")
-                || table.contains("pickup_orders");
     }
 
     private String shortText(String value) {

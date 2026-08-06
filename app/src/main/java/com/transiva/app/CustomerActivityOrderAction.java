@@ -66,8 +66,15 @@ public final class CustomerActivityOrderAction {
                         sourceTable(order)
                 );
 
+                String token = new SessionManager(activity).getToken();
+                if (token == null || token.trim().isEmpty()) {
+                    throw new IllegalStateException(
+                            "Sesi login tidak ditemukan. Silakan login kembali."
+                    );
+                }
+
                 JSONObject response =
-                        post(payload);
+                        post(payload, token.trim());
 
                 boolean success =
                         response.optBoolean(
@@ -134,7 +141,8 @@ public final class CustomerActivityOrderAction {
     }
 
     private static JSONObject post(
-            JSONObject payload
+            JSONObject payload,
+            String token
     ) throws Exception {
         HttpURLConnection connection = null;
 
@@ -165,6 +173,11 @@ public final class CustomerActivityOrderAction {
             connection.setRequestProperty(
                     "Accept",
                     "application/json"
+            );
+
+            connection.setRequestProperty(
+                    "Authorization",
+                    "Bearer " + token
             );
 
             try (

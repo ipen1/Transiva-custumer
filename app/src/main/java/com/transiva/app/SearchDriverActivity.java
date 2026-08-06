@@ -894,9 +894,20 @@ public class SearchDriverActivity extends Activity {
 
         new Thread(() -> {
             try {
+                String token = new SessionManager(this).getToken();
+                if (token == null || token.trim().isEmpty()) {
+                    throw new IllegalStateException(
+                            "Sesi login tidak ditemukan. Silakan login kembali."
+                    );
+                }
+
                 JSONObject payload = new JSONObject();
                 payload.put("order_id", activeOrderId);
-                JSONObject res = postJson(BASE_URL + "server/cancel_order.php", payload);
+                JSONObject res = postJson(
+                        BASE_URL + "server/cancel_order.php",
+                        payload,
+                        token.trim()
+                );
                 boolean ok = res.optBoolean("success", false);
                 String msg = firstNonEmpty(res.optString("message"), ok ? "Order dibatalkan" : "Order gagal dibatalkan");
                 mainHandler.post(() -> {
@@ -927,7 +938,18 @@ public class SearchDriverActivity extends Activity {
         }).start();
     }
 
-    private JSONObject postJson(String urlText, JSONObject payload) throws Exception {
+    private JSONObject postJson(
+            String urlText,
+            JSONObject payload
+    ) throws Exception {
+        return postJson(urlText, payload, "");
+    }
+
+    private JSONObject postJson(
+            String urlText,
+            JSONObject payload,
+            String bearerToken
+    ) throws Exception {
         HttpURLConnection conn = null;
         try {
             URL url = new URL(urlText);
@@ -940,6 +962,12 @@ public class SearchDriverActivity extends Activity {
             conn.setUseCaches(false);
             conn.setRequestProperty("Content-Type", "application/json; charset=UTF-8");
             conn.setRequestProperty("Accept", "application/json");
+            if (bearerToken != null && !bearerToken.trim().isEmpty()) {
+                conn.setRequestProperty(
+                        "Authorization",
+                        "Bearer " + bearerToken.trim()
+                );
+            }
 
             OutputStream os = conn.getOutputStream();
             BufferedWriter writer = new BufferedWriter(new OutputStreamWriter(os, StandardCharsets.UTF_8));

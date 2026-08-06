@@ -316,18 +316,12 @@ public final class CustomerMessageApi {
             );
         }
 
-        JSONObject response =
-                new JSONObject(body);
-
+        JSONObject response = new JSONObject(body);
+        response.put("http_status", status);
         if (status < 200 || status >= 400) {
-            throw new IllegalStateException(
-                    response.optString(
-                            "message",
-                            "HTTP " + status
-                    )
-            );
+            if (!response.has("success")) response.put("success", false);
+            if (!response.has("message")) response.put("message", "HTTP " + status);
         }
-
         return response;
     }
 

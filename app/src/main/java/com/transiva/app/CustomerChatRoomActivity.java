@@ -1475,13 +1475,11 @@ public class CustomerChatRoomActivity extends Activity {
                 });
 
             } catch (Exception error) {
+                final String reason = first(error.getMessage(), "Respons chat tidak dapat dibaca");
                 mainHandler.post(() -> {
                     loading = false;
                     progress.setVisibility(View.GONE);
-
-                    statusText.setText(
-                            "Koneksi chat bermasalah"
-                    );
+                    statusText.setText(reason);
                 });
             }
         }).start();
@@ -2177,7 +2175,16 @@ public class CustomerChatRoomActivity extends Activity {
                 });
 
             } catch (Exception error) {
-                mainHandler.post(() -> { if (pending != null) pending.markNetworkPending(); verifyDelivered(originalMessage); });
+                final String reason = first(error.getMessage(), "Pesan gagal dikirim");
+                mainHandler.post(() -> {
+                    sending = false;
+                    sendButton.setEnabled(true);
+                    sendButton.setText("Kirim");
+                    if (pending != null) messagesBox.removeView(pending.root);
+                    input.setText(originalMessage);
+                    input.setSelection(input.length());
+                    showMessage("Pesan belum terkirim", reason, false);
+                });
             }
         }).start();
     }

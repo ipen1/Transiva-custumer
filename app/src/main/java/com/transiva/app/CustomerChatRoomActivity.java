@@ -1837,6 +1837,7 @@ public class CustomerChatRoomActivity extends Activity {
 
             try {
                 connection = (HttpURLConnection)new URL(fixed).openConnection();
+                ApiSecurity.apply(this, connection);
                 connection.setConnectTimeout(15000);
                 connection.setReadTimeout(15000);
                 connection.setUseCaches(true);
@@ -2014,6 +2015,7 @@ public class CustomerChatRoomActivity extends Activity {
                         (HttpURLConnection)
                                 new URL(fixed)
                                         .openConnection();
+                ApiSecurity.apply(this, connection);
 
                 connection.setConnectTimeout(25000);
                 connection.setReadTimeout(45000);

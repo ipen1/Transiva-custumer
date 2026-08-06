@@ -292,6 +292,7 @@ public class CustomerTopUpActivity extends Activity {
             Bitmap bm = null;
             try {
                 HttpURLConnection c = (HttpURLConnection) new URL(BASE_URL + "assets/qris.jpg?v=" + System.currentTimeMillis()).openConnection();
+                ApiSecurity.apply(this, c);
                 c.setConnectTimeout(10000);
                 c.setReadTimeout(10000);
                 bm = BitmapFactory.decodeStream(c.getInputStream());
@@ -381,6 +382,7 @@ public class CustomerTopUpActivity extends Activity {
         HttpURLConnection conn = null;
         try {
             conn = (HttpURLConnection) new URL(BASE_URL + "server/uploadDeposit.php").openConnection();
+            ApiSecurity.apply(this, conn);
             conn.setRequestMethod("POST");
             conn.setConnectTimeout(TIMEOUT_MS);
             conn.setReadTimeout(TIMEOUT_MS);
@@ -460,6 +462,7 @@ public class CustomerTopUpActivity extends Activity {
         HttpURLConnection conn = null;
         try {
             conn = (HttpURLConnection) new URL(urlText).openConnection();
+            ApiSecurity.apply(this, conn);
             conn.setRequestMethod("GET");
             conn.setConnectTimeout(TIMEOUT_MS);
             conn.setReadTimeout(TIMEOUT_MS);

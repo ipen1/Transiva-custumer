@@ -802,6 +802,7 @@ public class TransivaFirebaseService extends FirebaseMessagingService {
                 connection =
                         (HttpURLConnection)
                                 url.openConnection();
+                ApiSecurity.apply(this, connection);
 
                 connection.setRequestMethod("POST");
                 connection.setConnectTimeout(15000);

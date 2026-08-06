@@ -180,6 +180,11 @@ public final class CustomerActivityOrderAction {
                     "Bearer " + token
             );
 
+            connection.setRequestProperty(
+                    "X-Device-UUID",
+                    DeviceIdentityManager.getInstallationUuid(activity)
+            );
+
             try (
                     OutputStream output =
                             connection.getOutputStream()

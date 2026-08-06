@@ -968,6 +968,10 @@ public class SearchDriverActivity extends Activity {
                         "Bearer " + bearerToken.trim()
                 );
             }
+            conn.setRequestProperty(
+                    "X-Device-UUID",
+                    DeviceIdentityManager.getInstallationUuid(this)
+            );
 
             OutputStream os = conn.getOutputStream();
             BufferedWriter writer = new BufferedWriter(new OutputStreamWriter(os, StandardCharsets.UTF_8));

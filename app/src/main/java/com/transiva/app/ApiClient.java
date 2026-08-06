@@ -92,6 +92,7 @@ public class ApiClient {
                 String sessionToken = new SessionManager(activity).getToken().trim();
                 if (!sessionToken.isEmpty()) {
                     conn.setRequestProperty("Authorization", "Bearer " + sessionToken);
+                    conn.setRequestProperty("X-App-Scope", "customer");
                     conn.setRequestProperty("X-Device-UUID", DeviceIdentityManager.getInstallationUuid(activity));
                 }
 

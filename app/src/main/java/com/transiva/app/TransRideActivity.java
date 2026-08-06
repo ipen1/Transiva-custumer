@@ -859,6 +859,7 @@ public class TransRideActivity extends Activity {
             String requestToken = refreshAuthToken();
             if (!requestToken.isEmpty()) {
                 conn.setRequestProperty("Authorization", "Bearer " + requestToken);
+                conn.setRequestProperty("X-App-Scope", "customer");
             }
             conn.setRequestProperty("X-Device-UUID", DeviceIdentityManager.getInstallationUuid(this));
 
@@ -1088,6 +1089,7 @@ public class TransRideActivity extends Activity {
             String requestToken = refreshAuthToken();
             if (!requestToken.isEmpty()) {
                 conn.setRequestProperty("Authorization", "Bearer " + requestToken);
+                conn.setRequestProperty("X-App-Scope", "customer");
             }
             conn.setRequestProperty("X-Device-UUID", DeviceIdentityManager.getInstallationUuid(this));
 
@@ -1513,6 +1515,7 @@ public class TransRideActivity extends Activity {
             String requestToken = refreshAuthToken();
             if (!requestToken.isEmpty()) {
                 conn.setRequestProperty("Authorization", "Bearer " + requestToken);
+                conn.setRequestProperty("X-App-Scope", "customer");
             }
             conn.setRequestProperty("X-Device-UUID", DeviceIdentityManager.getInstallationUuid(this));
             OutputStream os = conn.getOutputStream();

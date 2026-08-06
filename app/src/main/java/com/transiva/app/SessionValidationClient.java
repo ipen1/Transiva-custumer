@@ -31,6 +31,7 @@ public final class SessionValidationClient {
                 conn.setUseCaches(false);
                 conn.setRequestProperty("Accept", "application/json");
                 conn.setRequestProperty("Authorization", "Bearer " + token);
+                conn.setRequestProperty("X-App-Scope", "customer");
                 conn.setRequestProperty("X-Device-UUID", DeviceIdentityManager.getInstallationUuid(app));
 
                 int status = conn.getResponseCode();

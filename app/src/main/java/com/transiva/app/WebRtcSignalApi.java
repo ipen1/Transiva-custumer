@@ -31,6 +31,7 @@ public final class WebRtcSignalApi {
                 String token = safe(session.getToken());
                 if (!token.isEmpty()) {
                     connection.setRequestProperty("Authorization", "Bearer " + token);
+                    connection.setRequestProperty("X-App-Scope", "customer");
 
                     // Customer API tokens are cryptographically bound to the
                     // installation UUID recorded at login. WebRTC signaling

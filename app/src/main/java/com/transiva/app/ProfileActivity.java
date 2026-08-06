@@ -969,6 +969,8 @@ public class ProfileActivity extends Activity {
                 connection.setUseCaches(false);
                 connection.setRequestProperty("Accept", "application/json");
                 connection.setRequestProperty("Authorization", "Bearer " + token);
+                connection.setRequestProperty("X-Device-UUID", DeviceIdentityManager.getInstallationUuid(this));
+                connection.setRequestProperty("X-App-Scope", "customer");
                 connection.setRequestProperty(
                         "X-Installation-UUID",
                         DeviceIdentityManager.getInstallationUuid(this)
@@ -1100,6 +1102,8 @@ public class ProfileActivity extends Activity {
                 connection.setRequestProperty("Accept", "application/json");
                 connection.setRequestProperty("Content-Type", "application/json; charset=UTF-8");
                 connection.setRequestProperty("Authorization", "Bearer " + token);
+                connection.setRequestProperty("X-Device-UUID", DeviceIdentityManager.getInstallationUuid(this));
+                connection.setRequestProperty("X-App-Scope", "customer");
                 connection.setRequestProperty(
                         "X-Installation-UUID",
                         DeviceIdentityManager.getInstallationUuid(this)

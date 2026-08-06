@@ -17,6 +17,7 @@ public final class ApiSecurity {
         if (deviceUuid != null && !deviceUuid.trim().isEmpty()) {
             connection.setRequestProperty("X-Device-UUID", deviceUuid.trim());
         }
+        connection.setRequestProperty("X-App-Scope", "customer");
         connection.setRequestProperty("Accept", "application/json");
     }
     public static String idempotencyKey(String action) {

@@ -45,6 +45,8 @@ public final class CustomerMessageApi {
                 "X-Device-UUID",
                 DeviceIdentityManager.getInstallationUuid(context)
         );
+
+        connection.setRequestProperty("X-App-Scope", "customer");
     }
 
     private CustomerMessageApi() {

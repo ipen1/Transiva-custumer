@@ -209,6 +209,8 @@ public class CustomerSettingsActivity extends Activity {
             try {
                 c = (HttpURLConnection) new URL(DEVICE_URL + "?action=get_device").openConnection();
                 c.setRequestMethod("GET"); c.setRequestProperty("Authorization", "Bearer " + token); c.setConnectTimeout(30000); c.setReadTimeout(30000);
+                c.setRequestProperty("X-Device-UUID", DeviceIdentityManager.getInstallationUuid(this));
+                c.setRequestProperty("X-App-Scope", "customer");
                 JSONObject response = new JSONObject(read(c));
                 if (!response.optBoolean("success", false)) throw new IllegalStateException(response.optString("message", "Gagal memeriksa perangkat."));
                 JSONObject device = response.optJSONObject("device");
@@ -242,6 +244,8 @@ public class CustomerSettingsActivity extends Activity {
             try {
                 c = (HttpURLConnection) new URL(DEVICE_URL).openConnection(); c.setRequestMethod("POST"); c.setDoOutput(true);
                 c.setRequestProperty("Authorization", "Bearer " + token); c.setRequestProperty("Content-Type", "application/json; charset=UTF-8"); c.setConnectTimeout(30000); c.setReadTimeout(30000);
+                c.setRequestProperty("X-Device-UUID", DeviceIdentityManager.getInstallationUuid(this));
+                c.setRequestProperty("X-App-Scope", "customer");
                 JSONObject body = new JSONObject(); body.put("action", "disconnect_device"); body.put("installation_uuid", DeviceIdentityManager.getInstallationUuid(this));
                 try (OutputStream out = c.getOutputStream()) { out.write(body.toString().getBytes(StandardCharsets.UTF_8)); }
                 JSONObject response = new JSONObject(read(c)); if (!response.optBoolean("success", false)) throw new IllegalStateException(response.optString("message", "Perangkat gagal diputuskan."));

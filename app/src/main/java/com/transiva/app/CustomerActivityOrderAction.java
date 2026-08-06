@@ -186,6 +186,8 @@ public final class CustomerActivityOrderAction {
                     DeviceIdentityManager.getInstallationUuid(activity)
             );
 
+        connection.setRequestProperty("X-App-Scope", "customer");
+
             try (
                     OutputStream output =
                             connection.getOutputStream()

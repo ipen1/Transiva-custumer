@@ -435,6 +435,7 @@ public class PinActivity extends Activity {
             conn.setRequestProperty("Accept", "application/json");
             conn.setRequestProperty("Cache-Control", "no-store");
             conn.setRequestProperty("Authorization", "Bearer " + safe(session.getToken()).trim());
+            conn.setRequestProperty("X-App-Scope", "customer");
             conn.setRequestProperty(
                     "X-Device-UUID",
                     DeviceIdentityManager.getInstallationUuid(this)

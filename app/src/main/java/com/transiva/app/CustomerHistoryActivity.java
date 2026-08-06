@@ -1393,66 +1393,14 @@ public class CustomerHistoryActivity extends Activity {
 
         if (isActiveStatus(status)) {
             boolean customerReceived = order.optInt("customer_received", 0) == 1;
-
             boolean showReceive = "arrived_delivery".equals(status)
                     && !customerReceived
                     && supportsReceiveButton(order);
 
-            // Tombol Lacak tidak boleh tertimpa tombol Terima Pesanan.
-            // Pada TransCar/TransRide yang sudah tiba di pengantaran, keduanya tampil berdampingan.
-            if (showReceive && canTrackOrder(status)) {
+            // Tombol utama tetap menampilkan Lacak. Tombol konfirmasi tidak boleh
+            // menggantikan tombol Lacak ketika driver telah tiba di pengantaran.
+            if (canTrackOrder(status)) {
                 Button track = primaryButton("Lacak");
-                track.setOnClickListener(view -> openActiveOrder(order));
-
-                LinearLayout.LayoutParams trackLp =
-                        new LinearLayout.LayoutParams(0, dp(42), 1);
-                trackLp.setMargins(dp(8), 0, 0, 0);
-                actions.addView(track, trackLp);
-
-                Button receive = primaryButton("Terima Pesanan");
-                receive.setOnClickListener(view -> confirmReceivedFromActivity(order));
-
-                LinearLayout.LayoutParams receiveLp =
-                        new LinearLayout.LayoutParams(0, dp(42), 1);
-                receiveLp.setMargins(dp(8), 0, 0, 0);
-                actions.addView(receive, receiveLp);
-
-            } else if (showReceive) {
-                Button receive = primaryButton("Terima Pesanan");
-                receive.setOnClickListener(view -> confirmReceivedFromActivity(order));
-
-                LinearLayout.LayoutParams receiveLp =
-                        new LinearLayout.LayoutParams(0, dp(42), 1);
-                receiveLp.setMargins(dp(8), 0, 0, 0);
-                actions.addView(receive, receiveLp);
-
-            } else if (canCustomerCancel(status)) {
-                Button cancel =
-                        dangerButton("Batalkan");
-
-                cancel.setOnClickListener(
-                        view -> confirmCancelOrder(order)
-                );
-
-                LinearLayout.LayoutParams cancelLp =
-                        new LinearLayout.LayoutParams(
-                                0,
-                                dp(42),
-                                1
-                        );
-
-                cancelLp.setMargins(
-                        dp(8),
-                        0,
-                        0,
-                        0
-                );
-
-                actions.addView(cancel, cancelLp);
-
-            } else if (canTrackOrder(status)) {
-                Button track =
-                        primaryButton("Lacak");
 
                 track.setOnClickListener(
                         view -> openActiveOrder(order)
@@ -1473,8 +1421,52 @@ public class CustomerHistoryActivity extends Activity {
                 );
 
                 actions.addView(track, trackLp);
+            } else if (canCustomerCancel(status)) {
+                Button cancel = dangerButton("Batalkan");
+
+                cancel.setOnClickListener(
+                        view -> confirmCancelOrder(order)
+                );
+
+                LinearLayout.LayoutParams cancelLp =
+                        new LinearLayout.LayoutParams(
+                                0,
+                                dp(42),
+                                1
+                        );
+
+                cancelLp.setMargins(
+                        dp(8),
+                        0,
+                        0,
+                        0
+                );
+
+                actions.addView(cancel, cancelLp);
             }
 
+            if (showReceive) {
+                Button receive = primaryButton("Terima Pesanan");
+
+                receive.setOnClickListener(
+                        view -> confirmReceivedFromActivity(order)
+                );
+
+                LinearLayout.LayoutParams receiveLp =
+                        new LinearLayout.LayoutParams(
+                                -1,
+                                dp(44)
+                        );
+
+                receiveLp.setMargins(
+                        0,
+                        dp(9),
+                        0,
+                        0
+                );
+
+                card.addView(receive, receiveLp);
+            }
         } else {
             Button repeat =
                     primaryButton("Pesan Lagi");
@@ -2544,15 +2536,25 @@ public class CustomerHistoryActivity extends Activity {
     }
 
     private boolean supportsReceiveButton(JSONObject order) {
+        // TransSend memakai OTP, bukan tombol Terima Pesanan.
         if (isPickupOrder(order)) {
             return false;
         }
 
         String type = serviceType(order).toLowerCase(Locale.ROOT);
+        String source = first(
+                order.optString("source_table"),
+                order.optString("source"),
+                order.optString("table_name"),
+                ""
+        ).toLowerCase(Locale.ROOT);
+
         return type.contains("ride")
                 || type.contains("car")
                 || type.contains("mobil")
-                || type.contains("food");
+                || type.contains("food")
+                || source.contains("order")
+                || source.contains("food");
     }
 
     private void copyOtpToClipboard(String otp) {

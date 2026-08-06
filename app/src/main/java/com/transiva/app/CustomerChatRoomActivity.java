@@ -1837,7 +1837,6 @@ public class CustomerChatRoomActivity extends Activity {
 
             try {
                 connection = (HttpURLConnection)new URL(fixed).openConnection();
-                ApiSecurity.apply(this, connection);
                 connection.setConnectTimeout(15000);
                 connection.setReadTimeout(15000);
                 connection.setUseCaches(true);
@@ -2015,7 +2014,6 @@ public class CustomerChatRoomActivity extends Activity {
                         (HttpURLConnection)
                                 new URL(fixed)
                                         .openConnection();
-                ApiSecurity.apply(this, connection);
 
                 connection.setConnectTimeout(25000);
                 connection.setReadTimeout(45000);
@@ -2152,8 +2150,29 @@ public class CustomerChatRoomActivity extends Activity {
                         if (pending != null) messagesBox.removeView(pending.root);
                         loadMessages(false);
                     } else {
-                        if (pending != null) pending.markNetworkPending();
-                        verifyDelivered(originalMessage);
+                        sending = false;
+                        sendButton.setEnabled(true);
+                        sendButton.setText("Kirim");
+
+                        if (pending != null) {
+                            messagesBox.removeView(pending.root);
+                        }
+
+                        input.setText(originalMessage);
+                        input.setSelection(input.length());
+
+                        String serverMessage = response.optString(
+                                "message",
+                                "Pesan gagal dikirim"
+                        ).trim();
+
+                        showMessage(
+                                "Pesan belum terkirim",
+                                serverMessage.isEmpty()
+                                        ? "Pesan gagal dikirim. Coba lagi."
+                                        : serverMessage,
+                                false
+                        );
                     }
                 });
 

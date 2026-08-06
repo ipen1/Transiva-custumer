@@ -1,6 +1,10 @@
 package com.transiva.app.customer.data;
 
+import android.content.Context;
 import android.net.Uri;
+
+import com.transiva.app.DeviceIdentityManager;
+import com.transiva.app.SessionManager;
 
 import com.transiva.app.customer.domain.CustomerDashboardRepository;
 import com.transiva.app.customer.domain.DashboardState;
@@ -22,6 +26,15 @@ public final class CustomerDashboardRepositoryImpl
 
     private static final String BASE_URL = "https://transiva.my.id/";
     private static final int TIMEOUT = 15000;
+
+    private final Context context;
+
+    public CustomerDashboardRepositoryImpl(Context context) {
+        if (context == null) {
+            throw new IllegalArgumentException("Context tidak boleh null");
+        }
+        this.context = context.getApplicationContext();
+    }
 
     @Override
     public DashboardState load(
@@ -220,6 +233,23 @@ public final class CustomerDashboardRepositoryImpl
             connection.setRequestProperty(
                     "Accept",
                     "application/json"
+            );
+
+            SessionManager session = new SessionManager(context);
+            String token = session.getToken() == null
+                    ? ""
+                    : session.getToken().trim();
+
+            if (!token.isEmpty()) {
+                connection.setRequestProperty(
+                        "Authorization",
+                        "Bearer " + token
+                );
+            }
+
+            connection.setRequestProperty(
+                    "X-Device-UUID",
+                    DeviceIdentityManager.getInstallationUuid(context)
             );
 
             // Cegah Android/proxy memakai respons promo lama.

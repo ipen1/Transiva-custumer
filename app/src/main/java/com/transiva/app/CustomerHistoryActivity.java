@@ -1393,7 +1393,8 @@ public class CustomerHistoryActivity extends Activity {
 
         if (isActiveStatus(status)) {
             boolean customerReceived = order.optInt("customer_received", 0) == 1;
-            boolean showReceive = "arrived_delivery".equals(status)
+            String normalizedStatus = normalized(status).trim();
+            boolean showReceive = "arrived_delivery".equals(normalizedStatus)
                     && !customerReceived
                     && supportsReceiveButton(order);
 
@@ -2536,25 +2537,23 @@ public class CustomerHistoryActivity extends Activity {
     }
 
     private boolean supportsReceiveButton(JSONObject order) {
-        // TransSend memakai OTP, bukan tombol Terima Pesanan.
-        if (isPickupOrder(order)) {
+        // Gunakan identitas layanan yang ditampilkan di kartu. Jangan memakai
+        // nama tabel/source karena order TransRide/TransCar juga berasal dari
+        // tabel orders dan beberapa respons lama memiliki field source ambigu.
+        String name = serviceName(order).toLowerCase(Locale.ROOT).trim();
+        String type = serviceType(order).toLowerCase(Locale.ROOT).trim();
+
+        if (name.contains("transsend") || type.contains("pickup") || type.contains("send")) {
             return false;
         }
 
-        String type = serviceType(order).toLowerCase(Locale.ROOT);
-        String source = first(
-                order.optString("source_table"),
-                order.optString("source"),
-                order.optString("table_name"),
-                ""
-        ).toLowerCase(Locale.ROOT);
-
-        return type.contains("ride")
+        return name.contains("transride")
+                || name.contains("transcar")
+                || name.contains("transfood")
+                || type.contains("ride")
                 || type.contains("car")
                 || type.contains("mobil")
-                || type.contains("food")
-                || source.contains("order")
-                || source.contains("food");
+                || type.contains("food");
     }
 
     private void copyOtpToClipboard(String otp) {

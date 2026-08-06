@@ -74,7 +74,7 @@ public final class CustomerActivityOrderAction {
                 }
 
                 JSONObject response =
-                        post(payload, token.trim());
+                        post(activity, payload, token.trim());
 
                 boolean success =
                         response.optBoolean(
@@ -141,6 +141,7 @@ public final class CustomerActivityOrderAction {
     }
 
     private static JSONObject post(
+            Activity activity,
             JSONObject payload,
             String token
     ) throws Exception {

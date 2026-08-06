@@ -252,6 +252,8 @@ public final class CustomerDashboardRepositoryImpl
                     DeviceIdentityManager.getInstallationUuid(context)
             );
 
+        connection.setRequestProperty("X-App-Scope", "customer");
+
             // Cegah Android/proxy memakai respons promo lama.
             connection.setUseCaches(false);
             connection.setDefaultUseCaches(false);

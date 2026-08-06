@@ -16,6 +16,7 @@ public class TransivaCustomerApplication extends Application implements Applicat
         TransivaCrashReporter.user(this);
         AdaptiveTlsPinning.install(this);
         CustomerReliabilityManager.install(this);
+        CustomerMessageApi.initialize(this);
         registerActivityLifecycleCallbacks(this);
     }
 

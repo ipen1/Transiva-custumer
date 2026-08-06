@@ -1,5 +1,7 @@
 package com.transiva.app;
 
+import android.content.Context;
+
 import org.json.JSONObject;
 
 import java.io.BufferedReader;
@@ -15,6 +17,35 @@ import java.nio.charset.StandardCharsets;
 public final class CustomerMessageApi {
 
     private static final int TIMEOUT_MS = 45000;
+    private static volatile Context appContext;
+
+    public static void initialize(Context context) {
+        if (context != null) {
+            appContext = context.getApplicationContext();
+        }
+    }
+
+    private static void applySecurityHeaders(HttpURLConnection connection) {
+        Context context = appContext;
+        if (connection == null || context == null) {
+            return;
+        }
+
+        String token = new SessionManager(context).getToken();
+        token = token == null ? "" : token.trim();
+
+        if (!token.isEmpty()) {
+            connection.setRequestProperty(
+                    "Authorization",
+                    "Bearer " + token
+            );
+        }
+
+        connection.setRequestProperty(
+                "X-Device-UUID",
+                DeviceIdentityManager.getInstallationUuid(context)
+        );
+    }
 
     private CustomerMessageApi() {
     }
@@ -63,6 +94,7 @@ public final class CustomerMessageApi {
             connection.setConnectTimeout(TIMEOUT_MS);
             connection.setReadTimeout(TIMEOUT_MS);
             connection.setUseCaches(false);
+            applySecurityHeaders(connection);
             connection.setDoOutput(true);
 
             connection.setRequestProperty(
@@ -148,6 +180,7 @@ public final class CustomerMessageApi {
             connection.setConnectTimeout(TIMEOUT_MS);
             connection.setReadTimeout(TIMEOUT_MS);
             connection.setUseCaches(false);
+            applySecurityHeaders(connection);
             connection.setDoOutput(true);
             connection.setRequestProperty("Accept", "application/json");
             connection.setRequestProperty("Content-Type", "multipart/form-data; boundary=" + boundary);
@@ -186,6 +219,7 @@ public final class CustomerMessageApi {
             connection.setConnectTimeout(TIMEOUT_MS);
             connection.setReadTimeout(TIMEOUT_MS);
             connection.setUseCaches(false);
+            applySecurityHeaders(connection);
 
             connection.setRequestProperty(
                     "Accept",

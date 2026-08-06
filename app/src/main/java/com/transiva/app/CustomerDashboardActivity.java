@@ -135,7 +135,7 @@ public class CustomerDashboardActivity extends Activity
 
         presenter =
                 new CustomerDashboardPresenter(
-                        new CustomerDashboardRepositoryImpl(),
+                        new CustomerDashboardRepositoryImpl(this),
                         this
                 );
 

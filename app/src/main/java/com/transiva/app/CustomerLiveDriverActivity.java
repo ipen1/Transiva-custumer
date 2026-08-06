@@ -805,18 +805,18 @@ public final class CustomerLiveDriverActivity extends Activity {
 
     private String statusLabel() {
         if ("arrived_pickup".equals(status)) {
-            return driverName + " sudah tiba di lokasi pickup";
+            return driverName + " sudah tiba di titik penjemputan";
         }
         if ("on_delivery".equals(status)) {
-            return driverName + " sedang menuju lokasi tujuan";
+            return driverName + " sedang menuju titik pengantaran";
         }
         if ("arrived_delivery".equals(status)) {
-            return driverName + " sudah tiba di lokasi tujuan";
+            return driverName + " sudah tiba di titik pengantaran";
         }
         if (ended(status)) {
             return "Perjalanan telah selesai";
         }
-        return driverName + " sedang menuju lokasi pickup";
+        return driverName + " sedang menuju titik penjemputan";
     }
 
     private String resolveDriverType(

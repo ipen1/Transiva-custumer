@@ -113,7 +113,7 @@ public class TransRideActivity extends Activity {
     private double pickLat = 0, pickLng = 0;
 
     private String pickupAddress = "Lokasi Jemput";
-    private String deliveryAddress = "Lokasi Tujuan";
+    private String deliveryAddress = "Lokasi Pengantaran";
     private boolean destroyed = false;
 
     @Override
@@ -237,8 +237,8 @@ public class TransRideActivity extends Activity {
         deliveryLp.setMargins(dp(5), 0, 0, 0);
         pointRow.addView(deliveryBtn, deliveryLp);
 
-        pickupText = text("Pickup: belum dipilih", 9, "#334155", false);
-        deliveryText = text("Tujuan: belum dipilih", 9, "#334155", false);
+        pickupText = text("Penjemputan: belum dipilih", 9, "#334155", false);
+        deliveryText = text("Pengantaran: belum dipilih", 9, "#334155", false);
         pickupText.setVisibility(View.GONE);
         deliveryText.setVisibility(View.GONE);
 
@@ -252,7 +252,7 @@ public class TransRideActivity extends Activity {
         googleMapInput = new EditText(this);
         googleMapInput.setSingleLine(true);
         googleMapInput.setTextSize(10);
-        googleMapInput.setHint("Link Google Maps tujuan (opsional)");
+        googleMapInput.setHint("Link Google Maps pengantaran (opsional)");
         googleMapInput.setBackground(roundStroke("#FFFFFF", "#D7E6F8", dp(11), 1));
         googleMapInput.setPadding(dp(9), 0, dp(9), 0);
         linkRow.addView(googleMapInput, new LinearLayout.LayoutParams(0, -1, 1));
@@ -542,7 +542,7 @@ public class TransRideActivity extends Activity {
                 "function popup(html){return new maplibregl.Popup({offset:28,closeButton:false}).setHTML(html);}" +
                 "function setCenterMarker(type){if(!map)return;var c=map.getCenter(),isPickup=(type==='pickup'),data=isPickup?pickupIconData:deliveryIconData,fb=isPickup?'🟢':'🔴';if(centerMarker)centerMarker.remove();centerMarker=newMarker(c.lat,c.lng,data,fb," + MARKER_BOX_WIDTH_DP + "," + MARKER_BOX_HEIGHT_DP + ",'bottom');}" +
                 "function setPickup(lat,lng,label){lat=+lat;lng=+lng;if(!lat||!lng)return;if(pickup)pickup.setLngLat([lng,lat]);else pickup=newMarker(lat,lng,pickupIconData,'🟢'," + MARKER_BOX_WIDTH_DP + "," + MARKER_BOX_HEIGHT_DP + ",'bottom');if(label)pickup.setPopup(popup('<div class=popup><b>Lokasi Jemput</b><br>'+esc(label)+'</div>'));}" +
-                "function setDelivery(lat,lng,label){lat=+lat;lng=+lng;if(!lat||!lng)return;if(delivery)delivery.setLngLat([lng,lat]);else delivery=newMarker(lat,lng,deliveryIconData,'🔴'," + MARKER_BOX_WIDTH_DP + "," + MARKER_BOX_HEIGHT_DP + ",'bottom');if(label)delivery.setPopup(popup('<div class=popup><b>Lokasi Tujuan</b><br>'+esc(label)+'</div>'));}" +
+                "function setDelivery(lat,lng,label){lat=+lat;lng=+lng;if(!lat||!lng)return;if(delivery)delivery.setLngLat([lng,lat]);else delivery=newMarker(lat,lng,deliveryIconData,'🔴'," + MARKER_BOX_WIDTH_DP + "," + MARKER_BOX_HEIGHT_DP + ",'bottom');if(label)delivery.setPopup(popup('<div class=popup><b>Lokasi Pengantaran</b><br>'+esc(label)+'</div>'));}" +
                 "function moveTo(lat,lng,z){if(!map)return;map.easeTo({center:[+lng,+lat],zoom:z||17,duration:650});}" +
                 "function clearPlaces(){for(var i=0;i<placeMarkers.length;i++)try{placeMarkers[i].remove();}catch(e){}placeMarkers=[];}" +
                 "function addPlace(lat,lng,name,type,address){if(!map||!lat||!lng)return;var m=newMarker(+lat,+lng,placeIconData,'📍',42,42,'bottom');m.setPopup(popup('<div class=popup><b>'+esc(name)+'</b><br>'+esc(type||'Transiva')+(address?'<br>'+esc(address):'')+'</div>'));placeMarkers.push(m);}" +
@@ -588,7 +588,7 @@ public class TransRideActivity extends Activity {
             pickupLng = selectedLng;
             pickupAddress = "Mencari alamat jemput...";
 
-            pickupText.setText("Pickup: " + pickupAddress);
+            pickupText.setText("Penjemputan: " + pickupAddress);
             pickupBtn.setText("●  Jemput\nMencari alamat...");
             if (mapView != null) mapView.setPickup(pickupLat, pickupLng, pickupAddress);
 
@@ -597,9 +597,9 @@ public class TransRideActivity extends Activity {
         } else {
             deliveryLat = selectedLat;
             deliveryLng = selectedLng;
-            deliveryAddress = "Mencari alamat tujuan...";
+            deliveryAddress = "Mencari alamat pengantaran...";
 
-            deliveryText.setText("Tujuan: " + deliveryAddress);
+            deliveryText.setText("Pengantaran: " + deliveryAddress);
             deliveryBtn.setText("●  Tujuan\nMencari alamat...");
             if (mapView != null) mapView.setDelivery(deliveryLat, deliveryLng, deliveryAddress);
 
@@ -689,7 +689,7 @@ public class TransRideActivity extends Activity {
                         pickupLat = coordinate[0];
                         pickupLng = coordinate[1];
                         pickupAddress = "Mencari alamat jemput...";
-                        pickupText.setText("Pickup: " + pickupAddress);
+                        pickupText.setText("Penjemputan: " + pickupAddress);
                         pickupBtn.setText("●  Jemput\\nMencari alamat...");
                         mode = "pickup";
                         if (mapView != null) {
@@ -700,8 +700,8 @@ public class TransRideActivity extends Activity {
                     } else {
                         deliveryLat = coordinate[0];
                         deliveryLng = coordinate[1];
-                        deliveryAddress = "Mencari alamat tujuan...";
-                        deliveryText.setText("Tujuan: " + deliveryAddress);
+                        deliveryAddress = "Mencari alamat pengantaran...";
+                        deliveryText.setText("Pengantaran: " + deliveryAddress);
                         deliveryBtn.setText("●  Tujuan\\nMencari alamat...");
                         mode = "delivery";
                         if (mapView != null) {
@@ -724,7 +724,7 @@ public class TransRideActivity extends Activity {
     private void useGoogleMapLink() {
         String link = googleMapInput.getText().toString().trim();
         if (link.length() == 0) {
-            toastDialog("Masukkan link Google Maps tujuan terlebih dahulu.");
+            toastDialog("Masukkan link Google Maps pengantaran terlebih dahulu.");
             return;
         }
 
@@ -754,9 +754,9 @@ public class TransRideActivity extends Activity {
 
                     deliveryLat = c[0];
                     deliveryLng = c[1];
-                    deliveryAddress = "Mencari alamat tujuan...";
+                    deliveryAddress = "Mencari alamat pengantaran...";
 
-                    deliveryText.setText("Tujuan: " + deliveryAddress);
+                    deliveryText.setText("Pengantaran: " + deliveryAddress);
                     deliveryBtn.setText("●  Tujuan\nMencari alamat...");
                     googleMapInput.setText("");
 
@@ -802,12 +802,12 @@ public class TransRideActivity extends Activity {
 
                 if (isPickup) {
                     pickupAddress = address;
-                    pickupText.setText("Pickup: " + address);
+                    pickupText.setText("Penjemputan: " + address);
                     pickupBtn.setText("●  Jemput\n" + shortAddress(address));
                     if (mapView != null) mapView.setPickup(pickupLat, pickupLng, address);
                 } else {
                     deliveryAddress = address;
-                    deliveryText.setText("Tujuan: " + address);
+                    deliveryText.setText("Pengantaran: " + address);
                     deliveryBtn.setText("●  Tujuan\n" + shortAddress(address));
                     if (mapView != null) mapView.setDelivery(deliveryLat, deliveryLng, address);
                 }
@@ -1152,7 +1152,7 @@ public class TransRideActivity extends Activity {
         }
 
         if (!validCoord(deliveryLat, deliveryLng)) {
-            toastDialog("Pilih lokasi tujuan terlebih dahulu.");
+            toastDialog("Pilih lokasi pengantaran terlebih dahulu.");
             return;
         }
 
@@ -1173,7 +1173,7 @@ public class TransRideActivity extends Activity {
                 JSONObject delivery = new JSONObject();
                 delivery.put("latitude", deliveryLat);
                 delivery.put("longitude", deliveryLng);
-                delivery.put("address", firstNonEmpty(deliveryAddress, "Lokasi Tujuan"));
+                delivery.put("address", firstNonEmpty(deliveryAddress, "Lokasi Pengantaran"));
 
                 JSONObject userLocation = new JSONObject();
                 userLocation.put("latitude", pickupLat);
@@ -1192,7 +1192,7 @@ public class TransRideActivity extends Activity {
                 payload.put("pickup", pickup);
                 payload.put("delivery", delivery);
                 payload.put("pickup_address", firstNonEmpty(pickupAddress, "Lokasi Jemput"));
-                payload.put("delivery_address", firstNonEmpty(deliveryAddress, "Lokasi Tujuan"));
+                payload.put("delivery_address", firstNonEmpty(deliveryAddress, "Lokasi Pengantaran"));
                 payload.put("userLocation", userLocation);
                 payload.put("note", noteInput.getText().toString().trim());
                 payload.put("payment_method", paymentMethod);
@@ -1236,7 +1236,7 @@ public class TransRideActivity extends Activity {
                 .putString("delivery_lat", String.valueOf(deliveryLat))
                 .putString("delivery_lng", String.valueOf(deliveryLng))
                 .putString("pickup_address", firstNonEmpty(pickupAddress, "Lokasi Jemput"))
-                .putString("delivery_address", firstNonEmpty(deliveryAddress, "Lokasi Tujuan"))
+                .putString("delivery_address", firstNonEmpty(deliveryAddress, "Lokasi Pengantaran"))
                 .putString("active_order_price", res.optString("price", ""))
                 .putString("active_order_payment_method", res.optString("payment_method", paymentMethod))
                 .putString("active_order_voucher", res.optString("voucher_code", ""))
@@ -1254,7 +1254,7 @@ public class TransRideActivity extends Activity {
             i.putExtra("delivery_lat", String.valueOf(deliveryLat));
             i.putExtra("delivery_lng", String.valueOf(deliveryLng));
             i.putExtra("pickup_address", firstNonEmpty(pickupAddress, "Lokasi Jemput"));
-            i.putExtra("delivery_address", firstNonEmpty(deliveryAddress, "Lokasi Tujuan"));
+            i.putExtra("delivery_address", firstNonEmpty(deliveryAddress, "Lokasi Pengantaran"));
             startActivity(i);
             finish();
         } catch (Exception e) {
@@ -1267,7 +1267,7 @@ public class TransRideActivity extends Activity {
         if (!validCoordinate(pickupLat, pickupLng)
                 || !validCoordinate(deliveryLat, deliveryLng)) {
             if (paymentSummaryText != null) {
-                paymentSummaryText.setText("Pilih titik jemput dan tujuan");
+                paymentSummaryText.setText("Pilih titik penjemputan dan pengantaran");
             }
             if (distanceInfoText != null) distanceInfoText.setText("⌁  Jarak : -");
             if (durationInfoText != null) durationInfoText.setText("◷  Waktu : -");
@@ -1540,7 +1540,7 @@ public class TransRideActivity extends Activity {
         modeText.setText(
                 routeComplete
                         ? "Rute siap, tekan Pesan Sekarang"
-                        : (pickupMode ? "Geser peta lalu klik marka Jemput" : "Geser peta lalu klik marka Tujuan")
+                        : (pickupMode ? "Geser peta lalu klik marka Jemput" : "Geser peta lalu klik marka Pengantaran")
         );
 
         pickupBtn.setAlpha(pickupMode ? 1f : .80f);

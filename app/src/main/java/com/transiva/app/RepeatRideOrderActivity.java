@@ -51,7 +51,7 @@ public class RepeatRideOrderActivity extends Activity {
             new AlertDialog.Builder(this)
                     .setTitle("Lokasi lama tidak lengkap")
                     .setMessage(
-                            "Koordinat jemput atau tujuan order lama tidak tersedia. Gunakan halaman layanan utama untuk memilih lokasi kembali."
+                            "Koordinat penjemputan atau pengantaran order lama tidak tersedia. Gunakan halaman layanan utama untuk memilih lokasi kembali."
                     )
                     .setNegativeButton(
                             "Tutup",
@@ -170,7 +170,7 @@ public class RepeatRideOrderActivity extends Activity {
         card.addView(pickupInput);
         gap(card, 10);
 
-        card.addView(label("Lokasi Tujuan"));
+        card.addView(label("Lokasi Pengantaran"));
         deliveryInput = input(data.deliveryAddress);
         card.addView(deliveryInput);
         gap(card, 10);
@@ -187,7 +187,7 @@ public class RepeatRideOrderActivity extends Activity {
                         + data.pickupLat
                         + ", "
                         + data.pickupLng
-                        + "\nTujuan: "
+                        + "\nPengantaran: "
                         + data.deliveryLat
                         + ", "
                         + data.deliveryLng,
@@ -280,7 +280,7 @@ public class RepeatRideOrderActivity extends Activity {
                 pickupAddress.isEmpty()
                         || deliveryAddress.isEmpty()
         ) {
-            toast("Alamat jemput dan tujuan wajib diisi");
+            toast("Alamat penjemputan dan pengantaran wajib diisi");
             return;
         }
 

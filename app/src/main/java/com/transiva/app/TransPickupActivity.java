@@ -128,7 +128,7 @@ public class TransPickupActivity extends Activity {
                 mapCenterLat = lat;
                 mapCenterLng = lng;
                 if (mapModeText != null) {
-                    mapModeText.setText("pickup".equals(mapSelectionMode) ? "Geser pin lalu pilih pickup" : "Geser pin lalu pilih tujuan");
+                    mapModeText.setText("pickup".equals(mapSelectionMode) ? "Geser pin lalu pilih penjemputan" : "Geser pin lalu pilih pengantaran");
                 }
             }
         });
@@ -209,7 +209,7 @@ public class TransPickupActivity extends Activity {
         pickupMapBtn.setOnClickListener(v -> reopenPointSelection("pickup"));
         deliveryMapBtn.setOnClickListener(v -> reopenPointSelection("delivery"));
 
-        // Klik tulisan/pin tengah langsung menetapkan titik, lalu otomatis lanjut ke tujuan.
+        // Klik tulisan/pin tengah langsung menetapkan titik, lalu otomatis lanjut ke pengantaran.
         mapView.setCenterActionListener(() -> {
             // Jangan memakai validLocation() untuk menentukan fungsi tombol.
             // Saat tombol sudah berubah menjadi mode order, langsung proses order.
@@ -287,7 +287,7 @@ public class TransPickupActivity extends Activity {
             mapView.showCenterPin(true);
         }
         if (mapModeText != null) {
-            mapModeText.setText(pickupMode ? "Geser pin untuk pickup" : "Geser pin untuk tujuan");
+            mapModeText.setText(pickupMode ? "Geser pin untuk penjemputan" : "Geser pin untuk pengantaran");
         }
         if (pickupMapBtn != null) setChoice(pickupMapBtn, pickupMode);
         if (deliveryMapBtn != null) setChoice(deliveryMapBtn, !pickupMode);
@@ -448,7 +448,7 @@ public class TransPickupActivity extends Activity {
         pickupCoordText.setPadding(0, dp(5), 0, dp(8));
         card.addView(pickupCoordText);
 
-        destinationInput = edit("Alamat tujuan / nama tempat tujuan");
+        destinationInput = edit("Alamat pengantaran / nama tempat pengantaran");
         destinationInput.setSingleLine(true);
         destinationInput.setImeOptions(EditorInfo.IME_ACTION_SEARCH);
         addInner(card, destinationInput, dp(6));
@@ -460,7 +460,7 @@ public class TransPickupActivity extends Activity {
         destinationInput.setFocusable(false);
         destinationInput.setClickable(true);
         destinationInput.setOnClickListener(v -> reopenPointSelection("delivery"));
-        destinationInput.setHint("Alamat tujuan terisi otomatis dari pin peta");
+        destinationInput.setHint("Alamat pengantaran terisi otomatis dari pin peta");
 
         // Lokasi sudah ditampilkan pada kartu header peta. Card lama dipertahankan
         // hanya sebagai penyimpan field internal agar proses order tetap kompatibel,
@@ -645,7 +645,7 @@ public class TransPickupActivity extends Activity {
     private void geocodeDestination() {
         String q = destinationInput == null ? "" : destinationInput.getText().toString().trim();
         if (q.length() < 4) {
-            showInfo("Tujuan", "Masukkan alamat tujuan lebih lengkap.");
+            showInfo("Pengantaran", "Masukkan alamat pengantaran lebih lengkap.");
             return;
         }
 
@@ -654,7 +654,7 @@ public class TransPickupActivity extends Activity {
             try {
                 Geocoder geo = new Geocoder(this, new Locale("id", "ID"));
                 List<Address> list = geo.getFromLocationName(q, 1);
-                if (list == null || list.isEmpty()) throw new Exception("Tujuan tidak ditemukan.");
+                if (list == null || list.isEmpty()) throw new Exception("Lokasi pengantaran tidak ditemukan.");
 
                 Address a = list.get(0);
                 deliveryLat = a.getLatitude();
@@ -680,7 +680,7 @@ public class TransPickupActivity extends Activity {
             } catch (Exception e) {
                 mainHandler.post(() -> {
                     setLoading(false);
-                    showInfo("Tujuan", "Alamat tujuan belum ditemukan. Coba tulis lebih lengkap.");
+                    showInfo("Pengantaran", "Alamat pengantaran belum ditemukan. Coba tulis lebih lengkap.");
                 });
             }
         }, "transpickup-geocode").start();
@@ -739,7 +739,7 @@ public class TransPickupActivity extends Activity {
                 p.put("payment_method", paymentMethod); // price, distance, dan OTP dihitung/dibuat ulang oleh server
                 JSONObject res = postJson(BASE_URL + "server/create_pickup_order.php", p);
                 boolean ok = res.optBoolean("success", false);
-                String msg = firstNonEmpty(res.optString("message"), ok ? "Order pickup berhasil dibuat" : "Gagal membuat order pickup");
+                String msg = firstNonEmpty(res.optString("message"), ok ? "Order penjemputan berhasil dibuat" : "Gagal membuat order penjemputan");
                 mainHandler.post(() -> {
                     setLoading(false);
                     if (ok) {
@@ -753,7 +753,7 @@ public class TransPickupActivity extends Activity {
                                 .show();
                     } else showInfo("Gagal", msg);
                 });
-            } catch (Exception e) { mainHandler.post(() -> { setLoading(false); showInfo("Error", "Koneksi gagal membuat order pickup."); }); }
+            } catch (Exception e) { mainHandler.post(() -> { setLoading(false); showInfo("Error", "Koneksi gagal membuat order penjemputan."); }); }
         }).start();
     }
 
@@ -763,7 +763,7 @@ public class TransPickupActivity extends Activity {
             return false;
         }
         if (!validCoordinate(deliveryLat, deliveryLng)) {
-            showInfo("Lokasi Tujuan", "Titik tujuan belum valid. Pilih kembali tujuan pada peta.");
+            showInfo("Lokasi Pengantaran", "Titik tujuan belum valid. Pilih kembali pengantaran pada peta.");
             return false;
         }
         return true;

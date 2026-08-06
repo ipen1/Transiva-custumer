@@ -1394,29 +1394,36 @@ public class CustomerHistoryActivity extends Activity {
         if (isActiveStatus(status)) {
             boolean customerReceived = order.optInt("customer_received", 0) == 1;
 
-            if ("arrived_delivery".equals(status)
+            boolean showReceive = "arrived_delivery".equals(status)
                     && !customerReceived
-                    && supportsReceiveButton(order)) {
-                Button receive = primaryButton("Terima Pesanan");
+                    && supportsReceiveButton(order);
 
-                receive.setOnClickListener(
-                        view -> confirmReceivedFromActivity(order)
-                );
+            // Tombol Lacak tidak boleh tertimpa tombol Terima Pesanan.
+            // Pada TransCar/TransRide yang sudah tiba di pengantaran, keduanya tampil berdampingan.
+            if (showReceive && canTrackOrder(status)) {
+                Button track = primaryButton("Lacak");
+                track.setOnClickListener(view -> openActiveOrder(order));
+
+                LinearLayout.LayoutParams trackLp =
+                        new LinearLayout.LayoutParams(0, dp(42), 1);
+                trackLp.setMargins(dp(8), 0, 0, 0);
+                actions.addView(track, trackLp);
+
+                Button receive = primaryButton("Terima Pesanan");
+                receive.setOnClickListener(view -> confirmReceivedFromActivity(order));
 
                 LinearLayout.LayoutParams receiveLp =
-                        new LinearLayout.LayoutParams(
-                                0,
-                                dp(42),
-                                1
-                        );
+                        new LinearLayout.LayoutParams(0, dp(42), 1);
+                receiveLp.setMargins(dp(8), 0, 0, 0);
+                actions.addView(receive, receiveLp);
 
-                receiveLp.setMargins(
-                        dp(8),
-                        0,
-                        0,
-                        0
-                );
+            } else if (showReceive) {
+                Button receive = primaryButton("Terima Pesanan");
+                receive.setOnClickListener(view -> confirmReceivedFromActivity(order));
 
+                LinearLayout.LayoutParams receiveLp =
+                        new LinearLayout.LayoutParams(0, dp(42), 1);
+                receiveLp.setMargins(dp(8), 0, 0, 0);
                 actions.addView(receive, receiveLp);
 
             } else if (canCustomerCancel(status)) {

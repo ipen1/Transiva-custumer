@@ -328,7 +328,7 @@ public final class TransivaGoogleMapView extends FrameLayout implements OnMapRea
                     .position(p)
                     .anchor(0.5f, 1f)
                     .icon(icon(R.drawable.map_destination_pin, 42, 54))
-                    .title("Lokasi Tujuan"));
+                    .title("Lokasi Pengantaran"));
         } else deliveryMarker.setPosition(p);
         if (deliveryMarker != null) deliveryMarker.setSnippet(label == null ? "" : label);
     }

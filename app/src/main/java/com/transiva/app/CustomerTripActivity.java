@@ -382,7 +382,7 @@ public class CustomerTripActivity extends Activity {
                 "}" +
                 "function iconPin(cls,txt){return L.divIcon({html:'<div class=\"pin '+cls+'\">'+txt+'</div>',className:'',iconSize:[42,42],iconAnchor:[21,21],popupAnchor:[0,-22]});}" +
                 "function vehicleIcon(type){var data=(type==='car')?carIconData:bikeIconData;var html='';if(data&&data.length>20){html='<img class=vehicle src='+data+'>';}else{html='<div class=vehicleFallback>'+((type==='car')?'🚘':'🏍️')+'</div>';}return L.divIcon({html:html,className:'',iconSize:[50,50],iconAnchor:[25,25],popupAnchor:[0,-30]});}" +
-                "function setPickup(lat,lng,label){if(!map||!valid(lat,lng))return;var p=[+lat,+lng];if(pickup){pickup.setLatLng(p);}else{pickup=L.marker(p,{icon:iconPin('pickup','👤'),zIndexOffset:600}).addTo(map);}pickup.bindPopup('<div class=popup>'+esc(label||'Lokasi Pickup')+'</div>');}" +
+                "function setPickup(lat,lng,label){if(!map||!valid(lat,lng))return;var p=[+lat,+lng];if(pickup){pickup.setLatLng(p);}else{pickup=L.marker(p,{icon:iconPin('pickup','👤'),zIndexOffset:600}).addTo(map);}pickup.bindPopup('<div class=popup>'+esc(label||'Lokasi Penjemputan')+'</div>');}" +
                 "function setDelivery(lat,lng,label){if(!map||!valid(lat,lng))return;var p=[+lat,+lng];if(delivery){delivery.setLatLng(p);}else{delivery=L.marker(p,{icon:iconPin('delivery','⌂'),zIndexOffset:600}).addTo(map);}delivery.bindPopup('<div class=popup>'+esc(label||'Lokasi Delivery')+'</div>');}" +
                 "function bearingOf(a,b){try{var lat1=a[0]*Math.PI/180,lat2=b[0]*Math.PI/180;var dLng=(b[1]-a[1])*Math.PI/180;var y=Math.sin(dLng)*Math.cos(lat2);var x=Math.cos(lat1)*Math.sin(lat2)-Math.sin(lat1)*Math.cos(lat2)*Math.cos(dLng);var br=(Math.atan2(y,x)*180/Math.PI)%360;return br<0?br+360:br;}catch(e){return null;}}" +
                 "function snapToRoute(lat,lng){lat=+lat;lng=+lng;if(!routePts||routePts.length<2)return{lat:lat,lng:lng,bearing:null};var cos=Math.cos(lat*Math.PI/180);if(!isFinite(cos)||Math.abs(cos)<0.000001)cos=1;var px=lng*cos,py=lat,bestD=999999999,bx=lng,by=lat,bi=routeProgress;var start=Math.max(0,routeProgress-2),end=Math.min(routePts.length-2,routeProgress+80);for(var i=start;i<=end;i++){var a=routePts[i],b=routePts[i+1];var ax=a[1]*cos,ay=a[0],cx=b[1]*cos,cy=b[0];var vx=cx-ax,vy=cy-ay,wx=px-ax,wy=py-ay;var len=vx*vx+vy*vy,t=len?((wx*vx+wy*vy)/len):0;if(t<0)t=0;if(t>1)t=1;var qx=ax+vx*t,qy=ay+vy*t,dx=px-qx,dy=py-qy,dd=dx*dx+dy*dy;if(dd<bestD){bestD=dd;bx=qx/cos;by=qy;bi=i;}}var meters=Math.sqrt(bestD)*111320;if(meters>80)return{lat:lat,lng:lng,bearing:null};if(bi>=routeProgress)routeProgress=bi;var br=bearingOf(routePts[bi],routePts[Math.min(bi+1,routePts.length-1)]);return{lat:by,lng:bx,bearing:br};}" +
@@ -568,7 +568,7 @@ public class CustomerTripActivity extends Activity {
         lastDataAlreadyPushed = true;
 
         if (validCoord(pickupLat, pickupLng)) {
-            if (mapView != null) mapView.setPickup(pickupLat, pickupLng, "Lokasi Pickup");
+            if (mapView != null) mapView.setPickup(pickupLat, pickupLng, "Lokasi Penjemputan");
         }
 
         if (validCoord(deliveryLat, deliveryLng)) {
@@ -594,7 +594,7 @@ public class CustomerTripActivity extends Activity {
         }
 
         if (!validCoord(lastDriverLat, lastDriverLng) && (validCoord(pickupLat, pickupLng) || validCoord(deliveryLat, deliveryLng))) {
-            tripInfoText.setText("Titik pickup dan delivery siap. Menunggu lokasi driver terbaru...");
+            tripInfoText.setText("Titik penjemputan dan pengantaran siap. Menunggu lokasi driver terbaru...");
         }
     }
 
@@ -682,8 +682,8 @@ public class CustomerTripActivity extends Activity {
             statusText.setText("🛰️ Menunggu lokasi terbaru dari " + driverName);
             return;
         }
-        if ("taken".equals(status)) statusText.setText("🛵 " + driverName + " sedang menuju lokasi pickup");
-        else if ("arrived_pickup".equals(status)) statusText.setText("✅ " + driverName + " sudah tiba di lokasi pickup");
+        if ("taken".equals(status)) statusText.setText("🛵 " + driverName + " sedang menuju titik penjemputan");
+        else if ("arrived_pickup".equals(status)) statusText.setText("✅ " + driverName + " sudah tiba di titik penjemputan");
         else if ("on_delivery".equals(status)) statusText.setText("🛵 " + driverName + " sedang menuju lokasi delivery");
         else if ("arrived_delivery".equals(status)) statusText.setText("🏁 " + driverName + " sudah tiba di lokasi delivery");
         else if (isFinishedStatus(status)) statusText.setText("✅ Order selesai");
@@ -695,7 +695,7 @@ public class CustomerTripActivity extends Activity {
         if ("on_delivery".equals(status)) return "🛵 Menuju lokasi delivery";
         if ("arrived_delivery".equals(status)) return "🏁 Sudah tiba di delivery";
         if (isFinishedStatus(status)) return "✅ Order selesai";
-        return "Sedang menuju pickup";
+        return "Sedang menuju penjemputan";
     }
 
 

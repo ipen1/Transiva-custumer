@@ -153,9 +153,9 @@ public class CustomerOrderDetailActivity extends Activity {
         LinearLayout route = card(24);
         route.addView(sectionHeader("Rincian Perjalanan", "Lokasi dan informasi pembayaran"));
         LinearLayout routePanel = infoPanel();
-        routePanel.addView(infoRow("Pickup", first(order.optString("pickup_address"), order.optString("from_address"), order.optString("restaurant_name"), "-"), "📍"));
+        routePanel.addView(infoRow("Penjemputan", first(order.optString("pickup_address"), order.optString("from_address"), order.optString("restaurant_name"), "-"), "📍"));
         routePanel.addView(divider());
-        routePanel.addView(infoRow("Tujuan", first(order.optString("delivery_address"), order.optString("to_address"), order.optString("destination"), "-"), "🏁"));
+        routePanel.addView(infoRow("Pengantaran", first(order.optString("delivery_address"), order.optString("to_address"), order.optString("destination"), "-"), "🏁"));
         routePanel.addView(divider());
         routePanel.addView(infoRow("Pembayaran", paymentLabel(order.optString("payment_method")), "💳"));
 

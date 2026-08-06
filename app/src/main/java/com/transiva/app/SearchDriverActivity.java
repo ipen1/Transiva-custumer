@@ -625,7 +625,7 @@ public class SearchDriverActivity extends Activity {
         playDriverAcceptedEffect();
 
         titleText.setText("Driver Menerima Pesanan");
-        setSubtitle("Yeay! Driver Anda sudah terhubung dan segera menuju pickup");
+        setSubtitle("Yeay! Driver Anda sudah terhubung dan segera menuju penjemputan");
         cancelBtn.setVisibility(View.GONE);
         driverCard.setVisibility(View.VISIBLE);
         driverCard.setAlpha(0f);

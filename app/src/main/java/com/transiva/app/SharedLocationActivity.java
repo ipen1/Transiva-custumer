@@ -138,7 +138,7 @@ public class SharedLocationActivity extends Activity {
         destinationButton.setBackground(background(!pickup ? "#F59E0B" : "#13456F"));
         info.setText(pickup
                 ? "Lokasi akan menjadi titik jemput"
-                : "Lokasi akan menjadi tujuan antar");
+                : "Lokasi akan menjadi titik pengantaran");
         rideButton.setEnabled(true);
         carButton.setEnabled(true);
         rideButton.setAlpha(1f);

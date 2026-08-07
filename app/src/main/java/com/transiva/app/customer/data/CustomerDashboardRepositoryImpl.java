@@ -3,8 +3,7 @@ package com.transiva.app.customer.data;
 import android.content.Context;
 import android.net.Uri;
 
-import com.transiva.app.DeviceIdentityManager;
-import com.transiva.app.SessionManager;
+import com.transiva.app.CustomerApiClient;
 
 import com.transiva.app.customer.domain.CustomerDashboardRepository;
 import com.transiva.app.customer.domain.DashboardState;
@@ -17,7 +16,6 @@ import java.io.BufferedReader;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.net.HttpURLConnection;
-import java.net.URL;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -223,36 +221,10 @@ public final class CustomerDashboardRepositoryImpl
         HttpURLConnection connection = null;
 
         try {
-            connection =
-                    (HttpURLConnection)
-                            new URL(endpoint).openConnection();
-
+            connection = CustomerApiClient.open(context, endpoint);
             connection.setConnectTimeout(TIMEOUT);
             connection.setReadTimeout(TIMEOUT);
             connection.setRequestMethod("GET");
-            connection.setRequestProperty(
-                    "Accept",
-                    "application/json"
-            );
-
-            SessionManager session = new SessionManager(context);
-            String token = session.getToken() == null
-                    ? ""
-                    : session.getToken().trim();
-
-            if (!token.isEmpty()) {
-                connection.setRequestProperty(
-                        "Authorization",
-                        "Bearer " + token
-                );
-            }
-
-            connection.setRequestProperty(
-                    "X-Device-UUID",
-                    DeviceIdentityManager.getInstallationUuid(context)
-            );
-
-        connection.setRequestProperty("X-App-Scope", "customer");
 
             // Cegah Android/proxy memakai respons promo lama.
             connection.setUseCaches(false);

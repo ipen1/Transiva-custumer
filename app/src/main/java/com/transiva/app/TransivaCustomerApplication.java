@@ -8,10 +8,12 @@ import android.os.Looper;
 
 /** Runs the guard on normal screens. Splash owns its own blocking startup check. */
 public class TransivaCustomerApplication extends Application implements Application.ActivityLifecycleCallbacks {
+    private static volatile TransivaCustomerApplication instance;
     private final Handler main = new Handler(Looper.getMainLooper());
 
     @Override public void onCreate() {
         super.onCreate();
+        instance = this;
         TransivaCrashReporter.initialize(this);
         TransivaCrashReporter.user(this);
         AdaptiveTlsPinning.install(this);
@@ -38,4 +40,8 @@ public class TransivaCustomerApplication extends Application implements Applicat
     @Override public void onActivityStopped(Activity activity) { }
     @Override public void onActivitySaveInstanceState(Activity activity, Bundle state) { }
     @Override public void onActivityDestroyed(Activity activity) { }
+    public static Application appContext() {
+        return instance;
+    }
+
 }

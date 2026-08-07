@@ -626,6 +626,7 @@ public class LoginActivity extends Activity {
             try {
                 connection = (HttpURLConnection)
                         new URL(SAVE_FCM_URL).openConnection();
+                ApiSecurity.apply(this, connection);
 
                 connection.setRequestMethod("POST");
                 connection.setConnectTimeout(TIMEOUT_MS);

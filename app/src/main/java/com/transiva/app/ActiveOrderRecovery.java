@@ -63,7 +63,7 @@ public final class ActiveOrderRecovery {
                         + "&username=" + Uri.encode(username)
                         + "&_=" + System.currentTimeMillis();
 
-                JSONObject response = getJson(requestUrl);
+                JSONObject response = getJson(activity, requestUrl);
                 JSONArray orders = response.optJSONArray("orders");
 
                 if (response.optBoolean("success", false) && orders != null) {
@@ -174,10 +174,11 @@ public final class ActiveOrderRecovery {
                 .apply();
     }
 
-    private static JSONObject getJson(String urlText) throws Exception {
+    private static JSONObject getJson(Activity activity, String urlText) throws Exception {
         HttpURLConnection connection = null;
         try {
             connection = (HttpURLConnection) new URL(urlText).openConnection();
+            ApiSecurity.apply(activity, connection);
             connection.setRequestMethod("GET");
             connection.setConnectTimeout(TIMEOUT_MS);
             connection.setReadTimeout(TIMEOUT_MS);

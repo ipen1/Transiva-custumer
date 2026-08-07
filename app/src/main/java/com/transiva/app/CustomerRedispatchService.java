@@ -103,6 +103,7 @@ public final class CustomerRedispatchService extends Service {
             HttpURLConnection conn = null;
             try {
                 conn = (HttpURLConnection) new URL(STATUS_URL).openConnection();
+                ApiSecurity.apply(this, conn);
                 conn.setRequestMethod("POST");
                 conn.setConnectTimeout(15000);
                 conn.setReadTimeout(15000);

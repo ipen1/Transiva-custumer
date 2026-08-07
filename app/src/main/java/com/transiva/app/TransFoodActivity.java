@@ -1025,12 +1025,14 @@ public class TransFoodActivity extends Activity {
 
     private JSONObject getJson(String urlText) throws Exception {
         HttpURLConnection c = (HttpURLConnection) new URL(urlText).openConnection();
+        ApiSecurity.apply(this, c);
         c.setConnectTimeout(TIMEOUT_MS); c.setReadTimeout(TIMEOUT_MS); c.setRequestMethod("GET");
         return new JSONObject(readStream(c));
     }
 
     private JSONObject postJson(String urlText, JSONObject payload) throws Exception {
         HttpURLConnection c = (HttpURLConnection) new URL(urlText).openConnection();
+        ApiSecurity.apply(this, c);
         c.setConnectTimeout(TIMEOUT_MS); c.setReadTimeout(TIMEOUT_MS); c.setRequestMethod("POST");
         c.setRequestProperty("Content-Type", "application/json; charset=utf-8");
         c.setDoOutput(true);

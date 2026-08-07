@@ -845,6 +845,7 @@ public final class CustomerLiveDriverActivity extends Activity {
         try {
             connection = (HttpURLConnection)
                     new URL(urlText).openConnection();
+            ApiSecurity.apply(this, connection);
 
             connection.setRequestMethod("POST");
             connection.setConnectTimeout(TIMEOUT_MS);

@@ -784,6 +784,7 @@ public class TransPickupActivity extends Activity {
 
     private JSONObject getJson(String urlText) throws Exception {
         HttpURLConnection c = (HttpURLConnection) new URL(urlText).openConnection();
+        ApiSecurity.apply(this, c);
         c.setConnectTimeout(TIMEOUT_MS); c.setReadTimeout(TIMEOUT_MS); c.setRequestProperty("Accept", "application/json");
         InputStream is = c.getResponseCode() >= 400 ? c.getErrorStream() : c.getInputStream();
         String body = readStream(is); c.disconnect(); return new JSONObject(body);
@@ -791,6 +792,7 @@ public class TransPickupActivity extends Activity {
 
     private JSONObject postJson(String urlText, JSONObject payload) throws Exception {
         HttpURLConnection c = (HttpURLConnection) new URL(urlText).openConnection();
+        ApiSecurity.apply(this, c);
         c.setConnectTimeout(TIMEOUT_MS); c.setReadTimeout(TIMEOUT_MS); c.setRequestMethod("POST"); c.setDoOutput(true);
         c.setRequestProperty("Content-Type", "application/json; charset=utf-8"); c.setRequestProperty("Accept", "application/json");
         OutputStream os = c.getOutputStream(); os.write(payload.toString().getBytes(StandardCharsets.UTF_8)); os.flush(); os.close();

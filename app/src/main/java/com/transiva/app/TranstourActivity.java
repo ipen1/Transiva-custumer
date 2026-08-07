@@ -556,6 +556,7 @@ public class TranstourActivity extends Activity {
 
     private JSONObject getJson(String urlText) throws Exception {
         HttpURLConnection c = (HttpURLConnection) new URL(urlText).openConnection();
+        ApiSecurity.apply(this, c);
         c.setConnectTimeout(TIMEOUT_MS);
         c.setReadTimeout(TIMEOUT_MS);
         c.setRequestMethod("GET");
@@ -564,6 +565,7 @@ public class TranstourActivity extends Activity {
 
     private JSONObject postJson(String urlText, JSONObject payload) throws Exception {
         HttpURLConnection c = (HttpURLConnection) new URL(urlText).openConnection();
+        ApiSecurity.apply(this, c);
         c.setConnectTimeout(TIMEOUT_MS);
         c.setReadTimeout(TIMEOUT_MS);
         c.setRequestMethod("POST");
@@ -579,6 +581,7 @@ public class TranstourActivity extends Activity {
     private JSONObject postMultipart(String urlText, Map<String, String> fields, String fileField, Uri fileUri, String fileName) throws Exception {
         String boundary = "----TransivaBoundary" + System.currentTimeMillis();
         HttpURLConnection c = (HttpURLConnection) new URL(urlText).openConnection();
+        ApiSecurity.apply(this, c);
         c.setConnectTimeout(TIMEOUT_MS);
         c.setReadTimeout(TIMEOUT_MS);
         c.setRequestMethod("POST");

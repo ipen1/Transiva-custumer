@@ -41,6 +41,10 @@ public final class RepeatOrderApi {
                     (HttpURLConnection)
                             new URL(url).openConnection();
 
+            android.app.Application app = TransivaCustomerApplication.appContext();
+            if (app != null) {
+                ApiSecurity.apply(app, connection);
+            }
             connection.setRequestMethod(method);
             connection.setConnectTimeout(TIMEOUT_MS);
             connection.setReadTimeout(TIMEOUT_MS);

@@ -357,6 +357,14 @@
             android:windowSoftInputMode="adjustResize" />
 
 
+    
+        <activity
+            android:name=".CustomerArrivalAlertActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:showWhenLocked="true"
+            android:turnScreenOn="true"
+            android:theme="@style/AppTheme" />
     </application>
 
 </manifest>

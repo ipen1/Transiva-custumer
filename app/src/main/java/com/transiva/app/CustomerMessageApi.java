@@ -27,26 +27,8 @@ public final class CustomerMessageApi {
 
     private static void applySecurityHeaders(HttpURLConnection connection) {
         Context context = appContext;
-        if (connection == null || context == null) {
-            return;
-        }
-
-        String token = new SessionManager(context).getToken();
-        token = token == null ? "" : token.trim();
-
-        if (!token.isEmpty()) {
-            connection.setRequestProperty(
-                    "Authorization",
-                    "Bearer " + token
-            );
-        }
-
-        connection.setRequestProperty(
-                "X-Device-UUID",
-                DeviceIdentityManager.getInstallationUuid(context)
-        );
-
-        connection.setRequestProperty("X-App-Scope", "customer");
+        if (connection == null || context == null) return;
+        CustomerApiClient.applySecurity(context, connection);
     }
 
     private CustomerMessageApi() {
@@ -88,15 +70,12 @@ public final class CustomerMessageApi {
 
         try {
             connection =
-                    (HttpURLConnection)
-                            new URL(endpoint)
-                                    .openConnection();
+                    CustomerApiClient.open(appContext, endpoint);
 
             connection.setRequestMethod("POST");
             connection.setConnectTimeout(TIMEOUT_MS);
             connection.setReadTimeout(TIMEOUT_MS);
             connection.setUseCaches(false);
-            applySecurityHeaders(connection);
             connection.setDoOutput(true);
 
             connection.setRequestProperty(
@@ -177,12 +156,11 @@ public final class CustomerMessageApi {
         String boundary = "----TransivaVoice" + System.currentTimeMillis();
         HttpURLConnection connection = null;
         try {
-            connection = (HttpURLConnection) new URL(endpoint).openConnection();
+            connection = CustomerApiClient.open(appContext, endpoint);
             connection.setRequestMethod("POST");
             connection.setConnectTimeout(TIMEOUT_MS);
             connection.setReadTimeout(TIMEOUT_MS);
             connection.setUseCaches(false);
-            applySecurityHeaders(connection);
             connection.setDoOutput(true);
             connection.setRequestProperty("Accept", "application/json");
             connection.setRequestProperty("Content-Type", "multipart/form-data; boundary=" + boundary);
@@ -213,15 +191,12 @@ public final class CustomerMessageApi {
 
         try {
             connection =
-                    (HttpURLConnection)
-                            new URL(endpoint)
-                                    .openConnection();
+                    CustomerApiClient.open(appContext, endpoint);
 
             connection.setRequestMethod(method);
             connection.setConnectTimeout(TIMEOUT_MS);
             connection.setReadTimeout(TIMEOUT_MS);
             connection.setUseCaches(false);
-            applySecurityHeaders(connection);
 
             connection.setRequestProperty(
                     "Accept",

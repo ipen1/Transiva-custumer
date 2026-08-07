@@ -178,7 +178,7 @@ public final class ActiveOrderRecovery {
         HttpURLConnection connection = null;
         try {
             connection = (HttpURLConnection) new URL(urlText).openConnection();
-            ApiSecurity.apply(activity, connection);
+            CustomerApiClient.applySecurity(activity, connection);
             connection.setRequestMethod("GET");
             connection.setConnectTimeout(TIMEOUT_MS);
             connection.setReadTimeout(TIMEOUT_MS);

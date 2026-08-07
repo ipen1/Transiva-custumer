@@ -52,8 +52,8 @@ public final class CustomerLiveDriverActivity extends Activity {
     private static final String STATUS_URL =
             "https://transiva.my.id/server/check_order_status.php";
     private static final int TIMEOUT_MS = 25000;
-    private static final long POLL_MS = 2000L;
-    private static final long ROUTE_REFRESH_MS = 12000L;
+    private static final long POLL_MS = 5000L;
+    private static final long ROUTE_REFRESH_MS = 15000L;
 
     private final Handler handler = new Handler(Looper.getMainLooper());
     private final RemoteLocationSmoother smoother = new RemoteLocationSmoother();
@@ -845,7 +845,7 @@ public final class CustomerLiveDriverActivity extends Activity {
         try {
             connection = (HttpURLConnection)
                     new URL(urlText).openConnection();
-            ApiSecurity.apply(this, connection);
+            CustomerApiClient.applySecurity(this, connection);
 
             connection.setRequestMethod("POST");
             connection.setConnectTimeout(TIMEOUT_MS);

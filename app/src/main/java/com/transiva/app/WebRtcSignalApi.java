@@ -27,22 +27,8 @@ public final class WebRtcSignalApi {
             connection.setDoOutput(true);
             connection.setRequestProperty("Accept", "application/json");
             connection.setRequestProperty("Content-Type", "application/json; charset=UTF-8");
-            if (session != null) {
-                String token = safe(session.getToken());
-                if (!token.isEmpty()) {
-                    connection.setRequestProperty("Authorization", "Bearer " + token);
-                    connection.setRequestProperty("X-App-Scope", "customer");
-
-                    // Customer API tokens are cryptographically bound to the
-                    // installation UUID recorded at login. WebRTC signaling
-                    // must send the same UUID on every authenticated request.
-                    String deviceUuid = safe(
-                            DeviceIdentityManager.getInstallationUuid(session.getAppContext())
-                    );
-                    if (!deviceUuid.isEmpty()) {
-                        connection.setRequestProperty("X-Device-UUID", deviceUuid);
-                    }
-                }
+            if (session != null && session.getAppContext() != null) {
+                CustomerApiClient.applySecurity(session.getAppContext(), connection);
             }
             try (OutputStream out = connection.getOutputStream()) {
                 out.write(payload.toString().getBytes(StandardCharsets.UTF_8));

@@ -68,7 +68,7 @@ public class CustomerChatRoomActivity extends Activity {
     private static final String SEND_CHAT_URL =
             BASE_URL + "server/sendChat.php";
 
-    private static final long REFRESH_MS = 2500L;
+    private static final long REFRESH_MS = 5000L;
 
     private static final String UPLOAD_IMAGE_URL =
             BASE_URL + "server/upload_chat_image.php";

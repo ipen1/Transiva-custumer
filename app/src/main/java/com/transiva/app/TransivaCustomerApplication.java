@@ -19,12 +19,14 @@ public class TransivaCustomerApplication extends Application implements Applicat
         AdaptiveTlsPinning.install(this);
         CustomerReliabilityManager.install(this);
         CustomerMessageApi.initialize(this);
+        CustomerFcmTokenSync.syncIfNeeded(this);
         registerActivityLifecycleCallbacks(this);
     }
 
     @Override public void onActivityResumed(Activity activity) {
         TransivaCrashReporter.screen(activity);
         TransivaCrashReporter.user(activity);
+        CustomerFcmTokenSync.syncIfNeeded(activity);
         if (activity instanceof SplashActivity) return;
         main.postDelayed(() -> {
             if (!activity.isFinishing()) {

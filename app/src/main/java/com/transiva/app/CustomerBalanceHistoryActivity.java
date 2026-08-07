@@ -2304,7 +2304,7 @@ public class CustomerBalanceHistoryActivity
                 (HttpURLConnection)
                         new URL(endpoint)
                                 .openConnection();
-        ApiSecurity.apply(this, connection);
+        CustomerApiClient.applySecurity(this, connection);
         connection.setRequestProperty("Idempotency-Key", ApiSecurity.idempotencyKey("wallet-withdraw"));
 
         connection.setConnectTimeout(25000);

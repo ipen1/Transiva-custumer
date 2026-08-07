@@ -402,7 +402,7 @@ public class CustomerOrderDetailActivity extends Activity {
     }
 
     private JSONObject post(String url, JSONObject payload) throws Exception {
-        HttpURLConnection c = (HttpURLConnection) new URL(url).openConnection(); ApiSecurity.apply(this, c); c.setConnectTimeout(20000); c.setReadTimeout(20000); c.setRequestMethod("POST"); c.setDoOutput(true); c.setRequestProperty("Content-Type", "application/json; charset=UTF-8");
+        HttpURLConnection c = (HttpURLConnection) new URL(url).openConnection(); CustomerApiClient.applySecurity(this, c); c.setConnectTimeout(20000); c.setReadTimeout(20000); c.setRequestMethod("POST"); c.setDoOutput(true); c.setRequestProperty("Content-Type", "application/json; charset=UTF-8");
         try (OutputStream o = c.getOutputStream()) { o.write(payload.toString().getBytes(StandardCharsets.UTF_8)); }
         InputStream in = c.getResponseCode() >= 400 ? c.getErrorStream() : c.getInputStream(); StringBuilder b = new StringBuilder();
         try (BufferedReader r = new BufferedReader(new InputStreamReader(in))) { String line; while ((line = r.readLine()) != null) b.append(line); }

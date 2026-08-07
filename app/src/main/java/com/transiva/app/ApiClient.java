@@ -74,12 +74,9 @@ public class ApiClient {
                 String cleanPath = cleanPath(path);
                 String fullUrl = BASE_URL + cleanPath;
 
-                URL url = new URL(fullUrl);
-
-                conn = (HttpURLConnection) url.openConnection();
+                conn = CustomerApiClient.open(activity, fullUrl);
                 conn.setConnectTimeout(CONNECT_TIMEOUT);
                 conn.setReadTimeout(READ_TIMEOUT);
-                conn.setUseCaches(false);
                 conn.setDoInput(true);
 
                 conn.setRequestProperty("Accept", "application/json");
@@ -88,13 +85,6 @@ public class ApiClient {
                 conn.setRequestProperty("X-Transiva-Channel", CHANNEL_NAME);
                 conn.setRequestProperty("X-Transiva-App", "Android-Hybrid");
                 conn.setRequestProperty("X-Android-SDK", String.valueOf(Build.VERSION.SDK_INT));
-
-                String sessionToken = new SessionManager(activity).getToken().trim();
-                if (!sessionToken.isEmpty()) {
-                    conn.setRequestProperty("Authorization", "Bearer " + sessionToken);
-                    conn.setRequestProperty("X-App-Scope", "customer");
-                    conn.setRequestProperty("X-Device-UUID", DeviceIdentityManager.getInstallationUuid(activity));
-                }
 
                 if ("POST".equals(cleanMethod)) {
                     conn.setRequestMethod("POST");

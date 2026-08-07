@@ -862,7 +862,7 @@ public class CustomerTripActivity extends Activity {
         HttpURLConnection conn = null;
         try {
             conn = (HttpURLConnection) new URL(urlText).openConnection();
-            ApiSecurity.apply(this, conn);
+            CustomerApiClient.applySecurity(this, conn);
             conn.setRequestMethod("GET");
             conn.setConnectTimeout(TIMEOUT_MS);
             conn.setReadTimeout(TIMEOUT_MS);
@@ -882,7 +882,7 @@ public class CustomerTripActivity extends Activity {
         try {
             URL url = new URL(urlText);
             conn = (HttpURLConnection) url.openConnection();
-            ApiSecurity.apply(this, conn);
+            CustomerApiClient.applySecurity(this, conn);
             conn.setRequestMethod("POST");
             conn.setConnectTimeout(TIMEOUT_MS);
             conn.setReadTimeout(TIMEOUT_MS);

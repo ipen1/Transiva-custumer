@@ -53,7 +53,8 @@ import java.util.concurrent.Executors;
 
 public class WebRtcCallActivity extends Activity {
     private static final int REQ_MIC = 7101;
-    private static final long POLL_MS = 900L;
+    private static final long POLL_CONNECTING_MS = 900L;
+    private static final long POLL_CONNECTED_MS = 2500L;
     public static final String ACTION_CALL_STATE = "com.transiva.app.WEBRTC_CALL_STATE";
     public static final String EXTRA_CALL_ID = "call_id";
     public static final String EXTRA_CALL_STATUS = "call_status";
@@ -141,7 +142,7 @@ public class WebRtcCallActivity extends Activity {
         @Override public void run() {
             if (ended || destroyed || callId.isEmpty()) return;
             pollSignal();
-            if (!ended && !destroyed) main.postDelayed(this, POLL_MS);
+            if (!ended && !destroyed) main.postDelayed(this, everConnected ? POLL_CONNECTED_MS : POLL_CONNECTING_MS);
         }
     };
 

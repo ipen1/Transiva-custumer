@@ -1576,7 +1576,7 @@ public class CustomerHistoryActivity extends Activity {
 
         try {
             connection = (HttpURLConnection) new URL(endpoint).openConnection();
-            ApiSecurity.apply(this, connection);
+            CustomerApiClient.applySecurity(this, connection);
             connection.setRequestMethod("POST");
             connection.setConnectTimeout(TIMEOUT_MS);
             connection.setReadTimeout(TIMEOUT_MS);
@@ -1890,7 +1890,7 @@ public class CustomerHistoryActivity extends Activity {
                     (HttpURLConnection)
                             new URL(endpoint)
                                     .openConnection();
-            ApiSecurity.apply(this, connection);
+            CustomerApiClient.applySecurity(this, connection);
 
             connection.setRequestMethod("GET");
             connection.setConnectTimeout(

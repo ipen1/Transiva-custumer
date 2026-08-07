@@ -10,6 +10,7 @@ import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.media.AudioAttributes;
 import android.os.Build;
+import android.os.PowerManager;
 import android.provider.Settings;
 import android.text.TextUtils;
 
@@ -34,13 +35,13 @@ public class TransivaFirebaseService extends FirebaseMessagingService {
             "https://transiva.my.id/server/";
 
     private static final String CH_ORDER =
-            "transiva_order_channel";
+            "transiva_order_channel_v2";
     private static final String CH_WALLET =
             "transiva_wallet_channel";
     private static final String CH_CHAT =
-            "transiva_chat_channel";
+            "transiva_chat_channel_v2";
     private static final String CH_CALL =
-            "transiva_call_channel_v3";
+            "transiva_call_channel_v4";
     private static final String CH_PROMO =
             "transiva_promo_channel";
     private static final String CH_BROADCAST =
@@ -242,9 +243,22 @@ public class TransivaFirebaseService extends FirebaseMessagingService {
                 url
         );
 
+        String event = data != null ? first(data.get("event"), data.get("status"), "").toLowerCase() : "";
+        boolean arrivalPickup = "arrived_pickup".equals(event);
+        boolean arrivalDelivery = "arrived_delivery".equals(event);
+        boolean arrivalEvent = arrivalPickup || arrivalDelivery;
+
+        if (arrivalPickup) {
+            title = "Driver sudah tiba di penjemputan";
+            body = "Kabar bagus! Driver Anda sudah menunggu di titik penjemputan.";
+        } else if (arrivalDelivery) {
+            title = "Anda sudah tiba di pengantaran";
+            body = "Yeay, perjalanan sampai di titik pengantaran. Pastikan barang Anda lengkap.";
+        }
+
         String channelId = channelForType(type);
 
-        Intent intent = buildOpenIntent(
+        Intent intent = arrivalEvent ? buildArrivalIntent(event, orderId, data) : buildOpenIntent(
                 type,
                 orderId,
                 roomId,
@@ -336,6 +350,18 @@ public class TransivaFirebaseService extends FirebaseMessagingService {
             );
         }
 
+        if (incomingCallNotification) {
+            wakeScreen(12000L);
+        } else if (arrivalEvent) {
+            wakeScreen(10000L);
+            builder.setPriority(NotificationCompat.PRIORITY_MAX)
+                    .setCategory(NotificationCompat.CATEGORY_STATUS)
+                    .setFullScreenIntent(pendingIntent, true)
+                    .setTimeoutAfter(15000L);
+        } else if (isChat(type)) {
+            wakeScreen(5000L);
+        }
+
         if (
                 Build.VERSION.SDK_INT >= 33
                         && ContextCompat.checkSelfPermission(
@@ -350,10 +376,50 @@ public class TransivaFirebaseService extends FirebaseMessagingService {
                 .from(this)
                 .notify(requestCode, builder.build());
 
+        if (arrivalEvent) {
+            openArrivalScreen(intent);
+        }
+
         if ("webrtc_call".equals(type)
                 && data != null
                 && "incoming_call".equalsIgnoreCase(first(data.get("event"), ""))) {
             openIncomingCallScreen(intent);
+        }
+    }
+
+    private Intent buildArrivalIntent(String event, String orderId, Map<String, String> data) {
+        Intent i = new Intent(this, CustomerArrivalAlertActivity.class);
+        i.putExtra("event", first(event, ""));
+        i.putExtra("order_id", first(orderId, ""));
+        i.putExtra("driver", data != null ? first(data.get("driver"), data.get("driver_name"), "") : "");
+        i.putExtra("from_fcm", true);
+        return i;
+    }
+
+    private void wakeScreen(long millis) {
+        try {
+            PowerManager pm = (PowerManager) getSystemService(Context.POWER_SERVICE);
+            if (pm == null || pm.isInteractive()) return;
+            PowerManager.WakeLock wl = pm.newWakeLock(
+                    PowerManager.SCREEN_BRIGHT_WAKE_LOCK
+                            | PowerManager.ACQUIRE_CAUSES_WAKEUP
+                            | PowerManager.ON_AFTER_RELEASE,
+                    "Transiva:CustomerFcmWake");
+            wl.acquire(Math.max(1500L, millis));
+        } catch (Throwable ignored) {}
+    }
+
+    private void openArrivalScreen(Intent intent) {
+        if (intent == null) return;
+        try {
+            Intent alert = new Intent(intent);
+            alert.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK
+                    | Intent.FLAG_ACTIVITY_CLEAR_TOP
+                    | Intent.FLAG_ACTIVITY_SINGLE_TOP
+                    | Intent.FLAG_ACTIVITY_NO_USER_ACTION);
+            startActivity(alert);
+        } catch (Throwable ignored) {
+            // Android may block background Activity starts; full-screen/heads-up notification remains as fallback.
         }
     }
 
@@ -802,7 +868,7 @@ public class TransivaFirebaseService extends FirebaseMessagingService {
                 connection =
                         (HttpURLConnection)
                                 url.openConnection();
-                ApiSecurity.apply(this, connection);
+                CustomerApiClient.applySecurity(this, connection);
 
                 connection.setRequestMethod("POST");
                 connection.setConnectTimeout(15000);

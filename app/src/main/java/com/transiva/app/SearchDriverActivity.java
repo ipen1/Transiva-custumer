@@ -973,7 +973,7 @@ public class SearchDriverActivity extends Activity {
                     DeviceIdentityManager.getInstallationUuid(this)
             );
 
-        connection.setRequestProperty("X-App-Scope", "customer");
+            conn.setRequestProperty("X-App-Scope", "customer");
 
             OutputStream os = conn.getOutputStream();
             BufferedWriter writer = new BufferedWriter(new OutputStreamWriter(os, StandardCharsets.UTF_8));

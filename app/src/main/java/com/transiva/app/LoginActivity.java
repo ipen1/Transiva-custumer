@@ -45,7 +45,7 @@ public class LoginActivity extends Activity {
 
     private static final String TAG = "TRANSIVA_LOGIN";
     private static final String BASE_URL = "https://transiva.my.id/";
-    private static final String LOGIN_URL = BASE_URL + "server/login.php";
+    private static final String LOGIN_URL = BASE_URL + "server/customer_login_native.php";
     private static final String SAVE_FCM_URL =
             BASE_URL + "server/save_fcm_token.php";
     private static final String PRIVACY_URL = BASE_URL + "privacy.html";
@@ -410,6 +410,11 @@ public class LoginActivity extends Activity {
                     "X-Transiva-Client",
                     "Android-Native"
             );
+            connection.setRequestProperty("X-App-Scope", "customer");
+            connection.setRequestProperty(
+                    "X-Device-UUID",
+                    DeviceIdentityManager.getInstallationUuid(this)
+            );
 
             JSONObject payload = new JSONObject();
             payload.put("username", username);
@@ -468,11 +473,29 @@ public class LoginActivity extends Activity {
 
             if (raw.isEmpty()) {
                 return LoginResult.fail(
-                        "Server tidak mengirim response."
+                        "Server tidak mengirim response (HTTP " + httpCode + ")."
                 );
             }
 
-            JSONObject response = new JSONObject(raw);
+            // Tahan terhadap BOM/whitespace atau banner hosting sebelum JSON.
+            if (raw.startsWith("\uFEFF")) {
+                raw = raw.substring(1).trim();
+            }
+            int jsonStart = raw.indexOf('{');
+            int jsonEnd = raw.lastIndexOf('}');
+            if (jsonStart > 0 && jsonEnd > jsonStart) {
+                raw = raw.substring(jsonStart, jsonEnd + 1);
+            }
+
+            JSONObject response;
+            try {
+                response = new JSONObject(raw);
+            } catch (Exception jsonError) {
+                Log.e(TAG, "Response login bukan JSON. HTTP=" + httpCode + ", raw=" + raw, jsonError);
+                return LoginResult.fail(
+                        "Respons login server tidak valid (HTTP " + httpCode + ")."
+                );
+            }
 
             boolean success =
                     response.optBoolean("success", false);
@@ -523,10 +546,19 @@ public class LoginActivity extends Activity {
                     user
             );
 
+        } catch (java.net.SocketTimeoutException error) {
+            Log.e(TAG, "Login timeout", error);
+            return LoginResult.fail("Server terlalu lama merespons. Coba lagi.");
+        } catch (javax.net.ssl.SSLException error) {
+            Log.e(TAG, "Login TLS gagal", error);
+            return LoginResult.fail("Koneksi aman ke server gagal. Periksa tanggal/waktu dan jaringan perangkat.");
+        } catch (java.net.UnknownHostException error) {
+            Log.e(TAG, "DNS login gagal", error);
+            return LoginResult.fail("Domain server tidak dapat ditemukan. Periksa jaringan/DNS.");
         } catch (Exception error) {
             Log.e(TAG, "Login gagal", error);
             return LoginResult.fail(
-                    "Server error atau koneksi gagal."
+                    "Koneksi login gagal: " + error.getClass().getSimpleName()
             );
         } finally {
             if (connection != null) {

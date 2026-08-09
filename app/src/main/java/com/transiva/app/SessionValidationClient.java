@@ -8,45 +8,61 @@ import java.io.BufferedReader;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.net.HttpURLConnection;
-import java.net.URL;
 
+/**
+ * Validasi sesi customer melalui gateway HTTP yang sama dengan API utama.
+ *
+ * Penting:
+ * - Tidak memasang TrustManager/HostnameVerifier sendiri.
+ * - Tidak melakukan hard certificate pinning.
+ * - X-App-Scope, Authorization dan X-Device-UUID berasal dari CustomerApiClient.
+ * - Gangguan jaringan/TLS tidak pernah dianggap sebagai sesi invalid.
+ */
 public final class SessionValidationClient {
-    private static final String URL_VALIDATE = "https://transiva.my.id/server/native_validate_session.php";
+    private static final String URL_VALIDATE =
+            "https://transiva.my.id/server/native_validate_session.php";
+
     private SessionValidationClient() {}
 
     public static void validate(Context context) {
         if (context == null) return;
-        Context app = context.getApplicationContext();
-        SessionManager session = new SessionManager(app);
-        String token = session.getToken() == null ? "" : session.getToken().trim();
+
+        final Context app = context.getApplicationContext();
+        final SessionManager session = new SessionManager(app);
+        final String token = session.getToken() == null ? "" : session.getToken().trim();
         if (!session.isLoggedIn() || token.isEmpty()) return;
 
         new Thread(() -> {
             HttpURLConnection conn = null;
             try {
-                conn = (HttpURLConnection) new URL(URL_VALIDATE).openConnection();
+                // Satu jalur koneksi dengan dashboard/API lain agar header keamanan selalu konsisten.
+                conn = CustomerApiClient.open(app, URL_VALIDATE);
                 conn.setRequestMethod("GET");
-                conn.setConnectTimeout(10000);
-                conn.setReadTimeout(12000);
+                conn.setConnectTimeout(12000);
+                conn.setReadTimeout(15000);
                 conn.setUseCaches(false);
-                conn.setRequestProperty("Accept", "application/json");
-                conn.setRequestProperty("Authorization", "Bearer " + token);
-                conn.setRequestProperty("X-App-Scope", "customer");
-                conn.setRequestProperty("X-Device-UUID", DeviceIdentityManager.getInstallationUuid(app));
+                conn.setRequestProperty("Cache-Control", "no-store");
 
-                int status = conn.getResponseCode();
-                InputStream stream = status >= 200 && status < 400 ? conn.getInputStream() : conn.getErrorStream();
-                String raw = read(stream);
+                final int status = conn.getResponseCode();
+                final InputStream stream = status >= 200 && status < 400
+                        ? conn.getInputStream()
+                        : conn.getErrorStream();
+                final String raw = read(stream);
+
                 String code = "";
-                try { code = new JSONObject(raw).optString("code", ""); } catch (Exception ignored) {}
+                try {
+                    code = new JSONObject(raw).optString("code", "");
+                } catch (Exception ignored) {}
 
-                if (status == 401 || status == 403 || ForceLogoutManager.isForceLogoutCode(code)) {
+                // Logout hanya jika server benar-benar menyatakan token/sesi invalid.
+                // Jangan logout hanya karena timeout, DNS, TLS, server 5xx, atau response non-JSON.
+                if ((status == 401 || status == 403) && ForceLogoutManager.isForceLogoutCode(code)) {
                     ForceLogoutManager.execute(app, code.isEmpty() ? "SESSION_REVOKED" : code);
                 } else if (status >= 200 && status < 300) {
                     session.touchSession();
                 }
             } catch (Exception ignored) {
-                // Gangguan internet tidak boleh memaksa logout.
+                // Gangguan koneksi bukan alasan menghapus sesi pengguna.
             } finally {
                 if (conn != null) conn.disconnect();
             }
@@ -55,11 +71,11 @@ public final class SessionValidationClient {
 
     private static String read(InputStream stream) throws Exception {
         if (stream == null) return "";
-        BufferedReader reader = new BufferedReader(new InputStreamReader(stream));
-        StringBuilder out = new StringBuilder();
-        String line;
-        while ((line = reader.readLine()) != null) out.append(line);
-        reader.close();
-        return out.toString();
+        try (BufferedReader reader = new BufferedReader(new InputStreamReader(stream, "UTF-8"))) {
+            StringBuilder out = new StringBuilder();
+            String line;
+            while ((line = reader.readLine()) != null) out.append(line);
+            return out.toString();
+        }
     }
 }

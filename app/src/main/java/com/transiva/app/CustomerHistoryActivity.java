@@ -25,6 +25,7 @@ import android.widget.HorizontalScrollView;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.ProgressBar;
+import android.widget.RatingBar;
 import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -52,6 +53,8 @@ public class CustomerHistoryActivity extends Activity {
 
     private static final int TIMEOUT_MS = 20000;
     private static final String ACTION_URL = BASE_URL + "server/customer_order_action.php";
+    private static final String DRIVER_REVIEW_URL = BASE_URL + "server/save_driver_review.php";
+    private static final String FOOD_REVIEW_URL = BASE_URL + "server/save_food_review.php";
 
     private static final String TAB_ACTIVE = "active";
     private static final String TAB_HISTORY = "history";
@@ -1361,6 +1364,10 @@ public class CustomerHistoryActivity extends Activity {
 
         card.addView(meta, metaLp);
 
+        if (isCompletedStatus(status) && supportsActivityRating(order)) {
+            card.addView(buildRatingStatus(order), ratingStatusLayoutParams());
+        }
+
         LinearLayout actions =
                 new LinearLayout(this);
 
@@ -1469,6 +1476,14 @@ public class CustomerHistoryActivity extends Activity {
                 card.addView(receive, receiveLp);
             }
         } else {
+            if (isCompletedStatus(status) && supportsActivityRating(order) && order.optInt("rating", 0) <= 0) {
+                Button rate = primaryButton(isFoodOrder(order) ? "Nilai Makanan" : "Nilai Driver");
+                rate.setOnClickListener(view -> showActivityReviewDialog(order));
+                LinearLayout.LayoutParams rateLp = new LinearLayout.LayoutParams(0, dp(42), 1);
+                rateLp.setMargins(dp(8), 0, 0, 0);
+                actions.addView(rate, rateLp);
+            }
+
             Button repeat =
                     primaryButton("Pesan Lagi");
 
@@ -1496,6 +1511,172 @@ public class CustomerHistoryActivity extends Activity {
         card.addView(actions);
 
         return card;
+    }
+
+    private LinearLayout.LayoutParams ratingStatusLayoutParams() {
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, -2);
+        lp.setMargins(0, dp(10), 0, 0);
+        return lp;
+    }
+
+    private View buildRatingStatus(JSONObject order) {
+        int rating = order.optInt("rating", 0);
+        boolean food = isFoodOrder(order);
+
+        LinearLayout box = new LinearLayout(this);
+        box.setOrientation(LinearLayout.HORIZONTAL);
+        box.setGravity(Gravity.CENTER_VERTICAL);
+        box.setPadding(dp(11), dp(8), dp(11), dp(8));
+
+        if (rating > 0) {
+            box.setBackground(roundStroke("#F0FDF4", "#BBF7D0", 13, 1));
+            TextView label = text(
+                    (food ? "Makanan sudah dinilai" : "Driver sudah dinilai") + "  " + starText(rating),
+                    10,
+                    "#15803D",
+                    true
+            );
+            box.addView(label, new LinearLayout.LayoutParams(0, -2, 1));
+        } else {
+            box.setBackground(roundStroke("#FFF7ED", "#FED7AA", 13, 1));
+            TextView label = text(
+                    food ? "Makanan belum dinilai" : "Driver belum dinilai",
+                    10,
+                    "#C2410C",
+                    true
+            );
+            box.addView(label, new LinearLayout.LayoutParams(0, -2, 1));
+
+            TextView hint = text("Beri rating", 10, "#0B7CFF", true);
+            hint.setOnClickListener(view -> showActivityReviewDialog(order));
+            box.addView(hint);
+        }
+        return box;
+    }
+
+    private String starText(int rating) {
+        int safe = Math.max(1, Math.min(5, rating));
+        StringBuilder out = new StringBuilder();
+        for (int i = 0; i < safe; i++) out.append("★");
+        for (int i = safe; i < 5; i++) out.append("☆");
+        return out.toString();
+    }
+
+    private boolean supportsActivityRating(JSONObject order) {
+        String type = serviceType(order);
+        return type.contains("food")
+                || type.contains("ride")
+                || type.contains("bike")
+                || type.contains("car")
+                || type.contains("mobil")
+                || type.contains("pickup");
+    }
+
+    private boolean isFoodOrder(JSONObject order) {
+        return serviceType(order).contains("food");
+    }
+
+    private void showActivityReviewDialog(JSONObject order) {
+        if (order.optInt("rating", 0) > 0) {
+            toast(isFoodOrder(order) ? "Makanan sudah pernah dinilai." : "Driver sudah pernah dinilai.");
+            return;
+        }
+
+        boolean food = isFoodOrder(order);
+        LinearLayout box = new LinearLayout(this);
+        box.setOrientation(LinearLayout.VERTICAL);
+        box.setPadding(dp(20), dp(8), dp(20), 0);
+
+        TextView prompt = text(
+                food
+                        ? "Bagaimana makanan dan pelayanan " + first(order.optString("restaurant_name"), order.optString("pickup_address"), "merchant") + "?"
+                        : "Bagaimana pelayanan " + first(order.optString("driver_name"), order.optString("driver"), "driver") + "?",
+                14,
+                "#0B3A78",
+                true
+        );
+        box.addView(prompt);
+
+        RatingBar stars = new RatingBar(this, null, android.R.attr.ratingBarStyle);
+        stars.setNumStars(5);
+        stars.setStepSize(1f);
+        stars.setRating(5f);
+        LinearLayout.LayoutParams starsLp = new LinearLayout.LayoutParams(-2, -2);
+        starsLp.setMargins(0, dp(6), 0, 0);
+        box.addView(stars, starsLp);
+
+        EditText review = new EditText(this);
+        review.setHint(food ? "Tulis ulasan makanan (opsional)" : "Tulis ulasan driver (opsional)");
+        review.setMinLines(2);
+        review.setMaxLines(4);
+        review.setMaxWidth(dp(320));
+        box.addView(review, new LinearLayout.LayoutParams(-1, -2));
+
+        AlertDialog dialog = new AlertDialog.Builder(this)
+                .setTitle(food ? "Beri Rating Makanan" : "Beri Rating Driver")
+                .setView(box)
+                .setNegativeButton("Nanti", null)
+                .setPositiveButton("Kirim", null)
+                .create();
+
+        dialog.setOnShowListener(ignore -> dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(view -> {
+            int rating = Math.max(1, Math.min(5, Math.round(stars.getRating())));
+            submitActivityReview(order, rating, review.getText().toString().trim(), dialog);
+        }));
+        dialog.show();
+    }
+
+    private void submitActivityReview(JSONObject order, int rating, String review, AlertDialog dialog) {
+        if (loading) return;
+        loading = true;
+        progressBar.setVisibility(View.VISIBLE);
+
+        new Thread(() -> {
+            try {
+                boolean food = isFoodOrder(order);
+                JSONObject payload = new JSONObject();
+                payload.put("order_id", first(order.optString("order_id"), order.optString("id")));
+                payload.put("id", order.optInt("id", 0));
+                payload.put("source", order.optString("source", "").contains("pickup") ? "pickup_orders" : "orders");
+                payload.put("rating", rating);
+                payload.put("review", review == null ? "" : review);
+
+                JSONObject response = postJson(food ? FOOD_REVIEW_URL : DRIVER_REVIEW_URL, payload);
+                boolean success = response.optBoolean("success", false);
+                String message = first(
+                        response.optString("message"),
+                        success ? "Terima kasih atas penilaian Anda." : "Rating gagal disimpan."
+                );
+
+                mainHandler.post(() -> {
+                    loading = false;
+                    progressBar.setVisibility(View.GONE);
+                    if (success) {
+                        try {
+                            order.put("rating", rating);
+                            order.put("review", review == null ? "" : review);
+                        } catch (Exception ignored) {}
+                        if (dialog != null && dialog.isShowing()) dialog.dismiss();
+                        renderOrders();
+                    }
+                    new AlertDialog.Builder(this)
+                            .setTitle(success ? "Terima kasih" : "Gagal")
+                            .setMessage(message)
+                            .setPositiveButton("OK", null)
+                            .show();
+                });
+            } catch (Exception error) {
+                mainHandler.post(() -> {
+                    loading = false;
+                    progressBar.setVisibility(View.GONE);
+                    new AlertDialog.Builder(this)
+                            .setTitle("Gagal")
+                            .setMessage("Koneksi server bermasalah. Rating belum dikirim, silakan coba kembali.")
+                            .setPositiveButton("OK", null)
+                            .show();
+                });
+            }
+        }, "activity-save-review").start();
     }
 
     private void confirmReceivedFromActivity(JSONObject order) {

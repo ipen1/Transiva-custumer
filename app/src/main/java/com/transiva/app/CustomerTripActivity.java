@@ -54,6 +54,7 @@ public class CustomerTripActivity extends Activity {
     private static final String PICKUP_STATUS_URL = BASE_URL + "server/get_pickup_order_status.php";
     private static final String CUSTOMER_ACTION_URL = BASE_URL + "server/customer_order_action.php";
     private static final String SAVE_REVIEW_URL = BASE_URL + "server/save_driver_review.php";
+    private static final String SAVE_FOOD_REVIEW_URL = BASE_URL + "server/save_food_review.php";
     private static final String SHARE_TRIP_URL = BASE_URL + "share_trip.php";
 
     // Pakai file Leaflet lokal/server sendiri, bukan CDN, agar stabil di WebView.
@@ -538,7 +539,11 @@ public class CustomerTripActivity extends Activity {
         saveTripPrefs();
 
         if (isFinishedStatus(status)) {
-            showDriverReviewDialog(order);
+            if ("food".equals(orderType) || "transfood".equals(orderType)) {
+                showFoodReviewDialog(order);
+            } else {
+                showDriverReviewDialog(order);
+            }
             return;
         }
 
@@ -698,6 +703,67 @@ public class CustomerTripActivity extends Activity {
         return "Sedang menuju penjemputan";
     }
 
+
+    private void showFoodReviewDialog(JSONObject order) {
+        if (reviewDialogShown || isFinishing()) return;
+        if (order.optInt("rating", 0) > 0) { goHomeAfterFinished(); return; }
+        reviewDialogShown = true;
+
+        LinearLayout box = new LinearLayout(this);
+        box.setOrientation(LinearLayout.VERTICAL);
+        box.setPadding(dp(20), dp(8), dp(20), 0);
+
+        String restaurant = firstNonEmpty(order.optString("restaurant_name"), order.optString("pickup_address"), "merchant");
+        TextView prompt = new TextView(this);
+        prompt.setText("Bagaimana makanan dan pelayanan " + restaurant + "?");
+        prompt.setTextSize(16);
+        prompt.setTextColor(Color.parseColor("#0B3A78"));
+        box.addView(prompt);
+
+        RatingBar stars = new RatingBar(this, null, android.R.attr.ratingBarStyle);
+        stars.setNumStars(5); stars.setStepSize(1f); stars.setRating(5f);
+        box.addView(stars, new LinearLayout.LayoutParams(-2,-2));
+
+        EditText review = new EditText(this);
+        review.setHint("Tulis ulasan makanan (opsional)"); review.setMinLines(2); review.setMaxLines(4);
+        box.addView(review, new LinearLayout.LayoutParams(-1,-2));
+
+        AlertDialog dialog = new AlertDialog.Builder(this)
+                .setTitle("Beri Rating Makanan")
+                .setView(box)
+                .setCancelable(false)
+                .setNegativeButton("Nanti", (d,w) -> goHomeAfterFinished())
+                .setPositiveButton("Kirim", null)
+                .create();
+        dialog.setOnShowListener(x -> dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
+            int rating = Math.max(1, Math.round(stars.getRating()));
+            submitFoodReview(order, rating, review.getText().toString().trim(), dialog);
+        }));
+        dialog.show();
+    }
+
+    private void submitFoodReview(JSONObject order, int rating, String review, AlertDialog dialog) {
+        setLoading(true);
+        new Thread(() -> {
+            try {
+                JSONObject body = new JSONObject();
+                body.put("id", order.optInt("id", 0));
+                body.put("order_id", orderId);
+                body.put("rating", rating);
+                body.put("review", review);
+                JSONObject res = postJson(SAVE_FOOD_REVIEW_URL, body);
+                boolean ok = res.optBoolean("success", false);
+                String msg = firstNonEmpty(res.optString("message"), ok ? "Terima kasih atas ulasannya." : "Rating makanan gagal disimpan.");
+                mainHandler.post(() -> {
+                    setLoading(false);
+                    if (ok) { dialog.dismiss(); showInfo("Terima kasih", msg); mainHandler.postDelayed(this::goHomeAfterFinished, 700); }
+                    else showInfo("Gagal", msg);
+                });
+            } catch (Exception e) {
+                mainHandler.post(() -> { setLoading(false); showInfo("Gagal", "Koneksi server bermasalah."); });
+            }
+        }, "save-food-review").start();
+    }
 
     private void showDriverReviewDialog(JSONObject order) {
         if (reviewDialogShown || isFinishing()) return;

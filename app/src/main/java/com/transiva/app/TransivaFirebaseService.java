@@ -248,12 +248,17 @@ public class TransivaFirebaseService extends FirebaseMessagingService {
         boolean arrivalDelivery = "arrived_delivery".equals(event);
         boolean arrivalEvent = arrivalPickup || arrivalDelivery;
 
-        if (arrivalPickup) {
-            title = "Driver sudah tiba di penjemputan";
-            body = "Kabar bagus! Driver Anda sudah menunggu di titik penjemputan.";
-        } else if (arrivalDelivery) {
-            title = "Anda sudah tiba di pengantaran";
-            body = "Yeay, perjalanan sampai di titik pengantaran. Pastikan barang Anda lengkap.";
+        if (arrivalEvent) {
+            CustomerArrivalMessage.Content arrival = CustomerArrivalMessage.build(
+                    event,
+                    data != null ? first(data.get("order_type"), data.get("service_type"), "") : "",
+                    data != null ? first(data.get("source"), "") : "",
+                    data != null ? first(data.get("restaurant_name"), data.get("merchant_name"), "") : "",
+                    data != null ? first(data.get("driver"), data.get("driver_name"), "") : "",
+                    first(orderId, "")
+            );
+            title = arrival.title;
+            body = arrival.body;
         }
 
         String channelId = channelForType(type);
@@ -392,6 +397,9 @@ public class TransivaFirebaseService extends FirebaseMessagingService {
         i.putExtra("event", first(event, ""));
         i.putExtra("order_id", first(orderId, ""));
         i.putExtra("driver", data != null ? first(data.get("driver"), data.get("driver_name"), "") : "");
+        i.putExtra("order_type", data != null ? first(data.get("order_type"), data.get("service_type"), "") : "");
+        i.putExtra("source", data != null ? first(data.get("source"), "orders") : "orders");
+        i.putExtra("restaurant_name", data != null ? first(data.get("restaurant_name"), data.get("merchant_name"), "") : "");
         i.putExtra("from_fcm", true);
         return i;
     }

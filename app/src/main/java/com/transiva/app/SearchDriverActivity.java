@@ -43,6 +43,7 @@ import android.widget.ScrollView;
 import android.widget.TextView;
 
 import org.json.JSONArray;
+import java.util.concurrent.atomic.AtomicBoolean;
 import org.json.JSONObject;
 
 import java.io.BufferedReader;
@@ -94,6 +95,9 @@ public class SearchDriverActivity extends Activity {
     private double userLat = 0;
     private double userLng = 0;
     private boolean hasUserLocation = false;
+    private volatile String cachedDriverType = "bike";
+    private final AtomicBoolean radarRequestInFlight = new AtomicBoolean(false);
+    private final AtomicBoolean statusRequestInFlight = new AtomicBoolean(false);
 
     private final Runnable driverRadarRunnable = new Runnable() {
         @Override public void run() {
@@ -127,6 +131,12 @@ public class SearchDriverActivity extends Activity {
                 getStringPref("active_order_id"),
                 getStringPref("order_id")
         );
+        cachedDriverType = normalizeDriverType(firstNonEmpty(
+                getIntent().getStringExtra("driver_type"),
+                getIntent().getStringExtra("active_driver_type"),
+                getStringPref("active_driver_type"),
+                "bike"
+        ));
 
         buildLayout();
         getUserLocationThenStart();
@@ -472,36 +482,19 @@ public class SearchDriverActivity extends Activity {
     }
 
     private void loadIdleDriversToRadar() {
-        new Thread(() -> {
+        if (!radarRequestInFlight.compareAndSet(false, true)) return;
+        TransivaNetworkExecutor.execute(() -> {
             try {
-                JSONObject orderPayload = new JSONObject();
-                orderPayload.put("order_id", activeOrderId);
-                JSONObject orderRes = postJson(BASE_URL + "server/check_order_status.php", orderPayload);
-
-                if (!orderRes.optBoolean("success", false)) {
-                    mainHandler.post(() -> setSubtitle(firstNonEmpty(orderRes.optString("message"), "Gagal membaca tipe order")));
-                    return;
-                }
-
-                String type = firstNonEmpty(
-                        orderRes.optString("driver_type", ""),
-                        orderRes.optString("order_type", ""),
-                        orderRes.optJSONObject("order") != null ? orderRes.optJSONObject("order").optString("driver_type", "") : "",
-                        orderRes.optJSONObject("order") != null ? orderRes.optJSONObject("order").optString("order_type", "") : ""
-                ).toLowerCase(Locale.US).trim();
-
-                if (type.equals("transbike") || type.equals("bike") || type.equals("motor") || type.equals("kurir")) {
-                    type = "bike";
-                } else if (type.equals("transcar") || type.equals("car") || type.equals("mobil")) {
-                    type = "car";
-                } else {
-                    type = "bike";
-                }
-
                 JSONObject payload = new JSONObject();
-                payload.put("type", type);
-                JSONObject res = postJson(BASE_URL + "server/get_idle_drivers.php", payload);
+                payload.put("type", normalizeDriverType(cachedDriverType));
+                if (hasUserLocation) {
+                    payload.put("latitude", userLat);
+                    payload.put("longitude", userLng);
+                    payload.put("max_km", 20);
+                    payload.put("limit", 40);
+                }
 
+                JSONObject res = postJson(BASE_URL + "server/get_idle_drivers.php", payload);
                 if (!res.optBoolean("success", false)) {
                     mainHandler.post(() -> setSubtitle(firstNonEmpty(res.optString("message"), "Gagal mengambil driver")));
                     return;
@@ -509,7 +502,6 @@ public class SearchDriverActivity extends Activity {
 
                 JSONArray arr = res.optJSONArray("drivers");
                 List<RadarDriver> drivers = parseDrivers(arr);
-
                 mainHandler.post(() -> {
                     radarView.setDrivers(drivers, hasUserLocation, userLat, userLng);
                     if (drivers.size() > 0 && hasUserLocation) {
@@ -523,8 +515,10 @@ public class SearchDriverActivity extends Activity {
                 });
             } catch (Exception e) {
                 mainHandler.post(() -> setSubtitle("Koneksi gagal mengambil driver"));
+            } finally {
+                radarRequestInFlight.set(false);
             }
-        }).start();
+        });
     }
 
     private List<RadarDriver> parseDrivers(JSONArray arr) {
@@ -554,7 +548,8 @@ public class SearchDriverActivity extends Activity {
     }
 
     private void checkOrderStatus() {
-        new Thread(() -> {
+        if (!statusRequestInFlight.compareAndSet(false, true)) return;
+        TransivaNetworkExecutor.execute(() -> {
             try {
                 JSONObject payload = new JSONObject();
                 payload.put("order_id", activeOrderId);
@@ -570,6 +565,10 @@ public class SearchDriverActivity extends Activity {
                 ).trim().toLowerCase(Locale.US);
 
                 String orderType = firstNonEmpty(order.optString("order_type", ""), res.optString("order_type", "")).trim().toLowerCase(Locale.US);
+                cachedDriverType = normalizeDriverType(firstNonEmpty(
+                        order.optString("driver_type", ""),
+                        res.optString("driver_type", ""),
+                        orderType, cachedDriverType));
                 String merchantStatus = firstNonEmpty(order.optString("merchant_status", ""), res.optString("merchant_status", "")).trim().toLowerCase(Locale.US);
                 int cookMinutes = Math.max(order.optInt("cook_minutes", 0), res.optInt("cook_minutes", 0));
                 if ("food".equals(orderType) && !merchantStatus.isEmpty() && !isDriverAcceptedStatus(status)) {
@@ -601,8 +600,11 @@ public class SearchDriverActivity extends Activity {
                 if (isDriverAcceptedStatus(status)) {
                     mainHandler.post(() -> showDriver(res));
                 }
-            } catch (Exception ignored) {}
-        }).start();
+            } catch (Exception ignored) {
+            } finally {
+                statusRequestInFlight.set(false);
+            }
+        });
     }
 
     private boolean isDriverAcceptedStatus(String rawStatus) {

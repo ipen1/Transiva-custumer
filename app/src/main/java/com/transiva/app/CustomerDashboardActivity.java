@@ -56,6 +56,7 @@ public class CustomerDashboardActivity extends Activity
 
     private LinearLayout content;
     private TextView locationText;
+    private TextView clusterText;
     private TextView balanceText;
     private TextView orderText;
     private TextView orderHint;
@@ -385,6 +386,8 @@ public class CustomerDashboardActivity extends Activity
         locationText = text("Memuat lokasi...", 12, "#FFFFFF", true);
         locationText.setSingleLine(true);
         locationTexts.addView(locationText);
+        clusterText = text("Cluster: mendeteksi...", 10, "#D9EDFF", true);
+        locationTexts.addView(clusterText);
 
         TextView change = text("Perbarui ›", 10, "#FFFFFF", true);
         locationCard.addView(change, new LinearLayout.LayoutParams(-2, -2));
@@ -1696,6 +1699,8 @@ public class CustomerDashboardActivity extends Activity
                             () -> {
                                 currentLocation = finalResult;
                                 locationText.setText(finalResult);
+                                TransivaCluster.Item cluster = TransivaCluster.nearest(location.getLatitude(), location.getLongitude());
+                                if (clusterText != null) clusterText.setText("Cluster " + cluster.id + " • " + cluster.name);
                                 refreshSmartRecommendation();
                             }
                     );

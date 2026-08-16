@@ -27,7 +27,8 @@ public class TransivaCustomerApplication extends Application implements Applicat
         TransivaCrashReporter.screen(activity);
         TransivaCrashReporter.user(activity);
         CustomerFcmTokenSync.syncIfNeeded(activity);
-        if (activity instanceof SplashActivity) return;
+        AppUpdateRuntimeGate.onActivityResumed(activity);
+        if (activity instanceof SplashActivity || activity instanceof UpdateDownloadActivity) return;
         main.postDelayed(() -> {
             if (!activity.isFinishing()) {
                 RootSecurityGuard.protect(activity);

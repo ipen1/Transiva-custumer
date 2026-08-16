@@ -11,12 +11,14 @@ import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.net.HttpURLConnection;
 import java.net.URL;
+import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 
-/** Pemeriksa update APK Transiva yang dihosting sendiri. */
+/** Pemeriksa update APK khusus Transiva Customer yang dihosting sendiri. */
 public final class AppUpdateClient {
     public static final String UPDATE_ENDPOINT = "https://transiva.my.id/server/getVersion.php";
-    private static final String APP_TYPE = "customer";
+    public static final String APP_ROLE = "customer";
+    public static final String CUSTOMER_PACKAGE = "com.transiva.customer";
 
     public interface Callback {
         void onResult(AppUpdateInfo info, boolean updateAvailable);
@@ -26,40 +28,90 @@ public final class AppUpdateClient {
     private AppUpdateClient() {}
 
     public static void check(Context context, Callback callback) {
+        final Context app = context.getApplicationContext();
         new Thread(() -> {
             HttpURLConnection connection = null;
             try {
-                connection = (HttpURLConnection) new URL(UPDATE_ENDPOINT + "?app=" + APP_TYPE + "&t=" + System.currentTimeMillis()).openConnection();
+                String requestUrl = UPDATE_ENDPOINT
+                        + "?app=" + URLEncoder.encode(APP_ROLE, "UTF-8")
+                        + "&installed_version_code=" + installedVersionCode(app)
+                        + "&_=" + System.currentTimeMillis();
+
+                connection = (HttpURLConnection) new URL(requestUrl).openConnection();
                 connection.setRequestMethod("GET");
-                connection.setConnectTimeout(20000);
-                connection.setReadTimeout(20000);
+                connection.setConnectTimeout(12000);
+                connection.setReadTimeout(12000);
                 connection.setUseCaches(false);
                 connection.setRequestProperty("Accept", "application/json");
+                connection.setRequestProperty("Cache-Control", "no-cache");
+                connection.setRequestProperty("X-Transiva-App", APP_ROLE);
+                connection.setRequestProperty("X-Transiva-Package", CUSTOMER_PACKAGE);
+
                 int code = connection.getResponseCode();
                 InputStream stream = code >= 200 && code < 300
                         ? connection.getInputStream() : connection.getErrorStream();
                 String response = read(stream);
-                if (code < 200 || code >= 300) throw new IllegalStateException("Server merespons " + code);
-                JSONObject json = new JSONObject(response);
-                if (!json.optBoolean("success", true)) {
-                    throw new IllegalStateException(json.optString("message", "Informasi pembaruan tidak tersedia."));
+                if (code < 200 || code >= 300) {
+                    throw new IllegalStateException("Server update merespons " + code);
                 }
-                AppUpdateInfo info = AppUpdateInfo.fromJson(json);
+
+                JSONObject root = new JSONObject(response);
+                if (!root.optBoolean("success", true)) {
+                    throw new IllegalStateException(root.optString(
+                            "message", "Informasi pembaruan tidak tersedia."));
+                }
+
+                JSONObject data = root.optJSONObject("data");
+                if (data == null) data = root;
+
+                String serverApp = data.optString("app", "").trim();
+                String serverPackage = data.optString("package_name", "").trim();
+                String installedPackage = app.getPackageName();
+
+                if (!APP_ROLE.equalsIgnoreCase(serverApp)) {
+                    throw new SecurityException("Server mengirim pembaruan bukan untuk aplikasi Customer.");
+                }
+                if (!CUSTOMER_PACKAGE.equals(installedPackage)) {
+                    throw new SecurityException("Identitas paket Customer tidak sesuai: " + installedPackage);
+                }
+                if (!CUSTOMER_PACKAGE.equals(serverPackage)) {
+                    throw new SecurityException("Paket update dari server bukan Transiva Customer.");
+                }
+
+                AppUpdateInfo info = AppUpdateInfo.fromJson(root);
                 if (info.versionCode <= 0 || info.apkUrl.trim().isEmpty()) {
                     throw new IllegalStateException("Konfigurasi update server belum lengkap.");
                 }
-                callback.onResult(info, info.versionCode > installedVersionCode(context));
+                if (info.minimumVersionCode > info.versionCode) {
+                    throw new IllegalStateException("minimum_version_code melebihi version_code terbaru.");
+                }
+
+                String apkUrlLower = info.apkUrl.toLowerCase();
+                if (!apkUrlLower.startsWith("https://")) {
+                    throw new SecurityException("URL APK wajib HTTPS.");
+                }
+                if (apkUrlLower.contains("driver") || apkUrlLower.contains("merchant")) {
+                    throw new SecurityException("URL pembaruan bukan APK Transiva Customer.");
+                }
+
+                int installed = installedVersionCode(app);
+                AppUpdateStore.saveServerInfo(app, info);
+                callback.onResult(info, info.isUpdateAvailable(installed));
             } catch (Exception e) {
-                callback.onError(e.getMessage() == null ? "Gagal memeriksa pembaruan." : e.getMessage());
+                callback.onError(e.getMessage() == null
+                        ? "Gagal memeriksa pembaruan Customer." : e.getMessage());
             } finally {
                 if (connection != null) connection.disconnect();
             }
-        }, "transiva-update-check").start();
+        }, "transiva-customer-update-check").start();
     }
 
     public static int installedVersionCode(Context context) throws Exception {
         PackageInfo info = context.getPackageManager().getPackageInfo(context.getPackageName(), 0);
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) return (int) info.getLongVersionCode();
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            long value = info.getLongVersionCode();
+            return value > Integer.MAX_VALUE ? Integer.MAX_VALUE : (int) value;
+        }
         return info.versionCode;
     }
 
@@ -75,7 +127,8 @@ public final class AppUpdateClient {
     private static String read(InputStream stream) throws Exception {
         if (stream == null) return "";
         StringBuilder result = new StringBuilder();
-        try (BufferedReader reader = new BufferedReader(new InputStreamReader(stream, StandardCharsets.UTF_8))) {
+        try (BufferedReader reader = new BufferedReader(
+                new InputStreamReader(stream, StandardCharsets.UTF_8))) {
             String line;
             while ((line = reader.readLine()) != null) result.append(line);
         }

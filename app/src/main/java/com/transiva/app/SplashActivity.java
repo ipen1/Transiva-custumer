@@ -6,48 +6,136 @@ import android.graphics.Color;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
+import android.view.Gravity;
 import android.view.ViewGroup;
 import android.widget.FrameLayout;
 import android.widget.ImageView;
-import android.widget.ImageView.ScaleType;
+import android.widget.TextView;
 
+/** Splash Customer: security check + update gate + pemulihan order aktif. */
 public class SplashActivity extends Activity {
     private boolean routed;
     private boolean securityCheckStarted;
-    private static final int SPLASH_DELAY = 1200;
+    private boolean updateChecking;
+    private static final int SPLASH_DELAY = 900;
+    private TextView statusText;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         FrameLayout layout = new FrameLayout(this);
         layout.setBackgroundColor(Color.parseColor("#020617"));
+
         ImageView splash = new ImageView(this);
         int splashRes = getDrawableId("splash_screen");
         if (splashRes == 0) splashRes = getDrawableId("transiva_logo");
         if (splashRes == 0) splashRes = getDrawableId("logo_transiva");
         if (splashRes == 0) splashRes = getApplicationInfo().icon;
         splash.setImageResource(splashRes);
-        splash.setScaleType(ScaleType.CENTER_CROP);
-        layout.addView(splash, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        splash.setScaleType(ImageView.ScaleType.CENTER_CROP);
+        layout.addView(splash, new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+
+        statusText = new TextView(this);
+        statusText.setText("Memeriksa keamanan aplikasi...");
+        statusText.setTextColor(Color.WHITE);
+        statusText.setTextSize(13f);
+        statusText.setGravity(Gravity.CENTER);
+        statusText.setPadding(24, 12, 24, 12);
+        statusText.setBackgroundColor(0x99000000);
+        FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(-1, -2);
+        lp.gravity = Gravity.BOTTOM;
+        lp.setMargins(28, 0, 28, 36);
+        layout.addView(statusText, lp);
+
         setContentView(layout);
         new Handler(Looper.getMainLooper()).postDelayed(this::startSecurityCheck, SPLASH_DELAY);
     }
 
     private void startSecurityCheck() {
-        if (routed || securityCheckStarted || isFinishing()) return;
+        if (routed || securityCheckStarted || updateChecking || isFinishing()) return;
         securityCheckStarted = true;
+        statusText.setText("Memeriksa keamanan perangkat...");
         RootSecurityGuard.checkBeforeContinue(this,
-                () -> MockLocationGuard.checkBeforeContinue(this, this::routeNext));
+                () -> MockLocationGuard.checkBeforeContinue(this, () -> {
+                    securityCheckStarted = false;
+                    checkAppUpdate();
+                }));
     }
 
     @Override
     protected void onResume() {
         super.onResume();
-        // When returning from Developer options, run a fresh check.
-        if (securityCheckStarted && !routed) {
-            securityCheckStarted = false;
+        // Saat kembali dari pengaturan/installer, jalankan pemeriksaan segar.
+        if (!routed && !securityCheckStarted && !updateChecking) {
             new Handler(Looper.getMainLooper()).postDelayed(this::startSecurityCheck, 300L);
         }
+    }
+
+    private void checkAppUpdate() {
+        if (routed || updateChecking || isFinishing()) return;
+        updateChecking = true;
+        statusText.setText("Memeriksa versi Transiva Customer...");
+
+        AppUpdateInfo cached = AppUpdateStore.cachedInfo(this);
+        int current = currentVersion();
+        if (cached != null && cached.isForceRequired(current)) {
+            updateChecking = false;
+            openForcedUpdate();
+            return;
+        }
+
+        AppUpdateClient.check(this, new AppUpdateClient.Callback() {
+            @Override public void onResult(AppUpdateInfo info, boolean available) {
+                runOnUiThread(() -> {
+                    updateChecking = false;
+                    if (isFinishing() || routed) return;
+                    int installed = currentVersion();
+                    if (info.isForceRequired(installed)) {
+                        openForcedUpdate();
+                        return;
+                    }
+                    if (available) {
+                        try { AppUpdateDownloadManager.ensureDownload(SplashActivity.this, info); }
+                        catch (Exception ignored) { }
+                    }
+                    statusText.setText("Aplikasi siap digunakan");
+                    routeNext();
+                });
+            }
+
+            @Override public void onError(String message) {
+                runOnUiThread(() -> {
+                    updateChecking = false;
+                    if (isFinishing() || routed) return;
+                    AppUpdateInfo old = AppUpdateStore.cachedInfo(SplashActivity.this);
+                    if (old != null && old.isForceRequired(currentVersion())) {
+                        openForcedUpdate();
+                    } else {
+                        // Fail-open hanya jika tidak ada force-update yang sudah tercache.
+                        statusText.setText("Membuka aplikasi...");
+                        routeNext();
+                    }
+                });
+            }
+        });
+    }
+
+    private void openForcedUpdate() {
+        if (routed) return;
+        routed = true;
+        Intent i = new Intent(this, UpdateDownloadActivity.class);
+        i.putExtra(UpdateDownloadActivity.EXTRA_ROLE, "customer");
+        i.putExtra(UpdateDownloadActivity.EXTRA_FORCE, true);
+        i.putExtra(UpdateDownloadActivity.EXTRA_AUTO_START, true);
+        i.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
+        startActivity(i);
+        finish();
+    }
+
+    private int currentVersion() {
+        try { return AppUpdateClient.installedVersionCode(this); }
+        catch (Exception ignored) { return 0; }
     }
 
     private void routeNext() {
@@ -59,8 +147,7 @@ public class SplashActivity extends Activity {
             return;
         }
 
-        // SharedPreferences dapat tertinggal setelah order selesai. Karena itu,
-        // pastikan order benar-benar masih aktif di server sebelum membuka trip.
+        // Tetap pertahankan recovery order aktif milik Customer.
         ActiveOrderRecovery.route(this, session, routedToTrip -> {
             if (!routedToTrip && !isFinishing()) {
                 openRoot(new Intent(this, CustomerDashboardActivity.class));

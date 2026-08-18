@@ -66,6 +66,9 @@ public class ProfileActivity extends Activity {
     private static final String DEVICE_URL =
             BASE_URL + "customer_device_native.php";
 
+    private static final String LOYALTY_URL =
+            BASE_URL + "customer_loyalty.php";
+
     private static final int REQUEST_GALLERY = 5101;
     private static final int REQUEST_LOCATION = 5102;
     private static final int TIMEOUT_MS = 30000;
@@ -82,6 +85,7 @@ public class ProfileActivity extends Activity {
     private TextView emailBadge;
     private TextView phoneView;
     private TextView roleView;
+    private TextView loyaltyBadge;
 
     private EditText usernameInput;
     private EditText phoneInput;
@@ -107,6 +111,7 @@ public class ProfileActivity extends Activity {
     private boolean emailVerified;
     private boolean loading;
     private boolean deviceLoading;
+    private boolean loyaltyLoading;
 
     private byte[] pendingPhotoWebp;
     private double deliveryLat;
@@ -130,6 +135,7 @@ public class ProfileActivity extends Activity {
         setContentView(buildScreen());
         CustomerAppSettings.apply(this);
         loadProfile();
+        loadLoyalty();
     }
 
     @Override
@@ -506,32 +512,32 @@ public class ProfileActivity extends Activity {
                 )
         );
 
-        photoButton =
-                premiumLightButton(
-                        "Ubah Foto Profil"
+        TextView photoOverlay =
+                text(
+                        "✎",
+                        18,
+                        "#FFFFFF",
+                        true
                 );
+        photoOverlay.setGravity(Gravity.CENTER);
+        photoOverlay.setBackground(round("#0B7CFF", 18));
+        photoOverlay.setElevation(dp(8));
 
-        LinearLayout.LayoutParams photoLp =
-                new LinearLayout.LayoutParams(
-                        -2,
-                        dp(40)
+        FrameLayout.LayoutParams overlayLp =
+                new FrameLayout.LayoutParams(
+                        dp(34),
+                        dp(34)
                 );
+        overlayLp.gravity = Gravity.END | Gravity.BOTTOM;
+        overlayLp.setMargins(0, 0, dp(2), dp(2));
+        avatarFrame.addView(photoOverlay, overlayLp);
 
-        photoLp.setMargins(
-                0,
-                dp(10),
-                0,
-                dp(12)
-        );
-
-        card.addView(
-                photoButton,
-                photoLp
-        );
-
-        photoButton.setOnClickListener(
-                view -> openGallery()
-        );
+        avatarFrame.setClickable(true);
+        avatarFrame.setFocusable(true);
+        avatarFrame.setContentDescription("Ubah Foto Profil");
+        avatarFrame.setOnClickListener(view -> openGallery());
+        avatarView.setOnClickListener(view -> openGallery());
+        photoOverlay.setOnClickListener(view -> openGallery());
 
         nameView =
                 text(
@@ -625,6 +631,22 @@ public class ProfileActivity extends Activity {
                 roleView,
                 roleLp
         );
+
+        loyaltyBadge =
+                badge(
+                        "★ Member Bronze • 0 Poin",
+                        "#FFF4D6",
+                        "#8A5A00"
+                );
+
+        LinearLayout.LayoutParams loyaltyLp =
+                new LinearLayout.LayoutParams(
+                        -2,
+                        -2
+                );
+        loyaltyLp.gravity = Gravity.CENTER_HORIZONTAL;
+        loyaltyLp.setMargins(0, dp(8), 0, 0);
+        card.addView(loyaltyBadge, loyaltyLp);
     }
 
     private void buildFormCard(
@@ -685,13 +707,26 @@ public class ProfileActivity extends Activity {
                 label("Nomor HP")
         );
 
+        LinearLayout phoneRow = new LinearLayout(this);
+        phoneRow.setOrientation(LinearLayout.HORIZONTAL);
+        phoneRow.setGravity(Gravity.CENTER_VERTICAL);
+
+        TextView prefix62 = text("62", 14, "#0F172A", true);
+        prefix62.setGravity(Gravity.CENTER);
+        prefix62.setBackground(roundStroke("#EEF5FF", "#D7E4F2", 14, 1));
+
+        LinearLayout.LayoutParams prefixLp =
+                new LinearLayout.LayoutParams(dp(58), dp(50));
+        prefixLp.setMargins(0, 0, dp(8), 0);
+        phoneRow.addView(prefix62, prefixLp);
+
         phoneInput =
                 input(
-                        "Contoh: 081234567890",
+                        "8123XXX",
                         InputType.TYPE_CLASS_PHONE
                 );
-
-        phoneInput.setText(normalizeIndonesiaPhone(phone));
+        phoneInput.setSingleLine(true);
+        phoneInput.setText(localIndonesiaPhone(phone));
         phoneInput.setSelection(phoneInput.getText().length());
         phoneInput.addTextChangedListener(new TextWatcher() {
             private boolean changing;
@@ -702,22 +737,26 @@ public class ProfileActivity extends Activity {
             @Override
             public void afterTextChanged(Editable editable) {
                 if (changing) return;
-                String normalized = normalizeIndonesiaPhone(editable == null ? "" : editable.toString());
+                String digits = editable == null ? "" : editable.toString().replaceAll("[^0-9]", "");
+                while (digits.startsWith("0")) digits = digits.substring(1);
+                if (digits.startsWith("62")) digits = digits.substring(2);
+                if (digits.length() > 13) digits = digits.substring(0, 13);
                 String current = editable == null ? "" : editable.toString();
-                if (!normalized.equals(current)) {
+                if (!digits.equals(current)) {
                     changing = true;
-                    phoneInput.setText(normalized);
+                    phoneInput.setText(digits);
                     phoneInput.setSelection(phoneInput.getText().length());
                     changing = false;
                 }
             }
         });
 
-        card.addView(
+        phoneRow.addView(
                 phoneInput,
-                fieldLp()
+                new LinearLayout.LayoutParams(0, dp(50), 1f)
         );
 
+        card.addView(phoneRow, fieldLp());
         phoneView = phoneInput;
 
         card.addView(
@@ -1859,7 +1898,7 @@ public class ProfileActivity extends Activity {
                 )
         );
 
-        phoneInput.setText(normalizeIndonesiaPhone(phone));
+        phoneInput.setText(localIndonesiaPhone(phone));
         phoneInput.setSelection(phoneInput.getText().length());
         addressInput.setText(address);
 
@@ -1943,6 +1982,95 @@ public class ProfileActivity extends Activity {
         }).start();
     }
 
+    private void loadLoyalty() {
+        if (loyaltyLoading || loyaltyBadge == null) return;
+
+        String token = first(session.getToken());
+        if (token.isEmpty()) return;
+
+        loyaltyLoading = true;
+        new Thread(() -> {
+            HttpURLConnection connection = null;
+            try {
+                connection = (HttpURLConnection) new URL(
+                        LOYALTY_URL + "?_=" + System.currentTimeMillis()
+                ).openConnection();
+                connection.setRequestMethod("GET");
+                connection.setConnectTimeout(TIMEOUT_MS);
+                connection.setReadTimeout(TIMEOUT_MS);
+                connection.setUseCaches(false);
+                connection.setRequestProperty("Accept", "application/json");
+                connection.setRequestProperty("Authorization", "Bearer " + token);
+                connection.setRequestProperty(
+                        "X-Device-UUID",
+                        DeviceIdentityManager.getInstallationUuid(this)
+                );
+                connection.setRequestProperty(
+                        "X-Installation-UUID",
+                        DeviceIdentityManager.getInstallationUuid(this)
+                );
+                connection.setRequestProperty("X-App-Scope", "customer");
+
+                int code = connection.getResponseCode();
+                InputStream stream = code >= 200 && code < 400
+                        ? connection.getInputStream()
+                        : connection.getErrorStream();
+                JSONObject response = new JSONObject(readStream(stream));
+                if (!response.optBoolean("success", false)) {
+                    throw new IllegalStateException(response.optString("message", "Royalty tidak dapat dimuat."));
+                }
+
+                JSONObject data = response.optJSONObject("data");
+                if (data == null) data = new JSONObject();
+                final int points = data.optInt("points", 0);
+                final String tier = first(data.optString("tier"), "BRONZE").toUpperCase(Locale.US);
+
+                mainHandler.post(() -> {
+                    loyaltyLoading = false;
+                    applyLoyaltyBadge(tier, points);
+                });
+            } catch (Exception ignored) {
+                mainHandler.post(() -> loyaltyLoading = false);
+            } finally {
+                if (connection != null) connection.disconnect();
+            }
+        }).start();
+    }
+
+    private void applyLoyaltyBadge(String tier, int points) {
+        if (loyaltyBadge == null) return;
+
+        String memberName;
+        String background;
+        String foreground;
+        switch (tier) {
+            case "PLATINUM":
+                memberName = "Platinum";
+                background = "#E8EEF6";
+                foreground = "#334155";
+                break;
+            case "GOLD":
+                memberName = "Gold";
+                background = "#FFF2B8";
+                foreground = "#7A5200";
+                break;
+            case "SILVER":
+                memberName = "Silver";
+                background = "#EEF2F7";
+                foreground = "#475569";
+                break;
+            default:
+                memberName = "Bronze";
+                background = "#FBE6D5";
+                foreground = "#8A4B20";
+                break;
+        }
+
+        loyaltyBadge.setText("★ Member " + memberName + " • " + points + " Poin");
+        loyaltyBadge.setTextColor(Color.parseColor(foreground));
+        loyaltyBadge.setBackground(round(background, 14));
+    }
+
     private void saveProfile() {
         if (loading) {
             return;
@@ -1953,10 +2081,10 @@ public class ProfileActivity extends Activity {
                         .toString()
                         .trim();
 
+        String localPhone =
+                phoneInput.getText().toString().trim();
         String newPhone =
-                normalizeIndonesiaPhone(
-                        phoneInput.getText().toString()
-                );
+                normalizeIndonesiaPhone("62" + localPhone);
 
         String newAddress =
                 addressInput.getText()
@@ -1976,8 +2104,8 @@ public class ProfileActivity extends Activity {
         }
 
         if (
-                !newPhone.isEmpty()
-                        && newPhone.length() < 9
+                localPhone.length() < 8
+                        || newPhone.length() < 10
         ) {
             phoneInput.setError(
                     "Nomor HP tidak valid"
@@ -2912,6 +3040,15 @@ public class ProfileActivity extends Activity {
         }
 
         return builder.toString();
+    }
+
+    private String localIndonesiaPhone(String raw) {
+        String digits = raw == null ? "" : raw.replaceAll("[^0-9]", "");
+        if (digits.startsWith("0062")) digits = digits.substring(4);
+        else if (digits.startsWith("62")) digits = digits.substring(2);
+        else if (digits.startsWith("0")) digits = digits.substring(1);
+        if (digits.length() > 13) digits = digits.substring(0, 13);
+        return digits;
     }
 
     private String normalizeIndonesiaPhone(String raw) {

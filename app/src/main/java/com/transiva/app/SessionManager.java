@@ -103,7 +103,15 @@ public class SessionManager {
             e.putString("name", clean.optString("name", ""));
             e.putString("role", role);
             e.putString("phone", clean.optString("phone", ""));
-            e.putString("token", clean.optString("token", ""));
+            // Respons profile/dashboard tidak selalu membawa token. Jangan pernah
+            // menghapus Bearer token aktif hanya karena field token tidak ada/kosong.
+            String tokenToSave = firstNonEmpty(
+                    clean.optString("token", ""),
+                    getToken()
+            );
+            if (!tokenToSave.isEmpty()) {
+                e.putString("token", tokenToSave);
+            }
             e.putString("restaurant_id", clean.optString("restaurant_id", ""));
             e.putString("balance", clean.optString("balance", "0"));
             e.putString("driver_type", clean.optString("driver_type", "bike"));

@@ -21,8 +21,10 @@ import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.provider.Settings;
+import android.text.Editable;
 import android.text.InputType;
 import android.text.TextUtils;
+import android.text.TextWatcher;
 import android.view.Gravity;
 import android.view.View;
 import android.view.ViewOutlineProvider;
@@ -689,7 +691,27 @@ public class ProfileActivity extends Activity {
                         InputType.TYPE_CLASS_PHONE
                 );
 
-        phoneInput.setText(phone);
+        phoneInput.setText(normalizeIndonesiaPhone(phone));
+        phoneInput.setSelection(phoneInput.getText().length());
+        phoneInput.addTextChangedListener(new TextWatcher() {
+            private boolean changing;
+
+            @Override public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
+            @Override public void onTextChanged(CharSequence s, int start, int before, int count) {}
+
+            @Override
+            public void afterTextChanged(Editable editable) {
+                if (changing) return;
+                String normalized = normalizeIndonesiaPhone(editable == null ? "" : editable.toString());
+                String current = editable == null ? "" : editable.toString();
+                if (!normalized.equals(current)) {
+                    changing = true;
+                    phoneInput.setText(normalized);
+                    phoneInput.setSelection(phoneInput.getText().length());
+                    changing = false;
+                }
+            }
+        });
 
         card.addView(
                 phoneInput,
@@ -1837,7 +1859,8 @@ public class ProfileActivity extends Activity {
                 )
         );
 
-        phoneInput.setText(phone);
+        phoneInput.setText(normalizeIndonesiaPhone(phone));
+        phoneInput.setSelection(phoneInput.getText().length());
         addressInput.setText(address);
 
         emailBadge.setText(
@@ -1931,13 +1954,9 @@ public class ProfileActivity extends Activity {
                         .trim();
 
         String newPhone =
-                phoneInput.getText()
-                        .toString()
-                        .replaceAll(
-                                "[^0-9+]",
-                                ""
-                        )
-                        .trim();
+                normalizeIndonesiaPhone(
+                        phoneInput.getText().toString()
+                );
 
         String newAddress =
                 addressInput.getText()
@@ -1983,6 +2002,12 @@ public class ProfileActivity extends Activity {
             return;
         }
 
+        String authToken = first(session.getToken());
+        if (authToken.isEmpty()) {
+            toast("Sesi login tidak ditemukan. Silakan login kembali.");
+            return;
+        }
+
         setLoading(true);
 
         new Thread(() -> {
@@ -2022,6 +2047,22 @@ public class ProfileActivity extends Activity {
                 connection.setRequestProperty(
                         "Accept",
                         "application/json"
+                );
+                connection.setRequestProperty(
+                        "Authorization",
+                        "Bearer " + authToken
+                );
+                connection.setRequestProperty(
+                        "X-Device-UUID",
+                        DeviceIdentityManager.getInstallationUuid(this)
+                );
+                connection.setRequestProperty(
+                        "X-Installation-UUID",
+                        DeviceIdentityManager.getInstallationUuid(this)
+                );
+                connection.setRequestProperty(
+                        "X-App-Scope",
+                        "customer"
                 );
 
                 try (
@@ -2871,6 +2912,16 @@ public class ProfileActivity extends Activity {
         }
 
         return builder.toString();
+    }
+
+    private String normalizeIndonesiaPhone(String raw) {
+        String digits = raw == null ? "" : raw.replaceAll("[^0-9]", "");
+        if (digits.startsWith("0062")) digits = digits.substring(2);
+        if (digits.startsWith("0")) digits = "62" + digits.substring(1);
+        else if (digits.startsWith("8")) digits = "62" + digits;
+        else if (!digits.startsWith("62")) digits = "62" + digits;
+        if (digits.length() > 15) digits = digits.substring(0, 15);
+        return digits.isEmpty() ? "62" : digits;
     }
 
     private String first(

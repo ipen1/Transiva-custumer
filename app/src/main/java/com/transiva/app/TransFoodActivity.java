@@ -71,6 +71,7 @@ public class TransFoodActivity extends Activity {
     private String username = "User";
     private String deliveryMode = "standard";
     private String paymentMethod = "cash";
+    private String voucherCode = "";
     private double deliveryFee = 0;
     private double standardFee = 0;
     private double hematFee = 0;
@@ -843,6 +844,18 @@ public class TransFoodActivity extends Activity {
         delivery.addView(row);
         addWithMargin(delivery, 0, 0, 0, dp(14));
 
+        LinearLayout voucherCard = card();
+        voucherCard.setPadding(dp(14), dp(14), dp(14), dp(14));
+        voucherCard.addView(text("Voucher Ongkir", 16, "#0B3A78", true));
+        voucherCard.addView(text("Masukkan kode voucher yang sudah ditukar dari halaman Royalti.", 12, "#64748B", false));
+        EditText voucherField = new EditText(this);
+        voucherField.setSingleLine(true); voucherField.setHint("Contoh: TRV-XXXXXXXXXXXX"); voucherField.setText(voucherCode);
+        voucherCard.addView(voucherField, new LinearLayout.LayoutParams(-1, dp(52)));
+        Button saveVoucher = choiceButton(voucherCode.isEmpty()?"Gunakan Voucher":"Voucher: "+voucherCode, !voucherCode.isEmpty());
+        saveVoucher.setOnClickListener(v -> { voucherCode = voucherField.getText().toString().trim().toUpperCase(Locale.US); renderCheckout(); });
+        LinearLayout.LayoutParams svlp=new LinearLayout.LayoutParams(-1,dp(48));svlp.setMargins(0,dp(8),0,0);voucherCard.addView(saveVoucher,svlp);
+        addWithMargin(voucherCard, 0, 0, 0, dp(14));
+
         LinearLayout pay = card();
         pay.setPadding(dp(14), dp(14), dp(14), dp(14));
         pay.addView(text("Pilih Pembayaran", 16, "#0B3A78", true));
@@ -995,6 +1008,7 @@ public class TransFoodActivity extends Activity {
                 payload.put("restaurant_id", activeRestaurant.optInt("id", 0));
                 payload.put("delivery_mode", deliveryMode);
                 payload.put("payment_method", paymentMethod);
+                payload.put("voucher_code", voucherCode);
                 JSONArray items = new JSONArray();
                 for (CartItem c : cart) {
                     JSONObject o = new JSONObject();

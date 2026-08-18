@@ -431,7 +431,7 @@ public class TranstourActivity extends Activity {
         try {
             if (barcodeDialog != null && barcodeDialog.isShowing()) barcodeDialog.dismiss();
         } catch (Exception ignored) {}
-        barcodeDialog = new AlertDialog.Builder(this)
+        barcodeDialog = new TransivaAlertDialogBuilder(this)
                 .setTitle("Barcode Tiket")
                 .setView(box)
                 .setPositiveButton("Tutup", null)
@@ -541,7 +541,7 @@ public class TranstourActivity extends Activity {
                 mainHandler.post(() -> {
                     setLoading(false);
                     if (ok) {
-                        new AlertDialog.Builder(this)
+                        new TransivaAlertDialogBuilder(this)
                                 .setTitle("Berhasil")
                                 .setMessage(msg + "\n\nKode Booking: " + res.optString("ticket_code", "-") + "\nStatus: Menunggu verifikasi admin")
                                 .setPositiveButton("Lihat Tiket", (d, w) -> showTickets())
@@ -779,7 +779,7 @@ public class TranstourActivity extends Activity {
     }
 
     private void showInfo(String title, String msg) {
-        try { new AlertDialog.Builder(this).setTitle(title).setMessage(msg).setPositiveButton("OK", null).show(); } catch (Exception ignored) {}
+        try { new TransivaAlertDialogBuilder(this).setTitle(title).setMessage(msg).setPositiveButton("OK", null).show(); } catch (Exception ignored) {}
     }
 
     private int dp(int v) { return (int) (v * getResources().getDisplayMetrics().density + 0.5f); }

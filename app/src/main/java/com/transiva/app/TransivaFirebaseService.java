@@ -332,6 +332,8 @@ public class TransivaFirebaseService extends FirebaseMessagingService {
                                 NotificationCompat.VISIBILITY_PUBLIC
                         );
 
+        TransivaNotificationStyle.apply(this, builder, type);
+
         boolean incomingCallNotification = "webrtc_call".equals(type)
                 && data != null
                 && "incoming_call".equalsIgnoreCase(first(data.get("event"), ""));

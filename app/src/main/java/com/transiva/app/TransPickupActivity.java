@@ -745,7 +745,7 @@ public class TransPickupActivity extends Activity {
                     if (ok) {
                         otpCode = res.optString("otp", "").trim();
                         if (otpText != null) otpText.setText("OTP penerima: " + otpCode);
-                        new AlertDialog.Builder(this)
+                        new TransivaAlertDialogBuilder(this)
                                 .setTitle("Order berhasil")
                                 .setMessage(msg + "\n\nOrder ID: " + res.optString("order_id", "-") + "\nOTP penerima: " + otpCode + "\n\nBerikan OTP hanya setelah paket diterima.")
                                 .setNeutralButton("Salin OTP", (d, w) -> copyOtp())
@@ -857,7 +857,7 @@ public class TransPickupActivity extends Activity {
     private GradientDrawable roundGradient(String c1, String c2, int radius) { GradientDrawable g = new GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT, new int[]{Color.parseColor(c1), Color.parseColor(c2)}); g.setCornerRadius(radius); return g; }
     private void addWithMargin(View v, int l, int t, int r, int b) { LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, -2); lp.setMargins(l,t,r,b); root.addView(v, lp); }
     private void setLoading(boolean b) { if (progressBar != null) progressBar.setVisibility(b ? View.VISIBLE : View.GONE); }
-    private void showInfo(String title, String msg) { try { new AlertDialog.Builder(this).setTitle(title).setMessage(msg).setPositiveButton("OK", null).show(); } catch (Exception ignored) {} }
+    private void showInfo(String title, String msg) { try { new TransivaAlertDialogBuilder(this).setTitle(title).setMessage(msg).setPositiveButton("OK", null).show(); } catch (Exception ignored) {} }
     private int dp(int v) { return (int)(v * getResources().getDisplayMetrics().density + 0.5f); }
     private String rupiah(double v) { try { NumberFormat nf = NumberFormat.getCurrencyInstance(new Locale("id", "ID")); nf.setMaximumFractionDigits(0); return nf.format(v).replace("Rp", "Rp "); } catch (Exception e) { return "Rp " + Math.round(v); } }
     private String firstNonEmpty(String... values) { if (values == null) return ""; for (String s : values) if (s != null && s.trim().length() > 0 && !"null".equalsIgnoreCase(s.trim())) return s.trim(); return ""; }

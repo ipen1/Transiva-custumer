@@ -411,7 +411,7 @@ public class TransRideActivity extends Activity {
         input.setHint("Masukkan kode voucher");
         input.setPadding(dp(14), dp(8), dp(14), dp(8));
 
-        new AlertDialog.Builder(this)
+        new TransivaAlertDialogBuilder(this)
                 .setTitle("Voucher TransRide")
                 .setMessage("Masukkan kode voucher lalu tekan Gunakan.")
                 .setView(input)
@@ -439,7 +439,7 @@ public class TransRideActivity extends Activity {
         input.setHint("Contoh: jemput di depan pagar");
         input.setPadding(dp(14), dp(8), dp(14), dp(8));
 
-        new AlertDialog.Builder(this)
+        new TransivaAlertDialogBuilder(this)
                 .setTitle("Catatan untuk driver")
                 .setView(input)
                 .setNegativeButton("Hapus", (dialog, which) -> {
@@ -459,7 +459,7 @@ public class TransRideActivity extends Activity {
         String[] methods = {"Tunai", "Transiva Pay"};
         int checked = paymentMethod.equals("balance") ? 1 : 0;
 
-        new AlertDialog.Builder(this)
+        new TransivaAlertDialogBuilder(this)
                 .setTitle("Pilih metode pembayaran")
                 .setSingleChoiceItems(methods, checked, (dialog, which) -> {
                     paymentMethod = which == 1 ? "balance" : "cash";
@@ -1591,7 +1591,7 @@ public class TransRideActivity extends Activity {
     }
 
     private void hideKeyboard() { try { ((InputMethodManager)getSystemService(Context.INPUT_METHOD_SERVICE)).hideSoftInputFromWindow(googleMapInput.getWindowToken(), 0); } catch (Exception ignored) {} }
-    private void toastDialog(String msg) { try { new AlertDialog.Builder(this).setTitle("Transiva").setMessage(msg).setPositiveButton("OK", null).show(); } catch (Exception ignored) {} }
+    private void toastDialog(String msg) { try { new TransivaAlertDialogBuilder(this).setTitle("Transiva").setMessage(msg).setPositiveButton("OK", null).show(); } catch (Exception ignored) {} }
     private String firstNonEmpty(String... v) { if (v == null) return ""; for (String s : v) if (s != null && s.trim().length() > 0 && !"null".equalsIgnoreCase(s.trim())) return s.trim(); return ""; }
 
     private Button compactPointButton(String title, String sub, String color) {

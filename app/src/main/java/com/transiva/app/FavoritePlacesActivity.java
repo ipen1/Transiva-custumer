@@ -36,7 +36,7 @@ public class FavoritePlacesActivity extends Activity {
     }
     private void edit(String key,String label) {
         EditText input=new EditText(this); input.setHint("Nama jalan, desa, patokan"); input.setText(prefs.getString(key,"")); input.setPadding(dp(16),0,dp(16),0);
-        new AlertDialog.Builder(this).setTitle(label).setView(input).setNegativeButton("Batal",null).setNeutralButton("Hapus",(d,w)->{prefs.edit().remove(key).apply();render();})
+        new TransivaAlertDialogBuilder(this).setTitle(label).setView(input).setNegativeButton("Batal",null).setNeutralButton("Hapus",(d,w)->{prefs.edit().remove(key).apply();render();})
                 .setPositiveButton("Simpan",(d,w)->{String x=input.getText().toString().trim(); if(!x.isEmpty()){prefs.edit().putString(key,x).apply();Toast.makeText(this,"Lokasi disimpan",Toast.LENGTH_SHORT).show();}render();}).show();
     }
     private Button button(String s){Button b=new Button(this);b.setText(s);b.setTextSize(14);b.setAllCaps(false);return b;}

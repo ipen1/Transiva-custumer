@@ -614,7 +614,7 @@ public class CustomerChatRoomActivity extends Activity {
     private void showAttachmentMenu() {
         if (readOnly || uploading) return;
 
-        new AlertDialog.Builder(this)
+        new TransivaAlertDialogBuilder(this)
                 .setTitle("Kirim Foto")
                 .setItems(
                         new String[]{"Ambil Foto", "Pilih dari Galeri"},
@@ -2481,7 +2481,7 @@ public class CustomerChatRoomActivity extends Activity {
             String message,
             boolean finishAfter
     ) {
-        new AlertDialog.Builder(this)
+        new TransivaAlertDialogBuilder(this)
                 .setTitle(title)
                 .setMessage(message)
                 .setPositiveButton(

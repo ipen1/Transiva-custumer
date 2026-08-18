@@ -228,7 +228,7 @@ public final class MockLocationGuard {
         if (existing != null && existing.isShowing() && owner == activity) return;
         dismissBlockingDialog();
         try {
-            AlertDialog dialog = new AlertDialog.Builder(activity)
+            AlertDialog dialog = new TransivaAlertDialogBuilder(activity)
                     .setTitle("Lokasi palsu terdeteksi")
                     .setMessage(reason)
                     .setCancelable(false)

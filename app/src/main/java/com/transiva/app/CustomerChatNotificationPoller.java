@@ -412,6 +412,8 @@ public final class CustomerChatNotificationPoller {
                         )
                         .setContentIntent(pendingIntent);
 
+        TransivaNotificationStyle.apply(context, builder, "chat");
+
         NotificationManager manager =
                 (NotificationManager)
                         context.getSystemService(

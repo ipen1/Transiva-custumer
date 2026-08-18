@@ -875,7 +875,7 @@ public class SearchDriverActivity extends Activity {
     }
 
     private void confirmCancelOrder() {
-        new AlertDialog.Builder(this)
+        new TransivaAlertDialogBuilder(this)
                 .setTitle("Batalkan Order")
                 .setMessage("Yakin ingin membatalkan pencarian driver?")
                 .setNegativeButton("Tidak", null)
@@ -1078,7 +1078,7 @@ public class SearchDriverActivity extends Activity {
 
     private void showInfo(String title, String message) {
         try {
-            new AlertDialog.Builder(this)
+            new TransivaAlertDialogBuilder(this)
                     .setTitle(title)
                     .setMessage(message)
                     .setPositiveButton("OK", null)

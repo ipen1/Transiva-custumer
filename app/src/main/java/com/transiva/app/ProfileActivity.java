@@ -1067,7 +1067,7 @@ public class ProfileActivity extends Activity {
     }
 
     private void confirmDisconnectDevice() {
-        new AlertDialog.Builder(this)
+        new TransivaAlertDialogBuilder(this)
                 .setTitle("Putuskan perangkat?")
                 .setMessage(
                         "Perangkat ini akan dilepas dari akun Transiva dan sesi Anda akan diakhiri. "
@@ -1209,7 +1209,7 @@ public class ProfileActivity extends Activity {
                 );
 
         if (!gpsEnabled && !networkEnabled) {
-            new AlertDialog.Builder(this)
+            new TransivaAlertDialogBuilder(this)
                     .setTitle("Aktifkan Lokasi")
                     .setMessage(
                             "Aktifkan GPS atau layanan lokasi untuk mengisi alamat otomatis."
@@ -2248,7 +2248,7 @@ public class ProfileActivity extends Activity {
     }
 
     private void confirmLogout() {
-        new AlertDialog.Builder(this)
+        new TransivaAlertDialogBuilder(this)
                 .setTitle("Keluar Akun")
                 .setMessage(
                         "Yakin ingin keluar dari akun Transiva?"
@@ -2916,7 +2916,7 @@ public class ProfileActivity extends Activity {
             String title,
             String message
     ) {
-        new AlertDialog.Builder(this)
+        new TransivaAlertDialogBuilder(this)
                 .setTitle(title)
                 .setMessage(message)
                 .setPositiveButton(

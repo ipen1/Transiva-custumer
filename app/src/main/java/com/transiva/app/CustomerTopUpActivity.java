@@ -356,7 +356,7 @@ public class CustomerTopUpActivity extends Activity {
                     setSubmitEnabled(true);
                     if (ok) {
                         setStatus("✅ Bukti pembayaran berhasil dikirim dan menunggu verifikasi admin", true);
-                        new AlertDialog.Builder(this)
+                        new TransivaAlertDialogBuilder(this)
                                 .setTitle("Deposit Terkirim")
                                 .setMessage("Deposit berhasil dikirim.\n\nSaldo akan masuk setelah diverifikasi admin.")
                                 .setPositiveButton("OK", null)
@@ -612,7 +612,7 @@ public class CustomerTopUpActivity extends Activity {
     }
 
     private void showInfo(String title, String message) {
-        try { new AlertDialog.Builder(this).setTitle(title).setMessage(message).setPositiveButton("OK", null).show(); }
+        try { new TransivaAlertDialogBuilder(this).setTitle(title).setMessage(message).setPositiveButton("OK", null).show(); }
         catch (Exception ignored) {}
     }
 

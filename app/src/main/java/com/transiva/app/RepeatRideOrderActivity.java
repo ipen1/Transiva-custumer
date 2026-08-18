@@ -48,7 +48,7 @@ public class RepeatRideOrderActivity extends Activity {
         setContentView(buildScreen());
 
         if (!data.hasValidRideCoordinates()) {
-            new AlertDialog.Builder(this)
+            new TransivaAlertDialogBuilder(this)
                     .setTitle("Lokasi lama tidak lengkap")
                     .setMessage(
                             "Koordinat penjemputan atau pengantaran order lama tidak tersedia. Gunakan halaman layanan utama untuk memilih lokasi kembali."
@@ -284,7 +284,7 @@ public class RepeatRideOrderActivity extends Activity {
             return;
         }
 
-        new AlertDialog.Builder(this)
+        new TransivaAlertDialogBuilder(this)
                 .setTitle("Konfirmasi Pesan Lagi")
                 .setMessage(
                         "Tarif akan dihitung ulang menggunakan aturan terbaru. Order tidak menggunakan harga lama."
@@ -389,7 +389,7 @@ public class RepeatRideOrderActivity extends Activity {
                             ProgressBar.GONE
                     );
 
-                    new AlertDialog.Builder(this)
+                    new TransivaAlertDialogBuilder(this)
                             .setTitle("Order Berhasil")
                             .setMessage(
                                     response.optString(

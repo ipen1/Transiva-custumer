@@ -333,11 +333,11 @@ public class CustomerOrderDetailActivity extends Activity {
                         playSubmittedStars(() -> { Toast.makeText(this, message, Toast.LENGTH_LONG).show(); render(); });
                     } else {
                         submitReviewButton.setEnabled(true); submitReviewButton.setText(ratingLabel(selectedRating));
-                        new AlertDialog.Builder(this).setTitle("Gagal").setMessage(message).setPositiveButton("OK", null).show();
+                        new TransivaAlertDialogBuilder(this).setTitle("Gagal").setMessage(message).setPositiveButton("OK", null).show();
                     }
                 });
             } catch (Exception e) {
-                main.post(() -> { progress.setVisibility(View.GONE); submitReviewButton.setEnabled(true); submitReviewButton.setText(ratingLabel(selectedRating)); new AlertDialog.Builder(this).setTitle("Gagal").setMessage("Koneksi server bermasalah.").setPositiveButton("OK", null).show(); });
+                main.post(() -> { progress.setVisibility(View.GONE); submitReviewButton.setEnabled(true); submitReviewButton.setText(ratingLabel(selectedRating)); new TransivaAlertDialogBuilder(this).setTitle("Gagal").setMessage("Koneksi server bermasalah.").setPositiveButton("OK", null).show(); });
             }
         }, "detail-save-review").start();
     }
@@ -350,7 +350,7 @@ public class CustomerOrderDetailActivity extends Activity {
     }
 
     private void confirmAction(String action, String title, String message) {
-        new AlertDialog.Builder(this).setTitle(title).setMessage(message).setNegativeButton("Batal", null).setPositiveButton("Ya", (d, w) -> sendAction(action)).show();
+        new TransivaAlertDialogBuilder(this).setTitle(title).setMessage(message).setNegativeButton("Batal", null).setPositiveButton("Ya", (d, w) -> sendAction(action)).show();
     }
 
     private void sendAction(String action) {
@@ -369,9 +369,9 @@ public class CustomerOrderDetailActivity extends Activity {
                     else if ("approve_price".equals(action)) { order.put("price", order.optDouble("price_change_requested", order.optDouble("price", 0))); order.put("price_change_status", "approved"); }
                     else if ("reject_price".equals(action)) order.put("price_change_status", "rejected");
                 }
-                main.post(() -> { progress.setVisibility(View.GONE); new AlertDialog.Builder(this).setTitle(ok ? "Berhasil" : "Gagal").setMessage(msg).setPositiveButton("OK", null).show(); if (ok) render(); });
+                main.post(() -> { progress.setVisibility(View.GONE); new TransivaAlertDialogBuilder(this).setTitle(ok ? "Berhasil" : "Gagal").setMessage(msg).setPositiveButton("OK", null).show(); if (ok) render(); });
             } catch (Exception e) {
-                main.post(() -> { progress.setVisibility(View.GONE); new AlertDialog.Builder(this).setTitle("Gagal").setMessage("Koneksi server bermasalah.").setPositiveButton("OK", null).show(); });
+                main.post(() -> { progress.setVisibility(View.GONE); new TransivaAlertDialogBuilder(this).setTitle("Gagal").setMessage("Koneksi server bermasalah.").setPositiveButton("OK", null).show(); });
             }
         }, "detail-action").start();
     }

@@ -1549,7 +1549,7 @@ public class CustomerBalanceHistoryActivity
         form.addView(note);
 
         AlertDialog dialog =
-                new AlertDialog.Builder(this)
+                new TransivaAlertDialogBuilder(this)
                         .setTitle("Kirim Dana")
                         .setMessage(
                                 "Masukkan username customer dan nominal yang akan dikirim."
@@ -1801,7 +1801,7 @@ public class CustomerBalanceHistoryActivity
                                 + note
                 );
 
-        new AlertDialog.Builder(this)
+        new TransivaAlertDialogBuilder(this)
                 .setTitle(
                         "Detail Pengiriman"
                 )
@@ -2096,7 +2096,7 @@ public class CustomerBalanceHistoryActivity
         form.addView(note);
 
         AlertDialog dialog =
-                new AlertDialog.Builder(this)
+                new TransivaAlertDialogBuilder(this)
                         .setTitle("Withdraw Dana")
                         .setMessage(
                                 "Saldo akan ditahan sampai admin menyetujui pencairan."
@@ -2657,7 +2657,7 @@ public class CustomerBalanceHistoryActivity
             String title,
             String message
     ) {
-        new AlertDialog.Builder(this)
+        new TransivaAlertDialogBuilder(this)
                 .setTitle(title)
                 .setMessage(message)
                 .setPositiveButton(

@@ -175,7 +175,7 @@ public class CustomerSettingsActivity extends Activity {
             return;
         }
         if (Settings.canDrawOverlays(this)) {
-            new AlertDialog.Builder(this)
+            new TransivaAlertDialogBuilder(this)
                     .setTitle("Izin panggilan sudah aktif")
                     .setMessage("Transiva dapat membantu menampilkan layar panggilan saat aplikasi berada di latar belakang. Anda dapat menonaktifkannya kapan saja melalui pengaturan Android.")
                     .setNegativeButton("Tutup", null)
@@ -183,7 +183,7 @@ public class CustomerSettingsActivity extends Activity {
                     .show();
             return;
         }
-        new AlertDialog.Builder(this)
+        new TransivaAlertDialogBuilder(this)
                 .setTitle("Izin opsional untuk panggilan")
                 .setMessage("Aktifkan hanya bila Anda ingin layar panggilan Transiva lebih mudah muncul ketika aplikasi sedang berada di latar belakang. Tanpa izin ini, notifikasi panggilan tetap digunakan.")
                 .setNegativeButton("Nanti", null)
@@ -232,7 +232,7 @@ public class CustomerSettingsActivity extends Activity {
     }
 
     private void confirmDisconnect() {
-        new AlertDialog.Builder(this).setTitle("Putuskan perangkat?").setMessage("Perangkat ini akan dilepas dari akun dan sesi Anda akan diakhiri.")
+        new TransivaAlertDialogBuilder(this).setTitle("Putuskan perangkat?").setMessage("Perangkat ini akan dilepas dari akun dan sesi Anda akan diakhiri.")
                 .setNegativeButton("Batal", null).setPositiveButton("Putuskan", (d, w) -> disconnect()).show();
     }
 

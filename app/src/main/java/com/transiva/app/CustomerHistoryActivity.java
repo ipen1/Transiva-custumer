@@ -1612,7 +1612,7 @@ public class CustomerHistoryActivity extends Activity {
         review.setMaxWidth(dp(320));
         box.addView(review, new LinearLayout.LayoutParams(-1, -2));
 
-        AlertDialog dialog = new AlertDialog.Builder(this)
+        AlertDialog dialog = new TransivaAlertDialogBuilder(this)
                 .setTitle(food ? "Beri Rating Makanan" : "Beri Rating Driver")
                 .setView(box)
                 .setNegativeButton("Nanti", null)
@@ -1659,7 +1659,7 @@ public class CustomerHistoryActivity extends Activity {
                         if (dialog != null && dialog.isShowing()) dialog.dismiss();
                         renderOrders();
                     }
-                    new AlertDialog.Builder(this)
+                    new TransivaAlertDialogBuilder(this)
                             .setTitle(success ? "Terima kasih" : "Gagal")
                             .setMessage(message)
                             .setPositiveButton("OK", null)
@@ -1669,7 +1669,7 @@ public class CustomerHistoryActivity extends Activity {
                 mainHandler.post(() -> {
                     loading = false;
                     progressBar.setVisibility(View.GONE);
-                    new AlertDialog.Builder(this)
+                    new TransivaAlertDialogBuilder(this)
                             .setTitle("Gagal")
                             .setMessage("Koneksi server bermasalah. Rating belum dikirim, silakan coba kembali.")
                             .setPositiveButton("OK", null)
@@ -1680,7 +1680,7 @@ public class CustomerHistoryActivity extends Activity {
     }
 
     private void confirmReceivedFromActivity(JSONObject order) {
-        new AlertDialog.Builder(this)
+        new TransivaAlertDialogBuilder(this)
                 .setTitle("Terima pesanan ini?")
                 .setMessage("Pastikan pesanan sudah Anda terima dengan baik sebelum melakukan konfirmasi.")
                 .setNegativeButton("Batal", null)
@@ -1730,7 +1730,7 @@ public class CustomerHistoryActivity extends Activity {
                         renderOrders();
                     }
 
-                    new AlertDialog.Builder(this)
+                    new TransivaAlertDialogBuilder(this)
                             .setTitle(success ? "Berhasil" : "Gagal")
                             .setMessage(message)
                             .setPositiveButton("OK", null)
@@ -1742,7 +1742,7 @@ public class CustomerHistoryActivity extends Activity {
                     loading = false;
                     progressBar.setVisibility(View.GONE);
 
-                    new AlertDialog.Builder(this)
+                    new TransivaAlertDialogBuilder(this)
                             .setTitle("Gagal")
                             .setMessage("Koneksi server bermasalah. Silakan coba kembali.")
                             .setPositiveButton("OK", null)
@@ -2272,7 +2272,7 @@ public class CustomerHistoryActivity extends Activity {
             return;
         }
 
-        new AlertDialog.Builder(this)
+        new TransivaAlertDialogBuilder(this)
                 .setTitle("Batalkan Pesanan")
                 .setMessage(
                         "Pesanan dapat dibatalkan selama belum diambil driver. Lanjutkan pembatalan?"

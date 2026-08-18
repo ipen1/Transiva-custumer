@@ -728,7 +728,7 @@ public class RepeatFoodOrderActivity extends Activity {
             return;
         }
 
-        new AlertDialog.Builder(this)
+        new TransivaAlertDialogBuilder(this)
                 .setTitle("Konfirmasi Pesan Lagi")
                 .setMessage(
                         "Harga menu dan ongkir akan dihitung ulang dari database."
@@ -842,7 +842,7 @@ public class RepeatFoodOrderActivity extends Activity {
                             ProgressBar.GONE
                     );
 
-                    new AlertDialog.Builder(this)
+                    new TransivaAlertDialogBuilder(this)
                             .setTitle("Order Berhasil")
                             .setMessage(
                                     response.optString(

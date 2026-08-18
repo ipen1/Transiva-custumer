@@ -679,7 +679,7 @@ public class TransFoodActivity extends Activity {
 
         ScrollView scroll = new ScrollView(this);
         scroll.addView(box);
-        new AlertDialog.Builder(this)
+        new TransivaAlertDialogBuilder(this)
                 .setTitle(firstNonEmpty(menu.optString("name"), "Pilih opsi"))
                 .setView(scroll)
                 .setNegativeButton("Batal", null)
@@ -1010,7 +1010,7 @@ public class TransFoodActivity extends Activity {
                 mainHandler.post(() -> {
                     setLoading(false);
                     if (ok) {
-                        new AlertDialog.Builder(this)
+                        new TransivaAlertDialogBuilder(this)
                                 .setTitle("Berhasil")
                                 .setMessage(msg + "\n\nOrder ID: " + res.optString("order_id", "-"))
                                 .setPositiveButton("OK", (d, w) -> finish())
@@ -1180,7 +1180,7 @@ public class TransFoodActivity extends Activity {
     private void addWithMarginTo(LinearLayout parent, View v, int l, int t, int r, int b) { LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, -2); lp.setMargins(l,t,r,b); parent.addView(v, lp); }
     private void addStatusTo(LinearLayout parent, String message) { TextView t = text(message, 14, "#64748B", false); t.setGravity(Gravity.CENTER); t.setPadding(dp(16), dp(20), dp(16), dp(20)); t.setBackground(roundStroke("#FFFFFF", "#D7E6F8", dp(20), 1)); addWithMarginTo(parent, t, 0, 0, 0, dp(12)); }
     private void setLoading(boolean b) { if (progressBar != null) progressBar.setVisibility(b ? View.VISIBLE : View.GONE); }
-    private void showInfo(String title, String msg) { try { new AlertDialog.Builder(this).setTitle(title).setMessage(msg).setPositiveButton("OK", null).show(); } catch (Exception ignored) {} }
+    private void showInfo(String title, String msg) { try { new TransivaAlertDialogBuilder(this).setTitle(title).setMessage(msg).setPositiveButton("OK", null).show(); } catch (Exception ignored) {} }
     private int dp(int v) { return (int) (v * getResources().getDisplayMetrics().density + 0.5f); }
     private String rupiah(double v) { return "Rp " + NumberFormat.getNumberInstance(new Locale("id", "ID")).format((long) v); }
     private String firstNonEmpty(String... values) { if (values == null) return ""; for (String s : values) if (s != null && s.trim().length() > 0 && !"null".equalsIgnoreCase(s.trim())) return s.trim(); return ""; }

@@ -905,7 +905,7 @@ public class LoginActivity extends Activity {
             String title,
             String message
     ) {
-        new AlertDialog.Builder(this)
+        new TransivaAlertDialogBuilder(this)
                 .setTitle(title)
                 .setMessage(message)
                 .setPositiveButton("OK", null)

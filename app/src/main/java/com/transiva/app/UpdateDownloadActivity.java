@@ -464,7 +464,7 @@ public class UpdateDownloadActivity extends Activity {
     private void installApk(File apk) {
         if (apk == null || !apk.exists()) return;
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && !getPackageManager().canRequestPackageInstalls()) {
-            new AlertDialog.Builder(this)
+            new TransivaAlertDialogBuilder(this)
                     .setTitle("Izinkan pemasangan aplikasi")
                     .setMessage("Aktifkan izin 'Instal aplikasi tidak dikenal' untuk Transiva Customer, lalu kembali. Pembaruan wajib tidak dapat dilewati.")
                     .setCancelable(!forcedMode)

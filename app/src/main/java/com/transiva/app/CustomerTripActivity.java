@@ -728,7 +728,7 @@ public class CustomerTripActivity extends Activity {
         review.setHint("Tulis ulasan makanan (opsional)"); review.setMinLines(2); review.setMaxLines(4);
         box.addView(review, new LinearLayout.LayoutParams(-1,-2));
 
-        AlertDialog dialog = new AlertDialog.Builder(this)
+        AlertDialog dialog = new TransivaAlertDialogBuilder(this)
                 .setTitle("Beri Rating Makanan")
                 .setView(box)
                 .setCancelable(false)
@@ -783,7 +783,7 @@ public class CustomerTripActivity extends Activity {
         EditText review = new EditText(this);
         review.setHint("Tulis ulasan (opsional)"); review.setMinLines(2); review.setMaxLines(4);
         box.addView(review, new LinearLayout.LayoutParams(-1,-2));
-        AlertDialog dialog = new AlertDialog.Builder(this)
+        AlertDialog dialog = new TransivaAlertDialogBuilder(this)
                 .setTitle("Beri Rating Driver")
                 .setView(box)
                 .setCancelable(false)
@@ -869,7 +869,7 @@ public class CustomerTripActivity extends Activity {
     }
 
     private void openSos() {
-        new AlertDialog.Builder(this).setTitle("🆘 Bantuan Darurat")
+        new TransivaAlertDialogBuilder(this).setTitle("🆘 Bantuan Darurat")
                 .setMessage("Hubungi layanan darurat hanya saat benar-benar diperlukan. Anda juga dapat membagikan perjalanan kepada keluarga.")
                 .setNeutralButton("Bagikan Trip", (d,w) -> shareTrip())
                 .setNegativeButton("Batal", null)
@@ -1126,7 +1126,7 @@ public class CustomerTripActivity extends Activity {
 
     private void showInfo(String title, String message) {
         try {
-            new AlertDialog.Builder(this)
+            new TransivaAlertDialogBuilder(this)
                     .setTitle(title)
                     .setMessage(message)
                     .setPositiveButton("OK", null)

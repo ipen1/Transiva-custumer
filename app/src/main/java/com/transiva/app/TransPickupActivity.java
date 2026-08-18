@@ -32,6 +32,7 @@ import android.widget.LinearLayout;
 import android.widget.ProgressBar;
 import android.widget.ScrollView;
 import android.widget.TextView;
+import android.widget.Toast;
 
 import androidx.fragment.app.FragmentActivity;
 
@@ -722,7 +723,7 @@ public class TransPickupActivity extends FragmentActivity {
         if ("balance".equals(paymentMethod) && BiometricSecurityManager.isEnabled(this)) {
             BiometricSecurityManager.authenticate(this, "Otorisasi Transiva Pay", "Konfirmasi biometrik sebelum membayar pengiriman ini.", new BiometricSecurityManager.Callback() {
                 @Override public void onSuccess() { createPickupOrderAuthorized(); }
-                @Override public void onUnavailable(String message) { toast(message); }
+                @Override public void onUnavailable(String message) { Toast.makeText(TransPickupActivity.this, message, Toast.LENGTH_SHORT).show(); }
             });
             return;
         }

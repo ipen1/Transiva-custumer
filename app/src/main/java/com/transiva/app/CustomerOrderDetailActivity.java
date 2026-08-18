@@ -41,6 +41,7 @@ public class CustomerOrderDetailActivity extends Activity {
     private static final String BASE_URL = "https://transiva.my.id/";
     private static final String ACTION_URL = BASE_URL + "server/customer_order_action.php";
     private static final String REVIEW_URL = BASE_URL + "server/save_driver_review.php";
+    private static final String TIP_URL = BASE_URL + "server/customer_tip_driver.php";
 
     private final Handler main = new Handler(Looper.getMainLooper());
     private JSONObject order = new JSONObject();
@@ -234,7 +235,10 @@ public class CustomerOrderDetailActivity extends Activity {
         }
         addCard(actionBox);
 
-        if (isFinishedStatus(statusRaw)) addReviewCard();
+        if (isFinishedStatus(statusRaw)) {
+            addReviewCard();
+            addTipCard();
+        }
 
         // Card driver, foto, panel informasi, dan review dibuat ulang secara dinamis.
         // Terapkan kembali tema customer agar semua view baru langsung mengikuti
@@ -327,6 +331,88 @@ public class CustomerOrderDetailActivity extends Activity {
         submitReviewButton.setOnClickListener(v -> submitReview());
         reviewCard.addView(submitReviewButton, buttonLp());
         addCard(reviewCard);
+    }
+
+
+    private void addTipCard() {
+        LinearLayout tipCard = card(24);
+        tipCard.setBackground(gradient("#FFF9ED", "#FFFFFF", 24));
+        int sentTip = order.optInt("driver_tip_amount", 0);
+        tipCard.addView(sectionHeader("Kasih Tip untuk Driver", sentTip > 0 ? "Terima kasih. Tip Anda sudah diterima driver." : "Apresiasi setelah perjalanan selesai • tip masuk penuh ke saldo driver"));
+
+        if (sentTip > 0) {
+            TextView done = text("🎉 Tip " + rupiah(sentTip) + " sudah terkirim", 18, Color.parseColor("#9A6700"), true);
+            done.setGravity(Gravity.CENTER);
+            done.setPadding(dp(12), dp(16), dp(12), dp(16));
+            done.setBackground(roundStroke("#FFF8E7", "#FFD37A", 16));
+            tipCard.addView(done);
+            TextView note = text("Tip tidak dipotong komisi Transiva dan tidak memengaruhi ongkir/order yang sudah selesai.", 12, Color.parseColor("#64748B"), false);
+            note.setGravity(Gravity.CENTER); note.setPadding(dp(8), dp(10), dp(8), 0); tipCard.addView(note);
+            addCard(tipCard);
+            return;
+        }
+
+        TextView info = text("Tip dibayar dari saldo Transiva Pay Anda. Driver menerima 100% nominal tip.", 13, Color.parseColor("#5B6472"), false);
+        info.setPadding(0, 0, 0, dp(12));
+        tipCard.addView(info);
+
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        int[] amounts = new int[]{2000, 5000, 10000};
+        for (int amount : amounts) {
+            Button b = outline(rupiah(amount));
+            b.setOnClickListener(v -> confirmTip(amount));
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, dp(50), 1);
+            lp.setMargins(dp(4), 0, dp(4), 0);
+            row.addView(b, lp);
+        }
+        tipCard.addView(row);
+
+        Button more = primary("Tip Rp20.000");
+        more.setOnClickListener(v -> confirmTip(20000));
+        tipCard.addView(more, buttonLp());
+        addCard(tipCard);
+    }
+
+    private void confirmTip(int amount) {
+        String driver = first(order.optString("driver_name"), order.optString("driver"), order.optString("driver_username"), "driver");
+        new TransivaAlertDialogBuilder(this)
+                .setTitle("Kirim tip " + rupiah(amount) + "?")
+                .setMessage("Tip akan dipotong dari saldo Transiva Pay Anda dan masuk penuh ke saldo " + driver + ". Tip hanya dapat diberikan satu kali untuk order ini.")
+                .setNegativeButton("Batal", null)
+                .setPositiveButton("Kirim Tip", (d, w) -> sendTip(amount))
+                .show();
+    }
+
+    private void sendTip(int amount) {
+        progress.setVisibility(View.VISIBLE);
+        new Thread(() -> {
+            try {
+                JSONObject p = new JSONObject();
+                p.put("order_id", first(order.optString("order_id"), order.optString("id")));
+                p.put("source", order.optString("source", "").contains("pickup") ? "pickup_orders" : "orders");
+                p.put("amount", amount);
+                p.put("action", "send");
+                JSONObject r = post(TIP_URL, p);
+                boolean ok = r.optBoolean("success", false);
+                String msg = first(r.optString("message"), ok ? "Tip berhasil dikirim" : "Tip gagal dikirim");
+                if (ok) order.put("driver_tip_amount", r.optInt("tip_amount", amount));
+                main.post(() -> {
+                    progress.setVisibility(View.GONE);
+                    new TransivaAlertDialogBuilder(this)
+                            .setTitle(ok ? "Tip Terkirim 🎉" : "Tip Gagal")
+                            .setMessage(msg)
+                            .setPositiveButton("OK", null)
+                            .show();
+                    if (ok) render();
+                });
+            } catch (Exception e) {
+                main.post(() -> {
+                    progress.setVisibility(View.GONE);
+                    new TransivaAlertDialogBuilder(this).setTitle("Tip Gagal").setMessage("Koneksi server bermasalah. Tip belum diproses.").setPositiveButton("OK", null).show();
+                });
+            }
+        }, "detail-driver-tip").start();
     }
 
     private void selectRating(int rating, boolean animate) {

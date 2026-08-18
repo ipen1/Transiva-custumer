@@ -259,6 +259,7 @@ public class CustomerDashboardActivity extends Activity
         buildHeader();
         buildSmartRecommendation();
         buildWalletCard();
+        buildFeatureShortcuts();
         buildPromoSection();
         buildServiceSection();
         buildOrderSection();
@@ -698,6 +699,37 @@ public class CustomerDashboardActivity extends Activity
 
         card.addView(balanceText, balanceLp);
 
+    }
+
+    private void buildFeatureShortcuts() {
+        TextView title = text("Fitur Pintar & Aman", 15, "#0B3A78", true);
+        LinearLayout.LayoutParams titleLp = new LinearLayout.LayoutParams(-1, -2);
+        titleLp.setMargins(0, 0, 0, dp(8));
+        content.addView(title, titleLp);
+
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        addFeatureShortcut(row, "🛡️", "Safety", SafetyCenterActivity.class, 0);
+        addFeatureShortcut(row, "↻", "Reorder", SmartReorderActivity.class, 1);
+        addFeatureShortcut(row, "★", "Royalti", CustomerLoyaltyActivity.class, 2);
+        LinearLayout.LayoutParams rowLp = new LinearLayout.LayoutParams(-1, dp(82));
+        rowLp.setMargins(0, 0, 0, dp(16));
+        content.addView(row, rowLp);
+    }
+
+    private void addFeatureShortcut(LinearLayout row, String icon, String label, Class<?> target, int index) {
+        LinearLayout card = new LinearLayout(this);
+        card.setOrientation(LinearLayout.VERTICAL);
+        card.setGravity(Gravity.CENTER);
+        card.setPadding(dp(8), dp(8), dp(8), dp(8));
+        card.setBackground(Shape.roundStroke("#FFFFFF", "#D9E8F8", dp(17), dp(1)));
+        card.setElevation(dp(1));
+        card.addView(text(icon, 22, "#0B7CFF", true));
+        card.addView(text(label, 11, "#0B3A78", true));
+        card.setOnClickListener(v -> startActivity(new Intent(this, target)));
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, -1, 1f);
+        if (index > 0) lp.setMargins(dp(8), 0, 0, 0);
+        row.addView(card, lp);
     }
 
     private void openBalanceTransactions() {

@@ -128,6 +128,11 @@ public class CustomerOrderDetailActivity extends Activity {
         LinearLayout.LayoutParams blp = new LinearLayout.LayoutParams(-2, -2); blp.setMargins(0, dp(12), 0, 0); hero.addView(badge, blp);
         addCard(hero);
 
+        LinearLayout timeline = card(24);
+        timeline.addView(sectionHeader("Order Timeline", "Tahapan perjalanan pesanan secara ringkas"));
+        timeline.addView(buildTimeline(statusRaw));
+        addCard(timeline);
+
         LinearLayout driverCard = card(24);
         driverCard.addView(sectionHeader("Driver & Kendaraan", "Profil mitra yang menangani pesanan"));
 
@@ -235,6 +240,40 @@ public class CustomerOrderDetailActivity extends Activity {
         // Terapkan kembali tema customer agar semua view baru langsung mengikuti
         // pilihan Mode Gelap tanpa perlu menutup halaman.
         CustomerAppSettings.applyToView(this, body);
+    }
+
+    private View buildTimeline(String currentStatus) {
+        LinearLayout box = infoPanel();
+        String type = first(order.optString("order_type"), order.optString("service_type"), "").toLowerCase(Locale.US);
+        String[] keys; String[] labels;
+        if (type.contains("food")) {
+            keys = new String[]{"pending","merchant_confirmed","driver_accepted","arrived_pickup","on_delivery","arrived_delivery","finished"};
+            labels = new String[]{"Pesanan dibuat","Merchant menerima","Driver menerima","Driver tiba di merchant","Pesanan diantar","Driver tiba di tujuan","Pesanan selesai"};
+        } else {
+            keys = new String[]{"pending","driver_accepted","arrived_pickup","on_delivery","arrived_delivery","finished"};
+            labels = new String[]{"Pesanan dibuat","Driver menerima","Driver tiba di titik jemput","Perjalanan dimulai","Driver tiba di tujuan","Pesanan selesai"};
+        }
+        int current = timelineIndex(currentStatus, keys);
+        for (int i=0;i<labels.length;i++) {
+            boolean done = i < current || isFinishedStatus(currentStatus);
+            boolean active = i == current && !isFinishedStatus(currentStatus);
+            String bullet = done ? "✓" : (active ? "●" : "○");
+            String suffix = i == 0 ? "  •  " + first(order.optString("created_at"), "Waktu tidak tersedia") : (active ? "  •  Status saat ini" : "");
+            TextView row = text(bullet + "  " + labels[i] + suffix, 14, Color.parseColor(done ? "#047857" : active ? "#0B7CFF" : "#94A3B8"), done || active);
+            row.setPadding(0, dp(9), 0, dp(9)); box.addView(row);
+            if (i < labels.length-1) box.addView(divider());
+        }
+        return box;
+    }
+
+    private int timelineIndex(String status, String[] keys) {
+        status = first(status, "pending").toLowerCase(Locale.US);
+        if (status.contains("cancel") || status.contains("reject")) return 0;
+        for (int i=0;i<keys.length;i++) if (status.equals(keys[i])) return i;
+        if (status.equals("taken")) return Math.min(2, keys.length-1);
+        if (status.equals("completed") || status.equals("done") || status.equals("delivered")) return keys.length-1;
+        if (status.contains("merchant")) return Math.min(1, keys.length-1);
+        return 0;
     }
 
     private void addReviewCard() {

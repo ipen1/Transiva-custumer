@@ -33,6 +33,8 @@ import android.widget.ProgressBar;
 import android.widget.ScrollView;
 import android.widget.TextView;
 
+import androidx.fragment.app.FragmentActivity;
+
 import org.json.JSONObject;
 
 import java.io.BufferedReader;
@@ -47,7 +49,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Random;
 
-public class TransPickupActivity extends Activity {
+public class TransPickupActivity extends FragmentActivity {
 
     private static final String BASE_URL = "https://transiva.my.id/";
     private static final String PREF_NAME = "transiva";
@@ -717,6 +719,17 @@ public class TransPickupActivity extends Activity {
     }
 
     private void createPickupOrder() {
+        if ("balance".equals(paymentMethod) && BiometricSecurityManager.isEnabled(this)) {
+            BiometricSecurityManager.authenticate(this, "Otorisasi Transiva Pay", "Konfirmasi biometrik sebelum membayar pengiriman ini.", new BiometricSecurityManager.Callback() {
+                @Override public void onSuccess() { createPickupOrderAuthorized(); }
+                @Override public void onUnavailable(String message) { toast(message); }
+            });
+            return;
+        }
+        createPickupOrderAuthorized();
+    }
+
+    private void createPickupOrderAuthorized() {
         if (userId <= 0) { showInfo("Login", "User ID tidak ditemukan. Silakan login ulang."); return; }
         if (!validLocation()) return;
         String itemName = itemNameInput.getText().toString().trim();

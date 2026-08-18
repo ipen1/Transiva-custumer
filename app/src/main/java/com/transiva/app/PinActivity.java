@@ -17,6 +17,8 @@ import android.widget.ProgressBar;
 import android.widget.ScrollView;
 import android.widget.TextView;
 
+import androidx.fragment.app.FragmentActivity;
+
 import org.json.JSONObject;
 
 import java.io.BufferedReader;
@@ -29,7 +31,7 @@ import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.util.Locale;
 
-public class PinActivity extends Activity {
+public class PinActivity extends FragmentActivity {
 
     private static final String TAG = "TRANSIVA_PIN";
     private static final String BASE_URL = "https://transiva.my.id/server/";
@@ -51,6 +53,7 @@ public class PinActivity extends Activity {
     private ProgressBar progressBar;
     private LinearLayout keypadContainer;
     private LinearLayout pinContentRoot;
+    private TextView biometricButton;
 
     private boolean loading;
     private boolean setupMode;
@@ -174,6 +177,13 @@ public class PinActivity extends Activity {
 
         keypadContainer = buildKeypad();
         card.addView(keypadContainer, new LinearLayout.LayoutParams(-1, -2));
+
+        biometricButton = text("Gunakan biometrik", 13, "#1677FF", true);
+        biometricButton.setGravity(Gravity.CENTER);
+        biometricButton.setPadding(dp(12), dp(14), dp(12), dp(10));
+        biometricButton.setVisibility(View.GONE);
+        biometricButton.setOnClickListener(v -> tryBiometric());
+        card.addView(biometricButton, new LinearLayout.LayoutParams(-1, -2));
 
         progressBar = new ProgressBar(this);
         progressBar.setVisibility(View.VISIBLE);
@@ -339,9 +349,29 @@ public class PinActivity extends Activity {
 
                 actionHintText.setText("Gunakan tombol angka di bawah");
                 setKeypadEnabled(true);
+                if (biometricButton != null) {
+                    biometricButton.setVisibility(!setupMode && BiometricSecurityManager.isEnabled(this) ? View.VISIBLE : View.GONE);
+                }
                 renderDots();
+                if (!setupMode && BiometricSecurityManager.isEnabled(this)) {
+                    mainHandler.postDelayed(this::tryBiometric, 180);
+                }
             });
         }, "transiva-pin-status").start();
+    }
+
+
+    private void tryBiometric() {
+        if (setupMode || loading || !BiometricSecurityManager.isEnabled(this)) return;
+        BiometricSecurityManager.authenticate(this, "Buka Transiva", "Verifikasi biometrik untuk menggantikan PIN pada perangkat ini.", new BiometricSecurityManager.Callback() {
+            @Override public void onSuccess() {
+                showMessage("Biometrik berhasil. Membuka akun...", true);
+                mainHandler.postDelayed(PinActivity.this::openRolePage, 220);
+            }
+            @Override public void onUnavailable(String message) {
+                showMessage(message, false);
+            }
+        });
     }
 
     private void setPin(String pin) {

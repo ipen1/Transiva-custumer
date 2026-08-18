@@ -14,6 +14,8 @@ import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import androidx.fragment.app.FragmentActivity;
+
 import org.json.JSONArray;
 import org.json.JSONObject;
 
@@ -22,7 +24,7 @@ import java.util.LinkedHashMap;
 import java.util.Locale;
 import java.util.Map;
 
-public class RepeatFoodOrderActivity extends Activity {
+public class RepeatFoodOrderActivity extends FragmentActivity {
 
     private static final String BASE_URL =
             "https://transiva.my.id/";
@@ -778,6 +780,19 @@ public class RepeatFoodOrderActivity extends Activity {
     }
 
     private void submitFoodOrder(
+            JSONArray items
+    ) {
+        if ("balance".equals(paymentMethod) && BiometricSecurityManager.isEnabled(this)) {
+            BiometricSecurityManager.authenticate(this, "Otorisasi Transiva Pay", "Konfirmasi biometrik sebelum membayar pesanan ini.", new BiometricSecurityManager.Callback() {
+                @Override public void onSuccess() { submitFoodOrderAuthorized(items); }
+                @Override public void onUnavailable(String message) { toast(message); }
+            });
+            return;
+        }
+        submitFoodOrderAuthorized(items);
+    }
+
+    private void submitFoodOrderAuthorized(
             JSONArray items
     ) {
         if (submitting) {

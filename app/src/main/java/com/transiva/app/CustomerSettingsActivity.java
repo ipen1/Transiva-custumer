@@ -90,6 +90,24 @@ public class CustomerSettingsActivity extends Activity {
         }));
         root.addView(preferenceCard);
 
+        root.addView(sectionTitle("Keamanan & Fitur Pintar"), marginTop(18));
+        LinearLayout securityCard = card();
+        securityCard.addView(toggleRow("Biometrik PIN / Transiva Pay", "Gunakan sidik jari/wajah untuk membuka PIN dan mengotorisasi Transiva Pay di perangkat ini", BiometricSecurityManager.isEnabled(this), (button, checked) -> {
+            if (checked && !BiometricSecurityManager.canUse(this)) {
+                button.setChecked(false);
+                new TransivaAlertDialogBuilder(this).setTitle("Biometrik belum tersedia").setMessage("Daftarkan sidik jari atau wajah yang didukung perangkat, lalu aktifkan kembali fitur ini.").setPositiveButton("OK", null).show();
+                return;
+            }
+            BiometricSecurityManager.setEnabled(this, checked);
+        }));
+        securityCard.addView(divider());
+        securityCard.addView(actionRow("Transiva Safety Center", "Panggilan darurat, panduan keselamatan, dan akses perjalanan", SafetyCenterActivity.class));
+        securityCard.addView(divider());
+        securityCard.addView(actionRow("Smart Reorder", "Pesan ulang berdasarkan riwayat favorit dan terbaru", SmartReorderActivity.class));
+        securityCard.addView(divider());
+        securityCard.addView(actionRow("Transiva Royalti", "Lihat poin, tier, dan progres loyalitas customer", CustomerLoyaltyActivity.class));
+        root.addView(securityCard);
+
         root.addView(sectionTitle("Panggilan Masuk"), marginTop(18));
         LinearLayout callCard = card();
         LinearLayout overlayRow = new LinearLayout(this);
@@ -150,6 +168,14 @@ public class CustomerSettingsActivity extends Activity {
         deviceCard.addView(progress, new LinearLayout.LayoutParams(-1, dp(38)));
         root.addView(deviceCard);
         return shell;
+    }
+
+    private View actionRow(String title, String subtitle, Class<?> target) {
+        LinearLayout row = new LinearLayout(this); row.setGravity(Gravity.CENTER_VERTICAL); row.setPadding(0, dp(12), 0, dp(12));
+        LinearLayout labels = new LinearLayout(this); labels.setOrientation(LinearLayout.VERTICAL);
+        labels.addView(text(title, 15, "#0B3A78", true)); labels.addView(text(subtitle, 11, "#64748B", false));
+        row.addView(labels, new LinearLayout.LayoutParams(0, -2, 1)); row.addView(text("›", 28, "#0B7CFF", true));
+        row.setOnClickListener(v -> startActivity(new Intent(this, target))); return row;
     }
 
     private LinearLayout toggleRow(String title, String subtitle, boolean checked, CompoundButton.OnCheckedChangeListener listener) {
@@ -270,4 +296,5 @@ public class CustomerSettingsActivity extends Activity {
     private GradientDrawable round(String color, int radius) { GradientDrawable g = new GradientDrawable(); g.setColor(Color.parseColor(color)); g.setCornerRadius(dp(radius)); return g; }
     private int dp(int v) { return Math.round(v * getResources().getDisplayMetrics().density); }
     private static String first(String... values) { for (String v : values) if (v != null && !v.trim().isEmpty() && !"null".equalsIgnoreCase(v.trim())) return v.trim(); return ""; }
+
 }

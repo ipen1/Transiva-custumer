@@ -46,24 +46,42 @@ public final class RootSecurityGuard {
     private RootSecurityGuard() { }
 
     public static void checkBeforeContinue(Activity activity, Runnable onAllowed) {
-        check(activity, onAllowed);
+        check(activity, onAllowed, false);
     }
 
     public static void protect(Activity activity) {
-        check(activity, null);
+        check(activity, null, false);
     }
 
-    private static void check(Activity activity, Runnable onAllowed) {
+    /** Refresh langsung dari server, dipakai oleh FCM security_policy_changed. */
+    public static void protectFresh(Activity activity) {
+        check(activity, null, true);
+    }
+
+    private static void check(Activity activity, Runnable onAllowed, boolean forcePolicyRefresh) {
         if (!usable(activity)) return;
         if (!RUNNING.compareAndSet(false, true)) {
-            if (onAllowed != null) MAIN.postDelayed(() -> check(activity, onAllowed), 300L);
+            if (onAllowed != null || forcePolicyRefresh) {
+                MAIN.postDelayed(() -> check(activity, onAllowed, forcePolicyRefresh), 300L);
+            }
             return;
         }
+
         Context app = activity.getApplicationContext();
         WORKER.execute(() -> {
             Detection result;
-            try { result = detect(app); }
-            catch (Throwable ignored) { result = Detection.clean(); }
+            try {
+                CustomerSecurityPolicy.Policy policy = forcePolicyRefresh
+                        ? CustomerSecurityPolicy.resolveFresh(app)
+                        : CustomerSecurityPolicy.resolve(app);
+
+                result = policy.rootEnabled ? detect(app) : Detection.clean();
+            } catch (Throwable ignored) {
+                result = CustomerSecurityPolicy.rootEnabledCached(app)
+                        ? safeDetect(app)
+                        : Detection.clean();
+            }
+
             Detection finalResult = result;
             MAIN.post(() -> {
                 RUNNING.set(false);
@@ -75,6 +93,11 @@ public final class RootSecurityGuard {
                 }
             });
         });
+    }
+
+    private static Detection safeDetect(Context context) {
+        try { return detect(context); }
+        catch (Throwable ignored) { return Detection.clean(); }
     }
 
     private static Detection detect(Context context) {
@@ -160,7 +183,7 @@ public final class RootSecurityGuard {
         } catch (Throwable ignored) { }
     }
 
-    private static void dismiss() {
+    public static void dismiss() {
         AlertDialog d = dialogRef.get();
         if (d != null && d.isShowing()) try { d.dismiss(); } catch (Throwable ignored) { }
         dialogRef.clear();

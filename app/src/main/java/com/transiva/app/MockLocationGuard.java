@@ -41,45 +41,96 @@ public final class MockLocationGuard {
 
     /** Compatibility entry point for normal screens. Check is asynchronous. */
     public static boolean protect(Activity activity) {
-        checkAsync(activity, null);
+        checkAsync(activity, null, false);
         return false;
     }
 
     /** Splash uses this and continues only when the device is clean. */
     public static void checkBeforeContinue(Activity activity, Runnable onAllowed) {
-        checkAsync(activity, onAllowed);
+        checkAsync(activity, onAllowed, false);
     }
 
     public static void recheck(Activity activity) {
-        checkAsync(activity, null);
+        checkAsync(activity, null, true);
     }
 
-    private static void checkAsync(Activity activity, Runnable onAllowed) {
+    /** Refresh langsung dari server, dipakai oleh FCM security_policy_changed. */
+    public static void protectFresh(Activity activity) {
+        checkAsync(activity, null, true);
+    }
+
+    private static void checkAsync(
+            Activity activity,
+            Runnable onAllowed,
+            boolean forcePolicyRefresh
+    ) {
         if (!isUsable(activity)) return;
+
         if (!CHECK_RUNNING.compareAndSet(false, true)) {
-            // A check is already running. Retry shortly so Splash cannot remain waiting forever.
-            if (onAllowed != null) MAIN.postDelayed(() -> checkAsync(activity, onAllowed), 350L);
+            if (onAllowed != null || forcePolicyRefresh) {
+                MAIN.postDelayed(
+                        () -> checkAsync(activity, onAllowed, forcePolicyRefresh),
+                        350L
+                );
+            }
             return;
         }
 
         Context appContext = activity.getApplicationContext();
+
         WORKER.execute(() -> {
             Detection result;
+            boolean detectionEnabled = true;
+
             try {
-                result = detectNow(appContext);
+                CustomerSecurityPolicy.Policy policy = forcePolicyRefresh
+                        ? CustomerSecurityPolicy.resolveFresh(appContext)
+                        : CustomerSecurityPolicy.resolve(appContext);
+
+                detectionEnabled = policy.fakeGpsEnabled;
+
+                if (!detectionEnabled) {
+                    result = Detection.allowed();
+                } else {
+                    result = detectNow(appContext);
+
+                    // Jika akan memblokir dari cache lama, konfirmasi sekali ke server.
+                    if (result.blocked && !forcePolicyRefresh) {
+                        CustomerSecurityPolicy.Policy fresh =
+                                CustomerSecurityPolicy.resolveFresh(appContext);
+
+                        if (!fresh.fakeGpsEnabled) {
+                            detectionEnabled = false;
+                            result = Detection.allowed();
+                        }
+                    }
+                }
             } catch (Throwable ignored) {
-                result = Detection.allowed(); // never freeze app because an OEM blocks AppOps
+                detectionEnabled =
+                        CustomerSecurityPolicy.fakeGpsEnabledCached(appContext);
+                result = detectionEnabled
+                        ? detectSafely(appContext)
+                        : Detection.allowed();
             }
 
             Detection finalResult = result;
+            boolean finalDetectionEnabled = detectionEnabled;
+
             MAIN.post(() -> {
                 CHECK_RUNNING.set(false);
                 if (!isUsable(activity)) return;
+
                 if (finalResult.blocked) {
-                    showBlockingDialogWhenReady(activity, finalResult.message, 0);
+                    showBlockingDialogWhenReady(
+                            activity,
+                            finalResult.message,
+                            0
+                    );
                 } else {
                     dismissBlockingDialog();
-                    listenForFreshMockLocation(activity);
+                    if (finalDetectionEnabled) {
+                        listenForFreshMockLocation(activity);
+                    }
                     if (onAllowed != null) onAllowed.run();
                 }
             });
@@ -90,6 +141,11 @@ public final class MockLocationGuard {
         if (location == null) return false;
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) return location.isMock();
         return location.isFromMockProvider();
+    }
+
+    private static Detection detectSafely(Context context) {
+        try { return detectNow(context); }
+        catch (Throwable ignored) { return Detection.allowed(); }
     }
 
     private static Detection detectNow(Context context) {
@@ -184,9 +240,18 @@ public final class MockLocationGuard {
         if (manager == null) return;
         LocationListener listener = new LocationListener() {
             @Override public void onLocationChanged(Location location) {
+                if (!CustomerSecurityPolicy.fakeGpsEnabledCached(activity)) {
+                    removeSafely(manager, this);
+                    return;
+                }
+
                 if (isMock(location)) {
                     removeSafely(manager, this);
-                    showBlockingDialogWhenReady(activity, "Android mendeteksi lokasi palsu. Matikan Fake GPS dan hapus pilihan aplikasi lokasi palsu di Opsi Developer.", 0);
+                    showBlockingDialogWhenReady(
+                            activity,
+                            "Android mendeteksi lokasi palsu. Matikan Fake GPS dan hapus pilihan aplikasi lokasi palsu di Opsi Developer.",
+                            0
+                    );
                 }
             }
             @Override public void onStatusChanged(String provider, int status, Bundle extras) { }
@@ -238,7 +303,8 @@ public final class MockLocationGuard {
                     .create();
             dialog.setOnShowListener(d -> {
                 dialog.getButton(DialogInterface.BUTTON_POSITIVE).setOnClickListener(v -> openDeveloperSettings(activity));
-                dialog.getButton(DialogInterface.BUTTON_NEUTRAL).setOnClickListener(v -> recheck(activity));
+                dialog.getButton(DialogInterface.BUTTON_NEUTRAL)
+                        .setOnClickListener(v -> checkAsync(activity, null, true));
             });
             dialog.setOnDismissListener(d -> {
                 if (activeDialog.get() == dialog) {
@@ -263,7 +329,7 @@ public final class MockLocationGuard {
         }
     }
 
-    private static void dismissBlockingDialog() {
+    public static void dismissBlockingDialog() {
         AlertDialog dialog = activeDialog.get();
         if (dialog != null && dialog.isShowing()) {
             try { dialog.dismiss(); } catch (Throwable ignored) { }

@@ -149,6 +149,15 @@ public class TransivaFirebaseService extends FirebaseMessagingService {
         }
 
 
+        if ("security_policy_changed".equals(type)
+                || "customer_security_policy_changed".equals(type)) {
+            // Tidak mempercayai nilai ON/OFF dari push.
+            // Push hanya memerintahkan app untuk membaca policy terbaru dari server.
+            CustomerSecurityPolicy.invalidate(this);
+            TransivaCustomerApplication.onSecurityPolicyChanged();
+            return;
+        }
+
         if (type.equals("force_logout")
                 || type.equals("device_reset")
                 || type.equals("device_banned")

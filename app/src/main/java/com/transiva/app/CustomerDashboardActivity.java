@@ -258,7 +258,9 @@ public class CustomerDashboardActivity extends Activity
         );
 
         buildHeader();
-        buildKOnlineTransitionCard();
+        if (!isKOnlineDashboardCardDismissed()) {
+            buildKOnlineTransitionCard();
+        }
         buildSmartRecommendation();
         buildWalletCard();
         buildFeatureShortcuts();
@@ -468,6 +470,12 @@ public class CustomerDashboardActivity extends Activity
                 cardLp
         );
 
+        LinearLayout topBar =
+                new LinearLayout(this);
+
+        topBar.setOrientation(LinearLayout.HORIZONTAL);
+        topBar.setGravity(Gravity.CENTER_VERTICAL);
+
         LinearLayout row =
                 new LinearLayout(this);
 
@@ -479,13 +487,52 @@ public class CustomerDashboardActivity extends Activity
                 Gravity.CENTER_VERTICAL
         );
 
-        card.addView(
+        topBar.addView(
                 row,
+                new LinearLayout.LayoutParams(
+                        0,
+                        -2,
+                        1
+                )
+        );
+
+        TextView close =
+                text(
+                        "×",
+                        22,
+                        "#6C8199",
+                        false
+                );
+
+        close.setGravity(Gravity.CENTER);
+        close.setContentDescription("Tutup informasi K Online");
+        close.setBackground(Shape.round("#EEF4FA", dp(18)));
+
+        LinearLayout.LayoutParams closeLp =
+                new LinearLayout.LayoutParams(
+                        dp(34),
+                        dp(34)
+                );
+        closeLp.setMargins(dp(8), 0, 0, 0);
+
+        topBar.addView(close, closeLp);
+
+        card.addView(
+                topBar,
                 new LinearLayout.LayoutParams(
                         -1,
                         -2
                 )
         );
+
+        close.setOnClickListener(v -> {
+            getSharedPreferences(PREF_KONLINE_TRANSITION, MODE_PRIVATE)
+                    .edit()
+                    .putBoolean(KEY_KONLINE_DASH_DISMISSED, true)
+                    .apply();
+
+            content.removeView(card);
+        });
 
         // Badge K Online.
         TextView kBadge =
@@ -779,6 +826,11 @@ public class CustomerDashboardActivity extends Activity
 
         learn.setOnClickListener(openInfo);
         card.setOnClickListener(openInfo);
+    }
+
+    private boolean isKOnlineDashboardCardDismissed() {
+        return getSharedPreferences(PREF_KONLINE_TRANSITION, MODE_PRIVATE)
+                .getBoolean(KEY_KONLINE_DASH_DISMISSED, false);
     }
 
     private void showKOnlineTransitionDialog() {

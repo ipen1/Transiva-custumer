@@ -2296,6 +2296,10 @@ public class CustomerChatRoomActivity extends Activity {
             return "TransFood";
         }
 
+        if (type.contains("shop") || type.contains("mart")) {
+            return "TransShop";
+        }
+
         if (
                 type.contains("car")
                         || type.contains("mobil")

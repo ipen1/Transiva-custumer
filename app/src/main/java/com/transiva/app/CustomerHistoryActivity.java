@@ -734,7 +734,7 @@ public class CustomerHistoryActivity extends Activity {
         addServiceChip("TransCar", "car");
         addServiceChip("TransFood", "food");
         addServiceChip("TransSend", "pickup");
-        addServiceChip("TransShop", "mart");
+        addServiceChip("TransShop", "shop");
     }
 
     private void addServiceChip(
@@ -2462,7 +2462,7 @@ public class CustomerHistoryActivity extends Activity {
             return "TransSend";
         }
 
-        if (type.contains("mart")) {
+        if (type.contains("mart") || type.contains("shop")) {
             return "TransShop";
         }
 
@@ -2504,7 +2504,7 @@ public class CustomerHistoryActivity extends Activity {
             );
         }
 
-        if (type.contains("mart")) {
+        if (type.contains("mart") || type.contains("shop")) {
             return drawable("ic_service_mart");
         }
 
@@ -2542,7 +2542,7 @@ public class CustomerHistoryActivity extends Activity {
             return "#EEF6FF";
         }
 
-        if (type.contains("mart")) {
+        if (type.contains("mart") || type.contains("shop")) {
             return "#FFF9E8";
         }
 

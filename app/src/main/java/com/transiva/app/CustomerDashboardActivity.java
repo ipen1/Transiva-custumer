@@ -1715,14 +1715,10 @@ public class CustomerDashboardActivity extends Activity
                                 "ic_service_pickup",
                                 TransPickupActivity.class
                         ),
-                        serviceAction(
+                        service(
                                 "TransShop",
                                 "ic_service_mart",
-                                () -> Toast.makeText(
-                                        this,
-                                        "TransShop segera tersedia",
-                                        Toast.LENGTH_SHORT
-                                ).show()
+                                TransShopActivity.class
                         )
                 )
         );
@@ -1880,7 +1876,7 @@ public class CustomerDashboardActivity extends Activity
             startActivity(new Intent(this, TransPickupActivity.class));
         } else if ("TransShop".equalsIgnoreCase(serviceName)
                 || "TransMart".equalsIgnoreCase(serviceName)) {
-            Toast.makeText(this, "TransShop segera tersedia", Toast.LENGTH_SHORT).show();
+            startActivity(new Intent(this, TransShopActivity.class));
         } else {
             startActivity(new Intent(this, TransRideActivity.class));
         }

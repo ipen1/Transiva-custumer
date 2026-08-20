@@ -571,7 +571,7 @@ public class CustomerOrderDetailActivity extends Activity {
                 || table.contains("pickup_orders");
     }
 
-    private String serviceIcon(String s) { String v = s.toLowerCase(Locale.US); if (v.contains("food")) return "🍱"; if (v.contains("car")) return "🚘"; if (v.contains("ride") || v.contains("bike")) return "🏍️"; if (v.contains("send") || v.contains("pickup")) return "📦"; return "🧭"; }
+    private String serviceIcon(String s) { String v = s.toLowerCase(Locale.US); if (v.contains("food")) return "🍱"; if (v.contains("shop") || v.contains("mart")) return "🛍️"; if (v.contains("car")) return "🚘"; if (v.contains("ride") || v.contains("bike")) return "🏍️"; if (v.contains("send") || v.contains("pickup")) return "📦"; return "🧭"; }
     private int statusTextColor(String s) { if (isFinishedStatus(s)) return Color.parseColor("#047857"); if (s.contains("cancel")) return Color.parseColor("#B91C1C"); if (s.contains("arrived")) return Color.parseColor("#075985"); return Color.parseColor("#9A6700"); }
     private String statusBackground(String s) { if (isFinishedStatus(s)) return "#D1FAE5"; if (s.contains("cancel")) return "#FEE2E2"; if (s.contains("arrived")) return "#E0F2FE"; return "#FFF4D6"; }
     private String ratingLabel(int rating) { if (rating <= 1) return "Kirim • Perlu Diperbaiki"; if (rating == 2) return "Kirim • Kurang"; if (rating == 3) return "Kirim • Cukup"; if (rating == 4) return "Kirim • Bagus"; return "Kirim • Sangat Memuaskan"; }

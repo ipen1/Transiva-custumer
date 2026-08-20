@@ -9,6 +9,7 @@ import android.graphics.drawable.GradientDrawable;
 import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
+import android.text.TextUtils;
 import android.view.Window;
 import android.view.WindowManager;
 import android.widget.Button;
@@ -92,12 +93,19 @@ public class TransivaAlertDialogBuilder extends AlertDialog.Builder {
         bg.setCornerRadius(dp(12));
         button.setBackground(bg);
         button.setTextColor(textColor);
-        button.setTextSize(15f);
+        button.setTextSize(14f);
         button.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
         button.setAllCaps(false);
         button.setGravity(Gravity.CENTER);
+        // Cegah teks tombol pecah per huruf seperti "Gun\nakan" / "Bata\nl".
+        button.setSingleLine(true);
+        button.setMaxLines(1);
+        button.setEllipsize(TextUtils.TruncateAt.END);
+        button.setMinWidth(0);
+        button.setMinimumWidth(0);
         button.setMinHeight(dp(48));
-        button.setPadding(dp(16), 0, dp(16), 0);
+        button.setMinimumHeight(dp(48));
+        button.setPadding(dp(8), 0, dp(8), 0);
     }
 
     private void makeButtonsBalanced(Button... buttons) {
@@ -116,19 +124,17 @@ public class TransivaAlertDialogBuilder extends AlertDialog.Builder {
         parent.setGravity(Gravity.CENTER);
         parent.setPadding(dp(14), dp(6), dp(14), dp(16));
 
+        // Tiga tombol pada AlertDialog bawaan terlalu sempit di banyak device
+        // (terutama font/display scale besar). Susun vertikal agar selalu terbaca utuh.
+        final boolean stack = visible >= 3;
+        parent.setOrientation(stack ? LinearLayout.VERTICAL : LinearLayout.HORIZONTAL);
+
         for (Button b : buttons) {
             if (b == null || b.getVisibility() != View.VISIBLE || b.getParent() != parent) continue;
-            LinearLayout.LayoutParams p;
-            ViewGroup.LayoutParams old = b.getLayoutParams();
-            if (old instanceof LinearLayout.LayoutParams) {
-                p = (LinearLayout.LayoutParams) old;
-            } else {
-                p = new LinearLayout.LayoutParams(0, dp(48));
-            }
-            p.width = 0;
-            p.height = dp(48);
-            p.weight = 1f;
-            p.setMargins(dp(6), dp(4), dp(6), 0);
+            LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(
+                    stack ? ViewGroup.LayoutParams.MATCH_PARENT : 0, dp(48));
+            p.weight = stack ? 0f : 1f;
+            p.setMargins(dp(6), dp(5), dp(6), 0);
             b.setLayoutParams(p);
         }
     }

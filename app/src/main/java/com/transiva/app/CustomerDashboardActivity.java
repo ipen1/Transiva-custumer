@@ -44,6 +44,10 @@ import java.util.Locale;
 public class CustomerDashboardActivity extends Activity
         implements CustomerDashboardContract.View {
 
+    // Menyimpan pilihan customer ketika card transisi K Online di Dashboard ditutup.
+    private static final String PREF_KONLINE_TRANSITION = "k_online_transition";
+    private static final String KEY_KONLINE_DASH_DISMISSED = "dashboard_dismissed";
+
     private static final int REQ_LOCATION = 1201;
     private static final long PROMO_INTERVAL_MS = 4500L;
     private static final int PROMO_CARD_WIDTH_DP = 275;

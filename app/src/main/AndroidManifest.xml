@@ -230,6 +230,8 @@
             </intent-filter>
         </activity>
 
+        <activity android:name=".TransShopActivity" android:exported="false" android:screenOrientation="portrait" android:theme="@style/AppTheme" />
+
         <activity
             android:name=".TransRideActivity"
             android:exported="false"

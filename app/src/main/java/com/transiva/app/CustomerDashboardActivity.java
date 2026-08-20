@@ -2,6 +2,7 @@ package com.transiva.app;
 
 import android.Manifest;
 import android.app.Activity;
+import android.app.AlertDialog;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
@@ -257,6 +258,7 @@ public class CustomerDashboardActivity extends Activity
         );
 
         buildHeader();
+        buildKOnlineTransitionCard();
         buildSmartRecommendation();
         buildWalletCard();
         buildFeatureShortcuts();
@@ -421,6 +423,384 @@ public class CustomerDashboardActivity extends Activity
         });
         button.setLayoutParams(new LinearLayout.LayoutParams(dp(44), dp(44)));
         return button;
+    }
+
+    /**
+     * Brand-transition card:
+     * memberi nuansa bahwa layanan K Online sekarang berada di dalam
+     * ekosistem Transiva tanpa mengubah alur order atau logic backend.
+     */
+    private void buildKOnlineTransitionCard() {
+        LinearLayout card = new LinearLayout(this);
+        card.setOrientation(LinearLayout.VERTICAL);
+        card.setPadding(
+                dp(15),
+                dp(14),
+                dp(15),
+                dp(13)
+        );
+
+        card.setBackground(
+                Shape.gradient(
+                        "#F3F8FF",
+                        "#FFFFFF",
+                        dp(20)
+                )
+        );
+
+        card.setElevation(dp(2));
+
+        LinearLayout.LayoutParams cardLp =
+                new LinearLayout.LayoutParams(
+                        -1,
+                        -2
+                );
+
+        cardLp.setMargins(
+                0,
+                0,
+                0,
+                dp(12)
+        );
+
+        content.addView(
+                card,
+                cardLp
+        );
+
+        LinearLayout row =
+                new LinearLayout(this);
+
+        row.setOrientation(
+                LinearLayout.HORIZONTAL
+        );
+
+        row.setGravity(
+                Gravity.CENTER_VERTICAL
+        );
+
+        card.addView(
+                row,
+                new LinearLayout.LayoutParams(
+                        -1,
+                        -2
+                )
+        );
+
+        // Badge K Online.
+        TextView kBadge =
+                text(
+                        "K",
+                        21,
+                        "#FFFFFF",
+                        true
+                );
+
+        kBadge.setGravity(
+                Gravity.CENTER
+        );
+
+        kBadge.setBackground(
+                Shape.gradient(
+                        "#111827",
+                        "#374151",
+                        dp(16)
+                )
+        );
+
+        row.addView(
+                kBadge,
+                new LinearLayout.LayoutParams(
+                        dp(50),
+                        dp(50)
+                )
+        );
+
+        TextView arrow =
+                text(
+                        "→",
+                        18,
+                        "#7A8DA6",
+                        true
+                );
+
+        arrow.setGravity(
+                Gravity.CENTER
+        );
+
+        LinearLayout.LayoutParams arrowLp =
+                new LinearLayout.LayoutParams(
+                        dp(38),
+                        dp(50)
+                );
+
+        row.addView(
+                arrow,
+                arrowLp
+        );
+
+        LinearLayout brandBox =
+                new LinearLayout(this);
+
+        brandBox.setOrientation(
+                LinearLayout.HORIZONTAL
+        );
+
+        brandBox.setGravity(
+                Gravity.CENTER_VERTICAL
+        );
+
+        row.addView(
+                brandBox,
+                new LinearLayout.LayoutParams(
+                        0,
+                        dp(50),
+                        1
+                )
+        );
+
+        ImageView transivaLogo =
+                new ImageView(this);
+
+        transivaLogo.setImageResource(
+                getResources().getIdentifier(
+                        "transiva_logo",
+                        "drawable",
+                        getPackageName()
+                )
+        );
+
+        transivaLogo.setScaleType(
+                ImageView.ScaleType.CENTER_INSIDE
+        );
+
+        brandBox.addView(
+                transivaLogo,
+                new LinearLayout.LayoutParams(
+                        dp(40),
+                        dp(40)
+                )
+        );
+
+        LinearLayout transivaTextBox =
+                new LinearLayout(this);
+
+        transivaTextBox.setOrientation(
+                LinearLayout.VERTICAL
+        );
+
+        LinearLayout.LayoutParams brandTextLp =
+                new LinearLayout.LayoutParams(
+                        0,
+                        -2,
+                        1
+                );
+
+        brandTextLp.setMargins(
+                dp(8),
+                0,
+                0,
+                0
+        );
+
+        brandBox.addView(
+                transivaTextBox,
+                brandTextLp
+        );
+
+        transivaTextBox.addView(
+                text(
+                        "TRANSIVA",
+                        16,
+                        "#0B3A78",
+                        true
+                )
+        );
+
+        transivaTextBox.addView(
+                text(
+                        "Satu ekosistem, lebih lengkap",
+                        9,
+                        "#6C8199",
+                        false
+                )
+        );
+
+        TextView title =
+                text(
+                        "K Online kini menjadi bagian dari Transiva",
+                        14,
+                        "#0B3A78",
+                        true
+                );
+
+        LinearLayout.LayoutParams titleLp =
+                new LinearLayout.LayoutParams(
+                        -1,
+                        -2
+                );
+
+        titleLp.setMargins(
+                0,
+                dp(12),
+                0,
+                0
+        );
+
+        card.addView(
+                title,
+                titleLp
+        );
+
+        TextView message =
+                text(
+                        "Layanan yang Anda kenal kini terhubung dalam satu aplikasi Transiva — lebih praktis, aman, dan lengkap.",
+                        10,
+                        "#5D728A",
+                        false
+                );
+
+        message.setLineSpacing(
+                0f,
+                1.08f
+        );
+
+        LinearLayout.LayoutParams messageLp =
+                new LinearLayout.LayoutParams(
+                        -1,
+                        -2
+                );
+
+        messageLp.setMargins(
+                0,
+                dp(5),
+                0,
+                0
+        );
+
+        card.addView(
+                message,
+                messageLp
+        );
+
+        LinearLayout footer =
+                new LinearLayout(this);
+
+        footer.setOrientation(
+                LinearLayout.HORIZONTAL
+        );
+
+        footer.setGravity(
+                Gravity.CENTER_VERTICAL
+        );
+
+        LinearLayout.LayoutParams footerLp =
+                new LinearLayout.LayoutParams(
+                        -1,
+                        -2
+                );
+
+        footerLp.setMargins(
+                0,
+                dp(11),
+                0,
+                0
+        );
+
+        card.addView(
+                footer,
+                footerLp
+        );
+
+        TextView trust =
+                text(
+                        "✓ Tetap melayani Anda",
+                        9,
+                        "#12834B",
+                        true
+                );
+
+        trust.setPadding(
+                dp(9),
+                dp(5),
+                dp(9),
+                dp(5)
+        );
+
+        trust.setBackground(
+                Shape.roundStroke(
+                        "#ECFAF2",
+                        "#BFE8CF",
+                        dp(12),
+                        1
+                )
+        );
+
+        footer.addView(
+                trust,
+                new LinearLayout.LayoutParams(
+                        0,
+                        -2,
+                        1
+                )
+        );
+
+        TextView learn =
+                text(
+                        "Selengkapnya  ›",
+                        10,
+                        "#0B7CFF",
+                        true
+                );
+
+        learn.setGravity(
+                Gravity.CENTER_VERTICAL
+                        | Gravity.RIGHT
+        );
+
+        learn.setPadding(
+                dp(8),
+                dp(6),
+                0,
+                dp(6)
+        );
+
+        footer.addView(
+                learn,
+                new LinearLayout.LayoutParams(
+                        -2,
+                        -2
+                )
+        );
+
+        View.OnClickListener openInfo =
+                view ->
+                        showKOnlineTransitionDialog();
+
+        learn.setOnClickListener(openInfo);
+        card.setOnClickListener(openInfo);
+    }
+
+    private void showKOnlineTransitionDialog() {
+        try {
+            new AlertDialog.Builder(this)
+                    .setTitle("K Online × Transiva")
+                    .setMessage(
+                            "K Online kini menjadi bagian dari Transiva.\n\n"
+                                    + "Anda tetap dapat menikmati layanan yang sudah dikenal, kini dalam ekosistem Transiva yang lebih lengkap.\n\n"
+                                    + "• Satu aplikasi untuk berbagai kebutuhan\n"
+                                    + "• Dukungan layanan dan keamanan Transiva\n"
+                                    + "• Pengalaman pemesanan yang lebih terintegrasi\n\n"
+                                    + "Terima kasih telah tumbuh bersama kami.\n\n"
+                                    + "#KOnlineBersamaTransiva"
+                    )
+                    .setPositiveButton(
+                            "Mengerti",
+                            null
+                    )
+                    .show();
+
+        } catch (Throwable ignored) { }
     }
 
     private void buildSmartRecommendation() {

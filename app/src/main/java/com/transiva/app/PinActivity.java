@@ -611,8 +611,25 @@ public class PinActivity extends FragmentActivity {
     }
 
     private void openRolePage() {
-        Intent intent = new Intent(this, CustomerDashboardActivity.class);
-        intent.putExtra("native_role", "customer");
+        JSONObject user = session.getSessionJson();
+        String deliveryAddress = user.optString("delivery_address", "").trim();
+        double deliveryLat = user.optDouble("delivery_lat", 0.0);
+        double deliveryLng = user.optDouble("delivery_lng", 0.0);
+
+        boolean coordinateValid = !Double.isNaN(deliveryLat)
+                && !Double.isNaN(deliveryLng)
+                && deliveryLat >= -90.0 && deliveryLat <= 90.0
+                && deliveryLng >= -180.0 && deliveryLng <= 180.0
+                && !(Math.abs(deliveryLat) < 0.000001 && Math.abs(deliveryLng) < 0.000001);
+
+        Intent intent;
+        if (deliveryAddress.isEmpty() || !coordinateValid) {
+            intent = new Intent(this, ProfileActivity.class);
+            intent.putExtra("force_address_setup", true);
+        } else {
+            intent = new Intent(this, CustomerDashboardActivity.class);
+            intent.putExtra("native_role", "customer");
+        }
         intent.addFlags(
                 Intent.FLAG_ACTIVITY_NEW_TASK
                         | Intent.FLAG_ACTIVITY_CLEAR_TASK

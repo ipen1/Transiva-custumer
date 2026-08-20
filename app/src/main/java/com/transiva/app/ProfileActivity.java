@@ -112,6 +112,7 @@ public class ProfileActivity extends Activity {
     private boolean loading;
     private boolean deviceLoading;
     private boolean loyaltyLoading;
+    private boolean forceAddressSetup;
 
     private byte[] pendingPhotoWebp;
     private double deliveryLat;
@@ -130,6 +131,7 @@ public class ProfileActivity extends Activity {
         );
 
         session = new SessionManager(this);
+        forceAddressSetup = getIntent().getBooleanExtra("force_address_setup", false);
 
         readSession();
         setContentView(buildScreen());
@@ -2120,6 +2122,14 @@ public class ProfileActivity extends Activity {
             return;
         }
 
+        if (!isValidDeliveryCoordinate(deliveryLat, deliveryLng)) {
+            showInfo(
+                    "Tetapkan Lokasi",
+                    "Tekan tombol Gunakan Lokasi Saat Ini agar alamat dan koordinat delivery tersimpan dengan benar."
+            );
+            return;
+        }
+
         if (
                 !newPassword.isEmpty()
                         && newPassword.length() < 8
@@ -2323,10 +2333,21 @@ public class ProfileActivity extends Activity {
                     passwordInput.setText("");
                     setLoading(false);
 
-                    showInfo(
-                            "Profil Disimpan",
-                            "Informasi akun berhasil diperbarui."
-                    );
+                    if (forceAddressSetup && isValidDeliveryCoordinate(deliveryLat, deliveryLng)
+                            && !first(address).trim().isEmpty()) {
+                        forceAddressSetup = false;
+                        Intent intent = new Intent(ProfileActivity.this, CustomerDashboardActivity.class);
+                        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK
+                                | Intent.FLAG_ACTIVITY_CLEAR_TASK
+                                | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+                        startActivity(intent);
+                        finish();
+                    } else {
+                        showInfo(
+                                "Profil Disimpan",
+                                "Informasi akun berhasil diperbarui."
+                        );
+                    }
                 });
 
             } catch (Exception error) {
@@ -2348,6 +2369,28 @@ public class ProfileActivity extends Activity {
                 }
             }
         }).start();
+    }
+
+    private boolean isValidDeliveryCoordinate(double lat, double lng) {
+        return !Double.isNaN(lat)
+                && !Double.isNaN(lng)
+                && !Double.isInfinite(lat)
+                && !Double.isInfinite(lng)
+                && lat >= -90.0 && lat <= 90.0
+                && lng >= -180.0 && lng <= 180.0
+                && !(Math.abs(lat) < 0.000001 && Math.abs(lng) < 0.000001);
+    }
+
+    @Override
+    public void onBackPressed() {
+        if (forceAddressSetup) {
+            showInfo(
+                    "Lokasi Wajib Ditetapkan",
+                    "Tetapkan alamat dan lokasi delivery terlebih dahulu sebelum masuk ke Transiva."
+            );
+            return;
+        }
+        super.onBackPressed();
     }
 
     private void writeField(

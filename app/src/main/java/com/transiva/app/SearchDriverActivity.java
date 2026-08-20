@@ -72,7 +72,9 @@ public class SearchDriverActivity extends Activity {
     private TextView countdownText;
     private TextView countdownLabel;
     private CountDownTimer matchCountdown;
-    private long countdownRemainingMs = 15000L;
+    private long countdownRemainingMs = 30000L;
+    private int searchPhase = 1;
+    private String offeredDriverUsername = "";
     private TextView titleText;
     private TextView subtitleText;
     private TextView driverNameText;
@@ -103,7 +105,7 @@ public class SearchDriverActivity extends Activity {
         @Override public void run() {
             if (!destroyed && !isCanceling && !driverFound) {
                 loadIdleDriversToRadar();
-                mainHandler.postDelayed(this, 5000);
+                mainHandler.postDelayed(this, 8000);
             }
         }
     };
@@ -374,39 +376,55 @@ public class SearchDriverActivity extends Activity {
         mainHandler.removeCallbacks(checkOrderRunnable);
         loadIdleDriversToRadar();
         checkOrderStatus();
-        mainHandler.postDelayed(driverRadarRunnable, 5000);
+        mainHandler.postDelayed(driverRadarRunnable, 8000);
         mainHandler.postDelayed(checkOrderRunnable, 3000);
     }
 
     private void startMatchCountdown() {
         stopMatchCountdown();
-        countdownRemainingMs = 15000L;
-        if (countdownText != null) countdownText.setText("00:15");
-        matchCountdown = new CountDownTimer(15000L, 1000L) {
+        countdownRemainingMs = 90000L;
+        if (countdownText != null) countdownText.setText("00:30");
+        if (countdownLabel != null) countdownLabel.setText("CLUSTER ANDA");
+        setSearchPhase(1);
+        matchCountdown = new CountDownTimer(90000L, 1000L) {
             @Override public void onTick(long millisUntilFinished) {
                 countdownRemainingMs = millisUntilFinished;
-                int seconds = Math.max(0, (int) Math.ceil(millisUntilFinished / 1000.0));
+                long elapsed = 90000L - millisUntilFinished;
+                int phase = elapsed < 30000L ? 1 : (elapsed < 60000L ? 2 : 3);
+                setSearchPhase(phase);
+                long nextBoundary = phase == 1 ? 30000L : (phase == 2 ? 60000L : 90000L);
+                int seconds = Math.max(0, (int) Math.ceil((nextBoundary - elapsed) / 1000.0));
                 if (countdownText != null) {
                     countdownText.setText(String.format(Locale.US, "00:%02d", seconds));
-                    float pulse = seconds <= 5 ? 1.08f : 1.0f;
-                    countdownText.animate().scaleX(pulse).scaleY(pulse).setDuration(180).withEndAction(() ->
-                            countdownText.animate().scaleX(1f).scaleY(1f).setDuration(180).start()).start();
+                    float pulse = seconds <= 5 ? 1.06f : 1.0f;
+                    countdownText.animate().scaleX(pulse).scaleY(pulse).setDuration(160).withEndAction(() ->
+                            countdownText.animate().scaleX(1f).scaleY(1f).setDuration(160).start()).start();
                 }
             }
 
             @Override public void onFinish() {
                 if (destroyed || isCanceling || driverFound) return;
-                if (countdownText != null) countdownText.setText("00:00");
-                if (countdownLabel != null) countdownLabel.setText("MEMPERLUAS PENCARIAN...");
-                setSubtitle("Belum cocok, sistem memperluas pencarian driver");
-                mainHandler.postDelayed(() -> {
-                    if (!destroyed && !isCanceling && !driverFound) {
-                        if (countdownLabel != null) countdownLabel.setText("ESTIMASI MATCH");
-                        startMatchCountdown();
-                    }
-                }, 900L);
+                setSearchPhase(3);
+                if (countdownText != null) countdownText.setText("LIVE");
             }
         }.start();
+    }
+
+    private void setSearchPhase(int phase) {
+        int safe = Math.max(1, Math.min(3, phase));
+        if (searchPhase == safe && radarView != null) {
+            radarView.setSearchPhase(safe);
+            return;
+        }
+        searchPhase = safe;
+        if (radarView != null) radarView.setSearchPhase(safe);
+        if (countdownLabel != null) {
+            countdownLabel.setText(safe == 1 ? "CLUSTER ANDA" : (safe == 2 ? "CLUSTER TETANGGA" : "SEMUA CLUSTER ONLINE"));
+        }
+        if (safe == 1) setSubtitle("30 detik awal • prioritas driver di cluster Anda");
+        else if (safe == 2) setSubtitle("Pencarian diperluas ke driver cluster tetangga");
+        else setSubtitle("Pencarian diperluas ke seluruh driver online");
+        loadIdleDriversToRadar();
     }
 
     private void stopMatchCountdown() {
@@ -487,11 +505,13 @@ public class SearchDriverActivity extends Activity {
             try {
                 JSONObject payload = new JSONObject();
                 payload.put("type", normalizeDriverType(cachedDriverType));
+                payload.put("order_id", activeOrderId);
+                payload.put("search_phase", searchPhase);
                 if (hasUserLocation) {
                     payload.put("latitude", userLat);
                     payload.put("longitude", userLng);
-                    payload.put("max_km", 20);
-                    payload.put("limit", 40);
+                    payload.put("max_km", searchPhase == 1 ? 12 : (searchPhase == 2 ? 24 : 40));
+                    payload.put("limit", searchPhase == 1 ? 16 : (searchPhase == 2 ? 24 : 32));
                 }
 
                 JSONObject res = postJson(BASE_URL + "server/get_idle_drivers.php", payload);
@@ -502,7 +522,13 @@ public class SearchDriverActivity extends Activity {
 
                 JSONArray arr = res.optJSONArray("drivers");
                 List<RadarDriver> drivers = parseDrivers(arr);
+                int serverPhase = Math.max(1, Math.min(3, res.optInt("search_phase", searchPhase)));
+                String activeOffer = firstNonEmpty(res.optString("offered_driver", ""), offeredDriverUsername);
                 mainHandler.post(() -> {
+                    searchPhase = serverPhase;
+                    offeredDriverUsername = activeOffer;
+                    radarView.setSearchPhase(serverPhase);
+                    radarView.setOfferedDriver(activeOffer);
                     radarView.setDrivers(drivers, hasUserLocation, userLat, userLng);
                     if (drivers.size() > 0 && hasUserLocation) {
                         double nearest = nearestDistance(drivers);
@@ -532,6 +558,8 @@ public class SearchDriverActivity extends Activity {
             if (lat == 0 || lng == 0) continue;
             RadarDriver rd = new RadarDriver();
             rd.name = firstNonEmpty(d.optString("name"), d.optString("username"), "Driver");
+            rd.username = firstNonEmpty(d.optString("username"), rd.name);
+            rd.clusterName = d.optString("cluster_name", "");
             rd.lat = lat;
             rd.lng = lng;
             list.add(rd);
@@ -563,6 +591,21 @@ public class SearchDriverActivity extends Activity {
                         order.optString("status", ""),
                         res.optString("status", "")
                 ).trim().toLowerCase(Locale.US);
+
+                String currentOffer = firstNonEmpty(
+                        order.optString("offered_driver", ""),
+                        res.optString("offered_driver", "")
+                ).trim();
+                int phaseFromServer = Math.max(1, Math.min(3, Math.max(
+                        order.optInt("search_phase", 0), res.optInt("search_phase", 0))));
+                if (phaseFromServer <= 0) phaseFromServer = searchPhase;
+                final int finalPhaseFromServer = phaseFromServer;
+                final String finalCurrentOffer = currentOffer;
+                mainHandler.post(() -> {
+                    offeredDriverUsername = finalCurrentOffer;
+                    setSearchPhase(finalPhaseFromServer);
+                    if (radarView != null) radarView.setOfferedDriver(finalCurrentOffer);
+                });
 
                 String orderType = firstNonEmpty(order.optString("order_type", ""), res.optString("order_type", "")).trim().toLowerCase(Locale.US);
                 cachedDriverType = normalizeDriverType(firstNonEmpty(
@@ -1147,7 +1190,9 @@ public class SearchDriverActivity extends Activity {
     }
 
     private static class RadarDriver {
-        String name;
+        String name = "Driver";
+        String username = "";
+        String clusterName = "";
         double lat;
         double lng;
     }
@@ -1160,6 +1205,8 @@ public class SearchDriverActivity extends Activity {
         private double centerLng = 0;
         private float sweep = 0;
         private boolean running = true;
+        private int phase = 1;
+        private String offeredDriver = "";
 
         public RadarView(android.content.Context context) {
             super(context);
@@ -1183,6 +1230,16 @@ public class SearchDriverActivity extends Activity {
             invalidate();
         }
 
+        public void setSearchPhase(int phase) {
+            this.phase = Math.max(1, Math.min(3, phase));
+            invalidate();
+        }
+
+        public void setOfferedDriver(String username) {
+            this.offeredDriver = username == null ? "" : username.trim();
+            invalidate();
+        }
+
         public void setDrivers(List<RadarDriver> newDrivers, boolean gpsOk, double lat, double lng) {
             drivers.clear();
             if (newDrivers != null) drivers.addAll(newDrivers);
@@ -1198,7 +1255,9 @@ public class SearchDriverActivity extends Activity {
             int h = getHeight();
             float cx = w / 2f;
             float cy = h / 2f;
-            float r = Math.min(w, h) / 2f - dp(12);
+            float baseR = Math.min(w, h) / 2f - dp(12);
+            float zoom = phase == 1 ? 0.78f : (phase == 2 ? 0.90f : 1.0f);
+            float r = baseR * zoom;
 
             paint.setStyle(Paint.Style.FILL);
             paint.setColor(Color.parseColor("#071A35"));
@@ -1228,27 +1287,38 @@ public class SearchDriverActivity extends Activity {
             paint.setTextSize(dp(15));
             canvas.drawText("ANDA", cx, cy + dp(5), paint);
 
-            for (int i = 0; i < drivers.size() && i < 8; i++) {
+            for (int i = 0; i < drivers.size() && i < 12; i++) {
                 RadarDriver d = drivers.get(i);
                 double dist = gpsOk ? distanceKm(centerLat, centerLng, d.lat, d.lng) : (i + 1);
-                double safe = Math.min(dist, 10.0);
-                float radius = (float) ((safe / 10.0) * r * .78f);
+                double maxVisualKm = phase == 1 ? 12.0 : (phase == 2 ? 24.0 : 40.0);
+                double safe = Math.min(dist, maxVisualKm);
+                float radius = (float) ((safe / maxVisualKm) * r * .78f);
                 if (radius < dp(44)) radius = dp(44);
                 double angle = Math.toRadians((i * 67 + dist * 31) % 360);
                 float x = (float) (cx + Math.cos(angle) * radius);
                 float y = (float) (cy + Math.sin(angle) * radius);
 
+                boolean receiving = !offeredDriver.isEmpty() && offeredDriver.equalsIgnoreCase(d.username);
                 paint.setStyle(Paint.Style.FILL);
-                paint.setColor(Color.parseColor("#F4C85A"));
-                canvas.drawCircle(x, y, dp(8), paint);
-                paint.setColor(Color.WHITE);
-                canvas.drawCircle(x, y, dp(4), paint);
+                if (receiving) {
+                    paint.setColor(Color.parseColor("#2EE59D"));
+                    paint.setShadowLayer(dp(18), 0, 0, Color.parseColor("#2EE59D"));
+                    canvas.drawCircle(x, y, dp(13), paint);
+                    paint.clearShadowLayer();
+                    paint.setColor(Color.WHITE);
+                    canvas.drawCircle(x, y, dp(6), paint);
+                } else {
+                    paint.setColor(Color.parseColor("#F4C85A"));
+                    canvas.drawCircle(x, y, dp(8), paint);
+                    paint.setColor(Color.WHITE);
+                    canvas.drawCircle(x, y, dp(4), paint);
+                }
 
-                paint.setColor(Color.parseColor("#D8ECFF"));
-                paint.setTextSize(dp(10));
+                paint.setColor(receiving ? Color.parseColor("#7CFFD0") : Color.parseColor("#D8ECFF"));
+                paint.setTextSize(dp(receiving ? 11 : 10));
                 paint.setTypeface(Typeface.DEFAULT_BOLD);
-                String label = d.name.length() > 8 ? d.name.substring(0, 8) : d.name;
-                canvas.drawText(label, x, y - dp(13), paint);
+                String label = receiving ? "MENERIMA NOTIF" : (d.name.length() > 8 ? d.name.substring(0, 8) : d.name);
+                canvas.drawText(label, x, y - dp(receiving ? 18 : 13), paint);
             }
         }
     }

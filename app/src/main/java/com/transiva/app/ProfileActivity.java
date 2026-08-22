@@ -1247,183 +1247,27 @@ public class ProfileActivity extends Activity {
     }
 
     private void fetchCurrentLocation() {
-        LocationManager manager =
-                (LocationManager)
-                        getSystemService(
-                                LOCATION_SERVICE
-                        );
-
-        if (manager == null) {
-            showInfo(
-                    "Lokasi Tidak Tersedia",
-                    "Layanan lokasi tidak tersedia pada perangkat."
-            );
-            return;
-        }
-
-        boolean gpsEnabled =
-                manager.isProviderEnabled(
-                        LocationManager.GPS_PROVIDER
-                );
-
-        boolean networkEnabled =
-                manager.isProviderEnabled(
-                        LocationManager.NETWORK_PROVIDER
-                );
-
+        LocationManager manager = (LocationManager) getSystemService(LOCATION_SERVICE);
+        if (manager == null) { showInfo("Lokasi Tidak Tersedia", "Layanan lokasi tidak tersedia pada perangkat."); return; }
+        boolean gpsEnabled = manager.isProviderEnabled(LocationManager.GPS_PROVIDER);
+        boolean networkEnabled = manager.isProviderEnabled(LocationManager.NETWORK_PROVIDER);
         if (!gpsEnabled && !networkEnabled) {
-            new TransivaAlertDialogBuilder(this)
-                    .setTitle("Aktifkan Lokasi")
-                    .setMessage(
-                            "Aktifkan GPS atau layanan lokasi untuk mengisi alamat otomatis."
-                    )
-                    .setNegativeButton(
-                            "Batal",
-                            null
-                    )
-                    .setPositiveButton(
-                            "Buka Pengaturan",
-                            (dialog, which) ->
-                                    startActivity(
-                                            new Intent(
-                                                    Settings
-                                                            .ACTION_LOCATION_SOURCE_SETTINGS
-                                            )
-                                    )
-                    )
-                    .show();
+            new TransivaAlertDialogBuilder(this).setTitle("Aktifkan Lokasi")
+                    .setMessage("Aktifkan GPS atau layanan lokasi untuk mengisi alamat otomatis.")
+                    .setNegativeButton("Batal", null)
+                    .setPositiveButton("Buka Pengaturan", (dialog, which) -> startActivity(new Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS))).show();
             return;
         }
-
         setLoading(true);
-
-        Location best =
-                lastKnownLocation(
-                        manager
-                );
-
-        if (best != null) {
-            resolveAddress(best);
-            return;
-        }
-
-        LocationListener listener =
-                new LocationListener() {
-                    @Override
-                    public void onLocationChanged(
-                            Location location
-                    ) {
-                        try {
-                            manager.removeUpdates(this);
-                        } catch (Exception ignored) {
-                        }
-
-                        resolveAddress(location);
-                    }
-
-                    @Override
-                    public void onProviderDisabled(
-                            String provider
-                    ) {
-                    }
-
-                    @Override
-                    public void onProviderEnabled(
-                            String provider
-                    ) {
-                    }
-
-                    @Override
-                    public void onStatusChanged(
-                            String provider,
-                            int status,
-                            Bundle extras
-                    ) {
-                    }
-                };
-
         try {
-            String provider =
-                    gpsEnabled
-                            ? LocationManager.GPS_PROVIDER
-                            : LocationManager.NETWORK_PROVIDER;
-
-            manager.requestSingleUpdate(
-                    provider,
-                    listener,
-                    Looper.getMainLooper()
-            );
-
-            mainHandler.postDelayed(
-                    () -> {
-                        if (loading) {
-                            try {
-                                manager.removeUpdates(listener);
-                            } catch (Exception ignored) {
-                            }
-
-                            setLoading(false);
-
-                            showInfo(
-                                    "Lokasi Belum Ditemukan",
-                                    "Pastikan GPS aktif dan coba kembali di area terbuka."
-                            );
-                        }
-                    },
-                    20000
-            );
-
+            TransivaFreshLocation.request(this, new TransivaFreshLocation.Callback() {
+                @Override public void onLocation(Location location, boolean fresh) { resolveAddress(location); }
+                @Override public void onFailure(String message) { setLoading(false); showInfo("Lokasi Belum Ditemukan", message); }
+            });
         } catch (SecurityException error) {
             setLoading(false);
-
-            showInfo(
-                    "Izin Lokasi Diperlukan",
-                    "Berikan izin lokasi agar alamat dapat diisi otomatis."
-            );
+            showInfo("Izin Lokasi Diperlukan", "Berikan izin lokasi agar alamat dapat diisi otomatis.");
         }
-    }
-
-    private Location lastKnownLocation(
-            LocationManager manager
-    ) {
-        Location best = null;
-
-        String[] providers = {
-                LocationManager.GPS_PROVIDER,
-                LocationManager.NETWORK_PROVIDER
-        };
-
-        for (String provider : providers) {
-            try {
-                if (
-                        !manager.isProviderEnabled(
-                                provider
-                        )
-                ) {
-                    continue;
-                }
-
-                Location location =
-                        manager.getLastKnownLocation(
-                                provider
-                        );
-
-                if (
-                        location != null
-                                && (
-                                best == null
-                                        || location.getAccuracy()
-                                        < best.getAccuracy()
-                        )
-                ) {
-                    best = location;
-                }
-
-            } catch (SecurityException ignored) {
-            }
-        }
-
-        return best;
     }
 
     private void resolveAddress(
@@ -1484,6 +1328,8 @@ public class ProfileActivity extends Activity {
 
                 deliveryLng =
                         location.getLongitude();
+
+                session.saveLastLocation(String.valueOf(deliveryLat), String.valueOf(deliveryLng));
 
                 addressInput.setText(
                         resolved

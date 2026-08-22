@@ -16,6 +16,7 @@ import android.view.View;
 import android.widget.Button;
 import android.widget.FrameLayout;
 import android.widget.ImageView;
+import android.widget.ImageButton;
 import android.widget.LinearLayout;
 import android.widget.ProgressBar;
 import android.widget.ScrollView;
@@ -485,15 +486,17 @@ public class TransFoodActivity extends Activity {
         merchantTitleRow.setGravity(Gravity.CENTER_VERTICAL);
         TextView merchantName = text(firstNonEmpty(activeRestaurant.optString("name"), "Merchant"), 19, "#0B3A78", true);
         merchantTitleRow.addView(merchantName, new LinearLayout.LayoutParams(0, -2, 1));
-        Button merchantFav = choiceButton(activeRestaurant.optBoolean("is_favorite") ? "♥ Favorit" : "♡ Favorit", activeRestaurant.optBoolean("is_favorite"));
+        ImageButton merchantFav = favoriteButton(activeRestaurant.optBoolean("is_favorite"));
+        merchantFav.setContentDescription("Favoritkan merchant");
         merchantFav.setOnClickListener(v -> toggleFavorite("merchant", activeRestaurant.optInt("id", 0), activeRestaurant, merchantFav));
-        merchantTitleRow.addView(merchantFav, new LinearLayout.LayoutParams(-2, dp(42)));
+        merchantTitleRow.addView(merchantFav, new LinearLayout.LayoutParams(dp(46), dp(46)));
         resto.addView(merchantTitleRow);
 
         double socialRating = activeRestaurant.optDouble("social_rating", activeRestaurant.optDouble("rating", 0));
         int socialReviews = activeRestaurant.optInt("social_review_count", activeRestaurant.optInt("review_count", 0));
-        TextView merchantRating = text("⭐ " + String.format(Locale.US, "%.1f", socialRating) + " • " + socialReviews + " penilaian customer", 12, "#64748B", false);
-        merchantRating.setPadding(0, dp(5), 0, 0);
+        TextView merchantRating = text("⭐ " + String.format(Locale.US, "%.1f", socialRating) + " • " + socialReviews + " penilaian customer  ›", 12, "#64748B", true);
+        merchantRating.setPadding(0, dp(7), 0, dp(2));
+        merchantRating.setOnClickListener(v -> showMerchantReviews(activeRestaurant));
         resto.addView(merchantRating);
         boolean accepting = activeRestaurant.optInt("is_open", 1) == 1;
         String reason = firstNonEmpty(activeRestaurant.optString("availability_reason"), accepting ? "Menerima pesanan" : "Merchant sedang tidak menerima pesanan");
@@ -570,10 +573,10 @@ public class TransFoodActivity extends Activity {
 
         LinearLayout socialRow = new LinearLayout(this);
         socialRow.setGravity(Gravity.CENTER_VERTICAL);
-        Button fav = choiceButton(m.optBoolean("is_favorite") ? "♥" : "♡", m.optBoolean("is_favorite"));
+        ImageButton fav = favoriteButton(m.optBoolean("is_favorite"));
         fav.setContentDescription("Favoritkan menu");
         fav.setOnClickListener(v -> toggleFavorite("menu", m.optInt("id", 0), m, fav));
-        socialRow.addView(fav, new LinearLayout.LayoutParams(dp(52), dp(40)));
+        socialRow.addView(fav, new LinearLayout.LayoutParams(dp(44), dp(40)));
         Button review = choiceButton("⭐ " + String.format(Locale.US, "%.1f", m.optDouble("rating", 0)) + " (" + m.optInt("review_count", 0) + ")", false);
         LinearLayout.LayoutParams reviewLp = new LinearLayout.LayoutParams(-2, dp(40));
         reviewLp.setMargins(dp(8), 0, 0, 0);
@@ -1107,7 +1110,7 @@ public class TransFoodActivity extends Activity {
         } catch (Exception ignored) {}
     }
 
-    private void toggleFavorite(String type, int targetId, JSONObject target, Button button) {
+    private void toggleFavorite(String type, int targetId, JSONObject target, ImageButton button) {
         if (targetId <= 0) return;
         boolean next = !target.optBoolean("is_favorite", false);
         button.setEnabled(false);
@@ -1123,7 +1126,7 @@ public class TransFoodActivity extends Activity {
                     button.setEnabled(true);
                     if (!res.optBoolean("success", false)) { showInfo("Favorit", res.optString("message", "Gagal memperbarui favorit.")); return; }
                     try { target.put("is_favorite", res.optBoolean("is_favorite", next)); } catch (Exception ignored) {}
-                    button.setText(target.optBoolean("is_favorite", false) ? ("menu".equals(type) ? "♥" : "♥ Favorit") : ("menu".equals(type) ? "♡" : "♡ Favorit"));
+                    setFavoriteIcon(button, target.optBoolean("is_favorite", false));
                     // Favorit langsung menjadi sinyal personalisasi untuk AI rekomendasi dashboard.
                 });
             } catch (Exception e) {
@@ -1163,16 +1166,17 @@ public class TransFoodActivity extends Activity {
                 box.addView(c, new LinearLayout.LayoutParams(-1, -2));
             }
         }
-        TextView hint = text("Beri penilaian 1–5 bintang dan komentar. Penilaian dapat dilihat semua customer.", 12, "#64748B", false);
+        boolean eligible = data != null && data.optBoolean("eligible_to_review", false);
+        TextView hint = text(eligible ? "Anda sudah menyelesaikan pesanan menu ini. Beri 1–5 bintang dan komentar/saran." : "Hanya customer yang sudah menyelesaikan pesanan menu ini yang dapat memberi penilaian dan komentar.", 12, eligible ? "#0B7CFF" : "#64748B", true);
         hint.setPadding(0, dp(10), 0, dp(6)); box.addView(hint);
-        RatingBar rating = new RatingBar(this, null, android.R.attr.ratingBarStyleSmall); rating.setNumStars(5); rating.setStepSize(1f); rating.setRating(5f); box.addView(rating);
-        EditText comment = new EditText(this); comment.setHint("Tulis komentar tentang menu..."); comment.setMinLines(2); box.addView(comment, new LinearLayout.LayoutParams(-1, -2));
+        RatingBar rating = new RatingBar(this, null, android.R.attr.ratingBarStyleSmall); rating.setNumStars(5); rating.setStepSize(1f); rating.setRating((float)(data != null ? data.optDouble("my_rating",5) : 5)); rating.setEnabled(eligible); box.addView(rating);
+        EditText comment = new EditText(this); comment.setHint("Tulis komentar atau saran tentang menu..."); comment.setMinLines(2); comment.setEnabled(eligible); if(data!=null) comment.setText(data.optString("my_comment","")); box.addView(comment, new LinearLayout.LayoutParams(-1, -2));
         ScrollView scroll = new ScrollView(this); scroll.addView(box);
         new TransivaAlertDialogBuilder(this)
                 .setTitle(firstNonEmpty(menu.optString("name"), "Penilaian Menu"))
                 .setView(scroll)
                 .setNegativeButton("Tutup", null)
-                .setPositiveButton("Kirim Penilaian", (d,w) -> submitMenuReview(menu, Math.max(1, (int)rating.getRating()), comment.getText().toString()))
+                .setPositiveButton(eligible ? "Kirim Penilaian" : "OK", (d,w) -> { if (eligible) submitMenuReview(menu, Math.max(1, (int)rating.getRating()), comment.getText().toString()); })
                 .show();
     }
 
@@ -1190,6 +1194,37 @@ public class TransFoodActivity extends Activity {
             } catch (Exception e) { mainHandler.post(() -> showInfo("Penilaian Menu", "Koneksi gagal menyimpan penilaian.")); }
         }, "food-review-save").start();
     }
+
+    private void showMerchantReviews(JSONObject merchant) {
+        int rid = merchant == null ? 0 : merchant.optInt("id", 0); if (rid <= 0) return;
+        setLoading(true);
+        new Thread(() -> {
+            try {
+                JSONObject res = getJson(BASE_URL + "server/customer_food_social.php?action=merchant_reviews&restaurant_id=" + rid);
+                mainHandler.post(() -> { setLoading(false); showMerchantReviewDialog(merchant, res); });
+            } catch (Exception e) { mainHandler.post(() -> { setLoading(false); showInfo("Penilaian Merchant", "Gagal memuat penilaian merchant."); }); }
+        }, "merchant-reviews").start();
+    }
+
+    private void showMerchantReviewDialog(JSONObject merchant, JSONObject data) {
+        LinearLayout box = new LinearLayout(this); box.setOrientation(LinearLayout.VERTICAL); box.setPadding(dp(6),dp(4),dp(6),dp(4));
+        JSONArray reviews = data == null ? null : data.optJSONArray("reviews");
+        if (reviews == null || reviews.length()==0) box.addView(text("Belum ada komentar untuk merchant ini.",13,"#64748B",false));
+        else for(int i=0;i<reviews.length();i++){ JSONObject r=reviews.optJSONObject(i); if(r==null)continue; LinearLayout c=card(); c.setPadding(dp(12),dp(10),dp(12),dp(10)); c.addView(text("⭐ "+r.optInt("rating",0)+"  •  "+firstNonEmpty(r.optString("customer_name"),"Customer Transiva"),13,"#0B3A78",true)); String cm=firstNonEmpty(r.optString("comment"),"Tanpa komentar"); TextView ct=text(cm,12,"#475569",false);ct.setPadding(0,dp(4),0,0);c.addView(ct);box.addView(c); }
+        boolean eligible=data!=null&&data.optBoolean("eligible_to_review",false);
+        TextView hint=text(eligible?"Anda sudah menyelesaikan order dari merchant ini. Beri penilaian dan komentar/saran.":"Hanya customer yang sudah menyelesaikan order dari merchant ini yang dapat memberi penilaian.",12,eligible?"#0B7CFF":"#64748B",true); hint.setPadding(0,dp(10),0,dp(6));box.addView(hint);
+        RatingBar rating=new RatingBar(this,null,android.R.attr.ratingBarStyleSmall);rating.setNumStars(5);rating.setStepSize(1f);rating.setRating((float)(data!=null?data.optDouble("my_rating",5):5));rating.setEnabled(eligible);box.addView(rating);
+        EditText comment=new EditText(this);comment.setHint("Tulis komentar atau saran tentang merchant...");comment.setMinLines(2);comment.setEnabled(eligible);if(data!=null)comment.setText(data.optString("my_comment",""));box.addView(comment,new LinearLayout.LayoutParams(-1,-2));
+        ScrollView scroll=new ScrollView(this);scroll.addView(box);
+        new TransivaAlertDialogBuilder(this).setTitle(firstNonEmpty(merchant.optString("name"),"Penilaian Merchant")).setView(scroll).setNegativeButton("Tutup",null).setPositiveButton(eligible?"Kirim Penilaian":"OK",(d,w)->{if(eligible)submitMerchantReview(merchant,Math.max(1,(int)rating.getRating()),comment.getText().toString());}).show();
+    }
+
+    private void submitMerchantReview(JSONObject merchant,int rating,String comment){
+        new Thread(()->{try{JSONObject payload=new JSONObject();payload.put("action","merchant_review");payload.put("restaurant_id",merchant.optInt("id",0));payload.put("rating",rating);payload.put("comment",comment==null?"":comment.trim());JSONObject res=postJson(BASE_URL+"server/customer_food_social.php",payload);mainHandler.post(()->{if(res.optBoolean("success",false)){try{merchant.put("social_rating",res.optDouble("rating",rating));merchant.put("social_review_count",res.optInt("review_count",1));}catch(Exception ignored){}showInfo("Terima kasih","Penilaian merchant berhasil disimpan.");renderMenus();}else showInfo("Penilaian Merchant",res.optString("message","Penilaian gagal disimpan."));});}catch(Exception e){mainHandler.post(()->showInfo("Penilaian Merchant","Koneksi gagal menyimpan penilaian."));}},"merchant-review-save").start();
+    }
+
+    private ImageButton favoriteButton(boolean active) { ImageButton b=new ImageButton(this); b.setPadding(dp(9),dp(9),dp(9),dp(9)); b.setScaleType(ImageView.ScaleType.CENTER_INSIDE); b.setBackground(roundStroke(active?"#FFF1F2":"#FFFFFF","#FECDD3",dp(18),1)); setFavoriteIcon(b,active); return b; }
+    private void setFavoriteIcon(ImageButton b, boolean active) { b.setImageResource(active ? R.drawable.ic_favorite_filled : R.drawable.ic_favorite_outline); b.setBackground(roundStroke(active?"#FFF1F2":"#FFFFFF","#FECDD3",dp(18),1)); }
 
     private JSONObject getJson(String urlText) throws Exception {
         HttpURLConnection c = (HttpURLConnection) new URL(urlText).openConnection();

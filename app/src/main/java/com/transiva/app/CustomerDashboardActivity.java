@@ -1989,107 +1989,31 @@ public class CustomerDashboardActivity extends Activity
     }
 
     private void loadLocation() {
-        if (
-                checkSelfPermission(
-                        Manifest.permission.ACCESS_FINE_LOCATION
-                ) != PackageManager.PERMISSION_GRANTED
-                        &&
-                checkSelfPermission(
-                        Manifest.permission.ACCESS_COARSE_LOCATION
-                ) != PackageManager.PERMISSION_GRANTED
-        ) {
-            requestPermissions(
-                    new String[]{
-                            Manifest.permission.ACCESS_FINE_LOCATION,
-                            Manifest.permission.ACCESS_COARSE_LOCATION
-                    },
-                    REQ_LOCATION
-            );
+        if (checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED
+                && checkSelfPermission(Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(new String[]{Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION}, REQ_LOCATION);
             return;
         }
-
+        if (locationText != null) locationText.setText("Mencari lokasi terbaru...");
+        if (clusterText != null) clusterText.setText("Cluster: mendeteksi...");
         try {
-            LocationManager manager =
-                    (LocationManager)
-                            getSystemService(
-                                    LOCATION_SERVICE
-                            );
-
-            if (manager == null) {
-                return;
-            }
-
-            boolean gps =
-                    manager.isProviderEnabled(
-                            LocationManager.GPS_PROVIDER
-                    );
-
-            boolean network =
-                    manager.isProviderEnabled(
-                            LocationManager.NETWORK_PROVIDER
-                    );
-
-            if (!gps && !network) {
-                locationText.setText("GPS mati");
-
-                locationText.setOnClickListener(
-                        view -> startActivity(
-                                new Intent(
-                                        Settings.ACTION_LOCATION_SOURCE_SETTINGS
-                                )
-                        )
-                );
-
-                return;
-            }
-
-            String provider =
-                    gps
-                            ? LocationManager.GPS_PROVIDER
-                            : LocationManager.NETWORK_PROVIDER;
-
-            Location cached =
-                    manager.getLastKnownLocation(provider);
-
-            if (cached != null) {
-                resolveLocation(cached);
-            }
-
-            manager.requestSingleUpdate(
-                    provider,
-                    new LocationListener() {
-                        @Override
-                        public void onLocationChanged(
-                                Location location
-                        ) {
-                            resolveLocation(location);
-                        }
-
-                        @Override
-                        public void onStatusChanged(
-                                String provider,
-                                int status,
-                                Bundle extras
-                        ) {
-                        }
-
-                        @Override
-                        public void onProviderEnabled(
-                                String provider
-                        ) {
-                        }
-
-                        @Override
-                        public void onProviderDisabled(
-                                String provider
-                        ) {
-                        }
-                    },
-                    Looper.getMainLooper()
-            );
-
-        } catch (Exception error) {
-            locationText.setText("Lokasi gagal");
+            TransivaFreshLocation.request(this, new TransivaFreshLocation.Callback() {
+                @Override public void onLocation(Location location, boolean fresh) {
+                    resolveLocation(location);
+                }
+                @Override public void onFailure(String message) {
+                    if (locationText != null) locationText.setText("Lokasi belum ditemukan");
+                    if (clusterText != null) clusterText.setText("Cluster: belum diketahui");
+                    new TransivaAlertDialogBuilder(CustomerDashboardActivity.this)
+                            .setTitle("Lokasi")
+                            .setMessage(message)
+                            .setNegativeButton("Tutup", null)
+                            .setPositiveButton("Pengaturan", (d,w) -> startActivity(new Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS)))
+                            .show();
+                }
+            });
+        } catch (SecurityException e) {
+            if (locationText != null) locationText.setText("Izin lokasi diperlukan");
         }
     }
 

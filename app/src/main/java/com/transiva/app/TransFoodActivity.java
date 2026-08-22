@@ -1025,6 +1025,14 @@ public class TransFoodActivity extends Activity {
                         Object value = detailRestaurant.opt(key);
                         // Field string kosong dari endpoint detail tidak boleh menghapus profil valid.
                         if (value instanceof String && ((String) value).trim().isEmpty() && merged.has(key)) continue;
+
+                        // Banner pada daftar merchant berasal langsung dari get_food_restaurants.php
+                        // dan sudah terbukti dapat dimuat. Jangan biarkan endpoint menu menimpa
+                        // banner valid tersebut dengan path hasil normalisasi yang berbeda.
+                        if ("banner".equals(key)) {
+                            String existingBanner = firstNonEmpty(merged.optString("banner"), "").trim();
+                            if (!existingBanner.isEmpty()) continue;
+                        }
                         try { merged.put(key, value); } catch (Exception ignored) {}
                     }
                     activeRestaurant = merged;

@@ -1006,7 +1006,29 @@ public class TransFoodActivity extends Activity {
             try {
                 JSONObject res = getJson(BASE_URL + "server/get_food_menus.php?restaurant_id=" + restaurantId + "&v=" + System.currentTimeMillis());
                 menus.clear();
-                if (res.optJSONObject("restaurant") != null) activeRestaurant = res.optJSONObject("restaurant");
+                // Jangan menimpa object merchant dari daftar secara mentah.
+                // Endpoint menu tidak selalu mengirim field profil lengkap (terutama banner),
+                // sehingga banner yang tampil di list bisa hilang di halaman detail.
+                JSONObject detailRestaurant = res.optJSONObject("restaurant");
+                if (detailRestaurant != null) {
+                    JSONObject merged = new JSONObject();
+                    if (activeRestaurant != null) {
+                        java.util.Iterator<String> oldKeys = activeRestaurant.keys();
+                        while (oldKeys.hasNext()) {
+                            String key = oldKeys.next();
+                            try { merged.put(key, activeRestaurant.opt(key)); } catch (Exception ignored) {}
+                        }
+                    }
+                    java.util.Iterator<String> detailKeys = detailRestaurant.keys();
+                    while (detailKeys.hasNext()) {
+                        String key = detailKeys.next();
+                        Object value = detailRestaurant.opt(key);
+                        // Field string kosong dari endpoint detail tidak boleh menghapus profil valid.
+                        if (value instanceof String && ((String) value).trim().isEmpty() && merged.has(key)) continue;
+                        try { merged.put(key, value); } catch (Exception ignored) {}
+                    }
+                    activeRestaurant = merged;
+                }
                 JSONArray arr = res.optJSONArray("menus");
                 if (res.optBoolean("success", false) && arr != null) {
                     for (int i = 0; i < arr.length(); i++) menus.add(arr.getJSONObject(i));
@@ -1152,31 +1174,53 @@ public class TransFoodActivity extends Activity {
     private void showReviewDialog(JSONObject menu, JSONObject data) {
         LinearLayout box = new LinearLayout(this);
         box.setOrientation(LinearLayout.VERTICAL);
-        box.setPadding(dp(6), dp(4), dp(6), dp(4));
+        box.setPadding(dp(8), dp(8), dp(8), dp(8));
         JSONArray reviews = data == null ? null : data.optJSONArray("reviews");
-        if (reviews == null || reviews.length() == 0) {
-            box.addView(text("Belum ada komentar. Jadilah customer pertama yang menilai menu ini.", 13, "#64748B", false));
-        } else {
+
+        double average = 0;
+        int count = reviews == null ? 0 : reviews.length();
+        if (reviews != null) {
             for (int i = 0; i < reviews.length(); i++) {
-                JSONObject r = reviews.optJSONObject(i); if (r == null) continue;
-                LinearLayout c = card(); c.setPadding(dp(12), dp(10), dp(12), dp(10));
-                c.addView(text("⭐ " + r.optInt("rating", 0) + "  •  " + firstNonEmpty(r.optString("customer_name"), "Customer Transiva"), 13, "#0B3A78", true));
-                String comment = firstNonEmpty(r.optString("comment"), "Tanpa komentar");
-                TextView ct = text(comment, 12, "#475569", false); ct.setPadding(0, dp(4), 0, 0); c.addView(ct);
-                box.addView(c, new LinearLayout.LayoutParams(-1, -2));
+                JSONObject r = reviews.optJSONObject(i);
+                if (r != null) average += r.optInt("rating", 0);
+            }
+            if (count > 0) average /= count;
+        }
+
+        TextView score = text("⭐ " + String.format(Locale.US, "%.1f", average) + " / 5", 23, "#0B3A78", true);
+        score.setGravity(Gravity.CENTER);
+        box.addView(score);
+        TextView total = text(count + " penilaian customer", 12, "#64748B", false);
+        total.setGravity(Gravity.CENTER);
+        total.setPadding(0, dp(5), 0, dp(10));
+        box.addView(total);
+
+        if (reviews == null || reviews.length() == 0) {
+            box.addView(text("Belum ada penilaian untuk menu ini.", 13, "#64748B", false));
+        } else {
+            int[] distribution = new int[6];
+            for (int i = 0; i < reviews.length(); i++) {
+                JSONObject r = reviews.optJSONObject(i);
+                if (r == null) continue;
+                int value = Math.max(1, Math.min(5, r.optInt("rating", 0)));
+                distribution[value]++;
+            }
+            for (int star = 5; star >= 1; star--) {
+                LinearLayout row = new LinearLayout(this);
+                row.setGravity(Gravity.CENTER_VERTICAL);
+                row.addView(text(star + " ★", 13, "#334155", true), new LinearLayout.LayoutParams(0, -2, 1));
+                row.addView(text(String.valueOf(distribution[star]), 13, "#64748B", false));
+                box.addView(row, new LinearLayout.LayoutParams(-1, dp(30)));
             }
         }
-        boolean eligible = data != null && data.optBoolean("eligible_to_review", false);
-        TextView hint = text(eligible ? "Anda sudah menyelesaikan pesanan menu ini. Beri 1–5 bintang dan komentar/saran." : "Hanya customer yang sudah menyelesaikan pesanan menu ini yang dapat memberi penilaian dan komentar.", 12, eligible ? "#0B7CFF" : "#64748B", true);
-        hint.setPadding(0, dp(10), 0, dp(6)); box.addView(hint);
-        RatingBar rating = new RatingBar(this, null, android.R.attr.ratingBarStyleSmall); rating.setNumStars(5); rating.setStepSize(1f); rating.setRating((float)(data != null ? data.optDouble("my_rating",5) : 5)); rating.setEnabled(eligible); box.addView(rating);
-        EditText comment = new EditText(this); comment.setHint("Tulis komentar atau saran tentang menu..."); comment.setMinLines(2); comment.setEnabled(eligible); if(data!=null) comment.setText(data.optString("my_comment","")); box.addView(comment, new LinearLayout.LayoutParams(-1, -2));
-        ScrollView scroll = new ScrollView(this); scroll.addView(box);
+        TextView note = text("Untuk memberi rating menu, buka Aktivitas → Riwayat lalu pilih pesanan yang sudah selesai.", 12, "#64748B", false);
+        note.setPadding(0, dp(10), 0, 0);
+        box.addView(note);
+
         new TransivaAlertDialogBuilder(this)
                 .setTitle(firstNonEmpty(menu.optString("name"), "Penilaian Menu"))
-                .setView(scroll)
-                .setNegativeButton("Tutup", null)
-                .setPositiveButton(eligible ? "Kirim Penilaian" : "OK", (d,w) -> { if (eligible) submitMenuReview(menu, Math.max(1, (int)rating.getRating()), comment.getText().toString()); })
+                .setView(box)
+                .setPositiveButton("Tutup", null)
                 .show();
     }
 
@@ -1207,16 +1251,62 @@ public class TransFoodActivity extends Activity {
     }
 
     private void showMerchantReviewDialog(JSONObject merchant, JSONObject data) {
-        LinearLayout box = new LinearLayout(this); box.setOrientation(LinearLayout.VERTICAL); box.setPadding(dp(6),dp(4),dp(6),dp(4));
+        LinearLayout box = new LinearLayout(this);
+        box.setOrientation(LinearLayout.VERTICAL);
+        box.setPadding(dp(8), dp(8), dp(8), dp(8));
+
+        double average = merchant == null ? 0 : merchant.optDouble("social_rating", merchant.optDouble("rating", 0));
+        int count = merchant == null ? 0 : merchant.optInt("social_review_count", merchant.optInt("review_count", 0));
+        if (data != null) {
+            JSONArray reviews = data.optJSONArray("reviews");
+            if (reviews != null) {
+                count = reviews.length();
+                double sum = 0;
+                for (int i = 0; i < reviews.length(); i++) {
+                    JSONObject r = reviews.optJSONObject(i);
+                    if (r != null) sum += r.optInt("rating", 0);
+                }
+                if (count > 0) average = sum / count;
+            }
+        }
+
+        TextView score = text("⭐ " + String.format(Locale.US, "%.1f", average) + " / 5", 25, "#0B3A78", true);
+        score.setGravity(Gravity.CENTER);
+        box.addView(score, new LinearLayout.LayoutParams(-1, -2));
+
+        TextView total = text(count + " penilaian customer", 13, "#64748B", false);
+        total.setGravity(Gravity.CENTER);
+        total.setPadding(0, dp(6), 0, dp(10));
+        box.addView(total, new LinearLayout.LayoutParams(-1, -2));
+
+        int[] distribution = new int[6];
         JSONArray reviews = data == null ? null : data.optJSONArray("reviews");
-        if (reviews == null || reviews.length()==0) box.addView(text("Belum ada komentar untuk merchant ini.",13,"#64748B",false));
-        else for(int i=0;i<reviews.length();i++){ JSONObject r=reviews.optJSONObject(i); if(r==null)continue; LinearLayout c=card(); c.setPadding(dp(12),dp(10),dp(12),dp(10)); c.addView(text("⭐ "+r.optInt("rating",0)+"  •  "+firstNonEmpty(r.optString("customer_name"),"Customer Transiva"),13,"#0B3A78",true)); String cm=firstNonEmpty(r.optString("comment"),"Tanpa komentar"); TextView ct=text(cm,12,"#475569",false);ct.setPadding(0,dp(4),0,0);c.addView(ct);box.addView(c); }
-        boolean eligible=data!=null&&data.optBoolean("eligible_to_review",false);
-        TextView hint=text(eligible?"Anda sudah menyelesaikan order dari merchant ini. Beri penilaian dan komentar/saran.":"Hanya customer yang sudah menyelesaikan order dari merchant ini yang dapat memberi penilaian.",12,eligible?"#0B7CFF":"#64748B",true); hint.setPadding(0,dp(10),0,dp(6));box.addView(hint);
-        RatingBar rating=new RatingBar(this,null,android.R.attr.ratingBarStyleSmall);rating.setNumStars(5);rating.setStepSize(1f);rating.setRating((float)(data!=null?data.optDouble("my_rating",5):5));rating.setEnabled(eligible);box.addView(rating);
-        EditText comment=new EditText(this);comment.setHint("Tulis komentar atau saran tentang merchant...");comment.setMinLines(2);comment.setEnabled(eligible);if(data!=null)comment.setText(data.optString("my_comment",""));box.addView(comment,new LinearLayout.LayoutParams(-1,-2));
-        ScrollView scroll=new ScrollView(this);scroll.addView(box);
-        new TransivaAlertDialogBuilder(this).setTitle(firstNonEmpty(merchant.optString("name"),"Penilaian Merchant")).setView(scroll).setNegativeButton("Tutup",null).setPositiveButton(eligible?"Kirim Penilaian":"OK",(d,w)->{if(eligible)submitMerchantReview(merchant,Math.max(1,(int)rating.getRating()),comment.getText().toString());}).show();
+        if (reviews != null) {
+            for (int i = 0; i < reviews.length(); i++) {
+                JSONObject r = reviews.optJSONObject(i);
+                if (r == null) continue;
+                int rating = Math.max(1, Math.min(5, r.optInt("rating", 0)));
+                distribution[rating]++;
+            }
+        }
+        for (int star = 5; star >= 1; star--) {
+            LinearLayout row = new LinearLayout(this);
+            row.setGravity(Gravity.CENTER_VERTICAL);
+            TextView label = text(star + " ★", 13, "#334155", true);
+            row.addView(label, new LinearLayout.LayoutParams(0, -2, 1));
+            row.addView(text(String.valueOf(distribution[star]), 13, "#64748B", false));
+            box.addView(row, new LinearLayout.LayoutParams(-1, dp(30)));
+        }
+
+        TextView note = text("Penilaian hanya dapat diberikan dari Riwayat di menu Aktivitas setelah pesanan selesai.", 12, "#64748B", false);
+        note.setPadding(0, dp(10), 0, 0);
+        box.addView(note);
+
+        new TransivaAlertDialogBuilder(this)
+                .setTitle("Rating " + firstNonEmpty(merchant == null ? "" : merchant.optString("name"), "Merchant"))
+                .setView(box)
+                .setPositiveButton("Tutup", null)
+                .show();
     }
 
     private void submitMerchantReview(JSONObject merchant,int rating,String comment){

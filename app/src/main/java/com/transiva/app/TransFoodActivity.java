@@ -1376,6 +1376,17 @@ public class TransFoodActivity extends Activity {
     private String absoluteUrl(String value) {
         value = firstNonEmpty(value, "assets/no-image.png").trim();
         if (value.startsWith("http://") || value.startsWith("https://")) return value;
+
+        // Normalisasi path media lama/baru. Sebagian endpoint lama pernah menghasilkan
+        // /server/server/... ketika nilai database sudah diawali server/.
+        while (value.startsWith("/server/server/")) {
+            value = value.substring(7); // hasil tetap diawali /server/...
+        }
+        if (value.startsWith("server/server/")) {
+            value = value.substring(7);
+        }
+        if (value.startsWith("server/")) value = "/" + value;
+
         if (value.startsWith("/")) return BASE_URL.substring(0, BASE_URL.length() - 1) + value;
         return BASE_URL + value;
     }

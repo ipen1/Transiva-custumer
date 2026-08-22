@@ -1665,12 +1665,14 @@ public class CustomerHistoryActivity extends Activity {
     private static class FoodReviewInput {
         String type;
         int targetId;
-        RatingBar stars;
+        int rating;
+        LinearLayout starsRow;
         EditText comment;
-        FoodReviewInput(String type, int targetId, RatingBar stars, EditText comment) {
+        FoodReviewInput(String type, int targetId, int rating, LinearLayout starsRow, EditText comment) {
             this.type = type;
             this.targetId = targetId;
-            this.stars = stars;
+            this.rating = Math.max(1, Math.min(5, rating));
+            this.starsRow = starsRow;
             this.comment = comment;
         }
     }
@@ -1743,13 +1745,12 @@ public class CustomerHistoryActivity extends Activity {
         parent.addView(card, cardLp);
         card.addView(text(title, 13, "#0B3A78", true));
 
-        RatingBar stars = new RatingBar(this, null, android.R.attr.ratingBarStyleSmall);
-        stars.setNumStars(5);
-        stars.setStepSize(1f);
-        stars.setRating(currentRating > 0 ? currentRating : 5f);
-        LinearLayout.LayoutParams starLp = new LinearLayout.LayoutParams(-2, -2);
+        LinearLayout starsRow = new LinearLayout(this);
+        starsRow.setOrientation(LinearLayout.HORIZONTAL);
+        starsRow.setGravity(Gravity.CENTER_VERTICAL);
+        LinearLayout.LayoutParams starLp = new LinearLayout.LayoutParams(-1, dp(52));
         starLp.setMargins(0, dp(5), 0, dp(3));
-        card.addView(stars, starLp);
+        card.addView(starsRow, starLp);
 
         EditText comment = new EditText(this);
         comment.setHint("Komentar/saran (opsional)");
@@ -1757,7 +1758,41 @@ public class CustomerHistoryActivity extends Activity {
         comment.setMaxLines(3);
         comment.setText(currentComment == null ? "" : currentComment);
         card.addView(comment, new LinearLayout.LayoutParams(-1, -2));
-        inputs.add(new FoodReviewInput(type, targetId, stars, comment));
+
+        FoodReviewInput input = new FoodReviewInput(
+                type,
+                targetId,
+                currentRating > 0 ? currentRating : 5,
+                starsRow,
+                comment
+        );
+        inputs.add(input);
+        renderFoodReviewStars(input);
+    }
+
+    private void renderFoodReviewStars(FoodReviewInput input) {
+        if (input == null || input.starsRow == null) return;
+        input.starsRow.removeAllViews();
+
+        for (int i = 1; i <= 5; i++) {
+            final int starValue = i;
+            TextView star = text(i <= input.rating ? "★" : "☆", 32,
+                    i <= input.rating ? "#FACC15" : "#94A3B8", true);
+            star.setGravity(Gravity.CENTER);
+            star.setContentDescription("Beri " + i + " bintang");
+            star.setClickable(true);
+            star.setFocusable(true);
+            star.setPadding(dp(5), 0, dp(5), 0);
+            star.setOnClickListener(v -> {
+                input.rating = starValue;
+                renderFoodReviewStars(input);
+            });
+            input.starsRow.addView(star, new LinearLayout.LayoutParams(dp(48), dp(48)));
+        }
+
+        TextView value = text(input.rating + "/5", 12, "#475569", true);
+        value.setPadding(dp(6), 0, 0, 0);
+        input.starsRow.addView(value, new LinearLayout.LayoutParams(-2, -2));
     }
 
     private void submitFoodOrderReviews(JSONObject order, java.util.List<FoodReviewInput> inputs, AlertDialog dialog) {
@@ -1768,7 +1803,7 @@ public class CustomerHistoryActivity extends Activity {
             payload.put("order_id", first(order.optString("order_id"), ""));
             JSONArray menus = new JSONArray();
             for (FoodReviewInput input : inputs) {
-                int rating = Math.max(1, Math.min(5, Math.round(input.stars.getRating())));
+                int rating = Math.max(1, Math.min(5, input.rating));
                 String comment = input.comment.getText().toString().trim();
                 JSONObject value = new JSONObject();
                 value.put("rating", rating);

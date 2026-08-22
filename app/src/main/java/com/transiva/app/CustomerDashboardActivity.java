@@ -538,34 +538,13 @@ public class CustomerDashboardActivity extends Activity
             content.removeView(card);
         });
 
-        // Badge K Online.
-        TextView kBadge =
-                text(
-                        "K",
-                        21,
-                        "#FFFFFF",
-                        true
-                );
-
-        kBadge.setGravity(
-                Gravity.CENTER
-        );
-
-        kBadge.setBackground(
-                Shape.gradient(
-                        "#111827",
-                        "#374151",
-                        dp(16)
-                )
-        );
-
-        row.addView(
-                kBadge,
-                new LinearLayout.LayoutParams(
-                        dp(50),
-                        dp(50)
-                )
-        );
+        // Logo resmi K Online. Simpan PNG sebagai res/drawable-nodpi/k_online_logo.png
+        ImageView kLogo = new ImageView(this);
+        int kLogoId = getResources().getIdentifier("k_online_logo", "drawable", getPackageName());
+        if (kLogoId != 0) kLogo.setImageResource(kLogoId);
+        kLogo.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
+        kLogo.setContentDescription("Logo resmi K Online");
+        row.addView(kLogo, new LinearLayout.LayoutParams(dp(50), dp(50)));
 
         TextView arrow =
                 text(
@@ -1148,6 +1127,7 @@ public class CustomerDashboardActivity extends Activity
         addFeatureShortcut(row, "🛡️", "Safety", SafetyCenterActivity.class, 0);
         addFeatureShortcut(row, "↻", "Reorder", SmartReorderActivity.class, 1);
         addFeatureShortcut(row, "★", "Royalti", CustomerLoyaltyActivity.class, 2);
+        addFeatureShortcut(row, "🎁", "Referral", CustomerReferralActivity.class, 3);
         LinearLayout.LayoutParams rowLp = new LinearLayout.LayoutParams(-1, dp(82));
         rowLp.setMargins(0, 0, 0, dp(16));
         content.addView(row, rowLp);

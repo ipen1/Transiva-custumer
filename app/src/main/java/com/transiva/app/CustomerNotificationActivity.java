@@ -156,10 +156,12 @@ public class CustomerNotificationActivity extends Activity {
         identityLp.setMargins(0, dp(12), 0, 0);
         card.addView(identity, identityLp);
 
-        TextView kBadge = text("K", 20, "#FFFFFF", true);
-        kBadge.setGravity(Gravity.CENTER);
-        kBadge.setBackground(Shape.gradient("#111827", "#374151", dp(15)));
-        identity.addView(kBadge, new LinearLayout.LayoutParams(dp(46), dp(46)));
+        ImageView kLogo = new ImageView(this);
+        int kLogoId = getResources().getIdentifier("k_online_logo", "drawable", getPackageName());
+        if (kLogoId != 0) kLogo.setImageResource(kLogoId);
+        kLogo.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
+        kLogo.setContentDescription("Logo resmi K Online");
+        identity.addView(kLogo, new LinearLayout.LayoutParams(dp(46), dp(46)));
 
         TextView arrow = text("→", 17, "#7A8DA6", true);
         arrow.setGravity(Gravity.CENTER);

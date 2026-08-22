@@ -24,6 +24,7 @@ import android.widget.EditText;
 import android.widget.CheckBox;
 import android.widget.RadioButton;
 import android.widget.RadioGroup;
+import android.widget.RatingBar;
 import android.text.Editable;
 import android.text.TextWatcher;
 
@@ -161,7 +162,7 @@ public class TransFoodActivity extends Activity {
         TextView title = text("Lapar? Pesan yang enak sekarang.", 22, "#FFFFFF", true);
         title.setPadding(0, dp(5), 0, 0);
         hero.addView(title);
-        TextView sub = text("Pilihan restoran terbaik di sekitar kamu", 13, "#EAF4FF", false);
+        TextView sub = text("Pilihan merchant terbaik di sekitar kamu", 13, "#EAF4FF", false);
         sub.setPadding(0, dp(6), 0, 0);
         hero.addView(sub);
 
@@ -219,7 +220,7 @@ public class TransFoodActivity extends Activity {
     private void addHomeSectionHeader() {
         LinearLayout row = new LinearLayout(this);
         row.setGravity(Gravity.CENTER_VERTICAL);
-        TextView title = text("Pilihan restoran", 18, "#123B6B", true);
+        TextView title = text("Pilihan merchant", 18, "#123B6B", true);
         row.addView(title, new LinearLayout.LayoutParams(0, -2, 1));
         TextView tag = text("Lihat semua", 12, "#087BFF", true);
         row.addView(tag);
@@ -231,7 +232,7 @@ public class TransFoodActivity extends Activity {
         search.setSingleLine(true);
         search.setText(homeSearchQuery);
         search.setTextSize(16);
-        search.setHint("Cari makanan atau nama restoran...");
+        search.setHint("Cari makanan atau nama merchant...");
         search.setHintTextColor(Color.parseColor("#94A3B8"));
         search.setTextColor(Color.parseColor("#0F172A"));
         search.setGravity(Gravity.CENTER_VERTICAL);
@@ -259,7 +260,7 @@ public class TransFoodActivity extends Activity {
         homeResultsBox.removeAllViews();
 
         if (restaurants.isEmpty()) {
-            addStatusTo(homeResultsBox, "Memuat restoran...");
+            addStatusTo(homeResultsBox, "Memuat merchant...");
             return;
         }
 
@@ -294,7 +295,7 @@ public class TransFoodActivity extends Activity {
                 if (menuHits.size() > limit) addStatusTo(homeResultsBox, "+" + (menuHits.size() - limit) + " menu lain. Ketik lebih spesifik agar hasil makin tepat.");
             }
 
-            TextView restoTitle = text("Restoran terkait", 15, "#0B3A78", true);
+            TextView restoTitle = text("Merchant terkait", 15, "#0B3A78", true);
             addWithMarginTo(homeResultsBox, restoTitle, 0, dp(8), 0, dp(10));
         }
 
@@ -305,7 +306,7 @@ public class TransFoodActivity extends Activity {
         }
 
         if (restoHits.isEmpty()) {
-            addStatusTo(homeResultsBox, "Restoran tidak ditemukan untuk: " + homeSearchQuery);
+            addStatusTo(homeResultsBox, "Merchant tidak ditemukan untuk: " + homeSearchQuery);
         } else {
             addRestaurantGrid(homeResultsBox, restoHits);
         }
@@ -357,7 +358,7 @@ public class TransFoodActivity extends Activity {
         card.addView(body, new LinearLayout.LayoutParams(0, -2, 1));
 
         body.addView(text(firstNonEmpty(item.menuName, "Menu"), 16, "#0F172A", true));
-        TextView owner = text("Milik restoran: " + firstNonEmpty(item.restaurantName, "Restoran"), 12, "#64748B", false);
+        TextView owner = text("Milik merchant: " + firstNonEmpty(item.restaurantName, "Merchant"), 12, "#64748B", false);
         owner.setPadding(0, dp(3), 0, 0);
         body.addView(owner);
         TextView price = text(rupiah(item.price), 14, "#0B7CFF", true);
@@ -380,11 +381,11 @@ public class TransFoodActivity extends Activity {
         JSONObject r = findRestaurantById(item.restaurantId);
         if (r == null) r = item.restaurant;
         if (r == null) {
-            showInfo("Restoran", "Data restoran untuk menu ini belum lengkap.");
+            showInfo("Merchant", "Data merchant untuk menu ini belum lengkap.");
             return;
         }
         if (r.optInt("is_open", 1) != 1) {
-            showInfo("Restoran Tutup", "Restoran sedang tidak menerima orderan.");
+            showInfo("Merchant Tutup", "Merchant sedang tidak menerima orderan.");
             return;
         }
         activeRestaurant = r;
@@ -411,7 +412,7 @@ public class TransFoodActivity extends Activity {
         card.setAlpha(open ? 1f : 0.62f);
         card.setOnClickListener(v -> {
             if (!open) {
-                showInfo("Restoran Tutup", "Restoran sedang tidak menerima orderan.");
+                showInfo("Merchant Tutup", "Merchant sedang tidak menerima orderan.");
                 return;
             }
             activeRestaurant = r;
@@ -432,11 +433,11 @@ public class TransFoodActivity extends Activity {
         body.setPadding(dp(10), dp(10), dp(10), 0);
         card.addView(body);
 
-        TextView name = text(firstNonEmpty(r.optString("name"), "Restoran"), 15, "#0F172A", true);
+        TextView name = text(firstNonEmpty(r.optString("name"), "Merchant"), 15, "#0F172A", true);
         name.setMaxLines(2);
         body.addView(name);
 
-        String availabilityReason = firstNonEmpty(r.optString("availability_reason"), open ? "" : "Restoran sedang tidak menerima pesanan");
+        String availabilityReason = firstNonEmpty(r.optString("availability_reason"), open ? "" : "Merchant sedang tidak menerima pesanan");
         String todayHours = firstNonEmpty(r.optString("today_hours"), "");
         TextView info = text(open ? ("⭐ " + r.optString("rating", "0.0") + " • " + firstNonEmpty(r.optString("duration"), "15 menit")) : ("🔴 " + availabilityReason), 11, "#64748B", false);
         info.setPadding(0, dp(5), 0, 0);
@@ -461,7 +462,7 @@ public class TransFoodActivity extends Activity {
     private void showMenuPage() {
         currentScreen = 1;
         root.removeAllViews();
-        buildTopBar("Detail Restoran", firstNonEmpty(activeRestaurant != null ? activeRestaurant.optString("name") : "", "Menu makanan"), true);
+        buildTopBar("Detail Merchant", firstNonEmpty(activeRestaurant != null ? activeRestaurant.optString("name") : "", "Menu makanan"), true);
         if (menus.isEmpty()) addStatus("Memuat menu...");
         else renderMenus();
     }
@@ -471,9 +472,31 @@ public class TransFoodActivity extends Activity {
 
         LinearLayout resto = card();
         resto.setPadding(dp(16), dp(14), dp(16), dp(14));
-        resto.addView(text(firstNonEmpty(activeRestaurant.optString("name"), "Restoran"), 19, "#0B3A78", true));
+
+        ImageView merchantBanner = new ImageView(this);
+        merchantBanner.setScaleType(ImageView.ScaleType.CENTER_CROP);
+        merchantBanner.setBackgroundColor(Color.parseColor("#EAF4FF"));
+        LinearLayout.LayoutParams bannerLp = new LinearLayout.LayoutParams(-1, dp(150));
+        bannerLp.setMargins(0, 0, 0, dp(12));
+        resto.addView(merchantBanner, bannerLp);
+        loadImage(merchantBanner, absoluteUrl(firstNonEmpty(activeRestaurant.optString("banner"), "assets/no-image.png")));
+
+        LinearLayout merchantTitleRow = new LinearLayout(this);
+        merchantTitleRow.setGravity(Gravity.CENTER_VERTICAL);
+        TextView merchantName = text(firstNonEmpty(activeRestaurant.optString("name"), "Merchant"), 19, "#0B3A78", true);
+        merchantTitleRow.addView(merchantName, new LinearLayout.LayoutParams(0, -2, 1));
+        Button merchantFav = choiceButton(activeRestaurant.optBoolean("is_favorite") ? "♥ Favorit" : "♡ Favorit", activeRestaurant.optBoolean("is_favorite"));
+        merchantFav.setOnClickListener(v -> toggleFavorite("merchant", activeRestaurant.optInt("id", 0), activeRestaurant, merchantFav));
+        merchantTitleRow.addView(merchantFav, new LinearLayout.LayoutParams(-2, dp(42)));
+        resto.addView(merchantTitleRow);
+
+        double socialRating = activeRestaurant.optDouble("social_rating", activeRestaurant.optDouble("rating", 0));
+        int socialReviews = activeRestaurant.optInt("social_review_count", activeRestaurant.optInt("review_count", 0));
+        TextView merchantRating = text("⭐ " + String.format(Locale.US, "%.1f", socialRating) + " • " + socialReviews + " penilaian customer", 12, "#64748B", false);
+        merchantRating.setPadding(0, dp(5), 0, 0);
+        resto.addView(merchantRating);
         boolean accepting = activeRestaurant.optInt("is_open", 1) == 1;
-        String reason = firstNonEmpty(activeRestaurant.optString("availability_reason"), accepting ? "Menerima pesanan" : "Restoran sedang tidak menerima pesanan");
+        String reason = firstNonEmpty(activeRestaurant.optString("availability_reason"), accepting ? "Menerima pesanan" : "Merchant sedang tidak menerima pesanan");
         TextView operational = text(accepting ? "🟢 Menerima pesanan" : ("🔴 " + reason), 13, accepting ? "#16A34A" : "#EF4444", true);
         operational.setPadding(0, dp(5), 0, 0);
         resto.addView(operational);
@@ -483,7 +506,7 @@ public class TransFoodActivity extends Activity {
             hours.setPadding(0, dp(4), 0, 0);
             resto.addView(hours);
         }
-        resto.addView(text((hasRestoLocation() ? "📍 Lokasi resto tersedia" : "⚠️ Lokasi resto belum tersedia"), 13, "#64748B", false));
+        resto.addView(text((hasRestoLocation() ? "📍 Lokasi merchant tersedia" : "⚠️ Lokasi merchant belum tersedia"), 13, "#64748B", false));
         if (menuSearchQuery != null && menuSearchQuery.trim().length() > 0) {
             TextView fromSearch = text("Hasil pencarian: " + menuSearchQuery, 12, "#0B7CFF", true);
             fromSearch.setPadding(0, dp(8), 0, 0);
@@ -545,6 +568,19 @@ public class TransFoodActivity extends Activity {
         price.setPadding(0, dp(6), 0, dp(4));
         body.addView(price);
 
+        LinearLayout socialRow = new LinearLayout(this);
+        socialRow.setGravity(Gravity.CENTER_VERTICAL);
+        Button fav = choiceButton(m.optBoolean("is_favorite") ? "♥" : "♡", m.optBoolean("is_favorite"));
+        fav.setContentDescription("Favoritkan menu");
+        fav.setOnClickListener(v -> toggleFavorite("menu", m.optInt("id", 0), m, fav));
+        socialRow.addView(fav, new LinearLayout.LayoutParams(dp(52), dp(40)));
+        Button review = choiceButton("⭐ " + String.format(Locale.US, "%.1f", m.optDouble("rating", 0)) + " (" + m.optInt("review_count", 0) + ")", false);
+        LinearLayout.LayoutParams reviewLp = new LinearLayout.LayoutParams(-2, dp(40));
+        reviewLp.setMargins(dp(8), 0, 0, 0);
+        socialRow.addView(review, reviewLp);
+        review.setOnClickListener(v -> showMenuReviews(m));
+        body.addView(socialRow);
+
         if (trackStock) {
             String stockText = stock <= 0 ? "Stok habis" : ("Stok tersisa: " + stock);
             TextView st = text(stockText, 12, stock <= 0 ? "#EF4444" : (stock <= 5 ? "#D97706" : "#16A34A"), true);
@@ -598,8 +634,17 @@ public class TransFoodActivity extends Activity {
         if (groups == null) return false;
         for (int i = 0; i < groups.length(); i++) {
             JSONObject g = groups.optJSONObject(i);
-            JSONArray items = g == null ? null : g.optJSONArray("items");
-            if (items != null && items.length() > 0) return true;
+            if (g == null) continue;
+            JSONArray items = g.optJSONArray("items");
+            if (items == null || items.length() == 0) continue;
+            String type = firstNonEmpty(g.optString("type"), "option");
+            // Varian tunggal Regular + Rp0 adalah default, jadi langsung masuk keranjang.
+            if ("variant".equalsIgnoreCase(type) && items.length() == 1) {
+                JSONObject only = items.optJSONObject(0);
+                if (only != null && ("regular".equalsIgnoreCase(firstNonEmpty(only.optString("name"), "regular")) || "reguler".equalsIgnoreCase(firstNonEmpty(only.optString("name"), "regular")))
+                        && only.optDouble("price", 0) <= 0) continue;
+            }
+            return true;
         }
         return false;
     }
@@ -799,7 +844,7 @@ public class TransFoodActivity extends Activity {
         LinearLayout info = card();
         info.setPadding(dp(16), dp(14), dp(16), dp(14));
         info.addView(text("Resto", 12, "#64748B", true));
-        info.addView(text(firstNonEmpty(activeRestaurant.optString("name"), "Restoran"), 16, "#0F172A", true));
+        info.addView(text(firstNonEmpty(activeRestaurant.optString("name"), "Merchant"), 16, "#0F172A", true));
         String opReason = firstNonEmpty(activeRestaurant.optString("availability_reason"), "");
         String opHours = firstNonEmpty(activeRestaurant.optString("today_hours"), "");
         if (!opHours.isEmpty()) info.addView(text("🕒 " + opHours, 12, "#64748B", false));
@@ -878,7 +923,7 @@ public class TransFoodActivity extends Activity {
         total.addView(summaryLine("Ongkir", deliveryFee));
         total.addView(summaryLine("Total bayar", foodTotal() + deliveryFee));
         boolean acceptingNow = activeRestaurant != null && activeRestaurant.optInt("is_open", 1) == 1;
-        Button order = primaryButton(acceptingNow ? "Buat Pesanan" : "Restoran Tidak Menerima Pesanan");
+        Button order = primaryButton(acceptingNow ? "Buat Pesanan" : "Merchant Tidak Menerima Pesanan");
         order.setEnabled(acceptingNow);
         order.setAlpha(acceptingNow ? 1f : 0.55f);
         LinearLayout.LayoutParams olp = new LinearLayout.LayoutParams(-1, dp(52)); olp.setMargins(0, dp(12), 0, 0);
@@ -906,9 +951,9 @@ public class TransFoodActivity extends Activity {
                 if (res.optBoolean("success", false) && arr != null) {
                     for (int i = 0; i < arr.length(); i++) restaurants.add(arr.getJSONObject(i));
                     mainHandler.post(() -> { setLoading(false); showRestaurantList(); loadAllMenuIndex(); });
-                } else throw new Exception(firstNonEmpty(res.optString("message"), "Gagal memuat restoran"));
+                } else throw new Exception(firstNonEmpty(res.optString("message"), "Gagal memuat merchant"));
             } catch (Exception e) {
-                mainHandler.post(() -> { setLoading(false); root.removeAllViews(); buildTopBar("Trans Food", "", true); addStatus("Koneksi gagal memuat restoran"); showInfo("Gagal", e.getMessage()); });
+                mainHandler.post(() -> { setLoading(false); root.removeAllViews(); buildTopBar("Trans Food", "", true); addStatus("Koneksi gagal memuat merchant"); showInfo("Gagal", e.getMessage()); });
             }
         }).start();
     }
@@ -928,7 +973,7 @@ public class TransFoodActivity extends Activity {
                             JSONObject m = arr.getJSONObject(i);
                             MenuSearchItem item = new MenuSearchItem();
                             item.restaurantId = rid;
-                            item.restaurantName = firstNonEmpty(r.optString("name"), "Restoran");
+                            item.restaurantName = firstNonEmpty(r.optString("name"), "Merchant");
                             item.restaurant = r;
                             item.menuId = m.optInt("id", 0);
                             item.menuName = firstNonEmpty(m.optString("name"), "Menu");
@@ -962,6 +1007,7 @@ public class TransFoodActivity extends Activity {
                 JSONArray arr = res.optJSONArray("menus");
                 if (res.optBoolean("success", false) && arr != null) {
                     for (int i = 0; i < arr.length(); i++) menus.add(arr.getJSONObject(i));
+                    try { mergeFoodSocial(getJson(BASE_URL + "server/customer_food_social.php?restaurant_id=" + restaurantId)); } catch (Exception ignored) {}
                     mainHandler.post(() -> { setLoading(false); showMenuPage(); });
                 } else throw new Exception(firstNonEmpty(res.optString("message"), "Gagal memuat menu"));
             } catch (Exception e) {
@@ -994,9 +1040,9 @@ public class TransFoodActivity extends Activity {
 
     private void createFoodOrder() {
         if (userId <= 0) { showInfo("Login", "User ID tidak ditemukan. Silakan login ulang."); return; }
-        if (activeRestaurant == null || activeRestaurant.optInt("id", 0) <= 0) { showInfo("Gagal", "Restoran tidak valid."); return; }
+        if (activeRestaurant == null || activeRestaurant.optInt("id", 0) <= 0) { showInfo("Gagal", "Merchant tidak valid."); return; }
         if (activeRestaurant.optInt("is_open", 1) != 1) {
-            showInfo("Restoran tidak menerima pesanan", firstNonEmpty(activeRestaurant.optString("availability_reason"), "Restoran sedang tutup atau pause."));
+            showInfo("Merchant tidak menerima pesanan", firstNonEmpty(activeRestaurant.optString("availability_reason"), "Merchant sedang tutup atau pause."));
             return;
         }
         if (cart.isEmpty()) { showInfo("Keranjang kosong", "Tambahkan menu terlebih dahulu."); return; }
@@ -1035,6 +1081,114 @@ public class TransFoodActivity extends Activity {
                 mainHandler.post(() -> { setLoading(false); showInfo("Error", "Koneksi gagal membuat pesanan makanan."); });
             }
         }).start();
+    }
+
+    private void mergeFoodSocial(JSONObject social) {
+        if (social == null || !social.optBoolean("success", false)) return;
+        try {
+            JSONObject merchant = social.optJSONObject("merchant");
+            if (merchant != null && activeRestaurant != null) {
+                activeRestaurant.put("is_favorite", merchant.optBoolean("is_favorite", false));
+                int merchantReviews = merchant.optInt("review_count", 0);
+                if (merchantReviews > 0) activeRestaurant.put("social_rating", merchant.optDouble("rating", activeRestaurant.optDouble("rating", 0)));
+                else activeRestaurant.put("social_rating", activeRestaurant.optDouble("rating", 0));
+                activeRestaurant.put("social_review_count", merchantReviews > 0 ? merchantReviews : activeRestaurant.optInt("review_count", 0));
+            }
+            JSONObject menuMap = social.optJSONObject("menus");
+            if (menuMap != null) {
+                for (JSONObject m : menus) {
+                    JSONObject sm = menuMap.optJSONObject(String.valueOf(m.optInt("id", 0)));
+                    if (sm == null) continue;
+                    m.put("is_favorite", sm.optBoolean("is_favorite", false));
+                    m.put("rating", sm.optDouble("rating", 0));
+                    m.put("review_count", sm.optInt("review_count", 0));
+                }
+            }
+        } catch (Exception ignored) {}
+    }
+
+    private void toggleFavorite(String type, int targetId, JSONObject target, Button button) {
+        if (targetId <= 0) return;
+        boolean next = !target.optBoolean("is_favorite", false);
+        button.setEnabled(false);
+        new Thread(() -> {
+            try {
+                JSONObject payload = new JSONObject();
+                payload.put("action", "favorite");
+                payload.put("type", type);
+                payload.put("target_id", targetId);
+                payload.put("favorite", next);
+                JSONObject res = postJson(BASE_URL + "server/customer_food_social.php", payload);
+                mainHandler.post(() -> {
+                    button.setEnabled(true);
+                    if (!res.optBoolean("success", false)) { showInfo("Favorit", res.optString("message", "Gagal memperbarui favorit.")); return; }
+                    try { target.put("is_favorite", res.optBoolean("is_favorite", next)); } catch (Exception ignored) {}
+                    button.setText(target.optBoolean("is_favorite", false) ? ("menu".equals(type) ? "♥" : "♥ Favorit") : ("menu".equals(type) ? "♡" : "♡ Favorit"));
+                    // Favorit langsung menjadi sinyal personalisasi untuk AI rekomendasi dashboard.
+                });
+            } catch (Exception e) {
+                mainHandler.post(() -> { button.setEnabled(true); showInfo("Favorit", "Koneksi gagal memperbarui favorit."); });
+            }
+        }, "food-favorite").start();
+    }
+
+    private void showMenuReviews(JSONObject menu) {
+        int menuId = menu.optInt("id", 0);
+        if (menuId <= 0) return;
+        setLoading(true);
+        new Thread(() -> {
+            try {
+                JSONObject res = getJson(BASE_URL + "server/customer_food_social.php?action=reviews&menu_id=" + menuId);
+                mainHandler.post(() -> { setLoading(false); showReviewDialog(menu, res); });
+            } catch (Exception e) {
+                mainHandler.post(() -> { setLoading(false); showInfo("Penilaian Menu", "Gagal memuat komentar customer."); });
+            }
+        }, "food-reviews").start();
+    }
+
+    private void showReviewDialog(JSONObject menu, JSONObject data) {
+        LinearLayout box = new LinearLayout(this);
+        box.setOrientation(LinearLayout.VERTICAL);
+        box.setPadding(dp(6), dp(4), dp(6), dp(4));
+        JSONArray reviews = data == null ? null : data.optJSONArray("reviews");
+        if (reviews == null || reviews.length() == 0) {
+            box.addView(text("Belum ada komentar. Jadilah customer pertama yang menilai menu ini.", 13, "#64748B", false));
+        } else {
+            for (int i = 0; i < reviews.length(); i++) {
+                JSONObject r = reviews.optJSONObject(i); if (r == null) continue;
+                LinearLayout c = card(); c.setPadding(dp(12), dp(10), dp(12), dp(10));
+                c.addView(text("⭐ " + r.optInt("rating", 0) + "  •  " + firstNonEmpty(r.optString("customer_name"), "Customer Transiva"), 13, "#0B3A78", true));
+                String comment = firstNonEmpty(r.optString("comment"), "Tanpa komentar");
+                TextView ct = text(comment, 12, "#475569", false); ct.setPadding(0, dp(4), 0, 0); c.addView(ct);
+                box.addView(c, new LinearLayout.LayoutParams(-1, -2));
+            }
+        }
+        TextView hint = text("Beri penilaian 1–5 bintang dan komentar. Penilaian dapat dilihat semua customer.", 12, "#64748B", false);
+        hint.setPadding(0, dp(10), 0, dp(6)); box.addView(hint);
+        RatingBar rating = new RatingBar(this, null, android.R.attr.ratingBarStyleSmall); rating.setNumStars(5); rating.setStepSize(1f); rating.setRating(5f); box.addView(rating);
+        EditText comment = new EditText(this); comment.setHint("Tulis komentar tentang menu..."); comment.setMinLines(2); box.addView(comment, new LinearLayout.LayoutParams(-1, -2));
+        ScrollView scroll = new ScrollView(this); scroll.addView(box);
+        new TransivaAlertDialogBuilder(this)
+                .setTitle(firstNonEmpty(menu.optString("name"), "Penilaian Menu"))
+                .setView(scroll)
+                .setNegativeButton("Tutup", null)
+                .setPositiveButton("Kirim Penilaian", (d,w) -> submitMenuReview(menu, Math.max(1, (int)rating.getRating()), comment.getText().toString()))
+                .show();
+    }
+
+    private void submitMenuReview(JSONObject menu, int rating, String comment) {
+        new Thread(() -> {
+            try {
+                JSONObject payload = new JSONObject(); payload.put("action", "review"); payload.put("menu_id", menu.optInt("id",0)); payload.put("rating", rating); payload.put("comment", comment == null ? "" : comment.trim());
+                JSONObject res = postJson(BASE_URL + "server/customer_food_social.php", payload);
+                mainHandler.post(() -> {
+                    if (res.optBoolean("success", false)) {
+                        try { menu.put("rating", res.optDouble("rating", rating)); menu.put("review_count", res.optInt("review_count", 1)); } catch (Exception ignored) {}
+                        showInfo("Terima kasih", "Penilaian menu berhasil disimpan dan dapat dilihat customer lain."); renderMenus();
+                    } else showInfo("Penilaian Menu", res.optString("message", "Penilaian gagal disimpan."));
+                });
+            } catch (Exception e) { mainHandler.post(() -> showInfo("Penilaian Menu", "Koneksi gagal menyimpan penilaian.")); }
+        }, "food-review-save").start();
     }
 
     private JSONObject getJson(String urlText) throws Exception {

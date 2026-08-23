@@ -381,7 +381,7 @@ public class CustomerTopUpActivity extends Activity {
         String boundary = "----TransivaBoundary" + System.currentTimeMillis();
         HttpURLConnection conn = null;
         try {
-            conn = (HttpURLConnection) new URL(BASE_URL + "server/uploadDeposit.php").openConnection();
+            conn = (HttpURLConnection) new URL(BASE_URL + "server/customer_upload_deposit.php").openConnection();
             CustomerApiClient.applySecurity(this, conn);
             conn.setRequestMethod("POST");
             conn.setConnectTimeout(TIMEOUT_MS);

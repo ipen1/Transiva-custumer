@@ -65,6 +65,15 @@ public class CustomerDashboardActivity extends Activity
     private TextView balanceText;
     private TextView orderText;
     private TextView orderHint;
+    private FrameLayout orderCard;
+    private JSONObject activeOrderJson;
+    private TextView loyaltyTierText;
+    private TextView loyaltyPointsText;
+    private TextView loyaltyNextText;
+    private TextView offerTitleText;
+    private TextView offerDetailText;
+    private TextView referralCodeText;
+    private TextView referralStatText;
     private TextView verificationText;
     private TextView greetingText;
     private TextView aiTitleText;
@@ -267,6 +276,7 @@ public class CustomerDashboardActivity extends Activity
         }
         buildSmartRecommendation();
         buildWalletCard();
+        buildGrowthCards();
         buildFeatureShortcuts();
         buildPromoSection();
         buildServiceSection();
@@ -1116,6 +1126,68 @@ public class CustomerDashboardActivity extends Activity
 
     }
 
+    private void buildGrowthCards() {
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+
+        LinearLayout loyalty = miniGrowthCard("★", "Royalti", "Bronze", "0 poin");
+        loyaltyTierText = (TextView) ((LinearLayout) loyalty.getChildAt(1)).getChildAt(1);
+        loyaltyPointsText = (TextView) ((LinearLayout) loyalty.getChildAt(1)).getChildAt(2);
+        loyalty.setOnClickListener(v -> startActivity(new Intent(this, CustomerLoyaltyActivity.class)));
+        LinearLayout.LayoutParams a = new LinearLayout.LayoutParams(0, -2, 1);
+        a.setMargins(0, 0, dp(6), 0);
+        row.addView(loyalty, a);
+
+        LinearLayout referral = miniGrowthCard("🎁", "Referral", "Ajak teman", "Dapat poin");
+        referralCodeText = (TextView) ((LinearLayout) referral.getChildAt(1)).getChildAt(1);
+        referralStatText = (TextView) ((LinearLayout) referral.getChildAt(1)).getChildAt(2);
+        referral.setOnClickListener(v -> startActivity(new Intent(this, CustomerReferralActivity.class)));
+        LinearLayout.LayoutParams b = new LinearLayout.LayoutParams(0, -2, 1);
+        b.setMargins(dp(6), 0, 0, 0);
+        row.addView(referral, b);
+
+        LinearLayout.LayoutParams rowLp = new LinearLayout.LayoutParams(-1, -2);
+        rowLp.setMargins(0, 0, 0, dp(12));
+        content.addView(row, rowLp);
+
+        LinearLayout offer = new LinearLayout(this);
+        offer.setOrientation(LinearLayout.VERTICAL);
+        offer.setPadding(dp(16), dp(14), dp(16), dp(14));
+        offer.setBackground(Shape.roundStroke("#ECFDF5", "#B7E8CD", dp(18), 1));
+        offerTitleText = text("💸 Transiva Hemat", 15, "#076B42", true);
+        offerDetailText = text("Promo terbaik akan dipilih otomatis", 12, "#39745D", false);
+        offerDetailText.setPadding(0, dp(4), 0, 0);
+        loyaltyNextText = text("", 11, "#64748B", false);
+        loyaltyNextText.setPadding(0, dp(6), 0, 0);
+        offer.addView(offerTitleText);
+        offer.addView(offerDetailText);
+        offer.addView(loyaltyNextText);
+        offer.setOnClickListener(v -> startActivity(new Intent(this, CustomerLoyaltyActivity.class)));
+        LinearLayout.LayoutParams offerLp = new LinearLayout.LayoutParams(-1, -2);
+        offerLp.setMargins(0, 0, 0, dp(14));
+        content.addView(offer, offerLp);
+    }
+
+    private LinearLayout miniGrowthCard(String iconText, String label, String value, String sub) {
+        LinearLayout card = new LinearLayout(this);
+        card.setOrientation(LinearLayout.HORIZONTAL);
+        card.setGravity(Gravity.CENTER_VERTICAL);
+        card.setPadding(dp(13), dp(12), dp(13), dp(12));
+        card.setBackground(Shape.roundStroke("#FFFFFF", "#D9E8F8", dp(17), 1));
+        TextView icon = text(iconText, 22, "#0878F9", true);
+        card.addView(icon, new LinearLayout.LayoutParams(dp(34), -2));
+        LinearLayout body = new LinearLayout(this);
+        body.setOrientation(LinearLayout.VERTICAL);
+        TextView title = text(label, 10, "#64748B", true);
+        TextView main = text(value, 13, "#0B3A78", true);
+        TextView secondary = text(sub, 10, "#7890AA", false);
+        body.addView(title);
+        body.addView(main);
+        body.addView(secondary);
+        card.addView(body, new LinearLayout.LayoutParams(0, -2, 1));
+        return card;
+    }
+
     private void buildFeatureShortcuts() {
         TextView title = text("Fitur Pintar & Aman", 15, "#0B3A78", true);
         LinearLayout.LayoutParams titleLp = new LinearLayout.LayoutParams(-1, -2);
@@ -1864,6 +1936,7 @@ public class CustomerDashboardActivity extends Activity
 
     private void buildOrderSection() {
         FrameLayout card = new FrameLayout(this);
+        orderCard = card;
 
         card.setBackground(
                 Shape.roundStroke(
@@ -1879,7 +1952,7 @@ public class CustomerDashboardActivity extends Activity
         LinearLayout.LayoutParams cardLp =
                 new LinearLayout.LayoutParams(
                         -1,
-                        dp(92)
+                        -2
                 );
 
         cardLp.setMargins(
@@ -1972,6 +2045,19 @@ public class CustomerDashboardActivity extends Activity
         );
 
         box.addView(orderHint, hintLp);
+
+        card.setClickable(true);
+        card.setOnClickListener(v -> openActiveOrder());
+    }
+
+    private void openActiveOrder() {
+        if (activeOrderJson != null) {
+            Intent intent = new Intent(this, CustomerOrderDetailActivity.class);
+            intent.putExtra("order_json", activeOrderJson.toString());
+            startActivity(intent);
+        } else {
+            startActivity(new Intent(this, CustomerHistoryActivity.class));
+        }
     }
 
     private void buildRecommendationSection() {
@@ -2107,7 +2193,16 @@ public class CustomerDashboardActivity extends Activity
                 );
 
         currentOrderText = activeOrderText;
+        activeOrderJson = state.activeOrder;
         orderText.setText(activeOrderText);
+
+        if (orderCard != null) {
+            orderCard.setBackground(Shape.roundStroke(
+                    state.activeOrder != null ? "#F0F7FF" : "#FFFFFF",
+                    state.activeOrder != null ? "#9CCBFF" : "#EDF2F7", dp(17), 1));
+        }
+
+        renderGrowthState(state);
 
         boolean hasActiveOrder =
                 isActiveOrderText(activeOrderText);
@@ -2122,6 +2217,29 @@ public class CustomerDashboardActivity extends Activity
 
         renderPromos(state.promos);
         refreshSmartRecommendation();
+    }
+
+    private void renderGrowthState(DashboardState state) {
+        if (state.loyalty != null) {
+            JSONObject d = state.loyalty.optJSONObject("data");
+            if (d != null) {
+                if (loyaltyTierText != null) loyaltyTierText.setText(first(d.optString("tier"), "BRONZE"));
+                if (loyaltyPointsText != null) loyaltyPointsText.setText(d.optInt("points", 0) + " poin");
+                if (loyaltyNextText != null) loyaltyNextText.setText(first(d.optString("next_tier_text"), ""));
+            }
+        }
+        if (state.referral != null) {
+            String code = first(state.referral.optString("referral_code"), "Ajak teman");
+            if (referralCodeText != null) referralCodeText.setText(code);
+            if (referralStatText != null) referralStatText.setText(state.referral.optInt("rewarded_count", 0) + " berhasil");
+        }
+        if (state.bestOffer != null) {
+            JSONObject offer = state.bestOffer.optJSONObject("offer");
+            if (offer != null) {
+                if (offerTitleText != null) offerTitleText.setText("💸 " + first(offer.optString("title"), "Transiva Hemat"));
+                if (offerDetailText != null) offerDetailText.setText(first(offer.optString("saving_text"), offer.optString("description"), "Promo terbaik tersedia"));
+            }
+        }
     }
 
     @Override

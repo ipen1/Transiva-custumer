@@ -48,7 +48,7 @@ import java.util.Map;
 
 public class TransFoodActivity extends Activity {
 
-    private static final String BASE_URL = "https://transiva.my.id/";
+    private static final String BASE_URL = ApiConfig.ROOT;
     private static final int TIMEOUT_MS = 20000;
 
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
@@ -95,6 +95,12 @@ public class TransFoodActivity extends Activity {
         } catch (Exception ignored) {}
         loadSession();
         buildBase();
+        CustomerBestOffer.load(this, "TransFood", offer -> runOnUiThread(() -> {
+            if (offer != null && (voucherCode == null || voucherCode.trim().isEmpty())) {
+                String code = offer.optString("promo_code", "").trim();
+                if (!code.isEmpty()) voucherCode = code;
+            }
+        }));
         showRestaurantList();
         loadRestaurants();
     }
@@ -210,9 +216,7 @@ public class TransFoodActivity extends Activity {
         item.addView(name, new LinearLayout.LayoutParams(-1, -2));
         item.setOnClickListener(v -> {
             homeMode = mode;
-            if ("discount".equals(mode)) homeSearchQuery = "diskon";
-            else if ("newest".equals(mode)) homeSearchQuery = "";
-            else homeSearchQuery = "";
+            homeSearchQuery = "";
             showRestaurantList();
         });
         row.addView(item, new LinearLayout.LayoutParams(0, -2, 1));
@@ -301,9 +305,15 @@ public class TransFoodActivity extends Activity {
         }
 
         if ("best".equals(homeMode)) {
-            java.util.Collections.sort(restoHits, (a, b) -> Double.compare(b.optDouble("rating", 0), a.optDouble("rating", 0)));
+            java.util.Collections.sort(restoHits, (a, b) -> {
+                double sa = a.optDouble("rating",0) * Math.log10(10 + a.optInt("review_count",0));
+                double sb = b.optDouble("rating",0) * Math.log10(10 + b.optInt("review_count",0));
+                return Double.compare(sb, sa);
+            });
         } else if ("newest".equals(homeMode)) {
-            java.util.Collections.reverse(restoHits);
+            java.util.Collections.sort(restoHits, (a,b) -> Integer.compare(b.optInt("id",0), a.optInt("id",0)));
+        } else if ("discount".equals(homeMode)) {
+            java.util.Collections.sort(restoHits, (a,b) -> Boolean.compare(b.optBoolean("has_food_promo",false), a.optBoolean("has_food_promo",false)));
         }
 
         if (restoHits.isEmpty()) {
@@ -440,13 +450,24 @@ public class TransFoodActivity extends Activity {
 
         String availabilityReason = firstNonEmpty(r.optString("availability_reason"), open ? "" : "Merchant sedang tidak menerima pesanan");
         String todayHours = firstNonEmpty(r.optString("today_hours"), "");
-        TextView info = text(open ? ("⭐ " + r.optString("rating", "0.0") + " • " + firstNonEmpty(r.optString("duration"), "15 menit")) : ("🔴 " + availabilityReason), 11, "#64748B", false);
+        TextView info = text(open ? ("⭐ " + r.optString("rating", "0.0") + " (" + r.optInt("review_count",0) + ") • " + firstNonEmpty(r.optString("duration"), "15 menit")) : ("🔴 " + availabilityReason), 11, "#64748B", false);
         info.setPadding(0, dp(5), 0, 0);
         body.addView(info);
         if (!todayHours.isEmpty()) {
             TextView hours = text("🕒 " + todayHours, 10, "#64748B", false);
             hours.setPadding(0, dp(4), 0, 0);
             body.addView(hours);
+        }
+
+        if (r.optBoolean("has_food_promo", false)) {
+            TextView promo = text("💸 " + firstNonEmpty(r.optString("promo_label"), "Promo tersedia"), 10, "#B45309", true);
+            promo.setPadding(0, dp(6), 0, 0);
+            body.addView(promo);
+        }
+        if (r.optInt("review_count",0) >= 10 && r.optDouble("rating",0) >= 4.5) {
+            TextView hot = text("🔥 Favorit customer", 10, "#DC2626", true);
+            hot.setPadding(0, dp(4), 0, 0);
+            body.addView(hot);
         }
 
         TextView badge = text(open ? "Buka" : "Tutup", 10, open ? "#0B7CFF" : "#EF4444", true);
@@ -1382,21 +1403,7 @@ public class TransFoodActivity extends Activity {
     }
 
     private String absoluteUrl(String value) {
-        value = firstNonEmpty(value, "assets/no-image.png").trim();
-        if (value.startsWith("http://") || value.startsWith("https://")) return value;
-
-        // Normalisasi path media lama/baru. Sebagian endpoint lama pernah menghasilkan
-        // /server/server/... ketika nilai database sudah diawali server/.
-        while (value.startsWith("/server/server/")) {
-            value = value.substring(7); // hasil tetap diawali /server/...
-        }
-        if (value.startsWith("server/server/")) {
-            value = value.substring(7);
-        }
-        if (value.startsWith("server/")) value = "/" + value;
-
-        if (value.startsWith("/")) return BASE_URL.substring(0, BASE_URL.length() - 1) + value;
-        return BASE_URL + value;
+        return ImageUrlResolver.resolve(value);
     }
 
     private int getQty(int id) { int q = 0; for (CartItem c : cart) if (c.id == id) q += c.qty; return q; }

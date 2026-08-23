@@ -126,6 +126,15 @@ public class PassengerCarActivity extends Activity {
 
         readUser();
         buildLayout();
+        CustomerBestOffer.load(this, "TransCar", offer -> runOnUiThread(() -> {
+            if (offer != null && voucherInput != null && voucherInput.getText().toString().trim().isEmpty()) {
+                String code = offer.optString("promo_code", "").trim();
+                if (!code.isEmpty()) {
+                    voucherInput.setText(code);
+                    if (voucherChoiceBtn != null) voucherChoiceBtn.setText("🏷 " + code);
+                }
+            }
+        }));
         applySharedLocationIntent();
         requestLocationIfNeeded();
     }

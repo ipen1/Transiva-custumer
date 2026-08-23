@@ -35,6 +35,13 @@ import com.transiva.app.customer.presentation.CustomerDashboardContract;
 import com.transiva.app.customer.presentation.CustomerDashboardPresenter;
 
 import org.json.JSONObject;
+import org.json.JSONArray;
+
+import java.io.BufferedReader;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.net.HttpURLConnection;
+import java.nio.charset.StandardCharsets;
 
 import java.text.NumberFormat;
 import java.util.Calendar;
@@ -81,6 +88,10 @@ public class CustomerDashboardActivity extends Activity
     private TextView aiActionText;
     private LinearLayout aiCard;
     private Runnable aiAction;
+    private JSONObject aiHomeFavorite;
+    private JSONObject aiWorkFavorite;
+    private int aiFamilyCount = -1;
+    private int aiFamilyMax = 1;
     private double currentBalance;
     private String currentOrderText = "Belum ada pesanan aktif";
     private String currentLocation = "Lokasi saya";
@@ -892,6 +903,8 @@ public class CustomerDashboardActivity extends Activity
         aiCard.setOnClickListener(listener);
         aiActionText.setOnClickListener(listener);
         refreshSmartRecommendation();
+        loadAiFavorites();
+        loadAiFamilyMeta();
     }
 
     private void refreshSmartRecommendation() {
@@ -913,11 +926,31 @@ public class CustomerDashboardActivity extends Activity
             message = currentOrderText + ". Pantau aktivitas terbaru pesanan Anda.";
             button = "Pantau ›";
             action = () -> startActivity(new Intent(this, CustomerHistoryActivity.class));
+        } else if (hour >= 5 && hour < 11 && aiWorkFavorite != null) {
+            title = "Transiva AI • Berangkat ke Kantor? 🏢";
+            message = "Tujuan Kantor sudah tersimpan. Saya bisa isi lokasi jemput Anda otomatis.";
+            button = "Motor ›";
+            action = () -> openAiFavorite(aiWorkFavorite, false);
+        } else if (hour >= 16 && hour < 22 && aiHomeFavorite != null) {
+            title = "Transiva AI • Pulang ke Rumah? 🏠";
+            message = "Rumah sudah siap sebagai tujuan. Titik jemput akan mengikuti lokasi Anda sekarang.";
+            button = "Motor ›";
+            action = () -> openAiFavorite(aiHomeFavorite, false);
+        } else if ((hour >= 22 || hour < 5) && aiHomeFavorite != null) {
+            title = "Transiva AI • Pulang lebih nyaman 🌙";
+            message = "Saya siapkan Rumah sebagai tujuan dan TransCar untuk perjalanan malam.";
+            button = "Mobil ›";
+            action = () -> openAiFavorite(aiHomeFavorite, true);
         } else if (currentBalance > 0 && currentBalance < 20000) {
             title = "Saldo Transiva Pay menipis";
             message = "Isi saldo sekarang agar pembayaran layanan berikutnya tetap lancar.";
             button = "Top Up ›";
             action = () -> startActivity(new Intent(this, CustomerTopUpActivity.class));
+        } else if (aiFamilyCount == 0 && hour >= 14 && hour < 17) {
+            title = "Transiva AI • Family belum diatur 👨‍👩‍👧";
+            message = "Anda punya " + aiFamilyMax + " slot Family. Tambahkan orang terdekat agar bisa dipesankan perjalanan lebih cepat.";
+            button = "Atur Family ›";
+            action = () -> startActivity(new Intent(this, TransivaFamilyActivity.class));
         } else if (weekend && hour >= 8 && hour < 18) {
             title = "Kebutuhan akhir pekan lebih praktis";
             message = "Kirim barang dengan aman dari " + first(currentLocation, "lokasi Anda") + " menggunakan TransSend.";
@@ -947,10 +980,10 @@ public class CustomerDashboardActivity extends Activity
                 button = "Buka ›";
                 action = () -> openTrackedService(favorite);
             } else {
-                title = "Mulai hari bersama Transiva ☀️";
-                message = "Butuh kendaraan dari " + first(currentLocation, "lokasi Anda") + "? Driver TransRide siap membantu.";
-                button = "Pesan ›";
-                action = () -> openTrackedService("TransRide");
+                title = "Transiva AI siap membantu ✦";
+                message = "Ketik kebutuhan seperti ‘mau pulang’, ‘lagi lapar’, atau ‘cari mobil’. Saya akan arahkan ke layanan yang cocok.";
+                button = "Tanya AI ›";
+                action = () -> { Intent i = new Intent(this, GlobalSearchActivity.class); i.putExtra("ai_prompt", ""); startActivity(i); };
             }
         }
 
@@ -961,6 +994,63 @@ public class CustomerDashboardActivity extends Activity
 
         aiCard.setAlpha(0f);
         aiCard.animate().alpha(1f).setDuration(280L).start();
+    }
+
+    private void loadAiFavorites() {
+        TransivaNetworkExecutor.execute(() -> {
+            HttpURLConnection conn = null;
+            try {
+                conn = CustomerApiClient.open(this, "https://transiva.my.id/server/customer_favorites.php?action=list");
+                conn.setRequestMethod("GET");
+                InputStream in = conn.getResponseCode() < 400 ? conn.getInputStream() : conn.getErrorStream();
+                BufferedReader br = new BufferedReader(new InputStreamReader(in, StandardCharsets.UTF_8));
+                StringBuilder sb = new StringBuilder(); String line;
+                while ((line = br.readLine()) != null) sb.append(line);
+                JSONObject o = new JSONObject(sb.toString());
+                JSONArray a = o.optJSONArray("places");
+                JSONObject home = null, work = null;
+                if (a != null) for (int i = 0; i < a.length(); i++) {
+                    JSONObject x = a.optJSONObject(i); if (x == null) continue;
+                    if ("home".equalsIgnoreCase(x.optString("type"))) home = x;
+                    else if ("work".equalsIgnoreCase(x.optString("type"))) work = x;
+                }
+                final JSONObject fHome = home, fWork = work;
+                uiHandler.post(() -> { aiHomeFavorite = fHome; aiWorkFavorite = fWork; refreshSmartRecommendation(); });
+            } catch (Exception ignored) {
+            } finally { if (conn != null) conn.disconnect(); }
+        });
+    }
+
+    private void loadAiFamilyMeta() {
+        TransivaNetworkExecutor.execute(() -> {
+            HttpURLConnection conn = null;
+            try {
+                conn = CustomerApiClient.open(this, "https://transiva.my.id/server/customer_family.php?action=list");
+                conn.setRequestMethod("GET");
+                InputStream in = conn.getResponseCode() < 400 ? conn.getInputStream() : conn.getErrorStream();
+                BufferedReader br = new BufferedReader(new InputStreamReader(in, StandardCharsets.UTF_8));
+                StringBuilder sb = new StringBuilder(); String line;
+                while ((line = br.readLine()) != null) sb.append(line);
+                JSONObject o = new JSONObject(sb.toString());
+                final int count = o.optInt("member_count", -1);
+                final int max = Math.max(1, o.optInt("max_members", 1));
+                uiHandler.post(() -> { aiFamilyCount = count; aiFamilyMax = max; refreshSmartRecommendation(); });
+            } catch (Exception ignored) {
+            } finally { if (conn != null) conn.disconnect(); }
+        });
+    }
+
+    private void openAiFavorite(JSONObject place, boolean car) {
+        if (place == null) { startActivity(new Intent(this, FavoritePlacesActivity.class)); return; }
+        double lat = place.optDouble("latitude", 0), lng = place.optDouble("longitude", 0);
+        if (lat == 0 || lng == 0) { startActivity(new Intent(this, FavoritePlacesActivity.class)); return; }
+        Intent i = new Intent(this, car ? PassengerCarActivity.class : TransRideActivity.class);
+        i.putExtra("smart_favorite", true);
+        i.putExtra("smart_destination_lat", lat);
+        i.putExtra("smart_destination_lng", lng);
+        i.putExtra("smart_destination_address", first(place.optString("address"), place.optString("label"), "Tujuan favorit"));
+        i.putExtra("smart_destination_label", first(place.optString("label"), "Tujuan"));
+        startActivity(i);
     }
 
     private String timeGreeting() {
@@ -1196,9 +1286,9 @@ public class CustomerDashboardActivity extends Activity
 
         LinearLayout row = new LinearLayout(this);
         row.setOrientation(LinearLayout.HORIZONTAL);
-        addFeatureShortcut(row, "🔎", "Cari", GlobalSearchActivity.class, 0);
+        addFeatureShortcut(row, "✦", "AI Cari", GlobalSearchActivity.class, 0);
         addFeatureShortcut(row, "👨‍👩‍👧", "Family", TransivaFamilyActivity.class, 1);
-        addFeatureShortcut(row, "⌂", "Favorit", FavoritePlacesActivity.class, 2);
+        addFeatureShortcut(row, "⌂", "AI Favorit", FavoritePlacesActivity.class, 2);
         addFeatureShortcut(row, "🛡️", "Safety", SafetyCenterActivity.class, 3);
         LinearLayout.LayoutParams rowLp = new LinearLayout.LayoutParams(-1, dp(82));
         rowLp.setMargins(0, 0, 0, dp(16));

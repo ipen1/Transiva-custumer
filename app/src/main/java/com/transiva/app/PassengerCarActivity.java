@@ -109,6 +109,7 @@ public class PassengerCarActivity extends Activity {
     private String priceMode = "standard";
     private int familyMemberId = 0;
     private String familyMemberName = "";
+    private boolean smartFavoriteIntent = false;
     private int userId = 0;
 
     private double pickupLat = 0, pickupLng = 0;
@@ -132,6 +133,7 @@ public class PassengerCarActivity extends Activity {
         familyMemberId = getIntent() == null ? 0 : getIntent().getIntExtra("family_member_id", 0);
         familyMemberName = getIntent() == null ? "" : firstNonEmpty(getIntent().getStringExtra("family_member_name"), "");
         buildLayout();
+        applySmartFavoriteIntent();
         CustomerBestOffer.load(this, "TransCar", offer -> runOnUiThread(() -> {
             if (offer != null && voucherInput != null && voucherInput.getText().toString().trim().isEmpty()) {
                 String code = offer.optString("promo_code", "").trim();
@@ -294,6 +296,9 @@ public class PassengerCarActivity extends Activity {
             @Override public void onReady(double lat, double lng) {
                 mapReady = true;
                 centerLat = lat; centerLng = lng; pickLat = lat; pickLng = lng;
+                if (smartFavoriteIntent && validCoord(deliveryLat, deliveryLng) && mapView != null) {
+                    mapView.setDelivery(deliveryLat, deliveryLng, deliveryAddress);
+                }
                 goToMyLocation();
                 loadMapPlaces();
                 loadOnlineDrivers();
@@ -674,13 +679,26 @@ public class PassengerCarActivity extends Activity {
             }
             if (best != null) {
                 centerLat = best.getLatitude(); centerLng = best.getLongitude(); pickLat = centerLat; pickLng = centerLng;
-                if (mapView != null) mapView.moveTo(centerLat, centerLng, 17f);
-
-                // Jangan otomatis menetapkan titik saat halaman baru dibuka.
-                // Marker center harus tetap pada mode Jemput sampai pengguna menekan Jemput.
-                if (!validCoord(pickupLat, pickupLng)) {
-                    mode = "pickup";
+                if (smartFavoriteIntent && validCoord(deliveryLat, deliveryLng)) {
+                    pickupLat = centerLat; pickupLng = centerLng;
+                    pickupAddress = "Mencari alamat jemput...";
+                    if (pickupText != null) pickupText.setText("Penjemputan: " + pickupAddress);
+                    if (pickupBtn != null) pickupBtn.setText("●  Jemput\nLokasi Anda");
+                    if (mapView != null) {
+                        mapView.setPickup(pickupLat, pickupLng, pickupAddress);
+                        mapView.setDelivery(deliveryLat, deliveryLng, deliveryAddress);
+                        mapView.moveTo(centerLat, centerLng, 17f);
+                    }
+                    resolveAddressAsync(true, pickupLat, pickupLng);
+                    mode = "delivery";
                     updateModeUI();
+                } else {
+                    if (mapView != null) mapView.moveTo(centerLat, centerLng, 17f);
+                    // Order biasa tetap memakai perilaku lama: user memilih marker Jemput.
+                    if (!validCoord(pickupLat, pickupLng)) {
+                        mode = "pickup";
+                        updateModeUI();
+                    }
                 }
             } else {
                 toastDialog("GPS belum mendapatkan lokasi. Aktifkan lokasi lalu tekan GPS lagi.");
@@ -692,6 +710,22 @@ public class PassengerCarActivity extends Activity {
         }
     }
 
+
+    /** Smart Favorite: tujuan dari server favorit, jemput otomatis dari GPS saat ini. */
+    private void applySmartFavoriteIntent() {
+        Intent intent = getIntent();
+        if (intent == null || !intent.getBooleanExtra("smart_favorite", false)) return;
+        double lat = intent.getDoubleExtra("smart_destination_lat", 0d);
+        double lng = intent.getDoubleExtra("smart_destination_lng", 0d);
+        if (!validCoord(lat, lng)) return;
+        smartFavoriteIntent = true;
+        deliveryLat = lat; deliveryLng = lng;
+        deliveryAddress = firstNonEmpty(intent.getStringExtra("smart_destination_address"), intent.getStringExtra("smart_destination_label"), "Tujuan favorit");
+        if (deliveryText != null) deliveryText.setText("Pengantaran: " + deliveryAddress);
+        if (deliveryBtn != null) deliveryBtn.setText("●  Tujuan\n" + deliveryAddress);
+        mode = "delivery";
+        updateModeUI();
+    }
 
     /** Applies a WhatsApp/Google Maps location received through SharedLocationActivity. */
     private void applySharedLocationIntent() {

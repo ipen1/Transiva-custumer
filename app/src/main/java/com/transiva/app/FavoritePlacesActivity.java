@@ -1,44 +1,7 @@
 package com.transiva.app;
-
-import android.app.Activity;
-import android.app.AlertDialog;
-import android.content.SharedPreferences;
-import android.graphics.Color;
-import android.os.Bundle;
-import android.view.Gravity;
-import android.widget.Button;
-import android.widget.EditText;
-import android.widget.LinearLayout;
-import android.widget.TextView;
-import android.widget.Toast;
-
-/** Local favorite places: home, work, and one custom place. */
-public class FavoritePlacesActivity extends Activity {
-    private SharedPreferences prefs;
-    private LinearLayout list;
-    @Override protected void onCreate(Bundle b) {
-        super.onCreate(b);
-        prefs = getSharedPreferences("transiva_favorites", MODE_PRIVATE);
-        LinearLayout root = new LinearLayout(this); root.setOrientation(LinearLayout.VERTICAL);
-        root.setPadding(dp(18), dp(24), dp(18), dp(18)); root.setBackgroundColor(Color.parseColor("#F6F9FE"));
-        TextView title = new TextView(this); title.setText("Lokasi Favorit"); title.setTextSize(24); title.setTextColor(Color.parseColor("#0B3A78")); title.setTypeface(null,1); root.addView(title);
-        TextView sub = new TextView(this); sub.setText("Simpan alamat agar pemesanan berikutnya lebih cepat."); sub.setTextColor(Color.DKGRAY); root.addView(sub);
-        list = new LinearLayout(this); list.setOrientation(LinearLayout.VERTICAL); root.addView(list, new LinearLayout.LayoutParams(-1,0,1));
-        Button close = button("Selesai"); close.setOnClickListener(v -> finish()); root.addView(close,new LinearLayout.LayoutParams(-1,dp(50)));
-        setContentView(root); render();
-    }
-    private void render() {
-        list.removeAllViews(); addRow("home","🏠 Rumah"); addRow("work","🏢 Kantor"); addRow("custom","⭐ Favorit");
-    }
-    private void addRow(String key,String label) {
-        Button b=button(label+"\n"+prefs.getString(key,"Belum disimpan")); b.setGravity(Gravity.START|Gravity.CENTER_VERTICAL);
-        LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-1,dp(72)); lp.setMargins(0,dp(12),0,0); list.addView(b,lp); b.setOnClickListener(v->edit(key,label));
-    }
-    private void edit(String key,String label) {
-        EditText input=new EditText(this); input.setHint("Nama jalan, desa, patokan"); input.setText(prefs.getString(key,"")); input.setPadding(dp(16),0,dp(16),0);
-        new TransivaAlertDialogBuilder(this).setTitle(label).setView(input).setNegativeButton("Batal",null).setNeutralButton("Hapus",(d,w)->{prefs.edit().remove(key).apply();render();})
-                .setPositiveButton("Simpan",(d,w)->{String x=input.getText().toString().trim(); if(!x.isEmpty()){prefs.edit().putString(key,x).apply();Toast.makeText(this,"Lokasi disimpan",Toast.LENGTH_SHORT).show();}render();}).show();
-    }
-    private Button button(String s){Button b=new Button(this);b.setText(s);b.setTextSize(14);b.setAllCaps(false);return b;}
-    private int dp(int v){return Math.round(v*getResources().getDisplayMetrics().density);}
-}
+import android.app.*;import android.graphics.Color;import android.os.Bundle;import android.view.Gravity;import android.widget.*;import org.json.*;import java.io.*;import java.net.*;import java.nio.charset.StandardCharsets;
+/** Smart favorite Home/Work/Favorite tersinkron ke akun customer. */
+public class FavoritePlacesActivity extends Activity{private static final String URL="https://transiva.my.id/server/customer_favorites.php";private LinearLayout list;@Override protected void onCreate(Bundle b){super.onCreate(b);LinearLayout root=new LinearLayout(this);root.setOrientation(LinearLayout.VERTICAL);root.setPadding(dp(18),dp(24),dp(18),dp(18));root.setBackgroundColor(Color.parseColor("#F6F9FE"));TextView title=txt("Smart Favorit",24,true);root.addView(title);root.addView(txt("Rumah, Kantor dan lokasi favorit tersimpan di akun Transiva.",14,false));LinearLayout quick=new LinearLayout(this);Button home=btn("+ Rumah");Button work=btn("+ Kantor");Button fav=btn("+ Favorit");quick.addView(home,new LinearLayout.LayoutParams(0,dp(48),1));quick.addView(work,new LinearLayout.LayoutParams(0,dp(48),1));quick.addView(fav,new LinearLayout.LayoutParams(0,dp(48),1));root.addView(quick);home.setOnClickListener(v->edit("home","Rumah"));work.setOnClickListener(v->edit("work","Kantor"));fav.setOnClickListener(v->edit("favorite","Favorit"));ScrollView sc=new ScrollView(this);list=new LinearLayout(this);list.setOrientation(LinearLayout.VERTICAL);sc.addView(list);root.addView(sc,new LinearLayout.LayoutParams(-1,0,1));Button close=btn("Selesai");close.setOnClickListener(v->finish());root.addView(close,new LinearLayout.LayoutParams(-1,dp(50)));setContentView(root);load();}
+private void load(){TransivaNetworkExecutor.execute(()->{try{JSONObject r=get(URL+"?action=list");runOnUiThread(()->render(r.optJSONArray("places")));}catch(Exception e){runOnUiThread(()->list.addView(txt("Gagal memuat favorit. Periksa koneksi.",14,false)));}});}private void render(JSONArray a){list.removeAllViews();if(a==null||a.length()==0){list.addView(txt("Belum ada lokasi favorit.",14,false));return;}for(int i=0;i<a.length();i++){JSONObject x=a.optJSONObject(i);if(x==null)continue;String type=x.optString("type","favorite");String icon="home".equals(type)?"🏠":"work".equals(type)?"🏢":"⭐";LinearLayout card=new LinearLayout(this);card.setOrientation(LinearLayout.VERTICAL);card.setPadding(dp(14),dp(10),dp(14),dp(10));card.setBackgroundColor(Color.WHITE);card.addView(txt(icon+" "+x.optString("label","Favorit"),16,true));card.addView(txt(x.optString("address",""),13,false));Button del=btn("Hapus");int id=x.optInt("id");del.setOnClickListener(v->remove(id));card.addView(del,new LinearLayout.LayoutParams(-1,dp(42)));LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-1,-2);lp.setMargins(0,dp(10),0,0);list.addView(card,lp);}}
+private void edit(String type,String label){EditText input=new EditText(this);input.setHint("Alamat lengkap / patokan");new TransivaAlertDialogBuilder(this).setTitle(label).setView(input).setNegativeButton("Batal",null).setPositiveButton("Simpan",(d,w)->{String address=input.getText().toString().trim();if(address.isEmpty())return;try{JSONObject o=new JSONObject();o.put("action","save");o.put("type",type);o.put("label",label);o.put("address",address);send(o);}catch(Exception ignored){}}).show();}private void remove(int id){try{JSONObject o=new JSONObject();o.put("action","delete");o.put("id",id);send(o);}catch(Exception ignored){}}private void send(JSONObject o){TransivaNetworkExecutor.execute(()->{try{JSONObject r=post(URL,o);runOnUiThread(()->{Toast.makeText(this,r.optString("message","Selesai"),Toast.LENGTH_SHORT).show();if(r.optBoolean("success"))load();});}catch(Exception e){runOnUiThread(()->Toast.makeText(this,"Gagal menyimpan favorit",Toast.LENGTH_SHORT).show());}});}
+private JSONObject get(String u)throws Exception{HttpURLConnection c=CustomerApiClient.open(this,u);c.setRequestMethod("GET");return read(c);}private JSONObject post(String u,JSONObject o)throws Exception{HttpURLConnection c=CustomerApiClient.open(this,u);c.setRequestMethod("POST");c.setDoOutput(true);c.setRequestProperty("Content-Type","application/json");try(OutputStream os=c.getOutputStream()){os.write(o.toString().getBytes(StandardCharsets.UTF_8));}return read(c);}private JSONObject read(HttpURLConnection c)throws Exception{InputStream in=c.getResponseCode()<400?c.getInputStream():c.getErrorStream();BufferedReader br=new BufferedReader(new InputStreamReader(in,StandardCharsets.UTF_8));StringBuilder s=new StringBuilder();String l;while((l=br.readLine())!=null)s.append(l);return new JSONObject(s.toString());}private TextView txt(String s,int z,boolean b){TextView v=new TextView(this);v.setText(s);v.setTextSize(z);v.setTextColor(Color.parseColor("#0B3A78"));if(b)v.setTypeface(null,1);v.setPadding(0,dp(6),0,dp(6));return v;}private Button btn(String s){Button b=new Button(this);b.setText(s);b.setAllCaps(false);return b;}private int dp(int v){return Math.round(v*getResources().getDisplayMetrics().density);}}

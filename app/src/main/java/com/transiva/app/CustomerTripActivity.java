@@ -56,6 +56,7 @@ public class CustomerTripActivity extends Activity {
     private static final String SAVE_REVIEW_URL = BASE_URL + "server/save_driver_review.php";
     private static final String SAVE_FOOD_REVIEW_URL = BASE_URL + "server/save_food_review.php";
     private static final String SHARE_TRIP_URL = BASE_URL + "share_trip.php";
+    private static final String CREATE_SHARED_TRIP_URL = BASE_URL + "server/create_shared_trip.php";
 
     // Pakai file Leaflet lokal/server sendiri, bukan CDN, agar stabil di WebView.
     private static final String LEAFLET_CSS = BASE_URL + "js/leaflet.css";
@@ -852,20 +853,26 @@ public class CustomerTripActivity extends Activity {
 
 
     private void shareTrip() {
-        try {
-            String liveUrl = SHARE_TRIP_URL + "?order_id=" + Uri.encode(orderId);
-            String text = "Pantau perjalanan Transiva saya secara real-time."
-                    + "\nOrder #" + orderId
-                    + "\nBuka perjalanan live: " + liveUrl;
-
-            Intent send = new Intent(Intent.ACTION_SEND);
-            send.setType("text/plain");
-            send.putExtra(Intent.EXTRA_SUBJECT, "Perjalanan Live Transiva");
-            send.putExtra(Intent.EXTRA_TEXT, text);
-            startActivity(Intent.createChooser(send, "Bagikan perjalanan live"));
-        } catch (Exception e) {
-            showInfo("Bagikan Trip", "Tidak dapat membuka menu berbagi.");
-        }
+        if (orderId == null || orderId.trim().isEmpty()) { showInfo("Bagikan Trip", "ID order belum tersedia."); return; }
+        setLoading(true);
+        TransivaNetworkExecutor.execute(() -> {
+            try {
+                JSONObject req = new JSONObject(); req.put("order_id", orderId);
+                JSONObject res = postJson(CREATE_SHARED_TRIP_URL, req);
+                final String liveUrl = res.optString("share_url", "");
+                final boolean ok = res.optBoolean("success", false) && !liveUrl.isEmpty();
+                mainHandler.post(() -> {
+                    setLoading(false);
+                    if (!ok) { showInfo("Bagikan Trip", res.optString("message", "Gagal membuat tautan aman.")); return; }
+                    try {
+                        String text = "Pantau perjalanan Transiva saya secara real-time.\nOrder #" + orderId + "\nTautan aman (aktif maks. 24 jam): " + liveUrl;
+                        Intent send = new Intent(Intent.ACTION_SEND); send.setType("text/plain");
+                        send.putExtra(Intent.EXTRA_SUBJECT, "Perjalanan Live Transiva"); send.putExtra(Intent.EXTRA_TEXT, text);
+                        startActivity(Intent.createChooser(send, "Bagikan perjalanan live"));
+                    } catch (Exception e) { showInfo("Bagikan Trip", "Tidak dapat membuka menu berbagi."); }
+                });
+            } catch (Exception e) { mainHandler.post(() -> { setLoading(false); showInfo("Bagikan Trip", "Koneksi server bermasalah."); }); }
+        });
     }
 
     private void openSos() {

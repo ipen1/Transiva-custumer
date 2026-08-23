@@ -1196,10 +1196,10 @@ public class CustomerDashboardActivity extends Activity
 
         LinearLayout row = new LinearLayout(this);
         row.setOrientation(LinearLayout.HORIZONTAL);
-        addFeatureShortcut(row, "🛡️", "Safety", SafetyCenterActivity.class, 0);
-        addFeatureShortcut(row, "↻", "Reorder", SmartReorderActivity.class, 1);
-        addFeatureShortcut(row, "★", "Royalti", CustomerLoyaltyActivity.class, 2);
-        addFeatureShortcut(row, "🎁", "Referral", CustomerReferralActivity.class, 3);
+        addFeatureShortcut(row, "🔎", "Cari", GlobalSearchActivity.class, 0);
+        addFeatureShortcut(row, "👨‍👩‍👧", "Family", TransivaFamilyActivity.class, 1);
+        addFeatureShortcut(row, "⌂", "Favorit", FavoritePlacesActivity.class, 2);
+        addFeatureShortcut(row, "🛡️", "Safety", SafetyCenterActivity.class, 3);
         LinearLayout.LayoutParams rowLp = new LinearLayout.LayoutParams(-1, dp(82));
         rowLp.setMargins(0, 0, 0, dp(16));
         content.addView(row, rowLp);

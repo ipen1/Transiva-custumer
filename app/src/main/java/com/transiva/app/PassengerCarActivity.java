@@ -105,6 +105,10 @@ public class PassengerCarActivity extends Activity {
     private String username = "";
     private String authToken = "";
     private String paymentMethod = "cash";
+    private String scheduledAt = "";
+    private String priceMode = "standard";
+    private int familyMemberId = 0;
+    private String familyMemberName = "";
     private int userId = 0;
 
     private double pickupLat = 0, pickupLng = 0;
@@ -125,6 +129,8 @@ public class PassengerCarActivity extends Activity {
         } catch (Exception ignored) {}
 
         readUser();
+        familyMemberId = getIntent() == null ? 0 : getIntent().getIntExtra("family_member_id", 0);
+        familyMemberName = getIntent() == null ? "" : firstNonEmpty(getIntent().getStringExtra("family_member_name"), "");
         buildLayout();
         CustomerBestOffer.load(this, "TransCar", offer -> runOnUiThread(() -> {
             if (offer != null && voucherInput != null && voucherInput.getText().toString().trim().isEmpty()) {
@@ -352,6 +358,20 @@ public class PassengerCarActivity extends Activity {
         quickRow.addView(noteChoiceBtn, noteQuickLp);
         quickRow.addView(paymentChoiceBtn, new LinearLayout.LayoutParams(0, -1, 1.18f));
 
+        LinearLayout smartRow = new LinearLayout(this);
+        smartRow.setOrientation(LinearLayout.HORIZONTAL);
+        smartRow.setGravity(Gravity.CENTER_VERTICAL);
+        bottomCard.addView(smartRow, new LinearLayout.LayoutParams(-1, dp(42)));
+        Button scheduleBtn = smallButton("🕒 Sekarang", "#FFFFFF", "#0B3A78", "#C8D9EC");
+        Button hematBtn = smallButton("💙 Hemat", "#EAF4FF", "#0B7CFF", "#9DCAFF");
+        Button familyBtn = smallButton(familyMemberId > 0 ? "👨‍👩‍👧 " + firstNonEmpty(familyMemberName,"Family") : "👨‍👩‍👧 Family", "#FFFFFF", "#0B3A78", "#C8D9EC");
+        smartRow.addView(scheduleBtn, new LinearLayout.LayoutParams(0,-1,1));
+        LinearLayout.LayoutParams hLp=new LinearLayout.LayoutParams(0,-1,1); hLp.setMargins(dp(5),0,dp(5),0); smartRow.addView(hematBtn,hLp);
+        smartRow.addView(familyBtn, new LinearLayout.LayoutParams(0,-1,1));
+        scheduleBtn.setOnClickListener(v -> showScheduleDialog(scheduleBtn));
+        hematBtn.setOnClickListener(v -> { priceMode = "hemat".equals(priceMode) ? "standard" : "hemat"; hematBtn.setText("hemat".equals(priceMode) ? "💙 Hemat ON" : "💙 Hemat"); requestPaymentQuote(); });
+        familyBtn.setOnClickListener(v -> startActivity(new Intent(this, TransivaFamilyActivity.class)));
+
         voucherChoiceBtn.setOnClickListener(v -> showVoucherDialog());
         noteChoiceBtn.setOnClickListener(v -> showNoteDialog());
         paymentChoiceBtn.setOnClickListener(v -> showPaymentDialog());
@@ -411,6 +431,24 @@ public class PassengerCarActivity extends Activity {
         CustomerAppSettings.apply(this);
         bindActions();
         updateModeUI();
+    }
+
+    private void showScheduleDialog(Button target) {
+        final java.util.Calendar c = java.util.Calendar.getInstance();
+        new android.app.DatePickerDialog(this, (d, y, m, day) -> {
+            new android.app.TimePickerDialog(this, (t, hour, minute) -> {
+                java.util.Calendar chosen = java.util.Calendar.getInstance();
+                chosen.set(y, m, day, hour, minute, 0);
+                if (chosen.getTimeInMillis() < System.currentTimeMillis() + 15 * 60 * 1000L) {
+                    toastDialog("Jadwal minimal 15 menit dari sekarang."); return;
+                }
+                java.text.SimpleDateFormat f = new java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US);
+                scheduledAt = f.format(chosen.getTime());
+                java.text.SimpleDateFormat label = new java.text.SimpleDateFormat("dd/MM HH:mm", Locale.getDefault());
+                target.setText("🕒 " + label.format(chosen.getTime()));
+                if ("balance".equals(paymentMethod)) { paymentMethod = "cash"; if (paymentChoiceBtn != null) paymentChoiceBtn.setText("💵 Tunai"); }
+            }, c.get(java.util.Calendar.HOUR_OF_DAY), c.get(java.util.Calendar.MINUTE), true).show();
+        }, c.get(java.util.Calendar.YEAR), c.get(java.util.Calendar.MONTH), c.get(java.util.Calendar.DAY_OF_MONTH)).show();
     }
 
     private void showVoucherDialog() {
@@ -1199,7 +1237,10 @@ public class PassengerCarActivity extends Activity {
                 payload.put("driver_type", "car");
                 payload.put("service_type", "Transcar");
                 payload.put("service_name", "Transcar");
-                payload.put("price_mode", "server");
+                payload.put("price_mode", priceMode);
+                payload.put("scheduled_at", scheduledAt);
+                payload.put("family_member_id", familyMemberId);
+                payload.put("price_guarantee", true);
                 payload.put("pickup", pickup);
                 payload.put("delivery", delivery);
                 payload.put("pickup_address", firstNonEmpty(pickupAddress, "Lokasi Jemput"));
@@ -1234,6 +1275,12 @@ public class PassengerCarActivity extends Activity {
         String orderId = firstNonEmpty(res.optString("order_id", ""), res.optString("id", ""));
         if (orderId.length() == 0) {
             toastDialog("Order berhasil, tetapi ID order tidak ditemukan.");
+            return;
+        }
+
+        if ("scheduled".equalsIgnoreCase(res.optString("status", ""))) {
+            toastDialog("Schedule Ride tersimpan untuk " + res.optString("scheduled_at", scheduledAt) + ". Driver akan dicari sekitar 15 menit sebelum jadwal.");
+            finish();
             return;
         }
 
@@ -1340,6 +1387,7 @@ public class PassengerCarActivity extends Activity {
                 payload.put("delivery_lng", deliveryLng);
                 payload.put("service_type", "Transcar");
                 payload.put("payment_method", paymentMethod);
+                payload.put("price_mode", priceMode);
                 payload.put(
                         "voucher_code",
                         voucherInput == null

@@ -94,6 +94,7 @@ public class TransFoodActivity extends Activity {
             }
         } catch (Exception ignored) {}
         loadSession();
+        if (getIntent() != null) homeSearchQuery = firstNonEmpty(getIntent().getStringExtra("global_search_query"), "");
         buildBase();
         CustomerBestOffer.load(this, "TransFood", offer -> runOnUiThread(() -> {
             if (offer != null && (voucherCode == null || voucherCode.trim().isEmpty())) {

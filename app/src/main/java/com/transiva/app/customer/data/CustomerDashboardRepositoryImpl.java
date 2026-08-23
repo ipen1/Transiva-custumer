@@ -4,6 +4,7 @@ import android.content.Context;
 import android.net.Uri;
 
 import com.transiva.app.CustomerApiClient;
+import com.transiva.app.ApiConfig;
 
 import com.transiva.app.customer.domain.CustomerDashboardRepository;
 import com.transiva.app.customer.domain.DashboardState;
@@ -22,7 +23,7 @@ import java.util.List;
 public final class CustomerDashboardRepositoryImpl
         implements CustomerDashboardRepository {
 
-    private static final String BASE_URL = "https://transiva.my.id/";
+    private static final String BASE_URL = ApiConfig.ROOT;
     private static final int TIMEOUT = 15000;
 
     private final Context context;
@@ -40,13 +41,15 @@ public final class CustomerDashboardRepositoryImpl
             int userId
     ) throws Exception {
         double balance = loadBalance(username);
-        String order = loadActiveOrder(username, userId);
+        JSONObject activeOrder = loadActiveOrderJson(username, userId);
+        String order = formatActiveOrder(activeOrder);
+        JSONObject loyalty = loadOptional(BASE_URL + "server/customer_loyalty.php");
+        JSONObject referral = loadOptional(BASE_URL + "server/customer_referral.php");
+        JSONObject bestOffer = loadOptional(BASE_URL + "server/customer_best_offer.php");
         List<Promo> promos = loadPromos();
 
         return new DashboardState(
-                balance,
-                order,
-                promos
+                balance, order, activeOrder, loyalty, referral, bestOffer, promos
         );
     }
 
@@ -65,65 +68,32 @@ public final class CustomerDashboardRepositoryImpl
                 : 0;
     }
 
-    private String loadActiveOrder(
-            String username,
-            int userId
-    ) {
+    private JSONObject loadActiveOrderJson(String username, int userId) {
         try {
-            JSONObject json = get(
-                    BASE_URL
-                            + "server/customer_get_active_orders.php?user_id="
-                            + userId
-                            + "&username="
-                            + Uri.encode(username)
-                            + "&_="
-                            + System.currentTimeMillis()
-            );
-
+            JSONObject json = get(BASE_URL + "server/customer_get_active_orders.php?user_id="
+                    + userId + "&username=" + Uri.encode(username) + "&_=" + System.currentTimeMillis());
             JSONArray orders = json.optJSONArray("orders");
-
-            if (
-                    !json.optBoolean("success", false)
-                            || orders == null
-                            || orders.length() == 0
-            ) {
-                return "Belum ada pesanan aktif";
-            }
-
-            JSONObject order = orders.optJSONObject(0);
-
-            if (order == null) {
-                return "Belum ada pesanan aktif";
-            }
-
-            String service = first(
-                    order.optString("service_name"),
-                    order.optString("order_type"),
-                    "Pesanan"
-            );
-
-            String status = first(
-                    order.optString("status"),
-                    "pending"
-            ).replace("_", " ");
-
-            String driver = first(
-                    order.optString("driver"),
-                    order.optString("driver_username"),
-                    ""
-            );
-
-            return service
-                    + " • "
-                    + status
-                    + (
-                    driver.isEmpty()
-                            ? ""
-                            : "\nDriver: " + driver
-            );
-
+            if (!json.optBoolean("success", false) || orders == null || orders.length() == 0) return null;
+            return orders.optJSONObject(0);
         } catch (Exception ignored) {
-            return "Status pesanan belum dapat diperbarui";
+            return null;
+        }
+    }
+
+    private String formatActiveOrder(JSONObject order) {
+        if (order == null) return "Belum ada pesanan aktif";
+        String service = first(order.optString("service_name"), order.optString("order_type"), "Pesanan");
+        String status = first(order.optString("status"), "pending").replace("_", " ");
+        String driver = first(order.optString("driver"), order.optString("driver_username"), "");
+        return service + " • " + status + (driver.isEmpty() ? "" : "\nDriver: " + driver);
+    }
+
+    private JSONObject loadOptional(String endpoint) {
+        try {
+            JSONObject json = get(endpoint + (endpoint.contains("?") ? "&" : "?") + "_=" + System.currentTimeMillis());
+            return json.optBoolean("success", false) ? json : null;
+        } catch (Exception ignored) {
+            return null;
         }
     }
 

@@ -636,11 +636,25 @@ public class SearchDriverActivity extends Activity {
                     return;
                 }
 
-                // PENTING: keberadaan driver online / offered_driver / driver_found
-                // BUKAN berarti order sudah diterima. Customer tetap di layar pencarian
-                // selama status masih pending. UI driver hanya boleh muncul setelah
-                // backend benar-benar mengubah status menjadi driver_accepted.
-                if (isDriverAcceptedStatus(status)) {
+                // FIX MATCHING:
+                // Backend lama/fitur tertentu tidak selalu memakai literal "driver_accepted".
+                // Pickup/TransSend bisa memakai "taken", sedangkan endpoint kompatibilitas
+                // dapat mengembalikan "accepted"/"assigned". Flag is_taken/driver_found
+                // berasal dari order.driver yang sudah benar-benar terisi, BUKAN offered_driver,
+                // sehingga aman dipakai sebagai sinyal bahwa driver sudah memenangkan order.
+                boolean serverTaken = res.optBoolean("is_taken", false);
+                boolean serverDriverFound = res.optBoolean("driver_found", false);
+                String assignedDriver = firstNonEmpty(
+                        order.optString("driver", ""),
+                        order.optString("driver_username", ""),
+                        res.optString("driver_username", "")
+                ).trim();
+
+                boolean trulyAccepted = isDriverAcceptedStatus(status)
+                        || serverTaken
+                        || (serverDriverFound && !assignedDriver.isEmpty());
+
+                if (trulyAccepted) {
                     mainHandler.post(() -> showDriver(res));
                 }
             } catch (Exception ignored) {
@@ -653,9 +667,18 @@ public class SearchDriverActivity extends Activity {
     private boolean isDriverAcceptedStatus(String rawStatus) {
         String status = firstNonEmpty(rawStatus, "").trim().toLowerCase(Locale.US);
         return status.equals("driver_accepted")
+                || status.equals("accepted")
+                || status.equals("assigned")
+                || status.equals("taken")
+                || status.equals("taken_by_driver")
+                || status.equals("arrived")
                 || status.equals("arrived_pickup")
                 || status.equals("picked_up")
                 || status.equals("on_trip")
+                || status.equals("in_progress")
+                || status.equals("processing")
+                || status.equals("ongoing")
+                || status.equals("started")
                 || status.equals("on_delivery")
                 || status.equals("arrived_delivery");
     }

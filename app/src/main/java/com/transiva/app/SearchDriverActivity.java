@@ -803,8 +803,22 @@ public class SearchDriverActivity extends Activity {
                 i.putExtra("delivery_lat", deliveryLat);
                 i.putExtra("delivery_lng", deliveryLng);
             }
-            i.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP);
+            // HARD CLOSE MATCHMAKING TASK:
+            // Beberapa perangkat (terutama yang memiliki mode floating/freeform window)
+            // bisa mempertahankan SearchDriverActivity sebagai jendela kecil walaupun finish()
+            // dipanggil setelah CustomerTripActivity dibuka. Jadikan CustomerTrip sebagai root
+            // task baru agar layar/radar pencarian benar-benar dihancurkan.
+            destroyLoops();
+            if (radarView != null) {
+                radarView.stopRadar();
+                radarView.setVisibility(View.GONE);
+            }
+
+            i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK
+                    | Intent.FLAG_ACTIVITY_CLEAR_TASK
+                    | Intent.FLAG_ACTIVITY_CLEAR_TOP);
             startActivity(i);
+            overridePendingTransition(0, 0);
             finish();
         } catch (Exception e) {
             showInfo("Trip Native", "CustomerTripActivity belum ditemukan. Pastikan file Java dan AndroidManifest sudah ditambahkan.");

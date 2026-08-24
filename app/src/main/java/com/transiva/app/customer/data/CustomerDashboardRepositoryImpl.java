@@ -83,7 +83,7 @@ public final class CustomerDashboardRepositoryImpl
     private String formatActiveOrder(JSONObject order) {
         if (order == null) return "Belum ada pesanan aktif";
         String service = first(order.optString("service_name"), order.optString("order_type"), "Pesanan");
-        String status = first(order.optString("status"), "pending").replace("_", " ");
+        String status = com.transiva.app.OrderStatusPresentation.label(first(order.optString("status"), "pending"), service);
         String driver = first(order.optString("driver"), order.optString("driver_username"), "");
         return service + " • " + status + (driver.isEmpty() ? "" : "\nDriver: " + driver);
     }

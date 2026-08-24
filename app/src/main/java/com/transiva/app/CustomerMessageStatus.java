@@ -40,6 +40,9 @@ public final class CustomerMessageStatus {
                 || status.equals("picked_up")
                 || status.equals("on_trip")
                 || status.equals("on_delivery")
+                || status.equals("in_progress")
+                || status.equals("ongoing")
+                || status.equals("started")
                 || status.equals("arrived_delivery");
     }
 
@@ -62,72 +65,6 @@ public final class CustomerMessageStatus {
             String rawStatus,
             String serviceType
     ) {
-        String status = normalize(rawStatus);
-        String type = normalize(serviceType);
-
-        if (status.equals("pending")) {
-            return type.contains("food")
-                    ? "Menunggu Merchant"
-                    : "Menunggu Driver";
-        }
-
-        if (status.equals("merchant_accepted")) {
-            return "Merchant Menerima";
-        }
-
-        if (status.equals("driver_accepted")
-                || status.equals("accepted")
-                || status.equals("assigned")
-                || status.equals("driver_assigned")) {
-            return "Driver Menerima";
-        }
-
-        if (status.equals("taken")) {
-            return type.contains("food")
-                    ? "Driver Menuju Restoran"
-                    : "Driver Menuju Penjemputan";
-        }
-
-        if (status.equals("arrived_pickup")) {
-            return type.contains("food")
-                    ? "Driver Tiba di Restoran"
-                    : "Driver Tiba di Penjemputan";
-        }
-
-        if (
-                status.equals("on_delivery")
-                        || status.equals("on_trip")
-        ) {
-            return type.contains("food")
-                    ? "Pesanan Sedang Diantar"
-                    : "Dalam Perjalanan";
-        }
-
-        if (status.equals("arrived_delivery")) {
-            return "Tiba di Pengantaran";
-        }
-
-        if (
-                status.equals("finished")
-                        || status.equals("finish")
-                        || status.equals("completed")
-        ) {
-            return "Selesai";
-        }
-
-        if (
-                status.equals("canceled")
-                        || status.equals("cancelled")
-        ) {
-            return "Dibatalkan";
-        }
-
-        if (status.equals("merchant_rejected")) {
-            return "Ditolak Merchant";
-        }
-
-        return status.isEmpty()
-                ? "Status tidak tersedia"
-                : status.replace('_', ' ');
+        return OrderStatusPresentation.label(rawStatus, serviceType);
     }
 }

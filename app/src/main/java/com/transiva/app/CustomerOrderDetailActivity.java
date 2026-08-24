@@ -111,7 +111,7 @@ public class CustomerOrderDetailActivity extends Activity {
         body.removeAllViews();
         String service = first(order.optString("service_name"), order.optString("order_type"), order.optString("service"), "Pesanan Transiva");
         String statusRaw = order.optString("status", "").toLowerCase(Locale.US);
-        String status = first(order.optString("status_label"), prettyStatus(statusRaw), "-");
+        String status = OrderStatusPresentation.label(statusRaw, service);
 
         LinearLayout hero = card(24);
         LinearLayout heroTop = new LinearLayout(this);

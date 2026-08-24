@@ -458,7 +458,7 @@ public class SearchDriverActivity extends Activity {
         foundLp.setMargins(0, dp(18), 0, dp(6));
         box.addView(found, foundLp);
 
-        TextView desc = text("Driver menerima pesanan Anda", 15, "#D7E9FF", false);
+        TextView desc = text("Driver menerima pesananmu • perjalanan siap dimulai", 15, "#D7E9FF", false);
         desc.setGravity(Gravity.CENTER);
         box.addView(desc, new LinearLayout.LayoutParams(-1, -2));
 
@@ -692,8 +692,8 @@ public class SearchDriverActivity extends Activity {
         radarView.stopRadar();
         playDriverAcceptedEffect();
 
-        titleText.setText("Driver Menerima Pesanan");
-        setSubtitle("Yeay! Driver Anda sudah terhubung dan segera menuju penjemputan");
+        titleText.setText("DRIVER SUDAH TERHUBUNG");
+        setSubtitle("Driver menerima pesananmu • membuka perjalanan sekarang");
         cancelBtn.setVisibility(View.GONE);
         driverCard.setVisibility(View.VISIBLE);
         driverCard.setAlpha(0f);
@@ -782,7 +782,10 @@ public class SearchDriverActivity extends Activity {
         saveTripPrefs(activeOrderId, driverType, pickupLat, pickupLng, deliveryLat, deliveryLng);
         loadDriverMap(driverName, driverLat, driverLng, pickupLat, pickupLng);
 
-        mainHandler.postDelayed(() -> openNativeTrip(driverType, pickupLat, pickupLng, deliveryLat, deliveryLng), 6000);
+        // Begitu server menyatakan driver benar-benar menerima order, layar pencarian
+        // harus berhenti. Beri jeda sangat singkat hanya untuk feedback visual,
+        // lalu langsung pindah ke CustomerTripActivity.
+        mainHandler.postDelayed(() -> openNativeTrip(driverType, pickupLat, pickupLng, deliveryLat, deliveryLng), 450);
     }
 
     private void openNativeTrip(String driverType, double pickupLat, double pickupLng, double deliveryLat, double deliveryLng) {

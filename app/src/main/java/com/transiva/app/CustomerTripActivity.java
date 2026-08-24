@@ -684,24 +684,41 @@ public class CustomerTripActivity extends Activity {
     }
 
     private void setStatusText(String status, String driverName, boolean hasLocation) {
-        if (!hasLocation) {
-            statusText.setText("🛰️ Menunggu lokasi terbaru dari " + driverName);
-            return;
+        String s = firstNonEmpty(status, "").trim().toLowerCase(Locale.US);
+        String name = firstNonEmpty(driverName, "Driver");
+        String line;
+
+        if ("driver_accepted".equals(s) || "accepted".equals(s) || "assigned".equals(s)
+                || "driver_assigned".equals(s) || "taken".equals(s) || "taken_by_driver".equals(s)) {
+            line = "🤝 " + name + " menerima pesananmu • sedang menuju titik jemput";
+        } else if ("arrived_pickup".equals(s) || "arrived".equals(s)) {
+            line = "📍 " + name + " sudah tiba di titik penjemputan";
+        } else if ("picked_up".equals(s) || "on_trip".equals(s) || "on_delivery".equals(s)
+                || "in_progress".equals(s) || "ongoing".equals(s) || "started".equals(s)) {
+            line = "🛵 Perjalanan dimulai • " + name + " sedang menuju tujuan";
+        } else if ("arrived_delivery".equals(s)) {
+            line = "🏁 Sampai tujuan • " + name + " sudah tiba di lokasi pengantaran";
+        } else if (isFinishedStatus(s)) {
+            line = "✨ Pesanan selesai • terima kasih sudah Transivin bareng kami";
+        } else {
+            line = "🚦 " + OrderStatusPresentation.label(s, "");
         }
-        if ("taken".equals(status)) statusText.setText("🛵 " + driverName + " sedang menuju titik penjemputan");
-        else if ("arrived_pickup".equals(status)) statusText.setText("✅ " + driverName + " sudah tiba di titik penjemputan");
-        else if ("on_delivery".equals(status)) statusText.setText("🛵 " + driverName + " sedang menuju lokasi delivery");
-        else if ("arrived_delivery".equals(status)) statusText.setText("🏁 " + driverName + " sudah tiba di lokasi delivery");
-        else if (isFinishedStatus(status)) statusText.setText("✅ Order selesai");
-        else statusText.setText(driverName + " sedang dalam perjalanan");
+
+        if (!hasLocation && !isFinishedStatus(s)) {
+            line += "\n🛰️ Lokasi driver sedang diperbarui";
+        }
+        statusText.setText(line);
     }
 
     private String popupText(String status) {
-        if ("arrived_pickup".equals(status)) return "✅ Sudah tiba di pickup";
-        if ("on_delivery".equals(status)) return "🛵 Menuju lokasi delivery";
-        if ("arrived_delivery".equals(status)) return "🏁 Sudah tiba di delivery";
-        if (isFinishedStatus(status)) return "✅ Order selesai";
-        return "Sedang menuju penjemputan";
+        String s = firstNonEmpty(status, "").trim().toLowerCase(Locale.US);
+        if ("driver_accepted".equals(s) || "accepted".equals(s) || "assigned".equals(s) || "taken".equals(s))
+            return "🤝 Driver menerima pesananmu";
+        if ("arrived_pickup".equals(s) || "arrived".equals(s)) return "📍 Driver sudah tiba menjemput";
+        if ("picked_up".equals(s) || "on_trip".equals(s) || "on_delivery".equals(s)) return "🛵 Perjalanan sedang berlangsung";
+        if ("arrived_delivery".equals(s)) return "🏁 Driver sudah tiba di tujuan";
+        if (isFinishedStatus(s)) return "✨ Pesanan selesai";
+        return OrderStatusPresentation.label(s, "");
     }
 
 

@@ -1047,6 +1047,14 @@ public class SearchDriverActivity extends Activity {
             conn.setUseCaches(false);
             conn.setRequestProperty("Content-Type", "application/json; charset=UTF-8");
             conn.setRequestProperty("Accept", "application/json");
+
+            // Semua endpoint customer Transiva memakai p0_require_customer().
+            // SearchDriverActivity sebelumnya melewati CustomerApiClient sehingga
+            // check_order_status.php dipanggil TANPA Bearer token. Server lalu
+            // menolak request dan radar tidak pernah melihat driver_accepted.
+            CustomerApiClient.applySecurity(this, conn);
+
+            // Token eksplisit (mis. cancel order) tetap boleh meng-overwrite token sesi.
             if (bearerToken != null && !bearerToken.trim().isEmpty()) {
                 conn.setRequestProperty(
                         "Authorization",

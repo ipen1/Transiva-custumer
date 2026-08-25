@@ -54,6 +54,7 @@ public class TransRideActivity extends Activity {
     private static final String BASE_URL = "https://transiva.my.id/";
     private static final String CREATE_ORDER_URL = BASE_URL + "server/createOrder.php";
     private static final String PAYMENT_QUOTE_URL = BASE_URL + "server/ride_payment_quote.php";
+    private static final String HEMAT_STATUS_URL = BASE_URL + "server/customer_hemat_status.php";
     private static final String RESOLVE_MAPS_URL = BASE_URL + "server/resolve_google_maps.php";
     private static final String GET_BUSINESSES_URL = BASE_URL + "server/getBusinesses.php";
     private static final String GET_LAUNDRIES_URL = BASE_URL + "server/admin_get_laundries.php";
@@ -374,7 +375,15 @@ public class TransRideActivity extends Activity {
         LinearLayout.LayoutParams hLp=new LinearLayout.LayoutParams(0,-1,1); hLp.setMargins(dp(5),0,dp(5),0); smartRow.addView(hematBtn,hLp);
         smartRow.addView(familyBtn, new LinearLayout.LayoutParams(0,-1,1));
         scheduleBtn.setOnClickListener(v -> showScheduleDialog(scheduleBtn));
-        hematBtn.setOnClickListener(v -> { priceMode = "hemat".equals(priceMode) ? "standard" : "hemat"; hematBtn.setText("hemat".equals(priceMode) ? "💙 Hemat ON" : "💙 Hemat"); requestPaymentQuote(); });
+        hematBtn.setOnClickListener(v -> {
+            if ("hemat".equals(priceMode)) {
+                priceMode = "standard";
+                hematBtn.setText("💙 Hemat");
+                requestPaymentQuote();
+            } else {
+                checkHematAccess(hematBtn);
+            }
+        });
         familyBtn.setOnClickListener(v -> startActivity(new Intent(this, TransivaFamilyActivity.class)));
 
         voucherChoiceBtn.setOnClickListener(v -> showVoucherDialog());
@@ -494,17 +503,71 @@ public class TransRideActivity extends Activity {
         new TransivaAlertDialogBuilder(this)
                 .setTitle("Catatan untuk driver")
                 .setView(input)
-                .setNegativeButton("Hapus", (dialog, which) -> {
-                    if (noteInput != null) noteInput.setText("");
-                    noteChoiceBtn.setText("📝 Note");
-                })
-                .setNeutralButton("Batal", null)
+                .setNegativeButton("Batal", null)
                 .setPositiveButton("Simpan", (dialog, which) -> {
                     String note = input.getText().toString().trim();
                     if (noteInput != null) noteInput.setText(note);
                     noteChoiceBtn.setText(note.isEmpty() ? "📝 Note" : "📝 Ada Note");
                 })
                 .show();
+    }
+
+    private void checkHematAccess(Button hematBtn) {
+        if (!ensureAuthTokenForOrder()) return;
+        hematBtn.setEnabled(false);
+        hematBtn.setText("Memeriksa...");
+        new Thread(() -> {
+            try {
+                JSONObject res = postJson(HEMAT_STATUS_URL, new JSONObject());
+                mainHandler.post(() -> {
+                    hematBtn.setEnabled(true);
+                    if (!res.optBoolean("success", false)) {
+                        hematBtn.setText("💙 Hemat");
+                        toastDialog(firstNonEmpty(res.optString("message", ""), "Status Hemat belum dapat diperiksa."));
+                        return;
+                    }
+                    if (!res.optBoolean("verified", false)) {
+                        priceMode = "standard";
+                        hematBtn.setText("💙 Hemat");
+                        new TransivaAlertDialogBuilder(this)
+                                .setTitle("Akun terverifikasi diperlukan")
+                                .setMessage("Mode Hemat hanya tersedia untuk customer yang sudah memverifikasi email dan akun. Selesaikan verifikasi terlebih dahulu lalu coba kembali.")
+                                .setPositiveButton("Mengerti", null)
+                                .show();
+                        return;
+                    }
+                    JSONObject ride = res.optJSONObject("ride");
+                    int remaining = ride == null ? 0 : ride.optInt("remaining", 0);
+                    int limit = ride == null ? 0 : ride.optInt("limit", 0);
+                    int used = ride == null ? 0 : ride.optInt("used", 0);
+                    String tier = ride == null ? "" : ride.optString("tier", "");
+                    if (remaining <= 0) {
+                        priceMode = "standard";
+                        hematBtn.setText("💙 Hemat");
+                        new TransivaAlertDialogBuilder(this)
+                                .setTitle("Kuota Hemat habis")
+                                .setMessage("Kuota Hemat " + tier + " bulan ini sudah habis (" + used + "/" + limit + "). Mode normal tetap dapat digunakan.")
+                                .setPositiveButton("Mengerti", null)
+                                .show();
+                        return;
+                    }
+                    priceMode = "hemat";
+                    hematBtn.setText("💙 Hemat ON");
+                    new TransivaAlertDialogBuilder(this)
+                            .setTitle("Mode Hemat aktif")
+                            .setMessage("Tier " + tier + " • sisa kuota " + remaining + " dari " + limit + " kali bulan ini.")
+                            .setPositiveButton("Gunakan Hemat", (d, w) -> requestPaymentQuote())
+                            .setNegativeButton("Batal", (d, w) -> { priceMode = "standard"; hematBtn.setText("💙 Hemat"); })
+                            .show();
+                });
+            } catch (Exception e) {
+                mainHandler.post(() -> {
+                    hematBtn.setEnabled(true);
+                    hematBtn.setText("💙 Hemat");
+                    toastDialog("Gagal memeriksa kuota Hemat: " + e.getMessage());
+                });
+            }
+        }).start();
     }
 
     private void showPaymentDialog() {
@@ -1239,8 +1302,8 @@ public class TransRideActivity extends Activity {
             return;
         }
 
-        if ("hemat".equals(priceMode) && (noteInput == null || noteInput.getText().toString().trim().isEmpty())) {
-            toastDialog("Mode Hemat wajib memakai note/catatan agar driver lebih mudah memahami kebutuhan perjalanan Anda.");
+        if (noteInput == null || noteInput.getText().toString().trim().isEmpty()) {
+            toastDialog("Catatan untuk driver wajib diisi sebelum membuat perjalanan.");
             showNoteDialog();
             return;
         }

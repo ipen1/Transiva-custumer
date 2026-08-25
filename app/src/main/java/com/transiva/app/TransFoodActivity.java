@@ -55,6 +55,7 @@ public class TransFoodActivity extends Activity {
     private FrameLayout page;
     private LinearLayout root;
     private ProgressBar progressBar;
+    private View stickyCartBar;
 
     private final List<JSONObject> restaurants = new ArrayList<>();
     private final List<JSONObject> menus = new ArrayList<>();
@@ -78,6 +79,9 @@ public class TransFoodActivity extends Activity {
     private double standardFee = 0;
     private double hematFee = 0;
     private double distanceKm = 0;
+    private int hematRemaining = 0;
+    private int hematLimit = 0;
+    private String hematTier = "BRONZE";
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -143,6 +147,7 @@ public class TransFoodActivity extends Activity {
 
     private void showRestaurantList() {
         currentScreen = 0;
+        clearStickyCartBar();
         root.removeAllViews();
         activeRestaurant = null;
         buildTopBar("Transfood", "Makanan favorit, diantar lebih cepat", true);
@@ -839,25 +844,42 @@ public class TransFoodActivity extends Activity {
         }
     }
 
+    private void clearStickyCartBar() {
+        if (stickyCartBar != null && stickyCartBar.getParent() instanceof FrameLayout) {
+            ((FrameLayout) stickyCartBar.getParent()).removeView(stickyCartBar);
+        }
+        stickyCartBar = null;
+        if (root != null) root.setPadding(dp(16), dp(18), dp(16), dp(28));
+    }
+
     private void buildCartBar() {
-        if (cart.isEmpty()) return;
+        clearStickyCartBar();
+        if (cart.isEmpty() || currentScreen != 1) return;
         LinearLayout bar = card();
         bar.setOrientation(LinearLayout.HORIZONTAL);
         bar.setGravity(Gravity.CENTER_VERTICAL);
-        bar.setPadding(dp(16), dp(12), dp(16), dp(12));
+        bar.setPadding(dp(16), dp(10), dp(16), dp(10));
+        bar.setElevation(dp(12));
         LinearLayout left = new LinearLayout(this);
         left.setOrientation(LinearLayout.VERTICAL);
-        left.addView(text("Total Belanja", 12, "#64748B", false));
+        int totalQty = 0; for (CartItem c : cart) totalQty += c.qty;
+        left.addView(text(totalQty + " item • Total Belanja", 12, "#64748B", false));
         left.addView(text(rupiah(foodTotal()), 20, "#0B3A78", true));
         bar.addView(left, new LinearLayout.LayoutParams(0, -2, 1));
         Button checkout = primaryButton("Checkout");
         checkout.setOnClickListener(v -> showCheckout());
         bar.addView(checkout, new LinearLayout.LayoutParams(dp(130), dp(48)));
-        addWithMargin(bar, 0, dp(8), 0, 0);
+        FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(-1, dp(78));
+        lp.gravity = Gravity.BOTTOM;
+        lp.setMargins(dp(12), 0, dp(12), dp(10));
+        page.addView(bar, lp);
+        stickyCartBar = bar;
+        root.setPadding(dp(16), dp(18), dp(16), dp(116));
     }
 
     private void showCheckout() {
         currentScreen = 2;
+        clearStickyCartBar();
         root.removeAllViews();
         buildTopBar("Checkout", "Cek pesanan dan pilih pengantaran", true);
         addStatus("Menghitung ongkir...");
@@ -905,7 +927,10 @@ public class TransFoodActivity extends Activity {
         row.setOrientation(LinearLayout.HORIZONTAL);
         row.setPadding(0, dp(10), 0, 0);
         Button standard = choiceButton("Standar\n" + rupiah(standardFee), "standard".equals(deliveryMode));
-        Button hemat = choiceButton("Hemat\n" + rupiah(hematFee), "hemat".equals(deliveryMode));
+        String hematCaption = "Hemat\n" + rupiah(hematFee) + (hematLimit > 0 ? (" • " + hematRemaining + "x sisa") : "");
+        Button hemat = choiceButton(hematCaption, "hemat".equals(deliveryMode));
+        hemat.setEnabled(hematRemaining > 0);
+        hemat.setAlpha(hematRemaining > 0 ? 1f : 0.5f);
         standard.setOnClickListener(v -> { deliveryMode = "standard"; deliveryFee = standardFee; renderCheckout(); });
         hemat.setOnClickListener(v -> { deliveryMode = "hemat"; deliveryFee = hematFee; renderCheckout(); });
         row.addView(standard, new LinearLayout.LayoutParams(0, dp(60), 1));
@@ -917,7 +942,7 @@ public class TransFoodActivity extends Activity {
         LinearLayout voucherCard = card();
         voucherCard.setPadding(dp(14), dp(14), dp(14), dp(14));
         voucherCard.addView(text("Voucher Ongkir", 16, "#0B3A78", true));
-        voucherCard.addView(text("Masukkan kode voucher yang sudah ditukar dari halaman Royalti.", 12, "#64748B", false));
+        voucherCard.addView(text("Voucher hanya berlaku untuk akun terverifikasi. Masukkan kode promo atau voucher Royalti.", 12, "#64748B", false));
         EditText voucherField = new EditText(this);
         voucherField.setSingleLine(true); voucherField.setHint("Contoh: TRV-XXXXXXXXXXXX"); voucherField.setText(voucherCode);
         voucherCard.addView(voucherField, new LinearLayout.LayoutParams(-1, dp(52)));
@@ -1086,6 +1111,9 @@ public class TransFoodActivity extends Activity {
                 standardFee = res.optDouble("standard_price", deliveryFee);
                 hematFee = res.optDouble("hemat_price", deliveryFee);
                 distanceKm = res.optDouble("distance_km", 0);
+                hematRemaining = res.optInt("hemat_remaining", 0);
+                hematLimit = res.optInt("hemat_limit", 0);
+                hematTier = firstNonEmpty(res.optString("hemat_tier"), "BRONZE");
                 mainHandler.post(() -> { setLoading(false); renderCheckout(); });
             } catch (Exception e) {
                 mainHandler.post(() -> { setLoading(false); deliveryFee = standardFee = hematFee = 0; distanceKm = 0; renderCheckout(); showInfo("Ongkir", e.getMessage()); });

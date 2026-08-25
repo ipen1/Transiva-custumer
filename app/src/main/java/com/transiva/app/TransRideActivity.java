@@ -1239,6 +1239,12 @@ public class TransRideActivity extends Activity {
             return;
         }
 
+        if ("hemat".equals(priceMode) && (noteInput == null || noteInput.getText().toString().trim().isEmpty())) {
+            toastDialog("Mode Hemat wajib memakai note/catatan agar driver lebih mudah memahami kebutuhan perjalanan Anda.");
+            showNoteDialog();
+            return;
+        }
+
         ordering = true;
         setLoading(true);
         orderBtn.setEnabled(false);
@@ -1459,6 +1465,9 @@ public class TransRideActivity extends Activity {
                             jsonInt(res, "final_price", original)
                     );
                     int balance = jsonInt(res, "balance", 0);
+                    int hematRemaining = jsonInt(res, "hemat_remaining", -1);
+                    int hematLimit = jsonInt(res, "hemat_limit", -1);
+                    String hematTier = res.optString("hemat_tier", "");
 
                     double distanceKm = jsonDouble(
                             res,

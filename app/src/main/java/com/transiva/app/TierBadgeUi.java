@@ -3,9 +3,11 @@ package com.transiva.app;
 import android.content.Context;
 import android.content.SharedPreferences;
 import android.graphics.drawable.Drawable;
+import android.graphics.drawable.Animatable;
 import android.view.Gravity;
 import android.widget.Button;
 import android.widget.ImageView;
+import android.widget.ProgressBar;
 
 import java.util.Locale;
 
@@ -63,6 +65,37 @@ public final class TierBadgeUi {
             image.setImageDrawable(null);
             image.setContentDescription(normalize(tier) + " member");
         }
+    }
+
+    /** Show only a compact indeterminate spinner inside the button while Hemat status is checked. */
+    public static void showSpinner(Button button, int sizePx) {
+        if (button == null) return;
+        try {
+            ProgressBar progress = new ProgressBar(button.getContext(), null, android.R.attr.progressBarStyleSmall);
+            Drawable d = progress.getIndeterminateDrawable();
+            if (d != null) {
+                d = d.mutate();
+                d.setBounds(0, 0, sizePx, sizePx);
+                d.setCallback(button);
+                button.setText("");
+                button.setCompoundDrawables(d, null, null, null);
+                button.setCompoundDrawablePadding(0);
+                button.setGravity(Gravity.CENTER);
+                if (d instanceof Animatable) ((Animatable) d).start();
+                return;
+            }
+        } catch (Exception ignored) {}
+        // Fail-safe: keep the button clean even on devices whose progress drawable cannot be reused.
+        button.setText("");
+        button.setCompoundDrawables(null, null, null, null);
+        button.setGravity(Gravity.CENTER);
+    }
+
+    /** Restore the normal Hemat label and the cached/current tier badge. */
+    public static void restoreHematButton(Button button, String tier, int sizePx, int gapPx) {
+        if (button == null) return;
+        button.setText("Hemat");
+        applyToButton(button, tier, sizePx, gapPx);
     }
 
     /** Add the tier PNG to the left side of a Hemat button. */

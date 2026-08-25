@@ -370,7 +370,11 @@ public class PassengerCarActivity extends Activity {
         bottomCard.addView(smartRow, new LinearLayout.LayoutParams(-1, dp(42)));
         Button scheduleBtn = smallButton("🕒 Sekarang", "#FFFFFF", "#0B3A78", "#C8D9EC");
         Button hematBtn = smallButton("Hemat", "#EAF4FF", "#0B7CFF", "#9DCAFF");
-        TierBadgeUi.applyToButton(hematBtn, TierBadgeUi.getCachedActiveTier(this), dp(24), dp(6));
+        hematBtn.setTextSize(12);
+        hematBtn.setPadding(dp(4), 0, dp(4), 0);
+        hematBtn.setMinWidth(0);
+        hematBtn.setMinimumWidth(0);
+        TierBadgeUi.applyToButton(hematBtn, TierBadgeUi.getCachedActiveTier(this), dp(20), dp(2));
         Button familyBtn = smallButton(familyMemberId > 0 ? "👨‍👩‍👧 " + firstNonEmpty(familyMemberName,"Family") : "👨‍👩‍👧 Family", "#FFFFFF", "#0B3A78", "#C8D9EC");
         smartRow.addView(scheduleBtn, new LinearLayout.LayoutParams(0,-1,1));
         LinearLayout.LayoutParams hLp=new LinearLayout.LayoutParams(0,-1,1); hLp.setMargins(dp(5),0,dp(5),0); smartRow.addView(hematBtn,hLp);
@@ -379,7 +383,7 @@ public class PassengerCarActivity extends Activity {
         hematBtn.setOnClickListener(v -> {
             if ("hemat".equals(priceMode)) {
                 priceMode = "standard";
-                hematBtn.setText("💙 Hemat");
+                TierBadgeUi.restoreHematButton(hematBtn, TierBadgeUi.getCachedActiveTier(this), dp(20), dp(2));
                 requestPaymentQuote();
             } else {
                 checkHematAccess(hematBtn);
@@ -516,20 +520,20 @@ public class PassengerCarActivity extends Activity {
     private void checkHematAccess(Button hematBtn) {
         if (!ensureAuthTokenForOrder()) return;
         hematBtn.setEnabled(false);
-        hematBtn.setText("Memeriksa...");
+        TierBadgeUi.showSpinner(hematBtn, dp(20));
         new Thread(() -> {
             try {
                 JSONObject res = postJson(HEMAT_STATUS_URL, new JSONObject());
                 mainHandler.post(() -> {
                     hematBtn.setEnabled(true);
                     if (!res.optBoolean("success", false)) {
-                        hematBtn.setText("💙 Hemat");
+                        TierBadgeUi.restoreHematButton(hematBtn, TierBadgeUi.getCachedActiveTier(this), dp(20), dp(2));
                         toastDialog(firstNonEmpty(res.optString("message", ""), "Status Hemat belum dapat diperiksa."));
                         return;
                     }
                     if (!res.optBoolean("verified", false)) {
                         priceMode = "standard";
-                        hematBtn.setText("💙 Hemat");
+                        TierBadgeUi.restoreHematButton(hematBtn, TierBadgeUi.getCachedActiveTier(this), dp(20), dp(2));
                         new TransivaAlertDialogBuilder(this)
                                 .setTitle("Akun terverifikasi diperlukan")
                                 .setMessage("Mode Hemat hanya tersedia untuk customer yang sudah memverifikasi email dan akun. Selesaikan verifikasi terlebih dahulu lalu coba kembali.")
@@ -543,10 +547,10 @@ public class PassengerCarActivity extends Activity {
                     int used = ride == null ? 0 : ride.optInt("used", 0);
                     String tier = ride == null ? "" : ride.optString("tier", "");
                     TierBadgeUi.saveActiveTier(this, tier);
-                    TierBadgeUi.applyToButton(hematBtn, tier, dp(24), dp(6));
+                    TierBadgeUi.restoreHematButton(hematBtn, tier, dp(20), dp(2));
                     if (remaining <= 0) {
                         priceMode = "standard";
-                        hematBtn.setText("💙 Hemat");
+                        TierBadgeUi.restoreHematButton(hematBtn, TierBadgeUi.getCachedActiveTier(this), dp(20), dp(2));
                         new TransivaAlertDialogBuilder(this)
                                 .setTitle("Kuota Hemat habis")
                                 .setMessage("Kuota Hemat " + tier + " bulan ini sudah habis (" + used + "/" + limit + "). Mode normal tetap dapat digunakan.")
@@ -555,18 +559,18 @@ public class PassengerCarActivity extends Activity {
                         return;
                     }
                     priceMode = "hemat";
-                    hematBtn.setText("💙 Hemat ON");
+                    TierBadgeUi.restoreHematButton(hematBtn, tier, dp(20), dp(2));
                     new TransivaAlertDialogBuilder(this)
                             .setTitle("Mode Hemat aktif")
                             .setMessage("Tier " + tier + " • sisa kuota " + remaining + " dari " + limit + " kali bulan ini.")
                             .setPositiveButton("Gunakan Hemat", (d, w) -> requestPaymentQuote())
-                            .setNegativeButton("Batal", (d, w) -> { priceMode = "standard"; hematBtn.setText("💙 Hemat"); })
+                            .setNegativeButton("Batal", (d, w) -> { priceMode = "standard"; TierBadgeUi.restoreHematButton(hematBtn, tier, dp(20), dp(2)); })
                             .show();
                 });
             } catch (Exception e) {
                 mainHandler.post(() -> {
                     hematBtn.setEnabled(true);
-                    hematBtn.setText("💙 Hemat");
+                    TierBadgeUi.restoreHematButton(hematBtn, TierBadgeUi.getCachedActiveTier(this), dp(20), dp(2));
                     toastDialog("Gagal memeriksa kuota Hemat: " + e.getMessage());
                 });
             }

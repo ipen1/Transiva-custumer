@@ -54,7 +54,7 @@ public class PassengerCarActivity extends Activity {
     private static final String BASE_URL = "https://transiva.my.id/";
     private static final String CREATE_ORDER_URL = BASE_URL + "server/createOrder.php";
     private static final String PAYMENT_QUOTE_URL = BASE_URL + "server/ride_payment_quote.php";
-    private static final String HEMAT_STATUS_URL = BASE_URL + "server/customer_hemat_status.php";
+    private static final String HEMAT_STATUS_URL = BASE_URL + "server/customer_coin_status.php";
     private static final String RESOLVE_MAPS_URL = BASE_URL + "server/resolve_google_maps.php";
     private static final String GET_BUSINESSES_URL = BASE_URL + "server/getBusinesses.php";
     private static final String GET_LAUNDRIES_URL = BASE_URL + "server/admin_get_laundries.php";
@@ -528,51 +528,36 @@ public class PassengerCarActivity extends Activity {
                     hematBtn.setEnabled(true);
                     if (!res.optBoolean("success", false)) {
                         TierBadgeUi.restoreHematButton(hematBtn, TierBadgeUi.getCachedActiveTier(this), dp(20), dp(2));
-                        toastDialog(firstNonEmpty(res.optString("message", ""), "Status Hemat belum dapat diperiksa."));
+                        toastDialog(firstNonEmpty(res.optString("message", ""), "Status Transiva Coin belum dapat diperiksa."));
                         return;
                     }
-                    if (!res.optBoolean("verified", false)) {
-                        priceMode = "standard";
-                        TierBadgeUi.restoreHematButton(hematBtn, TierBadgeUi.getCachedActiveTier(this), dp(20), dp(2));
-                        new TransivaAlertDialogBuilder(this)
-                                .setTitle("Akun terverifikasi diperlukan")
-                                .setMessage("Mode Hemat hanya tersedia untuk customer yang sudah memverifikasi email dan akun. Selesaikan verifikasi terlebih dahulu lalu coba kembali.")
-                                .setPositiveButton("Mengerti", null)
-                                .show();
-                        return;
-                    }
-                    JSONObject ride = res.optJSONObject("ride");
-                    int remaining = ride == null ? 0 : ride.optInt("remaining", 0);
-                    int limit = ride == null ? 0 : ride.optInt("limit", 0);
-                    int used = ride == null ? 0 : ride.optInt("used", 0);
-                    String tier = ride == null ? "" : ride.optString("tier", "");
+                    JSONObject coin = res.optJSONObject("coin");
+                    if (coin == null) coin = res.optJSONObject("ride");
+                    int balanceCoin = coin == null ? 0 : coin.optInt("balance", coin.optInt("remaining", 0));
+                    int minRedeem = coin == null ? 1000 : coin.optInt("min_redeem_coins", coin.optInt("limit", 1000));
+                    int value = coin == null ? 1 : coin.optInt("coin_value_rupiah", 1);
+                    String tier = coin == null ? "BRONZE" : coin.optString("tier", "BRONZE");
+                    boolean canRedeem = coin != null && coin.optBoolean("can_redeem", balanceCoin >= minRedeem);
                     TierBadgeUi.saveActiveTier(this, tier);
                     TierBadgeUi.restoreHematButton(hematBtn, tier, dp(20), dp(2));
-                    if (remaining <= 0) {
+                    if (!canRedeem) {
                         priceMode = "standard";
-                        TierBadgeUi.restoreHematButton(hematBtn, TierBadgeUi.getCachedActiveTier(this), dp(20), dp(2));
                         new TransivaAlertDialogBuilder(this)
-                                .setTitle("Kuota Hemat habis")
-                                .setMessage("Kuota Hemat " + tier + " bulan ini sudah habis (" + used + "/" + limit + "). Mode normal tetap dapat digunakan.")
-                                .setPositiveButton("Mengerti", null)
-                                .show();
+                                .setTitle("Koin belum cukup")
+                                .setMessage("Saldo kamu " + balanceCoin + " koin. Minimal " + minRedeem + " koin untuk memakai Hemat.")
+                                .setPositiveButton("Mengerti", null).show();
                         return;
                     }
                     priceMode = "hemat";
-                    TierBadgeUi.restoreHematButton(hematBtn, tier, dp(20), dp(2));
                     new TransivaAlertDialogBuilder(this)
-                            .setTitle("Mode Hemat aktif")
-                            .setMessage("Tier " + tier + " • sisa kuota " + remaining + " dari " + limit + " kali bulan ini.")
-                            .setPositiveButton("Gunakan Hemat", (d, w) -> requestPaymentQuote())
+                            .setTitle("Hemat dengan Transiva Coin")
+                            .setMessage("Saldo " + balanceCoin + " koin • 1 koin = Rp" + value + ". Sistem akan memakai koin otomatis sesuai batas aman yang diatur admin.")
+                            .setPositiveButton("Gunakan Koin", (d, w) -> requestPaymentQuote())
                             .setNegativeButton("Batal", (d, w) -> { priceMode = "standard"; TierBadgeUi.restoreHematButton(hematBtn, tier, dp(20), dp(2)); })
                             .show();
                 });
             } catch (Exception e) {
-                mainHandler.post(() -> {
-                    hematBtn.setEnabled(true);
-                    TierBadgeUi.restoreHematButton(hematBtn, TierBadgeUi.getCachedActiveTier(this), dp(20), dp(2));
-                    toastDialog("Gagal memeriksa kuota Hemat: " + e.getMessage());
-                });
+                mainHandler.post(() -> { hematBtn.setEnabled(true); TierBadgeUi.restoreHematButton(hematBtn, TierBadgeUi.getCachedActiveTier(this), dp(20), dp(2)); toastDialog("Gagal memeriksa Transiva Coin: " + e.getMessage()); });
             }
         }).start();
     }

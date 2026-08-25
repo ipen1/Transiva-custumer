@@ -79,8 +79,10 @@ public class TransFoodActivity extends Activity {
     private double standardFee = 0;
     private double hematFee = 0;
     private double distanceKm = 0;
-    private int hematRemaining = 0;
-    private int hematLimit = 0;
+    private int hematRemaining = 0; // saldo coin
+    private int hematLimit = 1000; // minimum redeem coin
+    private int coinValueRupiah = 1;
+    private int coinMinOrderAfterDiscount = 1000;
     private String hematTier = "BRONZE";
 
     @Override
@@ -927,16 +929,17 @@ public class TransFoodActivity extends Activity {
         row.setOrientation(LinearLayout.HORIZONTAL);
         row.setPadding(0, dp(10), 0, 0);
         Button standard = choiceButton("Standar\n" + rupiah(standardFee), "standard".equals(deliveryMode));
-        String hematCaption = "Hemat\n" + rupiah(hematFee) + (hematLimit > 0 ? (" • " + hematRemaining + "x sisa") : "");
+        String hematCaption = "Coin Hemat\n" + hematRemaining + " koin";
         Button hemat = choiceButton(hematCaption, "hemat".equals(deliveryMode));
         hemat.setPadding(dp(8), 0, dp(8), 0);
         hemat.setMinWidth(0);
         hemat.setMinimumWidth(0);
         TierBadgeUi.applyToButton(hemat, hematTier, dp(24), dp(3));
-        hemat.setEnabled(hematRemaining > 0);
-        hemat.setAlpha(hematRemaining > 0 ? 1f : 0.5f);
+        boolean coinReady = hematRemaining >= hematLimit;
+        hemat.setEnabled(coinReady);
+        hemat.setAlpha(coinReady ? 1f : 0.5f);
         standard.setOnClickListener(v -> { deliveryMode = "standard"; deliveryFee = standardFee; renderCheckout(); });
-        hemat.setOnClickListener(v -> { deliveryMode = "hemat"; deliveryFee = hematFee; renderCheckout(); });
+        hemat.setOnClickListener(v -> { deliveryMode = "hemat"; deliveryFee = standardFee; renderCheckout(); });
         row.addView(standard, new LinearLayout.LayoutParams(0, dp(60), 1));
         LinearLayout.LayoutParams hlp = new LinearLayout.LayoutParams(0, dp(60), 1); hlp.setMargins(dp(10),0,0,0);
         row.addView(hemat, hlp);
@@ -973,9 +976,15 @@ public class TransFoodActivity extends Activity {
 
         LinearLayout total = card();
         total.setPadding(dp(16), dp(14), dp(16), dp(14));
+        double grossTotal = foodTotal() + standardFee;
+        double coinDiscount = 0;
+        if ("hemat".equals(deliveryMode) && hematRemaining >= hematLimit) {
+            coinDiscount = Math.min((double) hematRemaining * coinValueRupiah, Math.max(0, grossTotal - coinMinOrderAfterDiscount));
+        }
         total.addView(summaryLine("Total makanan", foodTotal()));
-        total.addView(summaryLine("Ongkir", deliveryFee));
-        total.addView(summaryLine("Total bayar", foodTotal() + deliveryFee));
+        total.addView(summaryLine("Ongkir", standardFee));
+        if (coinDiscount > 0) total.addView(summaryLine("Potongan Transiva Coin", -coinDiscount));
+        total.addView(summaryLine("Total bayar", Math.max(0, grossTotal - coinDiscount)));
         boolean acceptingNow = activeRestaurant != null && activeRestaurant.optInt("is_open", 1) == 1;
         Button order = primaryButton(acceptingNow ? "Buat Pesanan" : "Merchant Tidak Menerima Pesanan");
         order.setEnabled(acceptingNow);
@@ -1118,6 +1127,8 @@ public class TransFoodActivity extends Activity {
                 hematRemaining = res.optInt("hemat_remaining", 0);
                 hematLimit = res.optInt("hemat_limit", 0);
                 hematTier = firstNonEmpty(res.optString("hemat_tier"), "BRONZE");
+                coinValueRupiah = res.optInt("coin_value_rupiah", 1);
+                coinMinOrderAfterDiscount = res.optInt("coin_min_order_after_discount", 1000);
                 TierBadgeUi.saveActiveTier(this, hematTier);
                 mainHandler.post(() -> { setLoading(false); renderCheckout(); });
             } catch (Exception e) {

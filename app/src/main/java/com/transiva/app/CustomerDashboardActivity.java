@@ -2324,8 +2324,8 @@ public class CustomerDashboardActivity extends Activity
                 TierBadgeUi.saveActiveTier(this, activeTier);
                 if (loyaltyTierBadge != null) TierBadgeUi.applyToImage(loyaltyTierBadge, activeTier);
                 if (loyaltyTierText != null) loyaltyTierText.setText(TierBadgeUi.normalize(activeTier));
-                int activePoints = d.has("season_points") ? d.optInt("season_points", 0) : d.optInt("points", 0);
-                if (loyaltyPointsText != null) loyaltyPointsText.setText(activePoints + " poin season");
+                int coinBalance = d.optInt("coin_balance", 0);
+                if (loyaltyPointsText != null) loyaltyPointsText.setText(coinBalance + " koin");
                 if (loyaltyNextText != null) loyaltyNextText.setText(first(d.optString("next_tier_text"), ""));
             }
         }

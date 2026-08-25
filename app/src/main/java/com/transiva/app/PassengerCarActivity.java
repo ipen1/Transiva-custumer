@@ -369,7 +369,8 @@ public class PassengerCarActivity extends Activity {
         smartRow.setGravity(Gravity.CENTER_VERTICAL);
         bottomCard.addView(smartRow, new LinearLayout.LayoutParams(-1, dp(42)));
         Button scheduleBtn = smallButton("🕒 Sekarang", "#FFFFFF", "#0B3A78", "#C8D9EC");
-        Button hematBtn = smallButton("💙 Hemat", "#EAF4FF", "#0B7CFF", "#9DCAFF");
+        Button hematBtn = smallButton("Hemat", "#EAF4FF", "#0B7CFF", "#9DCAFF");
+        TierBadgeUi.applyToButton(hematBtn, TierBadgeUi.getCachedActiveTier(this), dp(24), dp(6));
         Button familyBtn = smallButton(familyMemberId > 0 ? "👨‍👩‍👧 " + firstNonEmpty(familyMemberName,"Family") : "👨‍👩‍👧 Family", "#FFFFFF", "#0B3A78", "#C8D9EC");
         smartRow.addView(scheduleBtn, new LinearLayout.LayoutParams(0,-1,1));
         LinearLayout.LayoutParams hLp=new LinearLayout.LayoutParams(0,-1,1); hLp.setMargins(dp(5),0,dp(5),0); smartRow.addView(hematBtn,hLp);
@@ -541,6 +542,8 @@ public class PassengerCarActivity extends Activity {
                     int limit = ride == null ? 0 : ride.optInt("limit", 0);
                     int used = ride == null ? 0 : ride.optInt("used", 0);
                     String tier = ride == null ? "" : ride.optString("tier", "");
+                    TierBadgeUi.saveActiveTier(this, tier);
+                    TierBadgeUi.applyToButton(hematBtn, tier, dp(24), dp(6));
                     if (remaining <= 0) {
                         priceMode = "standard";
                         hematBtn.setText("💙 Hemat");

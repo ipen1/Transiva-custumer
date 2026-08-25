@@ -75,6 +75,7 @@ public class CustomerDashboardActivity extends Activity
     private FrameLayout orderCard;
     private JSONObject activeOrderJson;
     private TextView loyaltyTierText;
+    private ImageView loyaltyTierBadge;
     private TextView loyaltyPointsText;
     private TextView loyaltyNextText;
     private TextView offerTitleText;
@@ -1221,6 +1222,12 @@ public class CustomerDashboardActivity extends Activity
         row.setOrientation(LinearLayout.HORIZONTAL);
 
         LinearLayout loyalty = miniGrowthCard("★", "Royalti", "Bronze", "0 poin");
+        // Premium loyalty badge: use the active season tier PNG instead of a generic star.
+        loyalty.removeViewAt(0);
+        loyaltyTierBadge = TierBadgeUi.image(this, TierBadgeUi.getCachedActiveTier(this), 0);
+        LinearLayout.LayoutParams badgeLp = new LinearLayout.LayoutParams(dp(38), dp(38));
+        badgeLp.setMargins(0, 0, dp(8), 0);
+        loyalty.addView(loyaltyTierBadge, 0, badgeLp);
         loyaltyTierText = (TextView) ((LinearLayout) loyalty.getChildAt(1)).getChildAt(1);
         loyaltyPointsText = (TextView) ((LinearLayout) loyalty.getChildAt(1)).getChildAt(2);
         loyalty.setOnClickListener(v -> startActivity(new Intent(this, CustomerLoyaltyActivity.class)));
@@ -2313,8 +2320,12 @@ public class CustomerDashboardActivity extends Activity
         if (state.loyalty != null) {
             JSONObject d = state.loyalty.optJSONObject("data");
             if (d != null) {
-                if (loyaltyTierText != null) loyaltyTierText.setText(first(d.optString("tier"), "BRONZE"));
-                if (loyaltyPointsText != null) loyaltyPointsText.setText(d.optInt("points", 0) + " poin");
+                String activeTier = first(d.optString("season_tier"), d.optString("tier"), "BRONZE");
+                TierBadgeUi.saveActiveTier(this, activeTier);
+                if (loyaltyTierBadge != null) TierBadgeUi.applyToImage(loyaltyTierBadge, activeTier);
+                if (loyaltyTierText != null) loyaltyTierText.setText(TierBadgeUi.normalize(activeTier));
+                int activePoints = d.has("season_points") ? d.optInt("season_points", 0) : d.optInt("points", 0);
+                if (loyaltyPointsText != null) loyaltyPointsText.setText(activePoints + " poin season");
                 if (loyaltyNextText != null) loyaltyNextText.setText(first(d.optString("next_tier_text"), ""));
             }
         }

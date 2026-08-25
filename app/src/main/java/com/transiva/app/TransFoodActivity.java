@@ -929,6 +929,7 @@ public class TransFoodActivity extends Activity {
         Button standard = choiceButton("Standar\n" + rupiah(standardFee), "standard".equals(deliveryMode));
         String hematCaption = "Hemat\n" + rupiah(hematFee) + (hematLimit > 0 ? (" • " + hematRemaining + "x sisa") : "");
         Button hemat = choiceButton(hematCaption, "hemat".equals(deliveryMode));
+        TierBadgeUi.applyToButton(hemat, hematTier, dp(28), dp(7));
         hemat.setEnabled(hematRemaining > 0);
         hemat.setAlpha(hematRemaining > 0 ? 1f : 0.5f);
         standard.setOnClickListener(v -> { deliveryMode = "standard"; deliveryFee = standardFee; renderCheckout(); });
@@ -1114,6 +1115,7 @@ public class TransFoodActivity extends Activity {
                 hematRemaining = res.optInt("hemat_remaining", 0);
                 hematLimit = res.optInt("hemat_limit", 0);
                 hematTier = firstNonEmpty(res.optString("hemat_tier"), "BRONZE");
+                TierBadgeUi.saveActiveTier(this, hematTier);
                 mainHandler.post(() -> { setLoading(false); renderCheckout(); });
             } catch (Exception e) {
                 mainHandler.post(() -> { setLoading(false); deliveryFee = standardFee = hematFee = 0; distanceKm = 0; renderCheckout(); showInfo("Ongkir", e.getMessage()); });

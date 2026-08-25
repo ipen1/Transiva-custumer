@@ -10,6 +10,7 @@ import android.graphics.BitmapFactory;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
+import android.graphics.drawable.Drawable;
 import android.location.Address;
 import android.location.Geocoder;
 import android.location.Location;
@@ -636,7 +637,7 @@ public class ProfileActivity extends Activity {
 
         loyaltyBadge =
                 badge(
-                        "★ Member Bronze • 0 Poin",
+                        "Premium Bronze • 0 Poin",
                         "#FFF4D6",
                         "#8A5A00"
                 );
@@ -1888,35 +1889,31 @@ public class ProfileActivity extends Activity {
     private void applyLoyaltyBadge(String tier, int points) {
         if (loyaltyBadge == null) return;
 
-        String memberName;
-        String background;
-        String foreground;
+        String memberName; String background; String foreground; String glow; int iconRes;
         switch (tier) {
             case "PLATINUM":
-                memberName = "Platinum";
-                background = "#E8EEF6";
-                foreground = "#334155";
-                break;
+                memberName="Platinum"; background="#E9F3FF"; foreground="#315A78"; glow="#8BD3FF"; iconRes=R.drawable.tier_platinum; break;
+            case "DIAMOND":
+                memberName="Diamond"; background="#E7F8FF"; foreground="#0B6A88"; glow="#66E0FF"; iconRes=R.drawable.tier_diamond; break;
             case "GOLD":
-                memberName = "Gold";
-                background = "#FFF2B8";
-                foreground = "#7A5200";
-                break;
+                memberName="Gold"; background="#FFF2B8"; foreground="#7A5200"; glow="#FFD54A"; iconRes=R.drawable.tier_gold; break;
             case "SILVER":
-                memberName = "Silver";
-                background = "#EEF2F7";
-                foreground = "#475569";
-                break;
+                memberName="Silver"; background="#EEF2F7"; foreground="#475569"; glow="#CBD5E1"; iconRes=R.drawable.tier_silver; break;
             default:
-                memberName = "Bronze";
-                background = "#FBE6D5";
-                foreground = "#8A4B20";
-                break;
+                memberName="Bronze"; background="#FBE6D5"; foreground="#8A4B20"; glow="#E8A36F"; iconRes=R.drawable.tier_bronze; break;
         }
 
-        loyaltyBadge.setText("★ Member " + memberName + " • " + points + " Poin");
+        loyaltyBadge.setText("Premium " + memberName + " • " + points + " Poin");
         loyaltyBadge.setTextColor(Color.parseColor(foreground));
-        loyaltyBadge.setBackground(round(background, 14));
+        loyaltyBadge.setBackground(round(background, 16));
+        loyaltyBadge.setElevation(dp(5));
+        loyaltyBadge.setShadowLayer(dp(7), 0f, 0f, Color.parseColor(glow));
+        try {
+            Drawable icon=getResources().getDrawable(iconRes);
+            int size=dp(25); icon.setBounds(0,0,size,size);
+            loyaltyBadge.setCompoundDrawables(icon,null,null,null);
+            loyaltyBadge.setCompoundDrawablePadding(dp(7));
+        } catch(Exception ignored) {}
     }
 
     private void saveProfile() {

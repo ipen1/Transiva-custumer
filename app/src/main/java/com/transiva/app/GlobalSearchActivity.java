@@ -2,6 +2,7 @@ package com.transiva.app;
 
 import android.app.Activity;
 import android.content.Intent;
+import android.content.res.Configuration;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
@@ -40,7 +41,7 @@ public class GlobalSearchActivity extends Activity {
     }
 
     private void build(){
-        LinearLayout root=new LinearLayout(this); root.setOrientation(LinearLayout.VERTICAL); root.setBackgroundColor(Color.parseColor("#F4F8FD"));
+        LinearLayout root=new LinearLayout(this); root.setOrientation(LinearLayout.VERTICAL); root.setBackgroundColor(Color.parseColor(themeColor("#F4F8FD")));
         LinearLayout hero=new LinearLayout(this); hero.setOrientation(LinearLayout.VERTICAL); hero.setPadding(dp(18),dp(18),dp(18),dp(18)); hero.setBackground(bg("#0878F9",0,0));
         LinearLayout top=new LinearLayout(this); top.setGravity(Gravity.CENTER_VERTICAL);
         TextView back=tx("‹",32,"#FFFFFF",true); back.setGravity(Gravity.CENTER); back.setOnClickListener(v->finish()); top.addView(back,new LinearLayout.LayoutParams(dp(40),dp(42)));
@@ -50,7 +51,7 @@ public class GlobalSearchActivity extends Activity {
 
         LinearLayout searchBox=new LinearLayout(this); searchBox.setGravity(Gravity.CENTER_VERTICAL); searchBox.setPadding(dp(13),0,dp(10),0); searchBox.setBackground(bg("#FFFFFF",18,0));
         TextView icon=tx("⌕",23,"#0878F9",true); searchBox.addView(icon,new LinearLayout.LayoutParams(dp(32),dp(54)));
-        query=new EditText(this); query.setSingleLine(true); query.setTextSize(15); query.setTextColor(Color.parseColor("#0F172A")); query.setHintTextColor(Color.parseColor("#94A3B8")); query.setHint("Contoh: mau pulang, lapar, cari motor..."); query.setBackgroundColor(Color.TRANSPARENT); query.setPadding(0,0,0,0);
+        query=new EditText(this); query.setSingleLine(true); query.setTextSize(15); query.setTextColor(Color.parseColor(themeColor("#0F172A"))); query.setHintTextColor(Color.parseColor(themeColor("#94A3B8"))); query.setHint("Contoh: mau pulang, lapar, cari motor..."); query.setBackgroundColor(Color.TRANSPARENT); query.setPadding(0,0,0,0);
         searchBox.addView(query,new LinearLayout.LayoutParams(0,dp(54),1));
         TextView clear=tx("×",24,"#64748B",false); clear.setGravity(Gravity.CENTER); clear.setOnClickListener(v->query.setText("")); searchBox.addView(clear,new LinearLayout.LayoutParams(dp(36),dp(54)));
         LinearLayout.LayoutParams sbLp=new LinearLayout.LayoutParams(-1,dp(54)); sbLp.setMargins(0,dp(14),0,0); hero.addView(searchBox,sbLp); root.addView(hero);
@@ -109,9 +110,11 @@ public class GlobalSearchActivity extends Activity {
     private void renderError(){results.removeAllViews();LinearLayout c=card();c.addView(tx("Pencarian belum tersedia",15,"#B45309",true));c.addView(tx("Periksa koneksi lalu coba lagi.",12,"#64748B",false));results.addView(c);}
     private LinearLayout card(){LinearLayout c=new LinearLayout(this);c.setOrientation(LinearLayout.VERTICAL);c.setPadding(dp(15),dp(14),dp(15),dp(14));c.setBackground(bgStroke("#FFFFFF","#E0ECF8",17,1));return c;}
     private JSONObject read(HttpURLConnection c)throws Exception{InputStream in=c.getResponseCode()<400?c.getInputStream():c.getErrorStream();BufferedReader br=new BufferedReader(new InputStreamReader(in,StandardCharsets.UTF_8));StringBuilder s=new StringBuilder();String l;while((l=br.readLine())!=null)s.append(l);return new JSONObject(s.toString());}
-    private TextView tx(String s,int z,String color,boolean bold){TextView v=new TextView(this);v.setText(s);v.setTextSize(z);v.setTextColor(Color.parseColor(color));if(bold)v.setTypeface(Typeface.DEFAULT,Typeface.BOLD);return v;}
-    private GradientDrawable bg(String color,int radius,int ignored){GradientDrawable g=new GradientDrawable();g.setColor(Color.parseColor(color));g.setCornerRadius(dp(radius));return g;}
-    private GradientDrawable bgStroke(String fill,String stroke,int radius,int width){GradientDrawable g=bg(fill,radius,0);g.setStroke(dp(width),Color.parseColor(stroke));return g;}
+    private TextView tx(String s,int z,String color,boolean bold){TextView v=new TextView(this);v.setText(s);v.setTextSize(z);v.setTextColor(Color.parseColor(themeColor(color)));if(bold)v.setTypeface(Typeface.DEFAULT,Typeface.BOLD);return v;}
+    private GradientDrawable bg(String color,int radius,int ignored){GradientDrawable g=new GradientDrawable();g.setColor(Color.parseColor(themeColor(color)));g.setCornerRadius(dp(radius));return g;}
+    private GradientDrawable bgStroke(String fill,String stroke,int radius,int width){GradientDrawable g=bg(fill,radius,0);g.setStroke(dp(width),Color.parseColor(themeColor(stroke)));return g;}
+    private boolean isDark(){return (getResources().getConfiguration().uiMode & Configuration.UI_MODE_NIGHT_MASK)==Configuration.UI_MODE_NIGHT_YES;}
+    private String themeColor(String c){if(!isDark())return c;String u=c.toUpperCase(java.util.Locale.US);if(u.equals("#F4F8FD")||u.equals("#F5F8FD"))return "#08111F";if(u.equals("#FFFFFF"))return "#111C2C";if(u.equals("#0F172A")||u.equals("#0B3A78"))return "#F1F5F9";if(u.equals("#64748B")||u.equals("#7890AA")||u.equals("#718096"))return "#AFC0D4";if(u.equals("#94A3B8"))return "#7F93A9";if(u.equals("#E0ECF8")||u.equals("#DFEBF7")||u.equals("#D5E8FF")||u.equals("#D7E9FF")||u.equals("#CBE3FF")||u.equals("#CDE4FF"))return "#26384F";if(u.equals("#EFF6FF")||u.equals("#EEF6FF")||u.equals("#EAF4FF")||u.equals("#F2F8FF"))return "#12243A";if(u.equals("#0B6DD9")||u.equals("#0878F9"))return "#66AFFF";if(u.equals("#B45309"))return "#FCD34D";return c;}
     private int dp(int v){return Math.round(v*getResources().getDisplayMetrics().density);} private String safe(String s){return s==null?"":s.trim();}
     private void hideKeyboard(){try{((InputMethodManager)getSystemService(Context.INPUT_METHOD_SERVICE)).hideSoftInputFromWindow(query.getWindowToken(),0);}catch(Exception ignored){}}
 }

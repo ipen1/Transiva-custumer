@@ -929,7 +929,7 @@ public class TransFoodActivity extends Activity {
         row.setOrientation(LinearLayout.HORIZONTAL);
         row.setPadding(0, dp(10), 0, 0);
         Button standard = choiceButton("Standar\n" + rupiah(standardFee), "standard".equals(deliveryMode));
-        String hematCaption = "Coin Hemat\n" + hematRemaining + " koin";
+        String hematCaption = "Hemat • Coin\n" + hematRemaining + " koin";
         Button hemat = choiceButton(hematCaption, "hemat".equals(deliveryMode));
         hemat.setPadding(dp(8), 0, dp(8), 0);
         hemat.setMinWidth(0);
@@ -1120,9 +1120,10 @@ public class TransFoodActivity extends Activity {
                         "&v=" + System.currentTimeMillis();
                 JSONObject res = getJson(url);
                 if (!res.optBoolean("success", false)) throw new Exception(firstNonEmpty(res.optString("message"), "Gagal menghitung ongkir"));
-                deliveryFee = res.optDouble("price", 0);
-                standardFee = res.optDouble("standard_price", deliveryFee);
-                hematFee = res.optDouble("hemat_price", deliveryFee);
+                standardFee = res.optDouble("standard_price", res.optDouble("price", 0));
+                // TransFood Hemat memakai coin pada total checkout, bukan memotong ongkir dua kali.
+                deliveryFee = standardFee;
+                hematFee = standardFee;
                 distanceKm = res.optDouble("distance_km", 0);
                 hematRemaining = res.optInt("hemat_remaining", 0);
                 hematLimit = res.optInt("hemat_limit", 0);

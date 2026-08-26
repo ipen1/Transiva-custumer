@@ -1,1 +1,15 @@
-
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="transiva_bg">#0F172A</color>
+    <color name="transiva_soft_blue">#132238</color>
+    <color name="transiva_card">#1E293B</color>
+    <color name="transiva_version_bg">#172033</color>
+    <color name="transiva_text">#EAF2FF</color>
+    <color name="transiva_title">#F8FAFC</color>
+    <color name="transiva_subtitle">#CBD5E1</color>
+    <color name="transiva_muted">#A8B4C5</color>
+    <color name="transiva_hint">#94A3B8</color>
+    <color name="transiva_border">#334155</color>
+    <color name="transiva_divider">#2B3A50</color>
+    <color name="transiva_shadow">#50000000</color>
+</resources>

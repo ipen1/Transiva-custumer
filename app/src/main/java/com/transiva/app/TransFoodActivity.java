@@ -48,6 +48,8 @@ import java.util.Map;
 
 public class TransFoodActivity extends Activity {
 
+    private final CustomerLifecycleNetworkScope networkScope = new CustomerLifecycleNetworkScope();
+
     private static final String BASE_URL = ApiConfig.ROOT;
     private static final int TIMEOUT_MS = 20000;
 
@@ -102,7 +104,7 @@ public class TransFoodActivity extends Activity {
         loadSession();
         if (getIntent() != null) homeSearchQuery = firstNonEmpty(getIntent().getStringExtra("global_search_query"), "");
         buildBase();
-        CustomerBestOffer.load(this, "TransFood", offer -> runOnUiThread(() -> {
+        CustomerBestOffer.load(this, "TransFood", offer -> networkScope.post(mainHandler, () -> {
             if (offer != null && (voucherCode == null || voucherCode.trim().isEmpty())) {
                 String code = offer.optString("promo_code", "").trim();
                 if (!code.isEmpty()) voucherCode = code;
@@ -979,7 +981,7 @@ public class TransFoodActivity extends Activity {
         double grossTotal = foodTotal() + standardFee;
         double coinDiscount = 0;
         if ("hemat".equals(deliveryMode) && hematRemaining >= hematLimit) {
-            coinDiscount = Math.min((double) hematRemaining * coinValueRupiah, Math.max(0, grossTotal - coinMinOrderAfterDiscount));
+            coinDiscount = CustomerFinancialRules.foodCoinDiscount(hematRemaining, coinValueRupiah, grossTotal, coinMinOrderAfterDiscount);
         }
         total.addView(summaryLine("Total makanan", foodTotal()));
         total.addView(summaryLine("Ongkir", standardFee));
@@ -1006,23 +1008,23 @@ public class TransFoodActivity extends Activity {
 
     private void loadRestaurants() {
         setLoading(true);
-        new Thread(() -> {
+        networkScope.newThread(() -> {
             try {
                 JSONObject res = getJson(BASE_URL + "server/get_food_restaurants.php?v=" + System.currentTimeMillis());
                 restaurants.clear();
                 JSONArray arr = res.optJSONArray("restaurants");
                 if (res.optBoolean("success", false) && arr != null) {
                     for (int i = 0; i < arr.length(); i++) restaurants.add(arr.getJSONObject(i));
-                    mainHandler.post(() -> { setLoading(false); showRestaurantList(); loadAllMenuIndex(); });
+                    networkScope.post(mainHandler, () -> { setLoading(false); showRestaurantList(); loadAllMenuIndex(); });
                 } else throw new Exception(firstNonEmpty(res.optString("message"), "Gagal memuat merchant"));
             } catch (Exception e) {
-                mainHandler.post(() -> { setLoading(false); root.removeAllViews(); buildTopBar("Trans Food", "", true); addStatus("Koneksi gagal memuat merchant"); showInfo("Gagal", e.getMessage()); });
+                networkScope.post(mainHandler, () -> { setLoading(false); root.removeAllViews(); buildTopBar("Trans Food", "", true); addStatus("Koneksi gagal memuat merchant"); showInfo("Gagal", e.getMessage()); });
             }
         }).start();
     }
 
     private void loadAllMenuIndex() {
-        new Thread(() -> {
+        networkScope.newThread(() -> {
             try {
                 List<MenuSearchItem> fresh = new ArrayList<>();
                 for (JSONObject r : restaurants) {
@@ -1051,7 +1053,7 @@ public class TransFoodActivity extends Activity {
                         }
                     } catch (Exception ignored) {}
                 }
-                mainHandler.post(() -> {
+                networkScope.post(mainHandler, () -> {
                     allMenuSearchItems.clear();
                     allMenuSearchItems.addAll(fresh);
                     if (activeRestaurant == null) renderHomeResults();
@@ -1062,7 +1064,7 @@ public class TransFoodActivity extends Activity {
 
     private void loadMenus(int restaurantId) {
         setLoading(true);
-        new Thread(() -> {
+        networkScope.newThread(() -> {
             try {
                 JSONObject res = getJson(BASE_URL + "server/get_food_menus.php?restaurant_id=" + restaurantId + "&v=" + System.currentTimeMillis());
                 menus.clear();
@@ -1101,17 +1103,17 @@ public class TransFoodActivity extends Activity {
                 if (res.optBoolean("success", false) && arr != null) {
                     for (int i = 0; i < arr.length(); i++) menus.add(arr.getJSONObject(i));
                     try { mergeFoodSocial(getJson(BASE_URL + "server/customer_food_social.php?restaurant_id=" + restaurantId)); } catch (Exception ignored) {}
-                    mainHandler.post(() -> { setLoading(false); showMenuPage(); });
+                    networkScope.post(mainHandler, () -> { setLoading(false); showMenuPage(); });
                 } else throw new Exception(firstNonEmpty(res.optString("message"), "Gagal memuat menu"));
             } catch (Exception e) {
-                mainHandler.post(() -> { setLoading(false); showMenuPage(); addStatus("Gagal memuat menu"); showInfo("Gagal", e.getMessage()); });
+                networkScope.post(mainHandler, () -> { setLoading(false); showMenuPage(); addStatus("Gagal memuat menu"); showInfo("Gagal", e.getMessage()); });
             }
         }).start();
     }
 
     private void calculateOngkirThenRender() {
         setLoading(true);
-        new Thread(() -> {
+        networkScope.newThread(() -> {
             try {
                 String url = BASE_URL + "server/calculateOngkir.php?service_type=Transbike" +
                         "&restaurant_id=" + Uri.encode(String.valueOf(activeRestaurant.optInt("id", 0))) +
@@ -1131,9 +1133,9 @@ public class TransFoodActivity extends Activity {
                 coinValueRupiah = res.optInt("coin_value_rupiah", 1);
                 coinMinOrderAfterDiscount = res.optInt("coin_min_order_after_discount", 1000);
                 TierBadgeUi.saveActiveTier(this, hematTier);
-                mainHandler.post(() -> { setLoading(false); renderCheckout(); });
+                networkScope.post(mainHandler, () -> { setLoading(false); renderCheckout(); });
             } catch (Exception e) {
-                mainHandler.post(() -> { setLoading(false); deliveryFee = standardFee = hematFee = 0; distanceKm = 0; renderCheckout(); showInfo("Ongkir", e.getMessage()); });
+                networkScope.post(mainHandler, () -> { setLoading(false); deliveryFee = standardFee = hematFee = 0; distanceKm = 0; renderCheckout(); showInfo("Ongkir", e.getMessage()); });
             }
         }).start();
     }
@@ -1147,7 +1149,7 @@ public class TransFoodActivity extends Activity {
         }
         if (cart.isEmpty()) { showInfo("Keranjang kosong", "Tambahkan menu terlebih dahulu."); return; }
         setLoading(true);
-        new Thread(() -> {
+        networkScope.newThread(() -> {
             try {
                 JSONObject payload = new JSONObject();
                 payload.put("user_id", userId);
@@ -1167,7 +1169,7 @@ public class TransFoodActivity extends Activity {
                 JSONObject res = postJson(BASE_URL + "server/create_food_order.php", payload);
                 boolean ok = res.optBoolean("success", false);
                 String msg = firstNonEmpty(res.optString("message"), ok ? "Pesanan berhasil dibuat" : "Gagal membuat pesanan");
-                mainHandler.post(() -> {
+                networkScope.post(mainHandler, () -> {
                     setLoading(false);
                     if (ok) {
                         new TransivaAlertDialogBuilder(this)
@@ -1178,7 +1180,7 @@ public class TransFoodActivity extends Activity {
                     } else showInfo("Gagal", msg);
                 });
             } catch (Exception e) {
-                mainHandler.post(() -> { setLoading(false); showInfo("Error", "Koneksi gagal membuat pesanan makanan."); });
+                networkScope.post(mainHandler, () -> { setLoading(false); showInfo("Error", "Koneksi gagal membuat pesanan makanan."); });
             }
         }).start();
     }
@@ -1211,7 +1213,7 @@ public class TransFoodActivity extends Activity {
         if (targetId <= 0) return;
         boolean next = !target.optBoolean("is_favorite", false);
         button.setEnabled(false);
-        new Thread(() -> {
+        networkScope.newThread(() -> {
             try {
                 JSONObject payload = new JSONObject();
                 payload.put("action", "favorite");
@@ -1219,7 +1221,7 @@ public class TransFoodActivity extends Activity {
                 payload.put("target_id", targetId);
                 payload.put("favorite", next);
                 JSONObject res = postJson(BASE_URL + "server/customer_food_social.php", payload);
-                mainHandler.post(() -> {
+                networkScope.post(mainHandler, () -> {
                     button.setEnabled(true);
                     if (!res.optBoolean("success", false)) { showInfo("Favorit", res.optString("message", "Gagal memperbarui favorit.")); return; }
                     try { target.put("is_favorite", res.optBoolean("is_favorite", next)); } catch (Exception ignored) {}
@@ -1227,7 +1229,7 @@ public class TransFoodActivity extends Activity {
                     // Favorit langsung menjadi sinyal personalisasi untuk AI rekomendasi dashboard.
                 });
             } catch (Exception e) {
-                mainHandler.post(() -> { button.setEnabled(true); showInfo("Favorit", "Koneksi gagal memperbarui favorit."); });
+                networkScope.post(mainHandler, () -> { button.setEnabled(true); showInfo("Favorit", "Koneksi gagal memperbarui favorit."); });
             }
         }, "food-favorite").start();
     }
@@ -1236,12 +1238,12 @@ public class TransFoodActivity extends Activity {
         int menuId = menu.optInt("id", 0);
         if (menuId <= 0) return;
         setLoading(true);
-        new Thread(() -> {
+        networkScope.newThread(() -> {
             try {
                 JSONObject res = getJson(BASE_URL + "server/customer_food_social.php?action=reviews&menu_id=" + menuId);
-                mainHandler.post(() -> { setLoading(false); showReviewDialog(menu, res); });
+                networkScope.post(mainHandler, () -> { setLoading(false); showReviewDialog(menu, res); });
             } catch (Exception e) {
-                mainHandler.post(() -> { setLoading(false); showInfo("Penilaian Menu", "Gagal memuat komentar customer."); });
+                networkScope.post(mainHandler, () -> { setLoading(false); showInfo("Penilaian Menu", "Gagal memuat komentar customer."); });
             }
         }, "food-reviews").start();
     }
@@ -1300,28 +1302,28 @@ public class TransFoodActivity extends Activity {
     }
 
     private void submitMenuReview(JSONObject menu, int rating, String comment) {
-        new Thread(() -> {
+        networkScope.newThread(() -> {
             try {
                 JSONObject payload = new JSONObject(); payload.put("action", "review"); payload.put("menu_id", menu.optInt("id",0)); payload.put("rating", rating); payload.put("comment", comment == null ? "" : comment.trim());
                 JSONObject res = postJson(BASE_URL + "server/customer_food_social.php", payload);
-                mainHandler.post(() -> {
+                networkScope.post(mainHandler, () -> {
                     if (res.optBoolean("success", false)) {
                         try { menu.put("rating", res.optDouble("rating", rating)); menu.put("review_count", res.optInt("review_count", 1)); } catch (Exception ignored) {}
                         showInfo("Terima kasih", "Penilaian menu berhasil disimpan dan dapat dilihat customer lain."); renderMenus();
                     } else showInfo("Penilaian Menu", res.optString("message", "Penilaian gagal disimpan."));
                 });
-            } catch (Exception e) { mainHandler.post(() -> showInfo("Penilaian Menu", "Koneksi gagal menyimpan penilaian.")); }
+            } catch (Exception e) { networkScope.post(mainHandler, () -> showInfo("Penilaian Menu", "Koneksi gagal menyimpan penilaian.")); }
         }, "food-review-save").start();
     }
 
     private void showMerchantReviews(JSONObject merchant) {
         int rid = merchant == null ? 0 : merchant.optInt("id", 0); if (rid <= 0) return;
         setLoading(true);
-        new Thread(() -> {
+        networkScope.newThread(() -> {
             try {
                 JSONObject res = getJson(BASE_URL + "server/customer_food_social.php?action=merchant_reviews&restaurant_id=" + rid);
-                mainHandler.post(() -> { setLoading(false); showMerchantReviewDialog(merchant, res); });
-            } catch (Exception e) { mainHandler.post(() -> { setLoading(false); showInfo("Penilaian Merchant", "Gagal memuat penilaian merchant."); }); }
+                networkScope.post(mainHandler, () -> { setLoading(false); showMerchantReviewDialog(merchant, res); });
+            } catch (Exception e) { networkScope.post(mainHandler, () -> { setLoading(false); showInfo("Penilaian Merchant", "Gagal memuat penilaian merchant."); }); }
         }, "merchant-reviews").start();
     }
 
@@ -1385,7 +1387,7 @@ public class TransFoodActivity extends Activity {
     }
 
     private void submitMerchantReview(JSONObject merchant,int rating,String comment){
-        new Thread(()->{try{JSONObject payload=new JSONObject();payload.put("action","merchant_review");payload.put("restaurant_id",merchant.optInt("id",0));payload.put("rating",rating);payload.put("comment",comment==null?"":comment.trim());JSONObject res=postJson(BASE_URL+"server/customer_food_social.php",payload);mainHandler.post(()->{if(res.optBoolean("success",false)){try{merchant.put("social_rating",res.optDouble("rating",rating));merchant.put("social_review_count",res.optInt("review_count",1));}catch(Exception ignored){}showInfo("Terima kasih","Penilaian merchant berhasil disimpan.");renderMenus();}else showInfo("Penilaian Merchant",res.optString("message","Penilaian gagal disimpan."));});}catch(Exception e){mainHandler.post(()->showInfo("Penilaian Merchant","Koneksi gagal menyimpan penilaian."));}},"merchant-review-save").start();
+        networkScope.newThread(()->{try{JSONObject payload=new JSONObject();payload.put("action","merchant_review");payload.put("restaurant_id",merchant.optInt("id",0));payload.put("rating",rating);payload.put("comment",comment==null?"":comment.trim());JSONObject res=postJson(BASE_URL+"server/customer_food_social.php",payload);networkScope.post(mainHandler, ()->{if(res.optBoolean("success",false)){try{merchant.put("social_rating",res.optDouble("rating",rating));merchant.put("social_review_count",res.optInt("review_count",1));}catch(Exception ignored){}showInfo("Terima kasih","Penilaian merchant berhasil disimpan.");renderMenus();}else showInfo("Penilaian Merchant",res.optString("message","Penilaian gagal disimpan."));});}catch(Exception e){networkScope.post(mainHandler, ()->showInfo("Penilaian Merchant","Koneksi gagal menyimpan penilaian."));}},"merchant-review-save").start();
     }
 
     private ImageButton favoriteButton(boolean active) { ImageButton b=new ImageButton(this); b.setPadding(dp(9),dp(9),dp(9),dp(9)); b.setScaleType(ImageView.ScaleType.CENTER_INSIDE); b.setBackground(roundStroke(active?"#FFF1F2":"#FFFFFF","#FECDD3",dp(18),1)); setFavoriteIcon(b,active); return b; }
@@ -1428,7 +1430,7 @@ public class TransFoodActivity extends Activity {
         }
 
         // Jangan kosongkan ImageView saat render ulang qty, supaya gambar tidak kedip.
-        new Thread(() -> {
+        networkScope.newThread(() -> {
             try {
                 HttpURLConnection c = CustomerApiClient.open(this, finalUrl);
                 c.setConnectTimeout(10000);
@@ -1436,7 +1438,7 @@ public class TransFoodActivity extends Activity {
                 Bitmap bm = BitmapFactory.decodeStream(c.getInputStream());
                 c.disconnect();
                 if (bm != null) imageCache.put(finalUrl, bm);
-                mainHandler.post(() -> {
+                networkScope.post(mainHandler, () -> {
                     Object tag = view.getTag();
                     if (bm != null && tag != null && finalUrl.equals(tag.toString())) {
                         view.setImageBitmap(bm);
@@ -1551,4 +1553,12 @@ public class TransFoodActivity extends Activity {
     private static class MenuSearchItem { int restaurantId; int menuId; String restaurantName; String menuName; String category; String description; String image; double price; boolean active; boolean trackStock; int stock; JSONObject restaurant; }
     private static class CartItem { int id; int restaurantId; String name; double basePrice; double price; int qty; String key; String optionText; JSONArray selectedOptions; }
     private static class OptionSelection { String type; String label; JSONArray items; RadioGroup radioGroup; LinearLayout checkBoxContainer; }
+
+
+    @Override
+    protected void onDestroy() {
+        networkScope.destroy();
+        try { mainHandler.removeCallbacksAndMessages(null); } catch (Exception ignored) {}
+        super.onDestroy();
+    }
 }

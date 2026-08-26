@@ -51,6 +51,8 @@ import java.util.Locale;
 public class CustomerDashboardActivity extends Activity
         implements CustomerDashboardContract.View {
 
+    private final CustomerLifecycleNetworkScope networkScope = new CustomerLifecycleNetworkScope();
+
     // Menyimpan pilihan customer ketika card transisi K Online di Dashboard ditutup.
     private static final String PREF_KONLINE_TRANSITION = "k_online_transition";
     private static final String KEY_KONLINE_DASH_DISMISSED = "dashboard_dismissed";
@@ -207,6 +209,7 @@ public class CustomerDashboardActivity extends Activity
 
     @Override
     protected void onDestroy() {
+        networkScope.destroy();
         stopPromoAutoSlide();
 
         if (presenter != null) {
@@ -998,7 +1001,7 @@ public class CustomerDashboardActivity extends Activity
     }
 
     private void loadAiFavorites() {
-        TransivaNetworkExecutor.execute(() -> {
+        networkScope.execute(() -> {
             HttpURLConnection conn = null;
             try {
                 conn = CustomerApiClient.open(this, "https://transiva.my.id/server/customer_favorites.php?action=list");
@@ -1016,14 +1019,14 @@ public class CustomerDashboardActivity extends Activity
                     else if ("work".equalsIgnoreCase(x.optString("type"))) work = x;
                 }
                 final JSONObject fHome = home, fWork = work;
-                uiHandler.post(() -> { aiHomeFavorite = fHome; aiWorkFavorite = fWork; refreshSmartRecommendation(); });
+                networkScope.post(uiHandler, () -> { aiHomeFavorite = fHome; aiWorkFavorite = fWork; refreshSmartRecommendation(); });
             } catch (Exception ignored) {
             } finally { if (conn != null) conn.disconnect(); }
         });
     }
 
     private void loadAiFamilyMeta() {
-        TransivaNetworkExecutor.execute(() -> {
+        networkScope.execute(() -> {
             HttpURLConnection conn = null;
             try {
                 conn = CustomerApiClient.open(this, "https://transiva.my.id/server/customer_family.php?action=list");
@@ -1035,7 +1038,7 @@ public class CustomerDashboardActivity extends Activity
                 JSONObject o = new JSONObject(sb.toString());
                 final int count = o.optInt("member_count", -1);
                 final int max = Math.max(1, o.optInt("max_members", 1));
-                uiHandler.post(() -> { aiFamilyCount = count; aiFamilyMax = max; refreshSmartRecommendation(); });
+                networkScope.post(uiHandler, () -> { aiFamilyCount = count; aiFamilyMax = max; refreshSmartRecommendation(); });
             } catch (Exception ignored) {
             } finally { if (conn != null) conn.disconnect(); }
         });
@@ -2201,7 +2204,7 @@ public class CustomerDashboardActivity extends Activity
     }
 
     private void resolveLocation(Location location) {
-        new Thread(
+        networkScope.newThread(
                 () -> {
                     String result = "Lokasi saya";
 
@@ -2246,7 +2249,7 @@ public class CustomerDashboardActivity extends Activity
 
                     String finalResult = result;
 
-                    runOnUiThread(
+                    networkScope.post(uiHandler, 
                             () -> {
                                 currentLocation = finalResult;
                                 locationText.setText(finalResult);

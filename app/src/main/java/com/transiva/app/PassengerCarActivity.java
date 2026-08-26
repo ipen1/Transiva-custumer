@@ -51,6 +51,8 @@ import java.util.regex.Pattern;
 
 public class PassengerCarActivity extends Activity {
 
+    private final CustomerLifecycleNetworkScope networkScope = new CustomerLifecycleNetworkScope();
+
     private static final String BASE_URL = "https://transiva.my.id/";
     private static final String CREATE_ORDER_URL = BASE_URL + "server/createOrder.php";
     private static final String PAYMENT_QUOTE_URL = BASE_URL + "server/ride_payment_quote.php";
@@ -135,7 +137,7 @@ public class PassengerCarActivity extends Activity {
         familyMemberName = getIntent() == null ? "" : firstNonEmpty(getIntent().getStringExtra("family_member_name"), "");
         buildLayout();
         applySmartFavoriteIntent();
-        CustomerBestOffer.load(this, "TransCar", offer -> runOnUiThread(() -> {
+        CustomerBestOffer.load(this, "TransCar", offer -> networkScope.post(mainHandler, () -> {
             if (offer != null && voucherInput != null && voucherInput.getText().toString().trim().isEmpty()) {
                 String code = offer.optString("promo_code", "").trim();
                 if (!code.isEmpty()) {
@@ -521,10 +523,10 @@ public class PassengerCarActivity extends Activity {
         if (!ensureAuthTokenForOrder()) return;
         hematBtn.setEnabled(false);
         TierBadgeUi.showSpinner(hematBtn, dp(20));
-        new Thread(() -> {
+        networkScope.newThread(() -> {
             try {
                 JSONObject res = postJson(HEMAT_STATUS_URL, new JSONObject());
-                mainHandler.post(() -> {
+                networkScope.post(mainHandler, () -> {
                     hematBtn.setEnabled(true);
                     if (!res.optBoolean("success", false)) {
                         TierBadgeUi.restoreHematButton(hematBtn, TierBadgeUi.getCachedActiveTier(this), dp(20), dp(2));
@@ -557,7 +559,7 @@ public class PassengerCarActivity extends Activity {
                             .show();
                 });
             } catch (Exception e) {
-                mainHandler.post(() -> { hematBtn.setEnabled(true); TierBadgeUi.restoreHematButton(hematBtn, TierBadgeUi.getCachedActiveTier(this), dp(20), dp(2)); toastDialog("Gagal memeriksa Transiva Coin: " + e.getMessage()); });
+                networkScope.post(mainHandler, () -> { hematBtn.setEnabled(true); TierBadgeUi.restoreHematButton(hematBtn, TierBadgeUi.getCachedActiveTier(this), dp(20), dp(2)); toastDialog("Gagal memeriksa Transiva Coin: " + e.getMessage()); });
             }
         }).start();
     }
@@ -666,7 +668,7 @@ public class PassengerCarActivity extends Activity {
     }
     public class MapBridge {
         @JavascriptInterface public void onMapReady(double lat, double lng, double pLat, double pLng) {
-            mainHandler.post(() -> {
+            networkScope.post(mainHandler, () -> {
                 mapReady = true;
                 centerLat = lat;
                 centerLng = lng;
@@ -795,7 +797,7 @@ public class PassengerCarActivity extends Activity {
         final String rawLocation = shared.trim();
         setLoading(true);
 
-        new Thread(() -> {
+        networkScope.newThread(() -> {
             String resolved = rawLocation;
             try {
                 if (resolved.startsWith("geo:")) {
@@ -814,7 +816,7 @@ public class PassengerCarActivity extends Activity {
                 }
 
                 final double[] coordinate = extractLatLng(resolved);
-                mainHandler.post(() -> {
+                networkScope.post(mainHandler, () -> {
                     setLoading(false);
                     if (coordinate == null || !validCoord(coordinate[0], coordinate[1])) {
                         toastDialog("Lokasi dari WhatsApp/Google Maps tidak bisa dibaca.");
@@ -849,7 +851,7 @@ public class PassengerCarActivity extends Activity {
                     updateModeUI();
                 });
             } catch (Exception ignored) {
-                mainHandler.post(() -> {
+                networkScope.post(mainHandler, () -> {
                     setLoading(false);
                     toastDialog("Gagal membuka lokasi yang dibagikan.");
                 });
@@ -867,7 +869,7 @@ public class PassengerCarActivity extends Activity {
         hideKeyboard();
         setLoading(true);
 
-        new Thread(() -> {
+        networkScope.newThread(() -> {
             String finalLink = link;
 
             try {
@@ -880,7 +882,7 @@ public class PassengerCarActivity extends Activity {
 
                 double[] c = extractLatLng(finalLink);
 
-                mainHandler.post(() -> {
+                networkScope.post(mainHandler, () -> {
                     setLoading(false);
 
                     if (c == null || !validCoord(c[0], c[1])) {
@@ -903,7 +905,7 @@ public class PassengerCarActivity extends Activity {
                     updateModeUI();
                 });
             } catch (Exception e) {
-                mainHandler.post(() -> {
+                networkScope.post(mainHandler, () -> {
                     setLoading(false);
                     toastDialog("Gagal membaca link Google Maps.");
                 });
@@ -930,10 +932,10 @@ public class PassengerCarActivity extends Activity {
 
 
     private void resolveAddressAsync(boolean isPickup, double lat, double lng) {
-        new Thread(() -> {
+        networkScope.newThread(() -> {
             String address = buildSmartAddress(lat, lng);
 
-            mainHandler.post(() -> {
+            networkScope.post(mainHandler, () -> {
                 if (destroyed) return;
 
                 if (isPickup) {
@@ -1100,12 +1102,12 @@ public class PassengerCarActivity extends Activity {
     }
 
     private void loadMapPlaces() {
-        new Thread(() -> {
+        networkScope.newThread(() -> {
             try {
                 JSONObject food = getJson(GET_BUSINESSES_URL + "?v=" + System.currentTimeMillis());
                 JSONObject laundry = getJson(GET_LAUNDRIES_URL + "?v=" + System.currentTimeMillis());
 
-                mainHandler.post(() -> {
+                networkScope.post(mainHandler, () -> {
                     if (destroyed || !mapReady) return;
 
                     if (mapView != null) mapView.clearPlaces();
@@ -1147,12 +1149,12 @@ public class PassengerCarActivity extends Activity {
     private void loadOnlineDrivers() {
         if (destroyed) return;
 
-        new Thread(() -> {
+        networkScope.newThread(() -> {
             try {
                 JSONObject res = getJson(GET_ONLINE_DRIVERS_URL + "?type=car&v=" + System.currentTimeMillis());
                 JSONArray arr = res.optJSONArray("drivers");
 
-                mainHandler.post(() -> {
+                networkScope.post(mainHandler, () -> {
                     if (destroyed || !mapReady) return;
 
                     if (mapView != null) mapView.clearOnlineDrivers();
@@ -1303,7 +1305,7 @@ public class PassengerCarActivity extends Activity {
         orderBtn.setEnabled(false);
         orderBtn.setText("Proses...");
 
-        new Thread(() -> {
+        networkScope.newThread(() -> {
             try {
                 String orderId = "ORD-" + System.currentTimeMillis();
 
@@ -1344,9 +1346,9 @@ public class PassengerCarActivity extends Activity {
                 payload.put("voucher_code", voucherInput == null ? "" : voucherInput.getText().toString().trim().toUpperCase(Locale.US));
 
                 JSONObject res = postJson(CREATE_ORDER_URL, payload);
-                mainHandler.post(() -> handleOrderResult(res));
+                networkScope.post(mainHandler, () -> handleOrderResult(res));
             } catch (Exception e) {
-                mainHandler.post(() -> {
+                networkScope.post(mainHandler, () -> {
                     resetOrderButton();
                     toastDialog("Gagal membuat order Transcar. " + cleanError(e.getMessage()));
                 });
@@ -1458,7 +1460,7 @@ public class PassengerCarActivity extends Activity {
         finalPriceText.setTextColor(Color.parseColor("#64748B"));
         paymentSummaryText.setText("Mengambil tarif dari database...");
 
-        new Thread(() -> {
+        networkScope.newThread(() -> {
             try {
                 JSONObject payload = new JSONObject();
 
@@ -1492,7 +1494,7 @@ public class PassengerCarActivity extends Activity {
 
                 JSONObject res = postJson(PAYMENT_QUOTE_URL, payload);
 
-                mainHandler.post(() -> {
+                networkScope.post(mainHandler, () -> {
                     if (destroyed) return;
 
                     if (!res.optBoolean("success", false)) {
@@ -1596,7 +1598,7 @@ public class PassengerCarActivity extends Activity {
                     paymentSummaryText.setText(info);
                 });
             } catch (Exception e) {
-                mainHandler.post(() -> {
+                networkScope.post(mainHandler, () -> {
                     if (destroyed) return;
                     paymentSummaryText.setText("Gagal terhubung ke server tarif");
                     finalPriceText.setText("Rp -");
@@ -1713,10 +1715,10 @@ public class PassengerCarActivity extends Activity {
     private void requestVisibleOsrmRoute() {
         if (!mapReady || mapView == null || !validCoord(pickupLat, pickupLng) || !validCoord(deliveryLat, deliveryLng)) return;
         final double aLat = pickupLat, aLng = pickupLng, bLat = deliveryLat, bLng = deliveryLng;
-        new Thread(() -> {
+        networkScope.newThread(() -> {
             try {
                 StableRouteEngine.Result route = StableRouteEngine.fetch(aLat, aLng, bLat, bLng);
-                mainHandler.post(() -> { if (!destroyed && mapView != null) mapView.drawRideRoute(route.latLngPoints); });
+                networkScope.post(mainHandler, () -> { if (!destroyed && mapView != null) mapView.drawRideRoute(route.latLngPoints); });
             } catch (Exception ignored) {}
         }, "transiva-google-osrm-preview").start();
     }
@@ -1844,6 +1846,7 @@ public class PassengerCarActivity extends Activity {
     }
 
     @Override protected void onDestroy() {
+        networkScope.destroy();
         destroyed = true;
         try {
             mainHandler.removeCallbacksAndMessages(null);

@@ -51,6 +51,8 @@ import android.util.Base64;
 
 public class CustomerTripActivity extends Activity {
 
+    private final CustomerLifecycleNetworkScope networkScope = new CustomerLifecycleNetworkScope();
+
     private static final String BASE_URL = "https://transiva.my.id/";
     private static final String CHECK_STATUS_URL = BASE_URL + "server/check_order_status.php";
     private static final String PICKUP_STATUS_URL = BASE_URL + "server/get_pickup_order_status.php";
@@ -408,14 +410,14 @@ public class CustomerTripActivity extends Activity {
 
     public class TripBridge {
         @JavascriptInterface public void onMapReady() {
-            mainHandler.post(() -> {
+            networkScope.post(mainHandler, () -> {
                 mapReady = true;
                 pushAllMarkersToMap();
             });
         }
 
         @JavascriptInterface public void onRoute(double km, double seconds) {
-            mainHandler.post(() -> {
+            networkScope.post(mainHandler, () -> {
                 if (km > 0 && seconds > 0) {
                     tripInfoText.setText("Estimasi rute driver: " + String.format(Locale.US, "%.1f", km) + " KM • " + Math.max(1, (int)Math.ceil(seconds / 60.0)) + " menit");
                 }
@@ -436,7 +438,7 @@ public class CustomerTripActivity extends Activity {
         if (!trackingRequestInFlight.compareAndSet(false, true)) return;
 
         final long generation = trackingGeneration.incrementAndGet();
-        TransivaNetworkExecutor.execute(() -> {
+        networkScope.execute(() -> {
             try {
                 final JSONObject res;
                 if (orderSource.contains("pickup")) {
@@ -445,7 +447,7 @@ public class CustomerTripActivity extends Activity {
                     JSONObject payload = new JSONObject().put("order_id", orderId);
                     res = postJson(CHECK_STATUS_URL, payload);
                 }
-                mainHandler.post(() -> {
+                networkScope.post(mainHandler, () -> {
                     if (generation != trackingGeneration.get() || isFinishing() || isDestroyed()) return;
                     setLoading(false);
                     if (res.optBoolean("success", false)) {
@@ -458,7 +460,7 @@ public class CustomerTripActivity extends Activity {
                 TransivaCrashReporter.recordNetworkFailure(e,
                         orderSource.contains("pickup") ? "GET" : "POST",
                         orderSource.contains("pickup") ? PICKUP_STATUS_URL : CHECK_STATUS_URL);
-                mainHandler.post(() -> {
+                networkScope.post(mainHandler, () -> {
                     if (generation != trackingGeneration.get() || isFinishing() || isDestroyed()) return;
                     setLoading(false);
                     if (statusText != null) statusText.setText("Koneksi tracking belum stabil. Mencoba lagi...");
@@ -633,11 +635,11 @@ public class CustomerTripActivity extends Activity {
         if(priceActions!=null) priceActions.setVisibility(change.equals("pending")?View.VISIBLE:View.GONE);
     }
     private void sendCustomerAction(String action){
-        if(orderId.isEmpty()) return; setLoading(true); TransivaNetworkExecutor.execute(()->{ try{
+        if(orderId.isEmpty()) return; setLoading(true); networkScope.execute(()->{ try{
             JSONObject p=new JSONObject(); p.put("order_id",orderId); p.put("source",orderSource.contains("pickup")?"pickup_orders":"orders"); p.put("action",action);
             JSONObject r=postJson(CUSTOMER_ACTION_URL,p); boolean ok=r.optBoolean("success",false); String m=firstNonEmpty(r.optString("message",""),ok?"Berhasil":"Gagal");
-            mainHandler.post(()->{setLoading(false); showInfo(ok?"Berhasil":"Gagal",m); if(ok) fetchDriverPosition();});
-        }catch(Exception e){TransivaCrashReporter.recordNetworkFailure(e,"POST",CUSTOMER_ACTION_URL);mainHandler.post(()->{setLoading(false);showInfo("Gagal","Koneksi server bermasalah.");});}});
+            networkScope.post(mainHandler, ()->{setLoading(false); showInfo(ok?"Berhasil":"Gagal",m); if(ok) fetchDriverPosition();});
+        }catch(Exception e){TransivaCrashReporter.recordNetworkFailure(e,"POST",CUSTOMER_ACTION_URL);networkScope.post(mainHandler, ()->{setLoading(false);showInfo("Gagal","Koneksi server bermasalah.");});}});
     }
     private String rupiah(double value){ return "Rp"+java.text.NumberFormat.getNumberInstance(new Locale("id","ID")).format(Math.round(value)); }
 
@@ -651,12 +653,12 @@ public class CustomerTripActivity extends Activity {
         routeRequestInFlight=true; lastRouteRequestAt=now;
         final double fromLat=lastDriverLat,fromLng=lastDriverLng;
         final String status=lastStatus;
-        TransivaNetworkExecutor.execute(() -> {
+        networkScope.execute(() -> {
             try{
                 StableRouteEngine.Result r=StableRouteEngine.fetch(fromLat,fromLng,toLat,toLng);
                 lastRouteFromLat=fromLat; lastRouteFromLng=fromLng; lastRouteToLat=toLat; lastRouteToLng=toLng; lastRouteStatus=status;
                 final String pts=r.pointsJson(); final double km=r.distanceMeters/1000d,sec=r.durationSeconds;
-                mainHandler.post(() -> { if (mapView != null) { mapView.drawOsrmRoute(r.latLngPoints, status); mapView.fitAll(); } if (tripInfoText != null && km > 0 && sec > 0) tripInfoText.setText("Estimasi rute driver: " + String.format(Locale.US, "%.1f", km) + " KM • " + Math.max(1, (int)Math.ceil(sec / 60.0)) + " menit"); });
+                networkScope.post(mainHandler, () -> { if (mapView != null) { mapView.drawOsrmRoute(r.latLngPoints, status); mapView.fitAll(); } if (tripInfoText != null && km > 0 && sec > 0) tripInfoText.setText("Estimasi rute driver: " + String.format(Locale.US, "%.1f", km) + " KM • " + Math.max(1, (int)Math.ceil(sec / 60.0)) + " menit"); });
             }catch(Exception error){ TransivaCrashReporter.record(error,"customer_route","stable_route"); } finally{ routeRequestInFlight=false; }
         });
     }
@@ -769,7 +771,7 @@ public class CustomerTripActivity extends Activity {
 
     private void submitFoodReview(JSONObject order, int rating, String review, AlertDialog dialog) {
         setLoading(true);
-        TransivaNetworkExecutor.execute(() -> {
+        networkScope.execute(() -> {
             try {
                 JSONObject body = new JSONObject();
                 body.put("id", order.optInt("id", 0));
@@ -779,14 +781,14 @@ public class CustomerTripActivity extends Activity {
                 JSONObject res = postJson(SAVE_FOOD_REVIEW_URL, body);
                 boolean ok = res.optBoolean("success", false);
                 String msg = firstNonEmpty(res.optString("message"), ok ? "Terima kasih atas ulasannya." : "Rating makanan gagal disimpan.");
-                mainHandler.post(() -> {
+                networkScope.post(mainHandler, () -> {
                     setLoading(false);
                     if (ok) { dialog.dismiss(); showInfo("Terima kasih", msg); mainHandler.postDelayed(this::goHomeAfterFinished, 700); }
                     else showInfo("Gagal", msg);
                 });
             } catch (Exception e) {
                 TransivaCrashReporter.recordNetworkFailure(e,"POST",SAVE_FOOD_REVIEW_URL);
-                mainHandler.post(() -> { setLoading(false); showInfo("Gagal", "Koneksi server bermasalah."); });
+                networkScope.post(mainHandler, () -> { setLoading(false); showInfo("Gagal", "Koneksi server bermasalah."); });
             }
         });
     }
@@ -825,7 +827,7 @@ public class CustomerTripActivity extends Activity {
 
     private void submitDriverReview(int rating, String review, AlertDialog dialog) {
         setLoading(true);
-        TransivaNetworkExecutor.execute(() -> {
+        networkScope.execute(() -> {
             try {
                 JSONObject body = new JSONObject();
                 body.put("order_id", orderId);
@@ -835,14 +837,14 @@ public class CustomerTripActivity extends Activity {
                 JSONObject res = postJson(SAVE_REVIEW_URL, body);
                 boolean ok = res.optBoolean("success", false);
                 String msg = firstNonEmpty(res.optString("message"), ok ? "Terima kasih atas ulasannya." : "Rating gagal disimpan.");
-                mainHandler.post(() -> {
+                networkScope.post(mainHandler, () -> {
                     setLoading(false);
                     if (ok) { dialog.dismiss(); showInfo("Terima kasih", msg); mainHandler.postDelayed(this::goHomeAfterFinished, 700); }
                     else showInfo("Gagal", msg);
                 });
             } catch (Exception e) {
                 TransivaCrashReporter.recordNetworkFailure(e,"POST",SAVE_REVIEW_URL);
-                mainHandler.post(() -> { setLoading(false); showInfo("Gagal", "Koneksi server bermasalah."); });
+                networkScope.post(mainHandler, () -> { setLoading(false); showInfo("Gagal", "Koneksi server bermasalah."); });
             }
         });
     }
@@ -864,7 +866,7 @@ public class CustomerTripActivity extends Activity {
                 mainHandler.postDelayed(this, 1000);
             }
         };
-        mainHandler.post(r);
+        networkScope.post(mainHandler, r);
     }
 
     private void goHomeAfterFinished() {
@@ -881,13 +883,13 @@ public class CustomerTripActivity extends Activity {
     private void shareTrip() {
         if (orderId == null || orderId.trim().isEmpty()) { showInfo("Bagikan Trip", "ID order belum tersedia."); return; }
         setLoading(true);
-        TransivaNetworkExecutor.execute(() -> {
+        networkScope.execute(() -> {
             try {
                 JSONObject req = new JSONObject(); req.put("order_id", orderId);
                 JSONObject res = postJson(CREATE_SHARED_TRIP_URL, req);
                 final String liveUrl = res.optString("share_url", "");
                 final boolean ok = res.optBoolean("success", false) && !liveUrl.isEmpty();
-                mainHandler.post(() -> {
+                networkScope.post(mainHandler, () -> {
                     setLoading(false);
                     if (!ok) { showInfo("Bagikan Trip", res.optString("message", "Gagal membuat tautan aman.")); return; }
                     try {
@@ -897,7 +899,7 @@ public class CustomerTripActivity extends Activity {
                         startActivity(Intent.createChooser(send, "Bagikan perjalanan live"));
                     } catch (Exception e) { showInfo("Bagikan Trip", "Tidak dapat membuka menu berbagi."); }
                 });
-            } catch (Exception e) { mainHandler.post(() -> { setLoading(false); showInfo("Bagikan Trip", "Koneksi server bermasalah."); }); }
+            } catch (Exception e) { networkScope.post(mainHandler, () -> { setLoading(false); showInfo("Bagikan Trip", "Koneksi server bermasalah."); }); }
         });
     }
 
@@ -1222,6 +1224,7 @@ public class CustomerTripActivity extends Activity {
     }
 
     @Override protected void onDestroy() {
+        networkScope.destroy();
         trackingGeneration.incrementAndGet();
         trackingRequestInFlight.set(false);
         mainHandler.removeCallbacksAndMessages(null);

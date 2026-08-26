@@ -61,6 +61,8 @@ import java.util.Locale;
 
 public class SearchDriverActivity extends Activity {
 
+    private final CustomerLifecycleNetworkScope networkScope = new CustomerLifecycleNetworkScope();
+
     private static final String BASE_URL = "https://transiva.my.id/";
     private static final int TIMEOUT_MS = 20000;
     private static final int REQ_LOCATION = 2201;
@@ -501,7 +503,7 @@ public class SearchDriverActivity extends Activity {
 
     private void loadIdleDriversToRadar() {
         if (!radarRequestInFlight.compareAndSet(false, true)) return;
-        TransivaNetworkExecutor.execute(() -> {
+        networkScope.execute(() -> {
             try {
                 JSONObject payload = new JSONObject();
                 payload.put("type", normalizeDriverType(cachedDriverType));
@@ -516,7 +518,7 @@ public class SearchDriverActivity extends Activity {
 
                 JSONObject res = postJson(BASE_URL + "server/get_idle_drivers.php", payload);
                 if (!res.optBoolean("success", false)) {
-                    mainHandler.post(() -> setSubtitle(firstNonEmpty(res.optString("message"), "Gagal mengambil driver")));
+                    networkScope.post(mainHandler, () -> setSubtitle(firstNonEmpty(res.optString("message"), "Gagal mengambil driver")));
                     return;
                 }
 
@@ -524,7 +526,7 @@ public class SearchDriverActivity extends Activity {
                 List<RadarDriver> drivers = parseDrivers(arr);
                 int serverPhase = Math.max(1, Math.min(3, res.optInt("search_phase", searchPhase)));
                 String activeOffer = firstNonEmpty(res.optString("offered_driver", ""), offeredDriverUsername);
-                mainHandler.post(() -> {
+                networkScope.post(mainHandler, () -> {
                     searchPhase = serverPhase;
                     offeredDriverUsername = activeOffer;
                     radarView.setSearchPhase(serverPhase);
@@ -540,7 +542,7 @@ public class SearchDriverActivity extends Activity {
                     }
                 });
             } catch (Exception e) {
-                mainHandler.post(() -> setSubtitle("Koneksi gagal mengambil driver"));
+                networkScope.post(mainHandler, () -> setSubtitle("Koneksi gagal mengambil driver"));
             } finally {
                 radarRequestInFlight.set(false);
             }
@@ -577,7 +579,7 @@ public class SearchDriverActivity extends Activity {
 
     private void checkOrderStatus() {
         if (!statusRequestInFlight.compareAndSet(false, true)) return;
-        TransivaNetworkExecutor.execute(() -> {
+        networkScope.execute(() -> {
             try {
                 JSONObject payload = new JSONObject();
                 payload.put("order_id", activeOrderId);
@@ -601,7 +603,7 @@ public class SearchDriverActivity extends Activity {
                 if (phaseFromServer <= 0) phaseFromServer = searchPhase;
                 final int finalPhaseFromServer = phaseFromServer;
                 final String finalCurrentOffer = currentOffer;
-                mainHandler.post(() -> {
+                networkScope.post(mainHandler, () -> {
                     offeredDriverUsername = finalCurrentOffer;
                     setSearchPhase(finalPhaseFromServer);
                     if (radarView != null) radarView.setOfferedDriver(finalCurrentOffer);
@@ -622,14 +624,14 @@ public class SearchDriverActivity extends Activity {
                     else merchantLine = "";
                     if (!merchantLine.isEmpty()) {
                         String finalMerchantLine = merchantLine;
-                        mainHandler.post(() -> setSubtitle(finalMerchantLine));
+                        networkScope.post(mainHandler, () -> setSubtitle(finalMerchantLine));
                     }
                 }
 
                 if (status.equals("canceled") || status.equals("cancelled")) {
                     CustomerRedispatchService.stop(this);
                     clearOrderPrefs();
-                    mainHandler.post(() -> {
+                    networkScope.post(mainHandler, () -> {
                         destroyLoops();
                         openCustomerDashboard();
                     });
@@ -655,7 +657,7 @@ public class SearchDriverActivity extends Activity {
                         || (serverDriverFound && !assignedDriver.isEmpty());
 
                 if (trulyAccepted) {
-                    mainHandler.post(() -> showDriver(res));
+                    networkScope.post(mainHandler, () -> showDriver(res));
                 }
             } catch (Exception ignored) {
             } finally {
@@ -828,7 +830,7 @@ public class SearchDriverActivity extends Activity {
                 ? value
                 : BASE_URL + (value.startsWith("/") ? value.substring(1) : value);
 
-        TransivaNetworkExecutor.execute(() -> {
+        networkScope.execute(() -> {
             HttpURLConnection conn = null;
             try {
                 conn = CustomerApiClient.open(this, photoUrl);
@@ -839,7 +841,7 @@ public class SearchDriverActivity extends Activity {
                 try (InputStream in = conn.getInputStream()) {
                     Bitmap bitmap = BitmapFactory.decodeStream(in);
                     if (bitmap != null) {
-                        mainHandler.post(() -> {
+                        networkScope.post(mainHandler, () -> {
                             if (destroyed || driverPhotoView == null) return;
                             driverPhotoView.setImageBitmap(bitmap);
                             driverPhotoView.setVisibility(View.VISIBLE);
@@ -848,7 +850,7 @@ public class SearchDriverActivity extends Activity {
                     }
                 }
             } catch (Exception ignored) {
-                mainHandler.post(() -> {
+                networkScope.post(mainHandler, () -> {
                     if (driverPhotoView != null) driverPhotoView.setVisibility(View.GONE);
                     if (driverAvatarText != null) driverAvatarText.setVisibility(View.VISIBLE);
                 });
@@ -962,7 +964,7 @@ public class SearchDriverActivity extends Activity {
         setSubtitle("Mohon tunggu sebentar");
         progressBar.setVisibility(View.VISIBLE);
 
-        TransivaNetworkExecutor.execute(() -> {
+        networkScope.execute(() -> {
             try {
                 String token = new SessionManager(this).getToken();
                 if (token == null || token.trim().isEmpty()) {
@@ -980,7 +982,7 @@ public class SearchDriverActivity extends Activity {
                 );
                 boolean ok = res.optBoolean("success", false);
                 String msg = firstNonEmpty(res.optString("message"), ok ? "Order dibatalkan" : "Order gagal dibatalkan");
-                mainHandler.post(() -> {
+                networkScope.post(mainHandler, () -> {
                     progressBar.setVisibility(View.GONE);
                     if (ok) {
                         clearOrderPrefs();
@@ -995,7 +997,7 @@ public class SearchDriverActivity extends Activity {
                     }
                 });
             } catch (Exception e) {
-                mainHandler.post(() -> {
+                networkScope.post(mainHandler, () -> {
                     progressBar.setVisibility(View.GONE);
                     isCanceling = false;
                     cancelBtn.setEnabled(true);
@@ -1092,6 +1094,7 @@ public class SearchDriverActivity extends Activity {
     }
 
     @Override protected void onDestroy() {
+        networkScope.destroy();
         destroyLoops();
         try { if (miniMap != null) miniMap.destroy(); } catch (Exception ignored) {}
         super.onDestroy();

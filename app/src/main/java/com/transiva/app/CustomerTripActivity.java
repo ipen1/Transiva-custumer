@@ -45,6 +45,8 @@ import java.net.HttpURLConnection;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.util.Locale;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicLong;
 import android.util.Base64;
 
 public class CustomerTripActivity extends Activity {
@@ -67,6 +69,8 @@ public class CustomerTripActivity extends Activity {
     private static final long MAP_FALLBACK_READY_MS = 2500;
 
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
+    private final AtomicBoolean trackingRequestInFlight = new AtomicBoolean(false);
+    private final AtomicLong trackingGeneration = new AtomicLong(0L);
 
     private final Runnable trackingRunnable = new Runnable() {
         @Override public void run() {
@@ -428,11 +432,13 @@ public class CustomerTripActivity extends Activity {
     }
 
     private void fetchDriverPosition() {
-        if (orderId.length() == 0 || finishedCountdownStarted) return;
+        if (orderId.length() == 0 || finishedCountdownStarted || isFinishing() || isDestroyed()) return;
+        if (!trackingRequestInFlight.compareAndSet(false, true)) return;
 
-        new Thread(() -> {
+        final long generation = trackingGeneration.incrementAndGet();
+        TransivaNetworkExecutor.execute(() -> {
             try {
-                JSONObject res;
+                final JSONObject res;
                 if (orderSource.contains("pickup")) {
                     res = getJson(PICKUP_STATUS_URL + "?order_id=" + Uri.encode(orderId));
                 } else {
@@ -440,20 +446,27 @@ public class CustomerTripActivity extends Activity {
                     res = postJson(CHECK_STATUS_URL, payload);
                 }
                 mainHandler.post(() -> {
+                    if (generation != trackingGeneration.get() || isFinishing() || isDestroyed()) return;
                     setLoading(false);
                     if (res.optBoolean("success", false)) {
                         handleStatusResponse(res);
-                    } else {
+                    } else if (statusText != null) {
                         statusText.setText(firstNonEmpty(res.optString("message", ""), "Menunggu status order..."));
                     }
                 });
             } catch (Exception e) {
+                TransivaCrashReporter.recordNetworkFailure(e,
+                        orderSource.contains("pickup") ? "GET" : "POST",
+                        orderSource.contains("pickup") ? PICKUP_STATUS_URL : CHECK_STATUS_URL);
                 mainHandler.post(() -> {
+                    if (generation != trackingGeneration.get() || isFinishing() || isDestroyed()) return;
                     setLoading(false);
-                    statusText.setText("Koneksi tracking belum stabil. Mencoba lagi...");
+                    if (statusText != null) statusText.setText("Koneksi tracking belum stabil. Mencoba lagi...");
                 });
+            } finally {
+                trackingRequestInFlight.set(false);
             }
-        }).start();
+        });
     }
 
     private void handleStatusResponse(JSONObject res) {
@@ -620,11 +633,11 @@ public class CustomerTripActivity extends Activity {
         if(priceActions!=null) priceActions.setVisibility(change.equals("pending")?View.VISIBLE:View.GONE);
     }
     private void sendCustomerAction(String action){
-        if(orderId.isEmpty()) return; setLoading(true); new Thread(()->{ try{
+        if(orderId.isEmpty()) return; setLoading(true); TransivaNetworkExecutor.execute(()->{ try{
             JSONObject p=new JSONObject(); p.put("order_id",orderId); p.put("source",orderSource.contains("pickup")?"pickup_orders":"orders"); p.put("action",action);
             JSONObject r=postJson(CUSTOMER_ACTION_URL,p); boolean ok=r.optBoolean("success",false); String m=firstNonEmpty(r.optString("message",""),ok?"Berhasil":"Gagal");
             mainHandler.post(()->{setLoading(false); showInfo(ok?"Berhasil":"Gagal",m); if(ok) fetchDriverPosition();});
-        }catch(Exception e){mainHandler.post(()->{setLoading(false);showInfo("Gagal","Koneksi server bermasalah.");});}},"customer-action").start();
+        }catch(Exception e){TransivaCrashReporter.recordNetworkFailure(e,"POST",CUSTOMER_ACTION_URL);mainHandler.post(()->{setLoading(false);showInfo("Gagal","Koneksi server bermasalah.");});}});
     }
     private String rupiah(double value){ return "Rp"+java.text.NumberFormat.getNumberInstance(new Locale("id","ID")).format(Math.round(value)); }
 
@@ -638,14 +651,14 @@ public class CustomerTripActivity extends Activity {
         routeRequestInFlight=true; lastRouteRequestAt=now;
         final double fromLat=lastDriverLat,fromLng=lastDriverLng;
         final String status=lastStatus;
-        new Thread(() -> {
+        TransivaNetworkExecutor.execute(() -> {
             try{
                 StableRouteEngine.Result r=StableRouteEngine.fetch(fromLat,fromLng,toLat,toLng);
                 lastRouteFromLat=fromLat; lastRouteFromLng=fromLng; lastRouteToLat=toLat; lastRouteToLng=toLng; lastRouteStatus=status;
                 final String pts=r.pointsJson(); final double km=r.distanceMeters/1000d,sec=r.durationSeconds;
                 mainHandler.post(() -> { if (mapView != null) { mapView.drawOsrmRoute(r.latLngPoints, status); mapView.fitAll(); } if (tripInfoText != null && km > 0 && sec > 0) tripInfoText.setText("Estimasi rute driver: " + String.format(Locale.US, "%.1f", km) + " KM • " + Math.max(1, (int)Math.ceil(sec / 60.0)) + " menit"); });
-            }catch(Exception ignored){} finally{ routeRequestInFlight=false; }
-        },"transiva-route-customer").start();
+            }catch(Exception error){ TransivaCrashReporter.record(error,"customer_route","stable_route"); } finally{ routeRequestInFlight=false; }
+        });
     }
 
     private float distanceMeters(double aLat,double aLng,double bLat,double bLng){
@@ -762,7 +775,7 @@ public class CustomerTripActivity extends Activity {
 
     private void submitFoodReview(JSONObject order, int rating, String review, AlertDialog dialog) {
         setLoading(true);
-        new Thread(() -> {
+        TransivaNetworkExecutor.execute(() -> {
             try {
                 JSONObject body = new JSONObject();
                 body.put("id", order.optInt("id", 0));
@@ -778,9 +791,10 @@ public class CustomerTripActivity extends Activity {
                     else showInfo("Gagal", msg);
                 });
             } catch (Exception e) {
+                TransivaCrashReporter.recordNetworkFailure(e,"POST",SAVE_FOOD_REVIEW_URL);
                 mainHandler.post(() -> { setLoading(false); showInfo("Gagal", "Koneksi server bermasalah."); });
             }
-        }, "save-food-review").start();
+        });
     }
 
     private void showDriverReviewDialog(JSONObject order) {
@@ -817,7 +831,7 @@ public class CustomerTripActivity extends Activity {
 
     private void submitDriverReview(int rating, String review, AlertDialog dialog) {
         setLoading(true);
-        new Thread(() -> {
+        TransivaNetworkExecutor.execute(() -> {
             try {
                 JSONObject body = new JSONObject();
                 body.put("order_id", orderId);
@@ -833,9 +847,10 @@ public class CustomerTripActivity extends Activity {
                     else showInfo("Gagal", msg);
                 });
             } catch (Exception e) {
+                TransivaCrashReporter.recordNetworkFailure(e,"POST",SAVE_REVIEW_URL);
                 mainHandler.post(() -> { setLoading(false); showInfo("Gagal", "Koneksi server bermasalah."); });
             }
-        }, "save-driver-review").start();
+        });
     }
 
     private void startFinishCountdown() {
@@ -1185,8 +1200,9 @@ public class CustomerTripActivity extends Activity {
 
     @Override protected void onPause() {
         if (mapView != null) mapView.onPauseMap();
-        super.onPause();
         mainHandler.removeCallbacks(trackingRunnable);
+        trackingGeneration.incrementAndGet(); // invalidate late network callbacks
+        super.onPause();
     }
 
     @Override protected void onStart() {
@@ -1215,6 +1231,8 @@ public class CustomerTripActivity extends Activity {
     }
 
     @Override protected void onDestroy() {
+        trackingGeneration.incrementAndGet();
+        trackingRequestInFlight.set(false);
         mainHandler.removeCallbacksAndMessages(null);
         try {
             if (mapView != null) {

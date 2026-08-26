@@ -15,7 +15,10 @@ public final class CustomerApiClient {
         connection.setConnectTimeout(15000);
         connection.setReadTimeout(20000);
         connection.setUseCaches(false);
+        connection.setInstanceFollowRedirects(false);
         connection.setRequestProperty("Accept", "application/json");
+        connection.setRequestProperty("Cache-Control", "no-store");
+        connection.setRequestProperty("Pragma", "no-cache");
         if (isTransivaOwned(urlText)) applySecurity(context, connection);
         return connection;
     }
@@ -42,6 +45,6 @@ public final class CustomerApiClient {
     private static boolean isTransivaOwned(String url) {
         if (url == null) return false;
         String v = url.trim().toLowerCase();
-        return v.startsWith("https://transiva.my.id/") || v.startsWith("http://transiva.my.id/");
+        return v.startsWith("https://transiva.my.id/");
     }
 }

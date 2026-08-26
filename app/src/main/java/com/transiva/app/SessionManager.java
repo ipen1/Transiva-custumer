@@ -94,8 +94,9 @@ public class SessionManager {
             e.putString("session_message", "Session aktif");
             e.putString("native_session_message", "Session aktif");
 
-            e.putString("raw_user", clean.toString());
-            e.putString("raw_session", clean.toString());
+            String safeSessionJson = sanitizedSessionJson(clean);
+            e.putString("raw_user", safeSessionJson);
+            e.putString("raw_session", safeSessionJson);
 
             e.putString("id", clean.optString("id", ""));
             e.putString("user_id", clean.optString("user_id", ""));
@@ -110,7 +111,15 @@ public class SessionManager {
                     getToken()
             );
             if (!tokenToSave.isEmpty()) {
-                e.putString("token", tokenToSave);
+                // Authentication secret is encrypted with Android Keystore.
+                // Keep no new plaintext token in the normal session preferences.
+                if (!SecureTokenStore.put(appContext, tokenToSave)) {
+                    // Compatibility fallback only if Keystore is temporarily unavailable.
+                    e.putString("token", tokenToSave);
+                } else {
+                    e.remove("token").remove("access_token").remove("auth_token")
+                            .remove("api_token").remove("session_token");
+                }
             }
             e.putString("restaurant_id", clean.optString("restaurant_id", ""));
             e.putString("balance", clean.optString("balance", "0"));
@@ -218,6 +227,7 @@ public class SessionManager {
     public void forceLogout(String reason) {
         try {
             CustomerChatNotificationPoller.stop();
+            SecureTokenStore.clear(appContext);
             String fcmToken = prefs.getString("fcm_token", "");
             long fcmSavedAt = prefs.getLong("fcm_token_saved_at", 0L);
 
@@ -602,6 +612,9 @@ public class SessionManager {
     }
 
     public String getToken() {
+        String secureToken = SecureTokenStore.get(appContext);
+        if (!secureToken.isEmpty()) return secureToken;
+
         String token = firstNonEmpty(
                 prefs.getString("token", ""),
                 prefs.getString("access_token", ""),
@@ -629,10 +642,33 @@ public class SessionManager {
             token = tokenFromJson(legacyPrefs.getString("user_json", ""));
         }
 
-        if (!token.isEmpty() && !token.equals(prefs.getString("token", ""))) {
-            prefs.edit().putString("token", token).apply();
+        if (!token.isEmpty()) {
+            // One-time migration for existing installations.
+            if (SecureTokenStore.put(appContext, token)) {
+                prefs.edit().remove("token").remove("access_token").remove("auth_token")
+                        .remove("api_token").remove("session_token").apply();
+                legacyPrefs.edit().remove("token").remove("access_token").remove("auth_token")
+                        .remove("api_token").remove("session_token").apply();
+            }
         }
         return token;
+    }
+
+
+    private String sanitizedSessionJson(JSONObject source) {
+        if (source == null) return "{}";
+        try {
+            JSONObject copy = new JSONObject(source.toString());
+            copy.remove("token");
+            copy.remove("access_token");
+            copy.remove("auth_token");
+            copy.remove("api_token");
+            copy.remove("session_token");
+            return copy.toString();
+        } catch (Exception error) {
+            TransivaCrashReporter.record(error, "session_sanitize", "session_json");
+            return "{}";
+        }
     }
 
     private String tokenFromJson(String json) {

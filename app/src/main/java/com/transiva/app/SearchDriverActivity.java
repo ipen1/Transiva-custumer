@@ -843,7 +843,7 @@ public class SearchDriverActivity extends Activity {
                 ? value
                 : BASE_URL + (value.startsWith("/") ? value.substring(1) : value);
 
-        new Thread(() -> {
+        TransivaNetworkExecutor.execute(() -> {
             HttpURLConnection conn = null;
             try {
                 conn = (HttpURLConnection) new URL(photoUrl).openConnection();
@@ -870,7 +870,7 @@ public class SearchDriverActivity extends Activity {
             } finally {
                 if (conn != null) conn.disconnect();
             }
-        }).start();
+        });
     }
 
     private void loadDriverMap(String driverName, double driverLat, double driverLng, double pickupLat, double pickupLng) {
@@ -977,7 +977,7 @@ public class SearchDriverActivity extends Activity {
         setSubtitle("Mohon tunggu sebentar");
         progressBar.setVisibility(View.VISIBLE);
 
-        new Thread(() -> {
+        TransivaNetworkExecutor.execute(() -> {
             try {
                 String token = new SessionManager(this).getToken();
                 if (token == null || token.trim().isEmpty()) {
@@ -1020,7 +1020,7 @@ public class SearchDriverActivity extends Activity {
                     startLoops();
                 });
             }
-        }).start();
+        });
     }
 
     private JSONObject postJson(

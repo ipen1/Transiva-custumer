@@ -34,12 +34,14 @@ public class GlobalSearchActivity extends Activity {
 
     @Override public void onCreate(Bundle b){
         super.onCreate(b);
-        try { getWindow().setStatusBarColor(Color.parseColor("#071426")); } catch(Exception ignored){}
+        try { getWindow().setStatusBarColor(Color.parseColor(CustomerAppSettings.isDarkMode(this) ? "#071426" : "#0B7CFF")); } catch(Exception ignored){}
         build();
         String initial=getIntent()==null?"":safe(getIntent().getStringExtra("ai_prompt"));
         if(!initial.isEmpty()) query.setText(initial); else search("");
     }
 
+
+    @Override protected void onResume(){ super.onResume(); CustomerAppSettings.apply(this); }
     private void build(){
         LinearLayout root=new LinearLayout(this); root.setOrientation(LinearLayout.VERTICAL); root.setBackgroundColor(Color.parseColor(themeColor("#F4F8FD")));
         LinearLayout hero=new LinearLayout(this); hero.setOrientation(LinearLayout.VERTICAL); hero.setPadding(dp(18),dp(18),dp(18),dp(18)); hero.setBackground(bg("#0878F9",0,0));
@@ -68,7 +70,7 @@ public class GlobalSearchActivity extends Activity {
         LinearLayout row=new LinearLayout(this); row.setGravity(Gravity.CENTER_VERTICAL); TextView resultTitle=tx("Hasil pencarian",15,"#0B3A78",true); countText=tx("",11,"#7890AA",false); row.addView(resultTitle,new LinearLayout.LayoutParams(0,-2,1)); row.addView(countText); LinearLayout.LayoutParams rlp=new LinearLayout.LayoutParams(-1,-2); rlp.setMargins(0,dp(17),0,dp(8)); body.addView(row,rlp);
         loading=new ProgressBar(this); loading.setVisibility(View.GONE); body.addView(loading,new LinearLayout.LayoutParams(dp(32),dp(32)));
         results=new LinearLayout(this); results.setOrientation(LinearLayout.VERTICAL); body.addView(results);
-        root.addView(scroll,new LinearLayout.LayoutParams(-1,0,1)); setContentView(root);
+        root.addView(scroll,new LinearLayout.LayoutParams(-1,0,1)); setContentView(root); CustomerAppSettings.apply(this);
 
         query.addTextChangedListener(new TextWatcher(){public void beforeTextChanged(CharSequence s,int st,int c,int a){} public void onTextChanged(CharSequence s,int st,int b,int c){ if(pending!=null)handler.removeCallbacks(pending); pending=()->search(s.toString()); handler.postDelayed(pending,280);} public void afterTextChanged(Editable e){}});
     }
@@ -113,7 +115,7 @@ public class GlobalSearchActivity extends Activity {
     private TextView tx(String s,int z,String color,boolean bold){TextView v=new TextView(this);v.setText(s);v.setTextSize(z);v.setTextColor(Color.parseColor(themeColor(color)));if(bold)v.setTypeface(Typeface.DEFAULT,Typeface.BOLD);return v;}
     private GradientDrawable bg(String color,int radius,int ignored){GradientDrawable g=new GradientDrawable();g.setColor(Color.parseColor(themeColor(color)));g.setCornerRadius(dp(radius));return g;}
     private GradientDrawable bgStroke(String fill,String stroke,int radius,int width){GradientDrawable g=bg(fill,radius,0);g.setStroke(dp(width),Color.parseColor(themeColor(stroke)));return g;}
-    private boolean isDark(){return (getResources().getConfiguration().uiMode & Configuration.UI_MODE_NIGHT_MASK)==Configuration.UI_MODE_NIGHT_YES;}
+    private boolean isDark(){return CustomerAppSettings.isDarkMode(this);}
     private String themeColor(String c){if(!isDark())return c;String u=c.toUpperCase(java.util.Locale.US);if(u.equals("#F4F8FD")||u.equals("#F5F8FD"))return "#08111F";if(u.equals("#FFFFFF"))return "#111C2C";if(u.equals("#0F172A")||u.equals("#0B3A78"))return "#F1F5F9";if(u.equals("#64748B")||u.equals("#7890AA")||u.equals("#718096"))return "#AFC0D4";if(u.equals("#94A3B8"))return "#7F93A9";if(u.equals("#E0ECF8")||u.equals("#DFEBF7")||u.equals("#D5E8FF")||u.equals("#D7E9FF")||u.equals("#CBE3FF")||u.equals("#CDE4FF"))return "#26384F";if(u.equals("#EFF6FF")||u.equals("#EEF6FF")||u.equals("#EAF4FF")||u.equals("#F2F8FF"))return "#12243A";if(u.equals("#0B6DD9")||u.equals("#0878F9"))return "#66AFFF";if(u.equals("#B45309"))return "#FCD34D";return c;}
     private int dp(int v){return Math.round(v*getResources().getDisplayMetrics().density);} private String safe(String s){return s==null?"":s.trim();}
     private void hideKeyboard(){try{((InputMethodManager)getSystemService(Context.INPUT_METHOD_SERVICE)).hideSoftInputFromWindow(query.getWindowToken(),0);}catch(Exception ignored){}}

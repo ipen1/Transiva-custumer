@@ -17,7 +17,7 @@ public class CustomerMessageStatusTest {
 
     @Test public void chat_becomesAvailableAfterDriverAccepted() {
         assertTrue(CustomerMessageStatus.canSend("driver_accepted"));
-        assertEquals("Driver Menerima", CustomerMessageStatus.orderLabel("driver_accepted", "transride"));
+        assertEquals("Driver Menerima Pesananmu", CustomerMessageStatus.orderLabel("driver_accepted", "transride"));
     }
 
     @Test public void completedAndCancelledOrdersAreReadOnly() {
@@ -27,7 +27,7 @@ public class CustomerMessageStatusTest {
     }
 
     @Test public void foodPending_waitsForMerchantNotDriver() {
-        assertEquals("Menunggu Merchant", CustomerMessageStatus.orderLabel("pending", "transfood"));
-        assertEquals("Menunggu Driver", CustomerMessageStatus.orderLabel("pending", "transride"));
+        assertEquals("Menunggu Konfirmasi Merchant", CustomerMessageStatus.orderLabel("pending", "transfood"));
+        assertEquals("Mencari Driver Terdekat", CustomerMessageStatus.orderLabel("pending", "transride"));
     }
 }

@@ -8,42 +8,15 @@ public final class CustomerMessageStatus {
     }
 
     public static String normalize(String value) {
-        return value == null
-                ? ""
-                : value.trim()
-                .toLowerCase(Locale.ROOT)
-                .replace('-', '_')
-                .replace(' ', '_');
+        return CustomerOrderState.normalize(value);
     }
 
     public static boolean isEnded(String rawStatus) {
-        String status = normalize(rawStatus);
-
-        return status.equals("finished")
-                || status.equals("finish")
-                || status.equals("completed")
-                || status.equals("canceled")
-                || status.equals("cancelled")
-                || status.equals("merchant_rejected");
+        return CustomerOrderState.isEnded(rawStatus);
     }
 
     public static boolean canSend(String rawStatus) {
-        String status = normalize(rawStatus);
-
-        return status.equals("merchant_accepted")
-                || status.equals("driver_accepted")
-                || status.equals("accepted")
-                || status.equals("assigned")
-                || status.equals("driver_assigned")
-                || status.equals("taken")
-                || status.equals("arrived_pickup")
-                || status.equals("picked_up")
-                || status.equals("on_trip")
-                || status.equals("on_delivery")
-                || status.equals("in_progress")
-                || status.equals("ongoing")
-                || status.equals("started")
-                || status.equals("arrived_delivery");
+        return CustomerOrderState.canChat(rawStatus);
     }
 
     public static String availabilityLabel(

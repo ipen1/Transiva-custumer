@@ -1392,15 +1392,13 @@ public class TransFoodActivity extends Activity {
     private void setFavoriteIcon(ImageButton b, boolean active) { b.setImageResource(active ? R.drawable.ic_favorite_filled : R.drawable.ic_favorite_outline); b.setBackground(roundStroke(active?"#FFF1F2":"#FFFFFF","#FECDD3",dp(18),1)); }
 
     private JSONObject getJson(String urlText) throws Exception {
-        HttpURLConnection c = (HttpURLConnection) new URL(urlText).openConnection();
-        CustomerApiClient.applySecurity(this, c);
+        HttpURLConnection c = CustomerApiClient.open(this, urlText);
         c.setConnectTimeout(TIMEOUT_MS); c.setReadTimeout(TIMEOUT_MS); c.setRequestMethod("GET");
         return new JSONObject(readStream(c));
     }
 
     private JSONObject postJson(String urlText, JSONObject payload) throws Exception {
-        HttpURLConnection c = (HttpURLConnection) new URL(urlText).openConnection();
-        CustomerApiClient.applySecurity(this, c);
+        HttpURLConnection c = CustomerApiClient.open(this, urlText);
         c.setConnectTimeout(TIMEOUT_MS); c.setReadTimeout(TIMEOUT_MS); c.setRequestMethod("POST");
         c.setRequestProperty("Content-Type", "application/json; charset=utf-8");
         c.setDoOutput(true);
@@ -1432,7 +1430,7 @@ public class TransFoodActivity extends Activity {
         // Jangan kosongkan ImageView saat render ulang qty, supaya gambar tidak kedip.
         new Thread(() -> {
             try {
-                HttpURLConnection c = (HttpURLConnection) new URL(finalUrl).openConnection();
+                HttpURLConnection c = CustomerApiClient.open(this, finalUrl);
                 c.setConnectTimeout(10000);
                 c.setReadTimeout(10000);
                 Bitmap bm = BitmapFactory.decodeStream(c.getInputStream());

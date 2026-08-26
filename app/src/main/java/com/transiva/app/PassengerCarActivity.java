@@ -984,8 +984,7 @@ public class PassengerCarActivity extends Activity {
                     "https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat="
                             + lat + "&lon=" + lng + "&zoom=18&addressdetails=1";
 
-            URL url = new URL(urlText);
-            conn = (HttpURLConnection) url.openConnection();
+            conn = CustomerApiClient.open(this, urlText);
             conn.setRequestMethod("GET");
             conn.setConnectTimeout(12000);
             conn.setReadTimeout(12000);
@@ -1215,8 +1214,7 @@ public class PassengerCarActivity extends Activity {
         HttpURLConnection conn = null;
 
         try {
-            URL url = new URL(urlText);
-            conn = (HttpURLConnection) url.openConnection();
+            conn = CustomerApiClient.open(this, urlText);
             conn.setRequestMethod("GET");
             conn.setConnectTimeout(TIMEOUT_MS);
             conn.setReadTimeout(TIMEOUT_MS);
@@ -1657,8 +1655,7 @@ public class PassengerCarActivity extends Activity {
     private JSONObject postJson(String urlText, JSONObject payload) throws Exception {
         HttpURLConnection conn = null;
         try {
-            URL url = new URL(urlText);
-            conn = (HttpURLConnection) url.openConnection();
+            conn = CustomerApiClient.open(this, urlText);
             conn.setRequestMethod("POST");
             conn.setConnectTimeout(TIMEOUT_MS);
             conn.setReadTimeout(TIMEOUT_MS);

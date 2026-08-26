@@ -12,7 +12,7 @@ public final class OrderStatusPresentation {
     private OrderStatusPresentation() {}
 
     public static String label(String rawStatus, String rawType) {
-        String s = n(rawStatus), t = n(rawType);
+        String s = CustomerOrderState.normalize(rawStatus), t = n(rawType);
         switch (s) {
             case "pending":
                 return isFood(t) ? "Menunggu Konfirmasi Merchant" : "Mencari Driver Terdekat";
@@ -58,7 +58,7 @@ public final class OrderStatusPresentation {
 
     public static String description(JSONObject o) {
         if (o == null) return "";
-        String s = n(o.optString("status"));
+        String s = CustomerOrderState.normalize(o.optString("status"));
         String t = n(first(o.optString("order_type"), o.optString("service_type"),
                 o.optString("service"), o.optString("service_name")));
         String d = first(o.optString("driver_name"), o.optString("driver"),

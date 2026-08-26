@@ -1980,8 +1980,7 @@ public class CustomerHistoryActivity extends Activity {
         HttpURLConnection connection = null;
 
         try {
-            connection = (HttpURLConnection) new URL(endpoint).openConnection();
-            CustomerApiClient.applySecurity(this, connection);
+            connection = CustomerApiClient.open(this, endpoint);
             connection.setRequestMethod("POST");
             connection.setConnectTimeout(TIMEOUT_MS);
             connection.setReadTimeout(TIMEOUT_MS);
@@ -2291,11 +2290,7 @@ public class CustomerHistoryActivity extends Activity {
         HttpURLConnection connection = null;
 
         try {
-            connection =
-                    (HttpURLConnection)
-                            new URL(endpoint)
-                                    .openConnection();
-            CustomerApiClient.applySecurity(this, connection);
+            connection = CustomerApiClient.open(this, endpoint);
 
             connection.setRequestMethod("GET");
             connection.setConnectTimeout(

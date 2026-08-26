@@ -11,7 +11,12 @@ public final class CustomerApiClient {
     private CustomerApiClient() {}
 
     public static HttpURLConnection open(Context context, String urlText) throws IOException {
-        HttpURLConnection connection = (HttpURLConnection) new URL(urlText).openConnection();
+        URL url = new URL(urlText);
+        String scheme = url.getProtocol() == null ? "" : url.getProtocol().toLowerCase();
+        if (!"https".equals(scheme) && !"http".equals(scheme)) {
+            throw new IOException("Unsupported network scheme");
+        }
+        HttpURLConnection connection = (HttpURLConnection) url.openConnection();
         connection.setConnectTimeout(15000);
         connection.setReadTimeout(20000);
         connection.setUseCaches(false);
@@ -19,6 +24,7 @@ public final class CustomerApiClient {
         connection.setRequestProperty("Accept", "application/json");
         connection.setRequestProperty("Cache-Control", "no-store");
         connection.setRequestProperty("Pragma", "no-cache");
+        connection.setRequestProperty("X-Request-ID", idempotencyKey("request"));
         if (isTransivaOwned(urlText)) applySecurity(context, connection);
         return connection;
     }

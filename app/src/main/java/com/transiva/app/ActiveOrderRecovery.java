@@ -126,10 +126,16 @@ public final class ActiveOrderRecovery {
                         .putString("active_driver_type", result.driverType)
                         .apply();
 
-                Intent intent = new Intent(activity, CustomerTripActivity.class);
+                // P0: one routing rule for every screen. Pending/merchant-accepted orders
+                // return to radar; only an order that already has a driver opens trip.
+                Class<?> destination = CustomerOrderState.hasDriver(result.status)
+                        ? CustomerTripActivity.class
+                        : SearchDriverActivity.class;
+                Intent intent = new Intent(activity, destination);
                 intent.putExtra("order_id", result.orderId);
                 intent.putExtra("active_order_id", result.orderId);
                 intent.putExtra("order_source", result.source);
+                intent.putExtra("driver_type", result.driverType);
                 intent.putExtra("active_driver_type", result.driverType);
                 intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
                 activity.startActivity(intent);
@@ -140,20 +146,9 @@ public final class ActiveOrderRecovery {
     }
 
     private static boolean isActiveStatus(String status) {
-        String s = clean(status).toLowerCase(Locale.US);
-        if (s.isEmpty()) return true;
-        return !(s.equals("finished")
-                || s.equals("finish")
-                || s.equals("completed")
-                || s.equals("complete")
-                || s.equals("done")
-                || s.equals("selesai")
-                || s.equals("cancelled")
-                || s.equals("canceled")
-                || s.equals("cancel")
-                || s.equals("dibatalkan")
-                || s.equals("rejected")
-                || s.equals("expired"));
+        String normalized = CustomerOrderState.normalize(status);
+        // Empty status can still represent an active legacy row; any explicit terminal state cannot.
+        return normalized.isEmpty() || !CustomerOrderState.isEnded(normalized);
     }
 
     private static void clearActiveOrder(SharedPreferences sp) {
@@ -177,8 +172,7 @@ public final class ActiveOrderRecovery {
     private static JSONObject getJson(Activity activity, String urlText) throws Exception {
         HttpURLConnection connection = null;
         try {
-            connection = (HttpURLConnection) new URL(urlText).openConnection();
-            CustomerApiClient.applySecurity(activity, connection);
+            connection = CustomerApiClient.open(activity, urlText);
             connection.setRequestMethod("GET");
             connection.setConnectTimeout(TIMEOUT_MS);
             connection.setReadTimeout(TIMEOUT_MS);

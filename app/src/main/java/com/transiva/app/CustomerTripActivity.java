@@ -475,7 +475,7 @@ public class CustomerTripActivity extends Activity {
         JSONObject order = res.optJSONObject("order");
         if (order == null) order = new JSONObject();
 
-        String status = firstNonEmpty(res.optString("status", ""), order.optString("status", "")).toLowerCase(Locale.US).trim();
+        String status = CustomerOrderState.laterOf(lastStatus, firstNonEmpty(res.optString("status", ""), order.optString("status", "")));
         String driverName = firstNonEmpty(
                 driver.optString("name", ""),
                 driver.optString("username", ""),
@@ -680,17 +680,11 @@ public class CustomerTripActivity extends Activity {
 
 
     private boolean isFinishedStatus(String status) {
-        String s = firstNonEmpty(status, "").toLowerCase(Locale.US).trim();
-        return "finished".equals(s)
-                || "finish".equals(s)
-                || "completed".equals(s)
-                || "complete".equals(s)
-                || "done".equals(s)
-                || "selesai".equals(s);
+        return CustomerOrderState.isFinished(status);
     }
 
     private double[] getTarget(String status) {
-        if (("on_delivery".equals(status) || "arrived_delivery".equals(status) || isFinishedStatus(status)) && validCoord(deliveryLat, deliveryLng)) {
+        if (CustomerOrderState.targetsDelivery(status) && validCoord(deliveryLat, deliveryLng)) {
             return new double[]{deliveryLat, deliveryLng};
         }
         return new double[]{pickupLat, pickupLng};
@@ -966,8 +960,7 @@ public class CustomerTripActivity extends Activity {
     private JSONObject getJson(String urlText) throws Exception {
         HttpURLConnection conn = null;
         try {
-            conn = (HttpURLConnection) new URL(urlText).openConnection();
-            CustomerApiClient.applySecurity(this, conn);
+            conn = CustomerApiClient.open(this, urlText);
             conn.setRequestMethod("GET");
             conn.setConnectTimeout(TIMEOUT_MS);
             conn.setReadTimeout(TIMEOUT_MS);
@@ -985,9 +978,7 @@ public class CustomerTripActivity extends Activity {
     private JSONObject postJson(String urlText, JSONObject payload) throws Exception {
         HttpURLConnection conn = null;
         try {
-            URL url = new URL(urlText);
-            conn = (HttpURLConnection) url.openConnection();
-            CustomerApiClient.applySecurity(this, conn);
+            conn = CustomerApiClient.open(this, urlText);
             conn.setRequestMethod("POST");
             conn.setConnectTimeout(TIMEOUT_MS);
             conn.setReadTimeout(TIMEOUT_MS);

@@ -665,22 +665,7 @@ public class SearchDriverActivity extends Activity {
     }
 
     private boolean isDriverAcceptedStatus(String rawStatus) {
-        String status = firstNonEmpty(rawStatus, "").trim().toLowerCase(Locale.US);
-        return status.equals("driver_accepted")
-                || status.equals("accepted")
-                || status.equals("assigned")
-                || status.equals("taken")
-                || status.equals("taken_by_driver")
-                || status.equals("arrived")
-                || status.equals("arrived_pickup")
-                || status.equals("picked_up")
-                || status.equals("on_trip")
-                || status.equals("in_progress")
-                || status.equals("processing")
-                || status.equals("ongoing")
-                || status.equals("started")
-                || status.equals("on_delivery")
-                || status.equals("arrived_delivery");
+        return CustomerOrderState.hasDriver(rawStatus);
     }
 
     private void showDriver(JSONObject data) {
@@ -846,7 +831,7 @@ public class SearchDriverActivity extends Activity {
         TransivaNetworkExecutor.execute(() -> {
             HttpURLConnection conn = null;
             try {
-                conn = (HttpURLConnection) new URL(photoUrl).openConnection();
+                conn = CustomerApiClient.open(this, photoUrl);
                 conn.setConnectTimeout(10000);
                 conn.setReadTimeout(10000);
                 conn.setUseCaches(true);
@@ -1037,8 +1022,7 @@ public class SearchDriverActivity extends Activity {
     ) throws Exception {
         HttpURLConnection conn = null;
         try {
-            URL url = new URL(urlText);
-            conn = (HttpURLConnection) url.openConnection();
+            conn = CustomerApiClient.open(this, urlText);
             conn.setRequestMethod("POST");
             conn.setConnectTimeout(TIMEOUT_MS);
             conn.setReadTimeout(TIMEOUT_MS);
@@ -1052,7 +1036,6 @@ public class SearchDriverActivity extends Activity {
             // SearchDriverActivity sebelumnya melewati CustomerApiClient sehingga
             // check_order_status.php dipanggil TANPA Bearer token. Server lalu
             // menolak request dan radar tidak pernah melihat driver_accepted.
-            CustomerApiClient.applySecurity(this, conn);
 
             // Token eksplisit (mis. cancel order) tetap boleh meng-overwrite token sesi.
             if (bearerToken != null && !bearerToken.trim().isEmpty()) {

@@ -39,6 +39,16 @@ jobs:
       - name: Run Customer Regression Tests
         run: gradle testDebugUnitTest
 
+      - name: Verify Regression Tests Actually Ran
+        shell: bash
+        run: |
+          set -euo pipefail
+          REPORT_DIR="app/build/test-results/testDebugUnitTest"
+          test -d "$REPORT_DIR"
+          COUNT=$(grep -Rho 'tests="[0-9]*"' "$REPORT_DIR"/*.xml 2>/dev/null | sed -E 's/tests="([0-9]+)"/\1/' | awk '{s+=$1} END {print s+0}')
+          echo "Regression tests executed: $COUNT"
+          test "$COUNT" -gt 0
+
       - name: Build Release Signed APK and AAB
         run: gradle clean assembleRelease bundleRelease
         env:

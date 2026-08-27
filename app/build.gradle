@@ -4,16 +4,18 @@ plugins {
     id 'com.google.firebase.crashlytics'
 }
 
+def transivaEnableR8 = project.hasProperty("transivaEnableR8") && project.property("transivaEnableR8").toString().toBoolean()
+
 android {
     namespace 'com.transiva.app'
     compileSdk 36
 
     defaultConfig {
-        applicationId 'com.transiva.customer'
+        applicationId 'com.transiva.driver'
         minSdk 23
         targetSdk 36
-        versionCode 15
-        versionName '2.5.15'
+        versionCode 13
+        versionName '2.8.13'
     }
 
     signingConfigs {
@@ -35,25 +37,27 @@ android {
             signingConfig signingConfigs.release
             debuggable false
 
-            // WebRTC stability fix:
-            // Keep release bytecode/resources unmodified, matching the driver build.
-            // The customer crash log stopped inside PeerConnectionFactory.initialize()
-            // only on the optimized customer release build.
-            minifyEnabled false
-            shrinkResources false
+            // Deliberately kept OFF for the launch candidate. Enabling R8 immediately
+            // before production can introduce reflection/library regressions. The
+            // ProGuard files are declared now so hardening can be enabled after the
+            // regression suite passes without changing the release contract.
+            // Default OFF untuk launching. Aktifkan hanya setelah regression test:
+            // ./gradlew assembleRelease -PtransivaEnableR8=true
+            minifyEnabled transivaEnableR8
+            shrinkResources transivaEnableR8
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
     }
 }
 
 dependencies {
-    // Regression tests for critical customer order/chat state rules.
     testImplementation 'junit:junit:4.13.2'
 
     // Native audio WebRTC (Maven Central)
     implementation 'io.github.webrtc-sdk:android:144.7559.09'
 
     implementation 'androidx.activity:activity:1.9.3'
-    implementation 'androidx.biometric:biometric:1.1.0'
+    implementation 'androidx.fragment:fragment:1.8.5'
 
     implementation 'androidx.camera:camera-view:1.4.1'
     implementation 'androidx.camera:camera-lifecycle:1.4.1'
@@ -61,12 +65,18 @@ dependencies {
     implementation 'androidx.camera:camera-core:1.4.1'
 
     implementation 'androidx.core:core:1.13.1'
+    implementation 'androidx.biometric:biometric:1.1.0'
     implementation 'androidx.exifinterface:exifinterface:1.3.7'
 
-    // Google Maps native renderer. OSRM remains the routing engine.
+    // Google Maps SDK untuk menu Lokasi Driver.
     implementation 'com.google.android.gms:play-services-maps:20.0.0'
+    implementation 'com.google.android.gms:play-services-location:21.3.0'
+
+    // Native GPU map renderer. No WebView / Leaflet / JavaScript bridge.
+    implementation 'org.maplibre.gl:android-sdk:13.1.0'
 
     implementation platform('com.google.firebase:firebase-bom:33.7.0')
     implementation 'com.google.firebase:firebase-messaging'
     implementation 'com.google.firebase:firebase-crashlytics'
+    implementation 'com.google.firebase:firebase-analytics'
 }

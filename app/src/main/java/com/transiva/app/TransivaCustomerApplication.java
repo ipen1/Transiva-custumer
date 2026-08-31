@@ -23,6 +23,7 @@ public class TransivaCustomerApplication extends Application implements Applicat
         instance = this;
         TransivaCrashReporter.initialize(this);
         TransivaCrashReporter.user(this);
+        TransivaNetworkMonitor.install(this);
         AdaptiveTlsPinning.install(this);
         CustomerReliabilityManager.install(this);
         CustomerMessageApi.initialize(this);

@@ -16,7 +16,6 @@ import java.util.Locale;
  * This avoids WebView CORS/fetch failures and keeps the last good route on screen.
  */
 public final class StableRouteEngine {
-    private static final String OSRM = "https://router.project-osrm.org/route/v1/driving/";
     private static final int CONNECT_TIMEOUT_MS = 3000;
     private static final int READ_TIMEOUT_MS = 5000;
     private static final long CACHE_TTL_MS = 180000L;
@@ -57,10 +56,13 @@ public final class StableRouteEngine {
         for (int attempt = 0; attempt < 2; attempt++) {
             HttpURLConnection connection = null;
             try {
-                String endpoint = OSRM
-                        + String.format(Locale.US, "%.7f,%.7f;%.7f,%.7f", fromLng, fromLat, toLng, toLat)
-                        + "?overview=full&geometries=geojson&steps=true&alternatives=false";
-                connection = (HttpURLConnection) new URL(endpoint).openConnection();
+                android.content.Context app = TransivaCustomerApplication.appContext();
+                String base = CustomerResourceConfig.routeEndpoint(app);
+                String endpoint = base + "?from_lat=" + String.format(Locale.US, "%.7f", fromLat)
+                        + "&from_lng=" + String.format(Locale.US, "%.7f", fromLng)
+                        + "&to_lat=" + String.format(Locale.US, "%.7f", toLat)
+                        + "&to_lng=" + String.format(Locale.US, "%.7f", toLng);
+                connection = CustomerApiClient.open(app, endpoint);
                 connection.setRequestMethod("GET");
                 connection.setConnectTimeout(CONNECT_TIMEOUT_MS);
                 connection.setReadTimeout(READ_TIMEOUT_MS);
@@ -124,7 +126,19 @@ public final class StableRouteEngine {
                 if (connection != null) connection.disconnect();
             }
         }
-        throw last != null ? last : new IllegalStateException("Route failed");
+        TransivaCrashReporter.record(last == null ? new IllegalStateException("Route failed") : last,
+                "route_fallback", "straight_line");
+        return straightLineFallback(fromLat, fromLng, toLat, toLng);
+    }
+
+    private static Result straightLineFallback(double fromLat, double fromLng, double toLat, double toLng) throws Exception {
+        JSONArray points = new JSONArray();
+        JSONArray a = new JSONArray(); a.put(fromLat); a.put(fromLng); points.put(a);
+        JSONArray b = new JSONArray(); b.put(toLat); b.put(toLng); points.put(b);
+        double distance = meters(fromLat, fromLng, toLat, toLng);
+        // Conservative city-speed fallback. It is explicitly approximate and keeps the map usable offline.
+        double duration = Math.max(60d, distance / 7.0d);
+        return new Result(points, distance, duration, new JSONArray());
     }
 
 

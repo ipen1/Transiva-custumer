@@ -498,6 +498,7 @@ public class CustomerTripActivity extends Activity {
         activeDriverType = resolveDriverType(order, driver);
         lastDriverName = driverName;
         lastStatus = status;
+        CustomerOrderBreadcrumbs.state(orderId, status, orderSource);
 
         double pLat = firstValidCoordPart(
                 getJsonDouble(order, "pickup_lat", "pickupLatitude", "pickup_latitude", "user_lat", "customer_lat"),

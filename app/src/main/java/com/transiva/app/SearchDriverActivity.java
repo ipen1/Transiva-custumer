@@ -593,6 +593,7 @@ public class SearchDriverActivity extends Activity {
                         order.optString("status", ""),
                         res.optString("status", "")
                 ).trim().toLowerCase(Locale.US);
+                CustomerOrderBreadcrumbs.state(activeOrderId, status, "search_driver");
 
                 String currentOffer = firstNonEmpty(
                         order.optString("offered_driver", ""),

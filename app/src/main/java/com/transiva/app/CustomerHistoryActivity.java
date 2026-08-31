@@ -62,6 +62,8 @@ public class CustomerHistoryActivity extends Activity {
     private static final String TAB_ACTIVE = "active";
     private static final String TAB_HISTORY = "history";
 
+    private CustomerHistoryRepository historyRepository;
+
     private final Handler mainHandler =
             new Handler(Looper.getMainLooper());
 
@@ -108,6 +110,7 @@ public class CustomerHistoryActivity extends Activity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        historyRepository = new CustomerHistoryRepository(this, TIMEOUT_MS);
 
         getWindow().setStatusBarColor(
                 Color.parseColor("#0B7CFF")
@@ -1980,50 +1983,7 @@ public class CustomerHistoryActivity extends Activity {
     }
 
     private JSONObject postJson(String endpoint, JSONObject payload) throws Exception {
-        HttpURLConnection connection = null;
-
-        try {
-            connection = CustomerApiClient.open(this, endpoint);
-            connection.setRequestMethod("POST");
-            connection.setConnectTimeout(TIMEOUT_MS);
-            connection.setReadTimeout(TIMEOUT_MS);
-            connection.setDoOutput(true);
-            connection.setUseCaches(false);
-            connection.setRequestProperty("Accept", "application/json");
-            connection.setRequestProperty("Content-Type", "application/json; charset=UTF-8");
-
-            byte[] body = payload.toString().getBytes("UTF-8");
-            try (OutputStream output = connection.getOutputStream()) {
-                output.write(body);
-                output.flush();
-            }
-
-            int responseCode = connection.getResponseCode();
-            InputStream stream = responseCode >= 200 && responseCode < 400
-                    ? connection.getInputStream()
-                    : connection.getErrorStream();
-
-            if (stream == null) {
-                throw new IllegalStateException("Respons server kosong");
-            }
-
-            BufferedReader reader = new BufferedReader(
-                    new InputStreamReader(stream, "UTF-8")
-            );
-            StringBuilder responseBody = new StringBuilder();
-            String line;
-            while ((line = reader.readLine()) != null) {
-                responseBody.append(line);
-            }
-            reader.close();
-
-            return new JSONObject(responseBody.toString());
-
-        } finally {
-            if (connection != null) {
-                connection.disconnect();
-            }
-        }
+        return historyRepository.post(endpoint, payload);
     }
 
     private void addEmptyState(
@@ -2287,83 +2247,8 @@ public class CustomerHistoryActivity extends Activity {
         }).start();
     }
 
-    private JSONObject getJson(
-            String endpoint
-    ) throws Exception {
-        HttpURLConnection connection = null;
-
-        try {
-            connection = CustomerApiClient.open(this, endpoint);
-
-            connection.setRequestMethod("GET");
-            connection.setConnectTimeout(
-                    TIMEOUT_MS
-            );
-
-            connection.setReadTimeout(
-                    TIMEOUT_MS
-            );
-
-            connection.setUseCaches(false);
-
-            connection.setRequestProperty(
-                    "Accept",
-                    "application/json"
-            );
-
-            connection.setRequestProperty(
-                    "Cache-Control",
-                    "no-cache"
-            );
-
-            int status =
-                    connection.getResponseCode();
-
-            InputStream stream =
-                    status >= 200 && status < 400
-                            ? connection.getInputStream()
-                            : connection.getErrorStream();
-
-            if (stream == null) {
-                throw new IllegalStateException(
-                        "Respons server kosong"
-                );
-            }
-
-            BufferedReader reader =
-                    new BufferedReader(
-                            new InputStreamReader(
-                                    stream,
-                                    "UTF-8"
-                            )
-                    );
-
-            StringBuilder body =
-                    new StringBuilder();
-
-            String line;
-
-            while ((line = reader.readLine()) != null) {
-                body.append(line);
-            }
-
-            reader.close();
-
-            if (status < 200 || status >= 400) {
-                throw new IllegalStateException(
-                        "HTTP " + status
-                );
-            }
-
-            return new JSONObject(
-                    body.toString()
-            );
-
-        } finally {
-            if (connection != null) {
-                connection.disconnect();
-            }
-        }
+    private JSONObject getJson(String endpoint) throws Exception {
+        return historyRepository.get(endpoint);
     }
 
     private String priceChangeDetail(JSONObject order) {

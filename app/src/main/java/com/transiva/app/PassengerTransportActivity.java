@@ -9,7 +9,6 @@ import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.graphics.Color;
 import android.graphics.Bitmap;
-import android.graphics.BitmapFactory;
 import android.graphics.Typeface;
 import android.graphics.Paint;
 import android.graphics.drawable.GradientDrawable;
@@ -45,7 +44,6 @@ import java.net.HttpURLConnection;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.util.Locale;
-import android.util.Base64;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -60,6 +58,7 @@ public class PassengerTransportActivity extends Activity {
     private String orderNoun() { return isCarService() ? "mobil" : "motor"; }
 
     private final CustomerLifecycleNetworkScope networkScope = new CustomerLifecycleNetworkScope();
+    private CustomerGeocodingRepository geocodingRepository;
 
     private static final String BASE_URL = "https://transiva.my.id/";
     private static final String CREATE_ORDER_URL = BASE_URL + "server/createOrder.php";
@@ -135,6 +134,7 @@ public class PassengerTransportActivity extends Activity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        geocodingRepository = new CustomerGeocodingRepository(this);
         try {
             getWindow().setStatusBarColor(Color.parseColor("#071426"));
             getWindow().setNavigationBarColor(Color.parseColor("#071426"));
@@ -612,88 +612,8 @@ public class PassengerTransportActivity extends Activity {
         updateModeUI();
     }
 
-    private String mapHtml() {
-        String pickupIcon = drawableDataUri("map_pickup_pin", "ic_pickup_pin", "pickup_pin", "pickup", "point_pickup", "ic_pickup");
-        String deliveryIcon = drawableDataUri("map_destination_pin", "map_delivery_pin", "ic_delivery_pin", "delivery_pin", "delivery", "point_delivery", "ic_delivery");
-        String placeIcon = drawableDataUri("mark", "map_place_pin", "business_pin", "merchant_pin", "laundry_pin");
-        String driverIcon = isCarService() ? drawableDataUri("user", "driver_online", "ic_driver_online", "map_car_top", "ic_car_top", "car_top") : drawableDataUri("user", "driver_online", "ic_driver_online", "map_motor_top", "ic_motor_top", "motor_top");
-        final boolean useDarkMap = CustomerAppSettings.isDarkMode(this);
 
-        return "<!DOCTYPE html><html><head>" +
-                "<meta name='viewport' content='width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no'>" +
-                "<link href='https://unpkg.com/maplibre-gl@5.6.1/dist/maplibre-gl.css' rel='stylesheet'>" +
-                "<script src='https://unpkg.com/maplibre-gl@5.6.1/dist/maplibre-gl.js'></script>" +
-                "<style>html,body,#map{height:100%;margin:0;padding:0;overflow:hidden;background:" + (useDarkMap ? "#10151d" : "#eef6ff") + ";}" +
-                ".maplibregl-ctrl-bottom-left,.maplibregl-ctrl-bottom-right,.maplibregl-ctrl-top-left,.maplibregl-ctrl-top-right{display:none!important;}" +
-                ".maplibregl-canvas{outline:none;border-radius:14px;}" +
-                ".marker-img{display:block;object-fit:contain;filter:drop-shadow(0 5px 5px rgba(0,0,0,.34));}" +
-                ".marker-fallback{font-size:28px;line-height:44px;text-align:center;filter:drop-shadow(0 4px 4px rgba(0,0,0,.30));}" +
-                ".maplibregl-popup-content{border-radius:14px;padding:11px 13px;box-shadow:0 8px 24px rgba(0,0,0,.24);}" +
-                ".popup{min-width:160px;line-height:1.5;font:13px Arial,sans-serif;color:#0f172a;}" +
-                ".popup b{font-size:15px;color:#0B3A78;}" +
-                "</style></head><body><div id='map'></div><script>" +
-                "var map=null,pickup=null,delivery=null,centerMarker=null,routeReady=false;" +
-                "var placeMarkers=[],driverMarkers=[];" +
-                "var darkMode=" + (useDarkMap ? "true" : "false") + ";" +
-                "var pickupIconData='" + js(pickupIcon) + "',deliveryIconData='" + js(deliveryIcon) + "',placeIconData='" + js(placeIcon) + "',driverIconData='" + js(driverIcon) + "';" +
-                "function esc(v){return String(v||'').replace(/[&<>\"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;',\"'\":'&#39;'}[c];});}" +
-                "function safePaint(id,p,v){try{map.setPaintProperty(id,p,v);}catch(e){}}" +
-                "function styleNight(){if(!map||!darkMode)return;var s=map.getStyle();if(!s||!s.layers)return;" +
-                "s.layers.forEach(function(l){var id=(l.id||'').toLowerCase(),src=(l['source-layer']||'').toLowerCase();" +
-                "if(l.type==='background'){safePaint(l.id,'background-color','#10151d');return;}" +
-                "if(l.type==='fill'){" +
-                " if(id.indexOf('building')>=0||src==='building'){safePaint(l.id,'fill-color','#49515c');safePaint(l.id,'fill-opacity',0.70);}" +
-                " else if(id.indexOf('water')>=0||src==='water'){safePaint(l.id,'fill-color','#101f33');}" +
-                " else if(id.indexOf('park')>=0||id.indexOf('landcover')>=0||src==='landcover'){safePaint(l.id,'fill-color','#18231f');safePaint(l.id,'fill-opacity',0.78);}" +
-                " else {safePaint(l.id,'fill-color','#171d26');safePaint(l.id,'fill-opacity',0.86);}" +
-                "}" +
-                "if(l.type==='line'){" +
-                " var road=(id.indexOf('road')>=0||id.indexOf('street')>=0||id.indexOf('motorway')>=0||id.indexOf('highway')>=0||src==='transportation');" +
-                " if(road){var major=(id.indexOf('motorway')>=0||id.indexOf('trunk')>=0||id.indexOf('primary')>=0||id.indexOf('secondary')>=0);safePaint(l.id,'line-color',major?'#FFC94A':'#E9D38A');safePaint(l.id,'line-opacity',major?0.98:0.84);}" +
-                " else if(id.indexOf('water')>=0){safePaint(l.id,'line-color','#315276');}" +
-                "}" +
-                "if(l.type==='symbol'){safePaint(l.id,'text-color','#F8FAFC');safePaint(l.id,'text-halo-color','#111827');safePaint(l.id,'text-halo-width',1.7);safePaint(l.id,'text-halo-blur',0.5);}" +
-                "});}" +
-                "function markerEl(data,fallback,w,h){var el=document.createElement('div');el.style.width=w+'px';el.style.height=h+'px';if(data&&data.length>20){var im=document.createElement('img');im.src=data;im.className='marker-img';im.style.width=w+'px';im.style.height=h+'px';el.appendChild(im);}else{el.className='marker-fallback';el.innerHTML=fallback;}return el;}" +
-                "function newMarker(lat,lng,data,fallback,w,h,anchor){return new maplibregl.Marker({element:markerEl(data,fallback,w,h),anchor:anchor||'bottom'}).setLngLat([+lng,+lat]).addTo(map);}" +
-                "function popup(html){return new maplibregl.Popup({offset:28,closeButton:false}).setHTML(html);}" +
-                "function setCenterMarker(type){if(!map)return;var c=map.getCenter(),isPickup=(type==='pickup'),data=isPickup?pickupIconData:deliveryIconData,fb=isPickup?'🟢':'🔴';if(centerMarker)centerMarker.remove();centerMarker=newMarker(c.lat,c.lng,data,fb," + MARKER_BOX_WIDTH_DP + "," + MARKER_BOX_HEIGHT_DP + ",'bottom');}" +
-                "function setPickup(lat,lng,label){lat=+lat;lng=+lng;if(!lat||!lng)return;if(pickup)pickup.setLngLat([lng,lat]);else pickup=newMarker(lat,lng,pickupIconData,'🟢'," + MARKER_BOX_WIDTH_DP + "," + MARKER_BOX_HEIGHT_DP + ",'bottom');if(label)pickup.setPopup(popup('<div class=popup><b>Lokasi Jemput</b><br>'+esc(label)+'</div>'));}" +
-                "function setDelivery(lat,lng,label){lat=+lat;lng=+lng;if(!lat||!lng)return;if(delivery)delivery.setLngLat([lng,lat]);else delivery=newMarker(lat,lng,deliveryIconData,'🔴'," + MARKER_BOX_WIDTH_DP + "," + MARKER_BOX_HEIGHT_DP + ",'bottom');if(label)delivery.setPopup(popup('<div class=popup><b>Lokasi Pengantaran</b><br>'+esc(label)+'</div>'));}" +
-                "function moveTo(lat,lng,z){if(!map)return;map.easeTo({center:[+lng,+lat],zoom:z||17,duration:650});}" +
-                "function clearPlaces(){for(var i=0;i<placeMarkers.length;i++)try{placeMarkers[i].remove();}catch(e){}placeMarkers=[];}" +
-                "function addPlace(lat,lng,name,type,address){if(!map||!lat||!lng)return;var m=newMarker(+lat,+lng,placeIconData,'📍',42,42,'bottom');m.setPopup(popup('<div class=popup><b>'+esc(name)+'</b><br>'+esc(type||'Transiva')+(address?'<br>'+esc(address):'')+'</div>'));placeMarkers.push(m);}" +
-                "function clearDrivers(){for(var i=0;i<driverMarkers.length;i++)try{driverMarkers[i].remove();}catch(e){}driverMarkers=[];}" +
-                "function addDriver(lat,lng,name){if(!map||!lat||!lng)return;var m=newMarker(+lat,+lng,driverIconData,'🏍️',42,42,'center');m.setPopup(popup('<div class=popup><b>'+esc(name||'Driver')+'</b><br>Driver online</div>'));driverMarkers.push(m);}" +
-                "function ensureRoute(){if(routeReady)return;try{map.addSource('transiva-route',{type:'geojson',data:{type:'FeatureCollection',features:[]}});map.addLayer({id:'transiva-route-glow',type:'line',source:'transiva-route',paint:{'line-color':'#08111f','line-width':9,'line-opacity':0.38}});map.addLayer({id:'transiva-route',type:'line',source:'transiva-route',layout:{'line-cap':'round','line-join':'round'},paint:{'line-color':'#1687ff','line-width':5.5,'line-opacity':0.98}});routeReady=true;}catch(e){}}" +
-                "function drawRouteAfterOrder(){if(!map||!pickup||!delivery)return;ensureRoute();var a=pickup.getLngLat(),b=delivery.getLngLat(),geo={type:'Feature',geometry:{type:'LineString',coordinates:[[a.lng,a.lat],[b.lng,b.lat]]},properties:{}};try{map.getSource('transiva-route').setData(geo);}catch(e){}var bounds=new maplibregl.LngLatBounds();bounds.extend([a.lng,a.lat]);bounds.extend([b.lng,b.lat]);map.fitBounds(bounds,{padding:60,maxZoom:17,duration:700});}" +
-                "function notifyCenter(){if(!map)return;var c=map.getCenter();if(centerMarker)centerMarker.setLngLat([c.lng,c.lat]);try{AndroidPassenger.onCenterChanged(c.lat,c.lng,c.lat,c.lng);}catch(e){}}" +
-                "function ready(){try{map=new maplibregl.Map({container:'map',style:darkMode?'https://tiles.openfreemap.org/styles/dark':'https://tiles.openfreemap.org/styles/liberty',center:[" + centerLng + "," + centerLat + "],zoom:17,attributionControl:false,dragRotate:false,pitchWithRotate:false});" +
-                "map.on('load',function(){styleNight();ensureRoute();setCenterMarker('pickup');var c=map.getCenter();try{AndroidPassenger.onMapReady(c.lat,c.lng,c.lat,c.lng);}catch(e){}});" +
-                "map.on('move',function(){if(centerMarker){var c=map.getCenter();centerMarker.setLngLat([c.lng,c.lat]);}});map.on('moveend',notifyCenter);map.on('zoomend',notifyCenter);" +
-                "}catch(e){setTimeout(ready,700);}}ready();" +
-                "</script></body></html>";
-    }
-    public class MapBridge {
-        @JavascriptInterface public void onMapReady(double lat, double lng, double pLat, double pLng) {
-            networkScope.post(mainHandler, () -> {
-                mapReady = true;
-                centerLat = lat;
-                centerLng = lng;
-                pickLat = validCoord(pLat, pLng) ? pLat : lat;
-                pickLng = validCoord(pLat, pLng) ? pLng : lng;
-                goToMyLocation();
-                loadMapPlaces();
-                loadOnlineDrivers();
-            });
-        }
-        @JavascriptInterface public void onCenterChanged(double lat, double lng, double pLat, double pLng) {
-            centerLat = lat;
-            centerLng = lng;
-            pickLat = validCoord(pLat, pLng) ? pLat : lat;
-            pickLng = validCoord(pLat, pLng) ? pLng : lng;
-        }
-    }
+
 
     private void setPointFromCenter() {
         double selectedLat = validCoord(pickLat, pickLng) ? pickLat : centerLat;
@@ -987,61 +907,9 @@ public class PassengerTransportActivity extends Activity {
     }
 
     private String reverseAddress(double lat, double lng) {
-        HttpURLConnection conn = null;
-
-        try {
-            String urlText =
-                    "https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat="
-                            + lat + "&lon=" + lng + "&zoom=18&addressdetails=1";
-
-            conn = CustomerApiClient.open(this, urlText);
-            conn.setRequestMethod("GET");
-            conn.setConnectTimeout(12000);
-            conn.setReadTimeout(12000);
-            conn.setUseCaches(false);
-            conn.setRequestProperty("User-Agent", "TransivaAndroid/1.0");
-            conn.setRequestProperty("Accept", "application/json");
-            String requestToken = refreshAuthToken();
-            if (!requestToken.isEmpty()) {
-                conn.setRequestProperty("Authorization", "Bearer " + requestToken);
-                conn.setRequestProperty("X-App-Scope", "customer");
-            }
-            conn.setRequestProperty("X-Device-UUID", DeviceIdentityManager.getInstallationUuid(this));
-
-            String body = readStream(conn.getInputStream());
-            JSONObject json = new JSONObject(body);
-            JSONObject a = json.optJSONObject("address");
-
-            if (a != null) {
-                String road = firstNonEmpty(
-                        a.optString("road", ""),
-                        a.optString("pedestrian", ""),
-                        a.optString("footway", ""),
-                        a.optString("neighbourhood", "")
-                );
-
-                String area = firstNonEmpty(
-                        a.optString("village", ""),
-                        a.optString("suburb", ""),
-                        a.optString("town", ""),
-                        a.optString("city", ""),
-                        a.optString("county", "")
-                );
-
-                if (road.length() > 0 && area.length() > 0) {
-                    return road + ", " + area;
-                }
-
-                return firstNonEmpty(road, area, compactDisplayName(json.optString("display_name", "")));
-            }
-
-            return compactDisplayName(json.optString("display_name", ""));
-        } catch (Exception ignored) {
-            return "";
-        } finally {
-            if (conn != null) conn.disconnect();
-        }
+        return geocodingRepository.reverse(lat, lng);
     }
+
 
     private String compactDisplayName(String value) {
         String v = firstNonEmpty(value, "");
@@ -1786,10 +1654,7 @@ public class PassengerTransportActivity extends Activity {
         return v;
     }
 
-    private String js(String value) {
-        if (value == null) return "";
-        return value.replace("\\", "\\\\").replace("'", "\\'").replace("\n", "");
-    }
+
 
     private int getDrawableId(String... names) {
         try {
@@ -1801,25 +1666,7 @@ public class PassengerTransportActivity extends Activity {
         return 0;
     }
 
-    private String drawableDataUri(String... names) {
-        try {
-            for (String name : names) {
-                int id = getResources().getIdentifier(name, "drawable", getPackageName());
-                if (id <= 0) continue;
 
-                Bitmap bm = BitmapFactory.decodeResource(getResources(), id);
-                if (bm == null) continue;
-
-                ByteArrayOutputStream out = new ByteArrayOutputStream();
-                bm.compress(Bitmap.CompressFormat.PNG, 100, out);
-                String b64 = Base64.encodeToString(out.toByteArray(), Base64.NO_WRAP);
-                try { bm.recycle(); } catch (Exception ignored) {}
-                return "data:image/png;base64," + b64;
-            }
-        } catch (Exception ignored) {}
-
-        return "";
-    }
 
     private Button rowButton(String value, String color) { Button b = smallButton(value, "#FFFFFF", color, "#E2E8F0"); b.setGravity(Gravity.CENTER_VERTICAL); b.setPadding(dp(12), 0, dp(12), 0); return b; }
     private Button smallButton(String value, String bg, String fg, String stroke) { Button b = new Button(this); b.setText(value); b.setAllCaps(false); b.setTextSize(13); b.setTypeface(Typeface.DEFAULT_BOLD); b.setTextColor(Color.parseColor(fg)); b.setBackground(roundStroke(bg, stroke, dp(16), 1)); return b; }

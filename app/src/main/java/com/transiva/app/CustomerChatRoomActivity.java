@@ -230,7 +230,7 @@ public class CustomerChatRoomActivity extends Activity {
         orderDbId = first(getIntent().getStringExtra("order_db_id"), getIntent().getStringExtra("id"), "");
         orderSource = first(getIntent().getStringExtra("order_source"), getIntent().getStringExtra("source"), "orders");
 
-        roomId = normalizeRoom(
+        roomId = CustomerChatRoomFormatter.normalizeRoom(
                 first(
                         getIntent().getStringExtra(
                                 "room_id"
@@ -402,7 +402,7 @@ public class CustomerChatRoomActivity extends Activity {
         );
 
         TextView orderLabel = text(
-                serviceName(orderType),
+                CustomerChatRoomFormatter.serviceName(orderType),
                 10,
                 "#0B7CFF",
                 true
@@ -902,81 +902,9 @@ public class CustomerChatRoomActivity extends Activity {
         }).start();
     }
 
-    private void waitForCameraOutput(
-            Uri uri
-    ) throws Exception {
-        long size = 0L;
-        long previousSize = -1L;
-        int stableCount = 0;
 
-        for (int attempt = 0; attempt < 20; attempt++) {
-            size = getUriLength(uri);
 
-            if (size > 1024L && size == previousSize) {
-                stableCount++;
 
-                if (stableCount >= 2) {
-                    return;
-                }
-
-            } else {
-                stableCount = 0;
-            }
-
-            previousSize = size;
-
-            try {
-                Thread.sleep(150L);
-            } catch (InterruptedException interrupted) {
-                Thread.currentThread().interrupt();
-                break;
-            }
-        }
-
-        if (size <= 1024L) {
-            throw new IllegalStateException(
-                    "Kamera belum menghasilkan file foto"
-            );
-        }
-    }
-
-    private long getUriLength(
-            Uri uri
-    ) {
-        if (uri == null) {
-            return 0L;
-        }
-
-        try (
-                AssetFileDescriptor descriptor =
-                        getContentResolver()
-                                .openAssetFileDescriptor(
-                                        uri,
-                                        "r"
-                                )
-        ) {
-            if (descriptor == null) {
-                return 0L;
-            }
-
-            long length = descriptor.getLength();
-
-            if (length >= 0L) {
-                return length;
-            }
-
-            try (
-                    InputStream input =
-                            descriptor
-                                    .createInputStream()
-            ) {
-                return input.available();
-            }
-
-        } catch (Exception ignored) {
-            return 0L;
-        }
-    }
 
     private void uploadPhoto(
             ChatImageProcessor.ImagePayload payload
@@ -1423,7 +1351,7 @@ public class CustomerChatRoomActivity extends Activity {
     private String absoluteVoiceContent(String content) {
         String url = ChatVoiceNote.voiceUrl(content);
         long duration = ChatVoiceNote.voiceDuration(content);
-        return ChatVoiceNote.encode(absoluteUrl(url), duration);
+        return ChatVoiceNote.encode(CustomerChatRoomFormatter.absoluteUrl(url), duration);
     }
 
     private PendingText addPendingText(String content) {
@@ -1869,7 +1797,7 @@ public class CustomerChatRoomActivity extends Activity {
             );
         }
 
-        String time = formatTime(message.optString("created_at", ""));
+        String time = CustomerChatRoomFormatter.formatTime(message.optString("created_at", ""));
         if (!time.isEmpty()) {
             String receipt = mine
                     ? (message.optInt("is_read", message.optString("read_at", "").trim().isEmpty() ? 0 : 1) == 0
@@ -1895,7 +1823,7 @@ public class CustomerChatRoomActivity extends Activity {
         String sender = CustomerMessageStatus.normalize(message.optString("sender_type", ""));
         if (!"customer".equals(sender)) return;
 
-        String time = formatTime(message.optString("created_at", ""));
+        String time = CustomerChatRoomFormatter.formatTime(message.optString("created_at", ""));
         boolean read = message.optInt("is_read", message.optString("read_at", "").trim().isEmpty() ? 0 : 1) == 1;
         String next = time + (read ? "  ✓✓ Dibaca" : "  ✓ Terkirim");
         if (!next.contentEquals(receipt.getText())) {
@@ -1921,7 +1849,7 @@ public class CustomerChatRoomActivity extends Activity {
     }
 
     private void loadRemoteImage(ImageView target, String imageUrl) {
-        final String fixed = absoluteUrl(imageUrl);
+        final String fixed = CustomerChatRoomFormatter.absoluteUrl(imageUrl);
 
         new Thread(() -> {
             Bitmap bitmap = null;
@@ -2095,7 +2023,7 @@ public class CustomerChatRoomActivity extends Activity {
         dialog.show();
 
         final String fixed =
-                absoluteUrl(imageUrl);
+                CustomerChatRoomFormatter.absoluteUrl(imageUrl);
 
         new Thread(() -> {
             Bitmap bitmap = null;
@@ -2360,97 +2288,13 @@ public class CustomerChatRoomActivity extends Activity {
         );
     }
 
-    private String normalizeRoom(String value) {
-        String room =
-                value == null
-                        ? ""
-                        : value.trim()
-                        .replace('_', '-')
-                        .toUpperCase(Locale.US);
 
-        room = room.replaceAll(
-                "[^A-Z0-9\\-]",
-                ""
-        );
 
-        if (
-                !room.isEmpty()
-                        && !room.startsWith("ROOM-")
-        ) {
-            room = "ROOM-" + room;
-        }
 
-        return room;
-    }
 
-    private String serviceName(String type) {
-        type = CustomerMessageStatus.normalize(type);
 
-        if (type.contains("food")) {
-            return "TransFood";
-        }
 
-        if (type.contains("shop") || type.contains("mart")) {
-            return "TransShop";
-        }
 
-        if (
-                type.contains("car")
-                        || type.contains("mobil")
-        ) {
-            return "TransCar";
-        }
-
-        return "TransRide";
-    }
-
-    private String formatTime(String value) {
-        if (value == null || value.trim().isEmpty()) {
-            return "";
-        }
-
-        String[] formats = {
-                "yyyy-MM-dd HH:mm:ss",
-                "yyyy-MM-dd'T'HH:mm:ss"
-        };
-
-        for (String format : formats) {
-            try {
-                Date date =
-                        new SimpleDateFormat(
-                                format,
-                                Locale.US
-                        ).parse(value.trim());
-
-                if (date != null) {
-                    return new SimpleDateFormat(
-                            "dd MMM • HH:mm",
-                            new Locale("id", "ID")
-                    ).format(date);
-                }
-
-            } catch (Exception ignored) {
-            }
-        }
-
-        return value;
-    }
-
-    private String absoluteUrl(String value) {
-        String path = value == null
-                ? ""
-                : value.trim().replace("\\", "/");
-
-        if (path.startsWith("http://") || path.startsWith("https://")) {
-            return path;
-        }
-
-        if (path.startsWith("/")) {
-            return "https://transiva.my.id" + path;
-        }
-
-        return BASE_URL + path;
-    }
 
     private Button primaryButton(String value) {
         Button button = new Button(this);

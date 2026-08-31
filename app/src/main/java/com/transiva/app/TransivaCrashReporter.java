@@ -180,6 +180,24 @@ public final class TransivaCrashReporter {
         } catch (Throwable ignored) { }
     }
 
+    public static void networkStateChanged(String state) {
+        try {
+            FirebaseCrashlytics c = FirebaseCrashlytics.getInstance();
+            c.setCustomKey("network_state", safe(state));
+            c.log("network:" + safe(state));
+        } catch (Throwable ignored) { }
+    }
+
+    public static void orderState(String anonymousOrderKey, String status, String source) {
+        try {
+            FirebaseCrashlytics c = FirebaseCrashlytics.getInstance();
+            c.setCustomKey("order_state", safe(status));
+            c.setCustomKey("order_source", safe(source));
+            c.setCustomKey("order_trace", safe(anonymousOrderKey));
+            c.log("order_state:" + safe(status));
+        } catch (Throwable ignored) { }
+    }
+
     private static String endpointName(String path) {
         String value = safe(path).trim();
         int query = value.indexOf('?');

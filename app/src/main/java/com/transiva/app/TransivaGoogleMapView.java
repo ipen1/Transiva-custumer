@@ -65,6 +65,8 @@ public final class TransivaGoogleMapView extends FrameLayout implements OnMapRea
     private final ImageView centerPin;
     private final TextView centerAction;
     private final android.view.View focusShade;
+    private final TextView networkBadge;
+    private final TransivaNetworkMonitor.Listener networkListener;
 
     private GoogleMap googleMap;
     private Listener listener;
@@ -90,6 +92,23 @@ public final class TransivaGoogleMapView extends FrameLayout implements OnMapRea
 
         nativeMapView = new MapView(context);
         addView(nativeMapView, new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT));
+
+        networkBadge = new TextView(context);
+        networkBadge.setText("Mode jaringan lemah • peta/rute terakhir tetap dipakai");
+        networkBadge.setTextColor(Color.WHITE);
+        networkBadge.setTextSize(11);
+        networkBadge.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+        networkBadge.setGravity(Gravity.CENTER);
+        networkBadge.setPadding(dp(10), dp(6), dp(10), dp(6));
+        networkBadge.setBackground(actionBackground("#B45309"));
+        networkBadge.setVisibility(GONE);
+        LayoutParams badgeLp = new LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT);
+        badgeLp.gravity = Gravity.TOP | Gravity.CENTER_HORIZONTAL;
+        badgeLp.topMargin = dp(10);
+        addView(networkBadge, badgeLp);
+        networkListener = next -> post(() -> networkBadge.setVisibility(
+                next == TransivaNetworkMonitor.State.VALIDATED ? GONE : VISIBLE));
+        TransivaNetworkMonitor.addListener(networkListener);
 
         if (mode == Mode.PICKER) {
             focusShade = new android.view.View(context);
@@ -462,6 +481,7 @@ public final class TransivaGoogleMapView extends FrameLayout implements OnMapRea
     public void onPauseMap() { try { nativeMapView.onPause(); } catch (Exception ignored) {} }
     public void onStopMap() { try { nativeMapView.onStop(); } catch (Exception ignored) {} }
     public void onDestroyMap() {
+        TransivaNetworkMonitor.removeListener(networkListener);
         try { if (driverAnimator != null) driverAnimator.cancel(); } catch (Exception ignored) {}
         try { nativeMapView.onDestroy(); } catch (Exception ignored) {}
         googleMap = null;

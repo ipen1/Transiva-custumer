@@ -196,7 +196,7 @@ public class CustomerDashboardActivity extends Activity
         }
 
         if (greetingText != null) {
-            greetingText.setText(timeGreeting());
+            greetingText.setText(CustomerDashboardFormatters.timeGreeting());
         }
         refreshSmartRecommendation();
     }
@@ -341,10 +341,10 @@ public class CustomerDashboardActivity extends Activity
         identity.setOrientation(LinearLayout.VERTICAL);
         topRow.addView(identity, new LinearLayout.LayoutParams(0, -2, 1));
 
-        greetingText = text(timeGreeting(), 12, "#EAF4FF", false);
+        greetingText = text(CustomerDashboardFormatters.timeGreeting(), 12, "#EAF4FF", false);
         identity.addView(greetingText);
 
-        TextView name = text(formatDisplayName(username) + " 👋", 22, "#FFFFFF", true);
+        TextView name = text(CustomerDashboardFormatters.displayName(username) + " 👋", 22, "#FFFFFF", true);
         LinearLayout.LayoutParams nameLp = new LinearLayout.LayoutParams(-1, -2);
         nameLp.setMargins(0, dp(2), 0, dp(6));
         identity.addView(name, nameLp);
@@ -864,6 +864,7 @@ public class CustomerDashboardActivity extends Activity
     }
 
     private void buildSmartRecommendation() {
+        if (!CustomerResourceConfig.feature(this, "smart_recommendations", true)) return;
         aiCard = new LinearLayout(this);
         aiCard.setOrientation(LinearLayout.HORIZONTAL);
         aiCard.setGravity(Gravity.CENTER_VERTICAL);
@@ -1057,27 +1058,9 @@ public class CustomerDashboardActivity extends Activity
         startActivity(i);
     }
 
-    private String timeGreeting() {
-        int hour = Calendar.getInstance().get(Calendar.HOUR_OF_DAY);
-        if (hour < 11) return "Selamat pagi";
-        if (hour < 15) return "Selamat siang";
-        if (hour < 18) return "Selamat sore";
-        return "Selamat malam";
-    }
 
-    private String formatDisplayName(String value) {
-        String clean = first(value, "User");
-        if (clean.isEmpty()) return "User";
-        String[] words = clean.toLowerCase(new Locale("id", "ID")).split("\\s+");
-        StringBuilder output = new StringBuilder();
-        for (String word : words) {
-            if (word.isEmpty()) continue;
-            if (output.length() > 0) output.append(' ');
-            output.append(Character.toUpperCase(word.charAt(0)));
-            if (word.length() > 1) output.append(word.substring(1));
-        }
-        return output.length() == 0 ? "User" : output.toString();
-    }
+
+
 
     private boolean isVerifiedUser() {
         try {
@@ -1358,6 +1341,7 @@ public class CustomerDashboardActivity extends Activity
      * - Layanan Transiva langsung naik ke bawahnya.
      */
     private void buildPromoSection() {
+        if (!CustomerResourceConfig.feature(this, "dashboard_promos", true)) return;
         promoSection = new LinearLayout(this);
         promoSection.setOrientation(
                 LinearLayout.VERTICAL

@@ -136,6 +136,8 @@ public final class CustomerResourceUpdateManager {
 
             sp.edit().putInt(K_VERSION, version)
                     .putLong(K_LAST_CHECK, System.currentTimeMillis()).commit();
+            CustomerResourceConfig.invalidate();
+            TransivaCrashReporter.log("customer_resource_installed:v" + version);
             cleanupOld(rootDir, version);
         } finally {
             sp.edit().putLong(K_LAST_CHECK, System.currentTimeMillis()).apply();

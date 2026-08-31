@@ -97,6 +97,7 @@ public class ProfileActivity extends Activity {
     private Button locationButton;
     private Button saveButton;
     private Button logoutButton;
+    private Button deleteAccountButton;
     private Button disconnectDeviceButton;
     private TextView deviceNameView;
     private TextView deviceDetailView;
@@ -1002,6 +1003,27 @@ public class ProfileActivity extends Activity {
                 logoutButton,
                 buttonLp()
         );
+
+        deleteAccountButton =
+                dangerButton(
+                        "Hapus Akun Permanen"
+                );
+        deleteAccountButton.setOnClickListener(view ->
+                CustomerAccountDeletionController.show(
+                        this,
+                        new CustomerAccountDeletionController.Listener() {
+                            @Override public void onBusyChanged(boolean busy) { setLoading(busy); }
+                            @Override public void onError(String message) {
+                                new TransivaAlertDialogBuilder(ProfileActivity.this)
+                                        .setTitle("Hapus Akun")
+                                        .setMessage(message)
+                                        .setPositiveButton("OK", null)
+                                        .show();
+                            }
+                        }
+                )
+        );
+        card.addView(deleteAccountButton, buttonLp());
 
         root.addView(
                 card,
@@ -2397,6 +2419,9 @@ public class ProfileActivity extends Activity {
 
         if (logoutButton != null) {
             logoutButton.setEnabled(!value);
+        }
+        if (deleteAccountButton != null) {
+            deleteAccountButton.setEnabled(!value);
         }
     }
 

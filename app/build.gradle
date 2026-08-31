@@ -6,6 +6,22 @@ plugins {
 
 android {
     namespace 'com.transiva.app'
+    flavorDimensions 'distribution'
+
+    productFlavors {
+        direct {
+            dimension 'distribution'
+            buildConfigField 'boolean', 'SELF_UPDATE_APK', 'true'
+        }
+        play {
+            dimension 'distribution'
+            buildConfigField 'boolean', 'SELF_UPDATE_APK', 'false'
+        }
+    }
+
+    buildFeatures {
+        buildConfig true
+    }
     compileSdk 36
 
     defaultConfig {

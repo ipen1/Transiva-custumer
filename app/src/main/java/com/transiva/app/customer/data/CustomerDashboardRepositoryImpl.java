@@ -5,6 +5,8 @@ import android.net.Uri;
 
 import com.transiva.app.CustomerApiClient;
 import com.transiva.app.ApiConfig;
+import com.transiva.app.CustomerResourceConfig;
+import com.transiva.app.TransivaHttpRepository;
 
 import com.transiva.app.customer.domain.CustomerDashboardRepository;
 import com.transiva.app.customer.domain.DashboardState;
@@ -179,76 +181,35 @@ public final class CustomerDashboardRepositoryImpl
             }
 
         } catch (Exception ignored) {
-            // Tidak membuat promo dummy saat API gagal.
             result.clear();
+        }
+
+        // Signed data-only resource snapshot may provide emergency/campaign banners.
+        // It is used only when the live promo API has no usable rows.
+        if (result.isEmpty()) {
+            JSONArray bundled = CustomerResourceConfig.banners(context);
+            for (int i = 0; i < bundled.length() && result.size() < 2; i++) {
+                JSONObject item = bundled.optJSONObject(i);
+                if (item == null) continue;
+                String title = item.optString("title", "").trim();
+                if (title.isEmpty()) continue;
+                result.add(new Promo(
+                        -1000 - i,
+                        title,
+                        item.optString("description", "").trim(),
+                        item.optString("code", "").trim(),
+                        item.optString("image_url", "").trim(),
+                        safeColor(item.optString("theme_start", "#0759E8"), "#0759E8"),
+                        safeColor(item.optString("theme_end", "#18B5FF"), "#18B5FF")
+                ));
+            }
         }
 
         return result;
     }
 
-    private JSONObject get(String endpoint)
-            throws Exception {
-        HttpURLConnection connection = null;
-
-        try {
-            connection = CustomerApiClient.open(context, endpoint);
-            connection.setConnectTimeout(TIMEOUT);
-            connection.setReadTimeout(TIMEOUT);
-            connection.setRequestMethod("GET");
-
-            // Cegah Android/proxy memakai respons promo lama.
-            connection.setUseCaches(false);
-            connection.setDefaultUseCaches(false);
-            connection.setRequestProperty(
-                    "Cache-Control",
-                    "no-cache, no-store, must-revalidate"
-            );
-            connection.setRequestProperty("Pragma", "no-cache");
-            connection.setRequestProperty("Expires", "0");
-
-            int code = connection.getResponseCode();
-
-            InputStream stream =
-                    code >= 200 && code < 400
-                            ? connection.getInputStream()
-                            : connection.getErrorStream();
-
-            if (stream == null) {
-                throw new IllegalStateException(
-                        "Empty response"
-                );
-            }
-
-            BufferedReader reader =
-                    new BufferedReader(
-                            new InputStreamReader(
-                                    stream,
-                                    "UTF-8"
-                            )
-                    );
-
-            StringBuilder body = new StringBuilder();
-            String line;
-
-            while ((line = reader.readLine()) != null) {
-                body.append(line);
-            }
-
-            reader.close();
-
-            if (code < 200 || code >= 400) {
-                throw new IllegalStateException(
-                        "HTTP " + code
-                );
-            }
-
-            return new JSONObject(body.toString());
-
-        } finally {
-            if (connection != null) {
-                connection.disconnect();
-            }
-        }
+    private JSONObject get(String endpoint) throws Exception {
+        return TransivaHttpRepository.getJson(context, endpoint, TIMEOUT);
     }
 
     private String safeColor(

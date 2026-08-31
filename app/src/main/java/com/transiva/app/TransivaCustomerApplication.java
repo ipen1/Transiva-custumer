@@ -28,6 +28,7 @@ public class TransivaCustomerApplication extends Application implements Applicat
         CustomerMessageApi.initialize(this);
         CustomerFcmTokenSync.syncIfNeeded(this);
         registerActivityLifecycleCallbacks(this);
+        CustomerResourceUpdateManager.checkInBackground(this);
 
         // Perubahan global keamanan Customer dikirim lewat topic ini.
         try {

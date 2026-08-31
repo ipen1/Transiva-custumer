@@ -15,6 +15,8 @@ public final class AppUpdateRuntimeGate {
 
     public static void onActivityResumed(Activity activity) {
         if (activity == null || activity.isFinishing()) return;
+        CustomerResourceUpdateManager.checkInBackground(activity.getApplicationContext());
+        if (!BuildConfig.SELF_UPDATE_APK) return;
         if (activity instanceof SplashActivity || activity instanceof UpdateDownloadActivity) return;
 
         int installed = installed(activity);

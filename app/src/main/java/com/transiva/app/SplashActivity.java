@@ -73,6 +73,12 @@ public class SplashActivity extends Activity {
     }
 
     private void checkAppUpdate() {
+        CustomerResourceUpdateManager.checkInBackground(this);
+        if (!BuildConfig.SELF_UPDATE_APK) {
+            statusText.setText("Aplikasi siap digunakan");
+            routeNext();
+            return;
+        }
         if (routed || updateChecking || isFinishing()) return;
         updateChecking = true;
         statusText.setText("Memeriksa versi Transiva Customer...");

@@ -187,6 +187,12 @@ public final class CustomerRedispatchService extends Service {
     }
 
     private static String safe(String v) { return v == null ? "" : v.trim(); }
+    @Override public void onTimeout(int startId, int fgsType) {
+        // Android 15+ limits dataSync foreground-service time. Stop cleanly
+        // instead of allowing the system to raise a RemoteServiceException.
+        stopSelfSafely();
+    }
+
     @Override public IBinder onBind(Intent intent) { return null; }
     @Override public void onDestroy() { main.removeCallbacks(heartbeat); super.onDestroy(); }
 }

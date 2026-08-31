@@ -369,10 +369,10 @@ public class TransivaFirebaseService extends FirebaseMessagingService {
         if (incomingCallNotification) {
             wakeScreen(12000L);
         } else if (arrivalEvent) {
-            wakeScreen(10000L);
-            builder.setPriority(NotificationCompat.PRIORITY_MAX)
+            // Play policy: driver-arrival is a high-priority heads-up event, not a
+            // full-screen intent. Full-screen is reserved for incoming calls only.
+            builder.setPriority(NotificationCompat.PRIORITY_HIGH)
                     .setCategory(NotificationCompat.CATEGORY_STATUS)
-                    .setFullScreenIntent(pendingIntent, true)
                     .setTimeoutAfter(15000L);
         } else if (isChat(type)) {
             wakeScreen(5000L);
@@ -391,10 +391,6 @@ public class TransivaFirebaseService extends FirebaseMessagingService {
         NotificationManagerCompat
                 .from(this)
                 .notify(requestCode, builder.build());
-
-        if (arrivalEvent) {
-            openArrivalScreen(intent);
-        }
 
         if ("webrtc_call".equals(type)
                 && data != null

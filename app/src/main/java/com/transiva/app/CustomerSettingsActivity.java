@@ -109,24 +109,26 @@ public class CustomerSettingsActivity extends Activity {
         securityCard.addView(actionRow("Transiva Royalti", "Lihat poin, tier, dan progres loyalitas customer", CustomerLoyaltyActivity.class));
         root.addView(securityCard);
 
-        root.addView(sectionTitle("Panggilan Masuk"), marginTop(18));
-        LinearLayout callCard = card();
-        LinearLayout overlayRow = new LinearLayout(this);
-        overlayRow.setGravity(Gravity.CENTER_VERTICAL);
-        overlayRow.setPadding(0, dp(4), 0, dp(4));
-        LinearLayout overlayLabels = new LinearLayout(this);
-        overlayLabels.setOrientation(LinearLayout.VERTICAL);
-        overlayLabels.addView(text("Tampil di atas aplikasi lain", 15, "#0B3A78", true));
-        overlayLabels.addView(text("Opsional • membantu layar panggilan tampil saat Transiva berada di latar belakang", 11, "#64748B", false));
-        overlayRow.addView(overlayLabels, new LinearLayout.LayoutParams(0, -2, 1));
-        overlayStatus = text("OPSIONAL", 10, "#0B7CFF", true);
-        overlayStatus.setPadding(dp(9), dp(5), dp(9), dp(5));
-        overlayStatus.setBackground(round("#EAF4FF", 12));
-        overlayRow.addView(overlayStatus);
-        overlayRow.setOnClickListener(v -> explainOverlayPermission());
-        callCard.addView(overlayRow);
-        root.addView(callCard);
-        updateOverlayStatus();
+        if (BuildConfig.SELF_UPDATE_APK) {
+            root.addView(sectionTitle("Panggilan Masuk"), marginTop(18));
+            LinearLayout callCard = card();
+            LinearLayout overlayRow = new LinearLayout(this);
+            overlayRow.setGravity(Gravity.CENTER_VERTICAL);
+            overlayRow.setPadding(0, dp(4), 0, dp(4));
+            LinearLayout overlayLabels = new LinearLayout(this);
+            overlayLabels.setOrientation(LinearLayout.VERTICAL);
+            overlayLabels.addView(text("Tampil di atas aplikasi lain", 15, "#0B3A78", true));
+            overlayLabels.addView(text("Opsional • membantu layar panggilan tampil saat Transiva berada di latar belakang", 11, "#64748B", false));
+            overlayRow.addView(overlayLabels, new LinearLayout.LayoutParams(0, -2, 1));
+            overlayStatus = text("OPSIONAL", 10, "#0B7CFF", true);
+            overlayStatus.setPadding(dp(9), dp(5), dp(9), dp(5));
+            overlayStatus.setBackground(round("#EAF4FF", 12));
+            overlayRow.addView(overlayStatus);
+            overlayRow.setOnClickListener(v -> explainOverlayPermission());
+            callCard.addView(overlayRow);
+            root.addView(callCard);
+            updateOverlayStatus();
+        }
 
         root.addView(sectionTitle("Pembaruan"), marginTop(18));
         LinearLayout updateCard = card();
@@ -135,14 +137,23 @@ public class CustomerSettingsActivity extends Activity {
         updateRow.setPadding(0, dp(4), 0, dp(4));
         LinearLayout updateLabels = new LinearLayout(this);
         updateLabels.setOrientation(LinearLayout.VERTICAL);
-        updateLabels.addView(text("Cek Pembaruan Aplikasi", 15, "#0B3A78", true));
-        updateLabels.addView(text("Versi terpasang " + AppUpdateClient.installedVersionName(this), 11, "#64748B", false));
+        updateLabels.addView(text(BuildConfig.SELF_UPDATE_APK ? "Cek Pembaruan Aplikasi" : "Pembaruan melalui Google Play", 15, "#0B3A78", true));
+        updateLabels.addView(text("Versi " + AppUpdateClient.installedVersionName(this)
+                + " • resource " + CustomerResourceUpdateManager.installedVersion(this), 11, "#64748B", false));
         updateRow.addView(updateLabels, new LinearLayout.LayoutParams(0, -2, 1));
         updateRow.addView(text("›", 30, "#0B7CFF", true));
         updateRow.setOnClickListener(v -> {
-            Intent intent = new Intent(this, UpdateDownloadActivity.class);
-            intent.putExtra(UpdateDownloadActivity.EXTRA_ROLE, "customer");
-            startActivity(intent);
+            if (BuildConfig.SELF_UPDATE_APK) {
+                Intent intent = new Intent(this, UpdateDownloadActivity.class);
+                intent.putExtra(UpdateDownloadActivity.EXTRA_ROLE, "customer");
+                startActivity(intent);
+            } else {
+                try {
+                    startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse("market://details?id=" + getPackageName())));
+                } catch (Throwable e) {
+                    startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse("https://play.google.com/store/apps/details?id=" + getPackageName())));
+                }
+            }
         });
         updateCard.addView(updateRow);
         root.addView(updateCard);

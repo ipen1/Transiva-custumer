@@ -36,37 +36,61 @@ jobs:
           printf "%s" "${{ secrets.KEYSTORE_BASE64 }}" | base64 --decode > app/transiva-release.jks
           test -s app/transiva-release.jks
 
+      # The project has two distribution flavors: direct and play.
+      # testDebugUnitTest is ambiguous after flavors are enabled, therefore
+      # run both concrete variant tasks explicitly.
       - name: Run Customer Regression Tests
-        run: gradle testDebugUnitTest
+        run: gradle :app:testDirectDebugUnitTest :app:testPlayDebugUnitTest
 
       - name: Verify Regression Tests Actually Ran
         shell: bash
         run: |
           set -euo pipefail
-          REPORT_DIR="app/build/test-results/testDebugUnitTest"
-          test -d "$REPORT_DIR"
-          COUNT=$(grep -Rho 'tests="[0-9]*"' "$REPORT_DIR"/*.xml 2>/dev/null | sed -E 's/tests="([0-9]+)"/\1/' | awk '{s+=$1} END {print s+0}')
-          echo "Regression tests executed: $COUNT"
-          test "$COUNT" -gt 0
 
-      - name: Build Release Signed APK and AAB
-        run: gradle clean assembleRelease bundleRelease
+          DIRECT_DIR="app/build/test-results/testDirectDebugUnitTest"
+          PLAY_DIR="app/build/test-results/testPlayDebugUnitTest"
+
+          test -d "$DIRECT_DIR"
+          test -d "$PLAY_DIR"
+
+          count_tests() {
+            local dir="$1"
+            grep -Rho 'tests="[0-9]*"' "$dir"/*.xml 2>/dev/null \
+              | sed -E 's/tests="([0-9]+)"/\1/' \
+              | awk '{s+=$1} END {print s+0}'
+          }
+
+          DIRECT_COUNT=$(count_tests "$DIRECT_DIR")
+          PLAY_COUNT=$(count_tests "$PLAY_DIR")
+          TOTAL_COUNT=$((DIRECT_COUNT + PLAY_COUNT))
+
+          echo "Direct regression tests executed: $DIRECT_COUNT"
+          echo "Play regression tests executed:   $PLAY_COUNT"
+          echo "Total regression tests executed:  $TOTAL_COUNT"
+
+          test "$DIRECT_COUNT" -gt 0
+          test "$PLAY_COUNT" -gt 0
+
+      # Direct = APK for your own server/distribution.
+      # Play   = AAB intended for Google Play.
+      - name: Build Direct Signed APK and Play Signed AAB
+        run: gradle clean :app:assembleDirectRelease :app:bundlePlayRelease
         env:
           KEYSTORE_FILE: transiva-release.jks
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
 
-      - name: Upload Signed APK
+      - name: Upload Direct Signed APK
         uses: actions/upload-artifact@v6
         with:
-          name: transiva-release-signed-apk
-          path: app/build/outputs/apk/release/*.apk
+          name: transiva-direct-release-signed-apk
+          path: app/build/outputs/apk/direct/release/*.apk
           if-no-files-found: error
 
-      - name: Upload Signed AAB
+      - name: Upload Play Signed AAB
         uses: actions/upload-artifact@v6
         with:
-          name: transiva-release-signed-aab
-          path: app/build/outputs/bundle/release/*.aab
+          name: transiva-play-release-signed-aab
+          path: app/build/outputs/bundle/playRelease/*.aab
           if-no-files-found: error

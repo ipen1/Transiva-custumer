@@ -151,6 +151,8 @@ public class CustomerDashboardActivity extends Activity
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        dashboardController = new DashboardController(this);
+        dashboardController.onCreate();
 
         getWindow().setStatusBarColor(
                 Color.parseColor("#0B7CFF")
@@ -209,6 +211,7 @@ public class CustomerDashboardActivity extends Activity
 
     @Override
     protected void onDestroy() {
+        if (dashboardController != null) dashboardController.onDestroy();
         networkScope.destroy();
         stopPromoAutoSlide();
 

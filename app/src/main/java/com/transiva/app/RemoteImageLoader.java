@@ -38,6 +38,9 @@ public final class RemoteImageLoader {
 
         view.setTag(clean);
 
+        android.graphics.Bitmap cached = ImageMemoryDiskCache.get(view.getContext(), clean);
+        if (cached != null) { view.setImageBitmap(cached); return; }
+
         EXECUTOR.execute(() -> {
             HttpURLConnection connection = null;
             Bitmap bitmap = null;
@@ -68,6 +71,7 @@ public final class RemoteImageLoader {
 
                 Bitmap result = bitmap;
                 bitmap = null;
+                ImageMemoryDiskCache.put(view.getContext().getApplicationContext(), clean, result);
 
                 view.post(() -> {
                     Object tag = view.getTag();

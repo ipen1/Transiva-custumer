@@ -29,7 +29,7 @@ public class ApiClient {
     private final Handler mainHandler;
 
     private static final String CHANNEL_NAME = "TransivaNative";
-    private static final String BASE_URL = "https://transiva.my.id/";
+    private static final String BASE_URL = ApiConfig.ROOT;
 
     private static final int CONNECT_TIMEOUT = 15000;
     private static final int READ_TIMEOUT = 25000;

@@ -6,8 +6,6 @@ import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 
-import com.google.firebase.messaging.FirebaseMessaging;
-
 import java.lang.ref.WeakReference;
 
 /** Runs the guard on normal screens. Splash owns its own blocking startup check. */
@@ -21,26 +19,16 @@ public class TransivaCustomerApplication extends Application implements Applicat
     @Override public void onCreate() {
         super.onCreate();
         instance = this;
-        TransivaCrashReporter.initialize(this);
+        CustomerStartupManager.installCritical(this);
         TransivaCrashReporter.user(this);
-        TransivaNetworkMonitor.install(this);
-        AdaptiveTlsPinning.install(this);
-        CustomerReliabilityManager.install(this);
-        CustomerMessageApi.initialize(this);
-        CustomerFcmTokenSync.syncIfNeeded(this);
         registerActivityLifecycleCallbacks(this);
-        CustomerResourceUpdateManager.checkInBackground(this);
-
-        // Perubahan global keamanan Customer dikirim lewat topic ini.
-        try {
-            FirebaseMessaging.getInstance()
-                    .subscribeToTopic("transiva_customer_security");
-        } catch (Throwable ignored) { }
+        CustomerStartupManager.deferNonCritical(this);
     }
 
     @Override public void onActivityResumed(Activity activity) {
         currentActivity = new WeakReference<>(activity);
         TransivaCrashReporter.screen(activity);
+        CustomerAnalytics.screen(activity, activity.getClass().getSimpleName());
         TransivaCrashReporter.user(activity);
         CustomerFcmTokenSync.syncIfNeeded(activity);
         AppUpdateRuntimeGate.onActivityResumed(activity);

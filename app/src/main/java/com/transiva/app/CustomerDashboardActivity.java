@@ -67,6 +67,7 @@ public class CustomerDashboardActivity extends Activity
             new Handler(Looper.getMainLooper());
 
     private CustomerDashboardPresenter presenter;
+    private DashboardController dashboardController;
 
     private LinearLayout content;
     private TextView locationText;
@@ -186,6 +187,10 @@ public class CustomerDashboardActivity extends Activity
         CustomerAppSettings.apply(this);
 
         SessionValidationClient.validate(this);
+
+        if (dashboardController != null) {
+            dashboardController.onResume();
+        }
 
         if (presenter != null) {
             presenter.refresh(username, userId);

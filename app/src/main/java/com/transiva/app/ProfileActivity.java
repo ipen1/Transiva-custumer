@@ -2791,114 +2791,33 @@ public class ProfileActivity extends Activity {
     private String absoluteUrl(
             String value
     ) {
-        String clean =
-                first(value);
-
-        if (
-                clean.startsWith("http://")
-                        || clean.startsWith(
-                        "https://"
-                )
-        ) {
-            return clean;
-        }
-
-        while (clean.startsWith("/")) {
-            clean = clean.substring(1);
-        }
-
-        return "https://transiva.my.id/"
-                + clean;
+        return ProfileSupport.absoluteUrl(value);
     }
 
     private String readStream(
             InputStream stream
     ) throws Exception {
-        if (stream == null) {
-            return "";
-        }
-
-        StringBuilder builder =
-                new StringBuilder();
-
-        try (
-                BufferedReader reader =
-                        new BufferedReader(
-                                new InputStreamReader(
-                                        stream,
-                                        StandardCharsets.UTF_8
-                                )
-                        )
-        ) {
-            String line;
-
-            while (
-                    (line = reader.readLine())
-                            != null
-            ) {
-                builder.append(line);
-            }
-        }
-
-        return builder.toString();
+        return CustomerIo.readUtf8(stream);
     }
 
     private String localIndonesiaPhone(String raw) {
-        String digits = raw == null ? "" : raw.replaceAll("[^0-9]", "");
-        if (digits.startsWith("0062")) digits = digits.substring(4);
-        else if (digits.startsWith("62")) digits = digits.substring(2);
-        else if (digits.startsWith("0")) digits = digits.substring(1);
-        if (digits.length() > 13) digits = digits.substring(0, 13);
-        return digits;
+        return ProfileSupport.localIndonesiaPhone(raw);
     }
 
     private String normalizeIndonesiaPhone(String raw) {
-        String digits = raw == null ? "" : raw.replaceAll("[^0-9]", "");
-        if (digits.startsWith("0062")) digits = digits.substring(2);
-        if (digits.startsWith("0")) digits = "62" + digits.substring(1);
-        else if (digits.startsWith("8")) digits = "62" + digits;
-        else if (!digits.startsWith("62")) digits = "62" + digits;
-        if (digits.length() > 15) digits = digits.substring(0, 15);
-        return digits.isEmpty() ? "62" : digits;
+        return ProfileSupport.normalizeIndonesiaPhone(raw);
     }
 
     private String first(
             String... values
     ) {
-        if (values == null) {
-            return "";
-        }
-
-        for (String value : values) {
-            if (
-                    value != null
-                            && !value.trim()
-                            .isEmpty()
-                            && !"null"
-                            .equalsIgnoreCase(
-                                    value.trim()
-                            )
-                            && !"undefined"
-                            .equalsIgnoreCase(
-                                    value.trim()
-                            )
-            ) {
-                return value.trim();
-            }
-        }
-
-        return "";
+        return CustomerCommonFormatters.first(values);
     }
 
     private int dp(
             int value
     ) {
-        return Math.round(
-                value
-                        * getResources()
-                        .getDisplayMetrics()
-                        .density
-        );
+        return CustomerUiPrimitives.dp(this, value);
     }
 
     private void showInfo(

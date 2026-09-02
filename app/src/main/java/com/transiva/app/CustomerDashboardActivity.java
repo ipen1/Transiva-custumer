@@ -2236,44 +2236,15 @@ public class CustomerDashboardActivity extends Activity
     }
 
     private int dp(int value) {
-        return Math.round(
-                value
-                        * getResources()
-                        .getDisplayMetrics()
-                        .density
-        );
+        return CustomerUiPrimitives.dp(this, value);
     }
 
     private String rupiah(double amount) {
-        NumberFormat formatter = NumberFormat.getCurrencyInstance(
-                new Locale("id", "ID")
-        );
-        formatter.setMinimumFractionDigits(0);
-        formatter.setMaximumFractionDigits(0);
-        return formatter.format(amount);
+        return CustomerCommonFormatters.rupiah(amount);
     }
 
     private String first(String... values) {
-        if (values == null) {
-            return "";
-        }
-
-        for (String value : values) {
-            if (
-                    value != null
-                            && !value.trim().isEmpty()
-                            && !"null".equalsIgnoreCase(
-                                    value.trim()
-                            )
-                            && !"undefined".equalsIgnoreCase(
-                                    value.trim()
-                            )
-            ) {
-                return value.trim();
-            }
-        }
-
-        return "";
+        return CustomerCommonFormatters.first(values);
     }
 
     @Override

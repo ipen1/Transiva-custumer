@@ -2528,59 +2528,13 @@ public class CustomerHistoryActivity extends Activity {
     private String serviceType(
             JSONObject order
     ) {
-        return normalized(
-                first(
-                        order.optString(
-                                "order_type"
-                        ),
-                        order.optString(
-                                "service_type"
-                        ),
-                        order.optString("service"),
-                        order.optString(
-                                "service_name"
-                        ),
-                        "ride"
-                )
-        );
+        return CustomerHistoryPolicy.serviceType(order);
     }
 
     private String serviceName(
             JSONObject order
     ) {
-        String type = serviceType(order);
-
-        if (type.contains("food")) {
-            return "TransFood";
-        }
-
-        if (
-                type.contains("tour")
-                        || type.contains("wisata")
-        ) {
-            return "TransTour";
-        }
-
-        if (type.contains("laundry")) {
-            return "Laundry";
-        }
-
-        if (type.contains("pickup")) {
-            return "TransSend";
-        }
-
-        if (type.contains("mart") || type.contains("shop")) {
-            return "TransShop";
-        }
-
-        if (
-                type.contains("car")
-                        || type.contains("mobil")
-        ) {
-            return "TransCar";
-        }
-
-        return "TransRide";
+        return CustomerHistoryPolicy.serviceName(order);
     }
 
     private int serviceDrawable(
@@ -2628,45 +2582,19 @@ public class CustomerHistoryActivity extends Activity {
     private String serviceSoftColor(
             JSONObject order
     ) {
-        String type = serviceType(order);
-
-        if (type.contains("food")) {
-            return "#FFF4E8";
-        }
-
-        if (
-                type.contains("tour")
-                        || type.contains("wisata")
-        ) {
-            return "#F2EDFF";
-        }
-
-        if (type.contains("laundry")) {
-            return "#ECFDF5";
-        }
-
-        if (type.contains("pickup")) {
-            return "#EEF6FF";
-        }
-
-        if (type.contains("mart") || type.contains("shop")) {
-            return "#FFF9E8";
-        }
-
-        return "#EAF4FF";
+        return CustomerHistoryPolicy.serviceSoftColor(order);
     }
 
     private String normalizedStatus(
             String status
     ) {
-        return normalized(status);
+        return CustomerHistoryPolicy.normalized(status);
     }
 
     private boolean isActiveStatus(
             String status
     ) {
-        return !isCompletedStatus(status)
-                && !isCanceledStatus(status);
+        return CustomerHistoryPolicy.isActive(status);
     }
 
     /**
@@ -2679,46 +2607,26 @@ public class CustomerHistoryActivity extends Activity {
     private boolean canCustomerCancel(
             String status
     ) {
-        return status.equals("pending")
-                || status.equals("merchant_accepted");
+        return CustomerHistoryPolicy.canCustomerCancel(status);
     }
 
     /** Status resmi driver dari endpoint PHP. */
     private boolean canTrackOrder(
             String status
     ) {
-        return status.equals("taken")
-                || status.equals("driver_accepted")
-                || status.equals("accepted")
-                || status.equals("driver_assigned")
-                || status.equals("assigned")
-                || status.equals("arrived_pickup")
-                || status.equals("on_delivery")
-                || status.equals("arrived_delivery");
+        return CustomerHistoryPolicy.canTrack(status);
     }
 
     private boolean isCompletedStatus(
             String status
     ) {
-        return status.contains("completed")
-                || status.contains("complete")
-                || status.contains("finished")
-                || status.equals("finish")
-                || status.contains("selesai")
-                || status.contains("delivered")
-                || status.contains("done")
-                || status.contains("success");
+        return CustomerHistoryPolicy.isCompleted(status);
     }
 
     private boolean isCanceledStatus(
             String status
     ) {
-        return status.equals("merchant_rejected")
-                || status.equals("canceled")
-                || status.equals("cancelled")
-                || status.contains("batal")
-                || status.contains("failed")
-                || status.contains("expired");
+        return CustomerHistoryPolicy.isCanceled(status);
     }
 
     private String statusLabel(
@@ -3057,12 +2965,7 @@ public class CustomerHistoryActivity extends Activity {
     }
 
     private int dp(int value) {
-        return Math.round(
-                value
-                        * getResources()
-                        .getDisplayMetrics()
-                        .density
-        );
+        return CustomerUiPrimitives.dp(this, value);
     }
 
     private String normalized(String value) {
@@ -3078,26 +2981,7 @@ public class CustomerHistoryActivity extends Activity {
     }
 
     private String first(String... values) {
-        if (values == null) {
-            return "";
-        }
-
-        for (String value : values) {
-            if (
-                    value != null
-                            && !value.trim().isEmpty()
-                            && !"null".equalsIgnoreCase(
-                                    value.trim()
-                            )
-                            && !"undefined".equalsIgnoreCase(
-                                    value.trim()
-                            )
-            ) {
-                return value.trim();
-            }
-        }
-
-        return "";
+        return CustomerCommonFormatters.first(values);
     }
 
     private void toast(String message) {

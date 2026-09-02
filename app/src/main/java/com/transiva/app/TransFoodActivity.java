@@ -1546,9 +1546,15 @@ public class TransFoodActivity extends Activity {
     private void addStatusTo(LinearLayout parent, String message) { TextView t = text(message, 14, "#64748B", false); t.setGravity(Gravity.CENTER); t.setPadding(dp(16), dp(20), dp(16), dp(20)); t.setBackground(roundStroke("#FFFFFF", "#D7E6F8", dp(20), 1)); addWithMarginTo(parent, t, 0, 0, 0, dp(12)); }
     private void setLoading(boolean b) { if (progressBar != null) progressBar.setVisibility(b ? View.VISIBLE : View.GONE); }
     private void showInfo(String title, String msg) { try { new TransivaAlertDialogBuilder(this).setTitle(title).setMessage(msg).setPositiveButton("OK", null).show(); } catch (Exception ignored) {} }
-    private int dp(int v) { return (int) (v * getResources().getDisplayMetrics().density + 0.5f); }
-    private String rupiah(double v) { return "Rp " + NumberFormat.getNumberInstance(new Locale("id", "ID")).format((long) v); }
-    private String firstNonEmpty(String... values) { if (values == null) return ""; for (String s : values) if (s != null && s.trim().length() > 0 && !"null".equalsIgnoreCase(s.trim())) return s.trim(); return ""; }
+    private int dp(int v) {
+        return CustomerUiPrimitives.dp(this, v);
+    }
+    private String rupiah(double v) {
+        return CustomerCommonFormatters.rupiahSpacedTruncate(v);
+    }
+    private String firstNonEmpty(String... values) {
+        return CustomerCommonFormatters.firstBasic(values);
+    }
 
     private static class MenuSearchItem { int restaurantId; int menuId; String restaurantName; String menuName; String category; String description; String image; double price; boolean active; boolean trackStock; int stock; JSONObject restaurant; }
     private static class CartItem { int id; int restaurantId; String name; double basePrice; double price; int qty; String key; String optionText; JSONArray selectedOptions; }

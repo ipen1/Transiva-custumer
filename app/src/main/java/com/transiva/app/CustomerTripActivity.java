@@ -642,7 +642,9 @@ public class CustomerTripActivity extends Activity {
             networkScope.post(mainHandler, ()->{setLoading(false); showInfo(ok?"Berhasil":"Gagal",m); if(ok) fetchDriverPosition();});
         }catch(Exception e){TransivaCrashReporter.recordNetworkFailure(e,"POST",CUSTOMER_ACTION_URL);networkScope.post(mainHandler, ()->{setLoading(false);showInfo("Gagal","Koneksi server bermasalah.");});}});
     }
-    private String rupiah(double value){ return "Rp"+java.text.NumberFormat.getNumberInstance(new Locale("id","ID")).format(Math.round(value)); }
+    private String rupiah(double value){
+        return CustomerCommonFormatters.rupiahCompactPrefix(value);
+    }
 
     private void requestStableRoute(double toLat,double toLng,boolean force){
         if(mapView==null || !mapReady || !validCoord(lastDriverLat,lastDriverLng) || !validCoord(toLat,toLng)) return;
@@ -665,8 +667,7 @@ public class CustomerTripActivity extends Activity {
     }
 
     private float distanceMeters(double aLat,double aLng,double bLat,double bLng){
-        if(!validCoord(aLat,aLng) || !validCoord(bLat,bLng)) return 999999f;
-        try{ float[] r=new float[1]; android.location.Location.distanceBetween(aLat,aLng,bLat,bLng,r); return r[0]; }catch(Exception e){ return 999999f; }
+        return CustomerGeoMath.distanceMetersOrFar(aLat, aLng, bLat, bLng);
     }
 
     private String resolveDriverType(JSONObject order, JSONObject driver) {
@@ -1042,30 +1043,19 @@ public class CustomerTripActivity extends Activity {
     }
 
     private boolean validCoord(double lat, double lng) {
-        return Double.isFinite(lat) && Double.isFinite(lng) && lat != 0 && lng != 0;
+        return CustomerGeoMath.valid(lat, lng);
     }
 
     private double calcBearing(double lat1, double lng1, double lat2, double lng2) {
-        if (!validCoord(lat1, lng1) || !validCoord(lat2, lng2)) return lastBearing;
-        double dLng = Math.toRadians(lng2 - lng1);
-        double y = Math.sin(dLng) * Math.cos(Math.toRadians(lat2));
-        double x = Math.cos(Math.toRadians(lat1)) * Math.sin(Math.toRadians(lat2)) -
-                Math.sin(Math.toRadians(lat1)) * Math.cos(Math.toRadians(lat2)) * Math.cos(dLng);
-        return normalize(Math.toDegrees(Math.atan2(y, x)));
+        return CustomerGeoMath.bearingOrFallback(lat1, lng1, lat2, lng2, lastBearing);
     }
 
     private double smoothBearing(double oldB, double newB) {
-        oldB = normalize(oldB);
-        newB = normalize(newB);
-        double diff = newB - oldB;
-        if (diff > 180) diff -= 360;
-        if (diff < -180) diff += 360;
-        return normalize(oldB + diff * 0.35);
+        return CustomerGeoMath.smoothBearing(oldB, newB);
     }
 
     private double normalize(double v) {
-        v = v % 360;
-        return v < 0 ? v + 360 : v;
+        return CustomerGeoMath.normalizeDegrees(v);
     }
 
 
@@ -1082,11 +1072,7 @@ public class CustomerTripActivity extends Activity {
     }
 
     private String firstNonEmpty(String... values) {
-        if (values == null) return "";
-        for (String v : values) {
-            if (v != null && v.trim().length() > 0 && !v.trim().equalsIgnoreCase("null")) return v.trim();
-        }
-        return "";
+        return CustomerCommonFormatters.firstBasic(values);
     }
 
     private Button outlineButton(String value) {
@@ -1154,7 +1140,7 @@ public class CustomerTripActivity extends Activity {
     }
 
     private int dp(int v) {
-        return (int) (v * getResources().getDisplayMetrics().density + 0.5f);
+        return CustomerUiPrimitives.dp(this, v);
     }
 
     private void showInfo(String title, String message) {

@@ -2483,162 +2483,37 @@ public class CustomerBalanceHistoryActivity
     private String transactionTitle(
             String type
     ) {
-        type =
-                type == null
-                        ? ""
-                        : type.toLowerCase(
-                                Locale.US
-                        );
-
-        if (type.contains("deposit")) {
-            return "Deposit Saldo";
-        }
-
-        if (type.contains("transfer_in")) {
-            return "Transfer Masuk";
-        }
-
-        if (type.contains("transfer_out")) {
-            return "Transfer Keluar";
-        }
-
-        if (type.contains("withdraw")) {
-            return "Withdraw Dana";
-        }
-
-        if (type.contains("refund")) {
-            return "Refund Pesanan";
-        }
-
-        if (
-                type.contains("payment")
-                        || type.contains("order")
-        ) {
-            return "Pembayaran Pesanan";
-        }
-
-        return "Mutasi Saldo";
+        return CustomerBalanceFormatter.transactionTitle(type);
     }
 
     private String statusLabel(
             String status
     ) {
-        status =
-                status == null
-                        ? ""
-                        : status.toLowerCase(
-                                Locale.US
-                        );
-
-        if (
-                status.equals("pending")
-                        || status.equals("processing")
-        ) {
-            return "Diproses";
-        }
-
-        if (
-                status.equals("failed")
-                        || status.equals("rejected")
-                        || status.equals("cancelled")
-        ) {
-            return "Gagal";
-        }
-
-        return "Berhasil";
+        return CustomerBalanceFormatter.statusLabel(status);
     }
 
     private String statusColor(
             String status
     ) {
-        String label =
-                statusLabel(status);
-
-        if (label.equals("Diproses")) {
-            return "#D97706";
-        }
-
-        if (label.equals("Gagal")) {
-            return "#D9485F";
-        }
-
-        return "#0E9F4B";
+        return CustomerBalanceFormatter.statusColor(status);
     }
 
     private String statusBackground(
             String status
     ) {
-        String label =
-                statusLabel(status);
-
-        if (label.equals("Diproses")) {
-            return "#FFF7E6";
-        }
-
-        if (label.equals("Gagal")) {
-            return "#FFF0F2";
-        }
-
-        return "#ECFDF5";
+        return CustomerBalanceFormatter.statusBackground(status);
     }
 
     private String formatDate(
             String value
     ) {
-        if (
-                value == null
-                        || value.trim().isEmpty()
-        ) {
-            return "";
-        }
-
-        String[] formats = {
-                "yyyy-MM-dd HH:mm:ss",
-                "yyyy-MM-dd'T'HH:mm:ss"
-        };
-
-        for (String format : formats) {
-            try {
-                Date date =
-                        new SimpleDateFormat(
-                                format,
-                                Locale.US
-                        ).parse(
-                                value.trim()
-                        );
-
-                if (date != null) {
-                    return new SimpleDateFormat(
-                            "dd MMM yyyy • HH:mm",
-                            new Locale(
-                                    "id",
-                                    "ID"
-                            )
-                    ).format(date);
-                }
-
-            } catch (Exception ignored) {
-            }
-        }
-
-        return value;
+        return CustomerBalanceFormatter.formatDate(value);
     }
 
     private String rupiah(
             int amount
     ) {
-        NumberFormat format =
-                NumberFormat.getCurrencyInstance(
-                        new Locale(
-                                "id",
-                                "ID"
-                        )
-                );
-
-        format.setMaximumFractionDigits(0);
-        format.setMinimumFractionDigits(0);
-
-        return format.format(amount);
+        return CustomerCommonFormatters.rupiah(amount);
     }
 
     private void setLoading(
@@ -2771,12 +2646,7 @@ public class CustomerBalanceHistoryActivity
     private int dp(
             int value
     ) {
-        return Math.round(
-                value
-                        * getResources()
-                        .getDisplayMetrics()
-                        .density
-        );
+        return CustomerUiPrimitives.dp(this, value);
     }
 
     private int parseInt(
@@ -2800,25 +2670,7 @@ public class CustomerBalanceHistoryActivity
     private String first(
             String... values
     ) {
-        if (values == null) {
-            return "";
-        }
-
-        for (String value : values) {
-            if (
-                    value != null
-                            && !value.trim()
-                            .isEmpty()
-                            && !"null"
-                            .equalsIgnoreCase(
-                                    value.trim()
-                            )
-            ) {
-                return value.trim();
-            }
-        }
-
-        return "";
+        return CustomerCommonFormatters.firstBasic(values);
     }
 
     private void toast(

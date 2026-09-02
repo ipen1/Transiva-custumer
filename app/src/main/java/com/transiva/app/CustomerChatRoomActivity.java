@@ -2390,32 +2390,11 @@ public class CustomerChatRoomActivity extends Activity {
     }
 
     private int dp(int value) {
-        return Math.round(
-                value
-                        * getResources()
-                        .getDisplayMetrics()
-                        .density
-        );
+        return CustomerUiPrimitives.dp(this, value);
     }
 
     private String first(String... values) {
-        if (values == null) {
-            return "";
-        }
-
-        for (String value : values) {
-            if (
-                    value != null
-                            && !value.trim().isEmpty()
-                            && !"null".equalsIgnoreCase(
-                                    value.trim()
-                            )
-            ) {
-                return value.trim();
-            }
-        }
-
-        return "";
+        return CustomerCommonFormatters.firstBasic(values);
     }
 
     private void showMessage(

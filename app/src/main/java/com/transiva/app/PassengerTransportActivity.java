@@ -1113,19 +1113,7 @@ public class PassengerTransportActivity extends Activity {
     }
 
     private double distanceMeter(double lat1, double lng1, double lat2, double lng2) {
-        double earth = 6371000;
-        double dLat = Math.toRadians(lat2 - lat1);
-        double dLng = Math.toRadians(lng2 - lng1);
-
-        double a =
-                Math.sin(dLat / 2) * Math.sin(dLat / 2)
-                        + Math.cos(Math.toRadians(lat1))
-                        * Math.cos(Math.toRadians(lat2))
-                        * Math.sin(dLng / 2)
-                        * Math.sin(dLng / 2);
-
-        double c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-        return earth * c;
+        return CustomerGeoMath.distanceMeters(lat1, lng1, lat2, lng2);
     }
 
     private String refreshAuthToken() {
@@ -1485,49 +1473,19 @@ public class PassengerTransportActivity extends Activity {
     }
 
     private int jsonInt(JSONObject json, String key, int fallback) {
-        if (json == null || key == null) return fallback;
-        Object value = json.opt(key);
-        if (value == null || value == JSONObject.NULL) return fallback;
-        try {
-            if (value instanceof Number) {
-                return ((Number) value).intValue();
-            }
-            String clean = String.valueOf(value)
-                    .replace("Rp", "")
-                    .replace(".", "")
-                    .replace(",", "")
-                    .trim();
-            return clean.isEmpty() ? fallback : (int) Math.round(Double.parseDouble(clean));
-        } catch (Exception ignored) {
-            return fallback;
-        }
+        return CustomerJsonValues.intValue(json, key, fallback);
     }
 
     private double jsonDouble(JSONObject json, String key, double fallback) {
-        if (json == null || key == null) return fallback;
-        Object value = json.opt(key);
-        if (value == null || value == JSONObject.NULL) return fallback;
-        try {
-            if (value instanceof Number) {
-                return ((Number) value).doubleValue();
-            }
-            String clean = String.valueOf(value)
-                    .replace(",", ".")
-                    .trim();
-            return clean.isEmpty() ? fallback : Double.parseDouble(clean);
-        } catch (Exception ignored) {
-            return fallback;
-        }
+        return CustomerJsonValues.doubleValue(json, key, fallback);
     }
 
     private String formatMoney(int value) {
-        return String.format(new Locale("id", "ID"), "%,d", Math.max(0, value)).replace(',', '.');
+        return CustomerCommonFormatters.formatMoneyInt(value);
     }
 
     private boolean validCoordinate(double latitude, double longitude) {
-        return latitude >= -90.0 && latitude <= 90.0
-                && longitude >= -180.0 && longitude <= 180.0
-                && latitude != 0.0 && longitude != 0.0;
+        return CustomerGeoMath.valid(latitude, longitude);
     }
 
     private JSONObject postJson(String urlText, JSONObject payload) throws Exception {
@@ -1559,11 +1517,7 @@ public class PassengerTransportActivity extends Activity {
     }
 
     private String readStream(InputStream stream) throws Exception {
-        if (stream == null) return "";
-        BufferedReader r = new BufferedReader(new InputStreamReader(stream, StandardCharsets.UTF_8));
-        StringBuilder sb = new StringBuilder(); String line;
-        while ((line = r.readLine()) != null) sb.append(line);
-        r.close(); return sb.toString();
+        return CustomerIo.readUtf8(stream);
     }
 
     private void updateModeUI() {
@@ -1598,7 +1552,9 @@ public class PassengerTransportActivity extends Activity {
             } catch (Exception ignored) {}
         }, "transiva-google-osrm-preview").start();
     }
-    private boolean validCoord(double lat, double lng) { return Double.isFinite(lat) && Double.isFinite(lng) && lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180 && lat != 0 && lng != 0; }
+    private boolean validCoord(double lat, double lng) {
+        return CustomerGeoMath.valid(lat, lng);
+    }
     private boolean isDriverBusy(JSONObject driver) {
         if (driver == null) return false;
         Object raw = driver.opt("is_busy");
@@ -1622,7 +1578,9 @@ public class PassengerTransportActivity extends Activity {
 
     private void hideKeyboard() { try { ((InputMethodManager)getSystemService(Context.INPUT_METHOD_SERVICE)).hideSoftInputFromWindow(googleMapInput.getWindowToken(), 0); } catch (Exception ignored) {} }
     private void toastDialog(String msg) { try { new TransivaAlertDialogBuilder(this).setTitle("Transiva").setMessage(msg).setPositiveButton("OK", null).show(); } catch (Exception ignored) {} }
-    private String firstNonEmpty(String... v) { if (v == null) return ""; for (String s : v) if (s != null && s.trim().length() > 0 && !"null".equalsIgnoreCase(s.trim())) return s.trim(); return ""; }
+    private String firstNonEmpty(String... v) {
+        return CustomerCommonFormatters.firstBasic(v);
+    }
 
     private Button compactPointButton(String title, String sub, String color) {
         Button b = new Button(this);
@@ -1673,7 +1631,9 @@ public class PassengerTransportActivity extends Activity {
     private TextView text(String value, int sp, String color, boolean bold) { TextView tv = new TextView(this); tv.setText(value); tv.setTextSize(sp); tv.setTextColor(Color.parseColor(color)); if (bold) tv.setTypeface(Typeface.DEFAULT_BOLD); return tv; }
     private GradientDrawable round(String color, int radius) { GradientDrawable gd = new GradientDrawable(); gd.setColor(Color.parseColor(color)); gd.setCornerRadius(radius); return gd; }
     private GradientDrawable roundStroke(String color, String stroke, int radius, int width) { GradientDrawable gd = round(color, radius); gd.setStroke(dp(width), Color.parseColor(stroke)); return gd; }
-    private int dp(int v) { return (int)(v * getResources().getDisplayMetrics().density + .5f); }
+    private int dp(int v) {
+        return CustomerUiPrimitives.dp(this, v);
+    }
 
     @Override protected void onStart() {
         super.onStart();

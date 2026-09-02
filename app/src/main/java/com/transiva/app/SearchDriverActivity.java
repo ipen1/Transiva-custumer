@@ -1193,11 +1193,7 @@ public class SearchDriverActivity extends Activity {
     }
 
     private String firstNonEmpty(String... values) {
-        if (values == null) return "";
-        for (String v : values) {
-            if (v != null && v.trim().length() > 0 && !v.trim().equalsIgnoreCase("null")) return v.trim();
-        }
-        return "";
+        return CustomerCommonFormatters.firstBasic(values);
     }
 
     private double safeDouble(String v) {
@@ -1210,18 +1206,11 @@ public class SearchDriverActivity extends Activity {
     }
 
     private double distanceKm(double lat1, double lng1, double lat2, double lng2) {
-        double R = 6371.0;
-        double dLat = Math.toRadians(lat2 - lat1);
-        double dLng = Math.toRadians(lng2 - lng1);
-        double a = Math.sin(dLat / 2) * Math.sin(dLat / 2)
-                + Math.cos(Math.toRadians(lat1)) * Math.cos(Math.toRadians(lat2))
-                * Math.sin(dLng / 2) * Math.sin(dLng / 2);
-        double c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-        return R * c;
+        return CustomerGeoMath.distanceKm(lat1, lng1, lat2, lng2);
     }
 
     private int dp(int v) {
-        return (int) (v * getResources().getDisplayMetrics().density + 0.5f);
+        return CustomerUiPrimitives.dp(this, v);
     }
 
     private static class RadarDriver {

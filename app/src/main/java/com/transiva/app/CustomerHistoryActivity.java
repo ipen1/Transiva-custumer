@@ -819,7 +819,7 @@ public class CustomerHistoryActivity extends Activity {
 
             if (isCompletedStatus(status)) {
                 done++;
-                spent += orderPrice(order);
+                spent += CustomerHistoryFormatter.orderPrice(order);
             }
         }
 
@@ -836,7 +836,7 @@ public class CustomerHistoryActivity extends Activity {
         );
 
         summarySpent.setText(
-                compactRupiah(spent)
+                CustomerHistoryFormatter.compactRupiah(spent)
         );
     }
 
@@ -1328,7 +1328,7 @@ public class CustomerHistoryActivity extends Activity {
         meta.setGravity(Gravity.CENTER_VERTICAL);
 
         TextView time = text(
-                displayDate(order),
+                CustomerHistoryFormatter.displayDate(order),
                 10,
                 "#8495A8",
                 false
@@ -1343,11 +1343,11 @@ public class CustomerHistoryActivity extends Activity {
                 )
         );
 
-        double price = orderPrice(order);
+        double price = CustomerHistoryFormatter.orderPrice(order);
 
         TextView total = text(
                 price > 0
-                        ? rupiah(price)
+                        ? CustomerHistoryFormatter.rupiah(price)
                         : "-",
                 13,
                 "#0B3A78",
@@ -2252,17 +2252,17 @@ public class CustomerHistoryActivity extends Activity {
     }
 
     private String priceChangeDetail(JSONObject order) {
-        double now = orderPrice(order);
+        double now = CustomerHistoryFormatter.orderPrice(order);
         double original = order.optDouble("original_price", now);
         double requested = order.optDouble("price_change_requested", 0);
         String status = order.optString("price_change_status", "none");
         String reason = order.optString("price_change_reason", "").trim();
         StringBuilder b = new StringBuilder();
         if (original > 0 && now > 0 && Math.abs(original-now) > 0.5) {
-            b.append("\nPerubahan harga: ").append(rupiah(original)).append(" → ").append(rupiah(now));
+            b.append("\nPerubahan harga: ").append(CustomerHistoryFormatter.rupiah(original)).append(" → ").append(CustomerHistoryFormatter.rupiah(now));
             if (!reason.isEmpty()) b.append("\nAlasan driver: ").append(reason);
         } else if ("pending".equalsIgnoreCase(status) && requested > 0) {
-            b.append("\nPengajuan harga: ").append(rupiah(requested));
+            b.append("\nPengajuan harga: ").append(CustomerHistoryFormatter.rupiah(requested));
             if (!reason.isEmpty()) b.append("\nAlasan driver: ").append(reason);
         }
         return b.toString();
@@ -2802,9 +2802,9 @@ public class CustomerHistoryActivity extends Activity {
         );
 
         if (!from.isEmpty() && !to.isEmpty()) {
-            return shortText(from)
+            return CustomerHistoryFormatter.shortText(from)
                     + " → "
-                    + shortText(to);
+                    + CustomerHistoryFormatter.shortText(to);
         }
 
         return first(
@@ -2861,59 +2861,6 @@ public class CustomerHistoryActivity extends Activity {
         }
     }
 
-    private String shortText(String value) {
-        value = first(value, "");
-
-        if (value.length() <= 30) {
-            return value;
-        }
-
-        return value.substring(0, 27) + "...";
-    }
-
-    private String displayDate(
-            JSONObject order
-    ) {
-        String value = first(
-                order.optString("created_at"),
-                order.optString("order_date"),
-                order.optString("date"),
-                order.optString("updated_at"),
-                ""
-        );
-
-        if (value.isEmpty()) {
-            return "Waktu tidak tersedia";
-        }
-
-        String[] formats = {
-                "yyyy-MM-dd HH:mm:ss",
-                "yyyy-MM-dd'T'HH:mm:ss",
-                "yyyy-MM-dd"
-        };
-
-        for (String format : formats) {
-            try {
-                Date date =
-                        new SimpleDateFormat(
-                                format,
-                                Locale.US
-                        ).parse(value);
-
-                if (date != null) {
-                    return new SimpleDateFormat(
-                            "dd MMM yyyy • HH:mm",
-                            new Locale("id", "ID")
-                    ).format(date);
-                }
-
-            } catch (Exception ignored) {
-            }
-        }
-
-        return value;
-    }
-
     private String trackButtonLabel(
             JSONObject order
     ) {
@@ -2931,83 +2878,6 @@ public class CustomerHistoryActivity extends Activity {
         }
 
         return "Lacak";
-    }
-
-    private double orderPrice(
-            JSONObject order
-    ) {
-        String[] keys = {
-                "total_amount",
-                "total_price",
-                "price",
-                "fare",
-                "amount",
-                "total"
-        };
-
-        for (String key : keys) {
-            Object value = order.opt(key);
-
-            if (value == null) {
-                continue;
-            }
-
-            try {
-                if (value instanceof Number) {
-                    return ((Number) value)
-                            .doubleValue();
-                }
-
-                String cleaned =
-                        String.valueOf(value)
-                                .replaceAll(
-                                        "[^0-9.,-]",
-                                        ""
-                                )
-                                .replace(".", "")
-                                .replace(",", ".");
-
-                if (!cleaned.isEmpty()) {
-                    return Double.parseDouble(
-                            cleaned
-                    );
-                }
-
-            } catch (Exception ignored) {
-            }
-        }
-
-        return 0;
-    }
-
-    private String compactRupiah(
-            double amount
-    ) {
-        if (amount >= 1_000_000) {
-            return String.format(
-                    new Locale("id", "ID"),
-                    "Rp%.1f jt",
-                    amount / 1_000_000d
-            );
-        }
-
-        if (amount >= 1_000) {
-            return String.format(
-                    new Locale("id", "ID"),
-                    "Rp%.0f rb",
-                    amount / 1_000d
-            );
-        }
-
-        return "Rp" + Math.round(amount);
-    }
-
-    private String rupiah(double amount) {
-        return NumberFormat
-                .getCurrencyInstance(
-                        new Locale("id", "ID")
-                )
-                .format(amount);
     }
 
     private Button primaryButton(

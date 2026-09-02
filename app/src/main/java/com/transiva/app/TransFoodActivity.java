@@ -116,9 +116,6 @@ public class TransFoodActivity extends Activity {
         loadRestaurants(true);
     }
 
-    @Override protected void onResume() { super.onResume(); mainHandler.removeCallbacks(realtimeFoodRefresh); mainHandler.postDelayed(realtimeFoodRefresh, 30000); }
-    @Override protected void onPause() { mainHandler.removeCallbacks(realtimeFoodRefresh); super.onPause(); }
-
     private void loadSession() {
         try {
             SessionManager session = new SessionManager(this);
@@ -1618,10 +1615,13 @@ public class TransFoodActivity extends Activity {
     protected void onResume() {
         super.onResume();
         featureRuntime.onResume();
+        mainHandler.removeCallbacks(realtimeFoodRefresh);
+        mainHandler.postDelayed(realtimeFoodRefresh, 30000);
     }
 
     @Override
     protected void onPause() {
+        mainHandler.removeCallbacks(realtimeFoodRefresh);
         featureRuntime.onPause();
         super.onPause();
     }

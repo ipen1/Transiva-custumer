@@ -144,7 +144,7 @@ public class CustomerDashboardActivity extends Activity
 
                     uiHandler.postDelayed(
                             this,
-                            PROMO_INTERVAL_MS
+                            CustomerPerformanceManager.promoInterval(CustomerDashboardActivity.this, PROMO_INTERVAL_MS)
                     );
                 }
             };
@@ -1526,7 +1526,7 @@ public class CustomerDashboardActivity extends Activity
 
                     uiHandler.postDelayed(
                             promoAutoRunnable,
-                            PROMO_INTERVAL_MS
+                            CustomerPerformanceManager.promoInterval(CustomerDashboardActivity.this, PROMO_INTERVAL_MS)
                     );
                 }
         );

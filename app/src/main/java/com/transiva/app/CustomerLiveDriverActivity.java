@@ -88,7 +88,7 @@ public final class CustomerLiveDriverActivity extends Activity {
     private final Runnable pollTask = new Runnable() {
         @Override public void run() {
             fetchStatus();
-            handler.postDelayed(this, POLL_MS);
+            handler.postDelayed(this, CustomerPerformanceManager.polling(CustomerLiveDriverActivity.this, POLL_MS));
         }
     };
 
@@ -109,7 +109,7 @@ public final class CustomerLiveDriverActivity extends Activity {
         }
 
         fetchStatus();
-        handler.postDelayed(pollTask, POLL_MS);
+        handler.postDelayed(pollTask, CustomerPerformanceManager.polling(this, POLL_MS));
     }
 
     private void readInput() {

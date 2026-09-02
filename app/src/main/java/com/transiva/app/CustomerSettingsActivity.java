@@ -91,6 +91,30 @@ public class CustomerSettingsActivity extends Activity {
         }));
         root.addView(preferenceCard);
 
+        root.addView(sectionTitle("Performa & Baterai"), marginTop(18));
+        LinearLayout performanceCard = card();
+        String selectedPerf = CustomerPerformanceManager.selectedMode(this);
+        String effectivePerf = CustomerPerformanceManager.effectiveMode(this);
+        String recommendedPerf = CustomerPerformanceManager.recommendedMode(this);
+        LinearLayout perfRow = new LinearLayout(this);
+        perfRow.setGravity(Gravity.CENTER_VERTICAL);
+        perfRow.setPadding(0, dp(6), 0, dp(6));
+        LinearLayout perfLabels = new LinearLayout(this); perfLabels.setOrientation(LinearLayout.VERTICAL);
+        TextView perfTitle = text("Mode Performa", 15, "#0B3A78", true);
+        TextView perfSub = text("Aktif: " + CustomerPerformanceManager.label(effectivePerf) + " • Rekomendasi: " + CustomerPerformanceManager.label(recommendedPerf) + "\n" + CustomerPerformanceManager.deviceSummary(this), 11, "#64748B", false);
+        perfLabels.addView(perfTitle); perfLabels.addView(perfSub);
+        perfRow.addView(perfLabels, new LinearLayout.LayoutParams(0, -2, 1));
+        TextView perfBadge = text(CustomerPerformanceManager.label(selectedPerf).toUpperCase(Locale.ROOT), 10, "#0B7CFF", true);
+        perfBadge.setPadding(dp(9), dp(5), dp(9), dp(5)); perfBadge.setBackground(round("#EAF4FF", 12));
+        perfRow.addView(perfBadge);
+        perfRow.setOnClickListener(v -> showPerformanceModeDialog());
+        performanceCard.addView(perfRow);
+        performanceCard.addView(divider());
+        TextView perfHint = text("Hemat Daya mengurangi frekuensi polling, animasi, dan refresh visual. Normal menjaga keseimbangan. Performa Tinggi membuat refresh lebih agresif dan dapat meningkatkan panas serta konsumsi baterai.", 11, "#64748B", false);
+        perfHint.setPadding(0, dp(10), 0, dp(4));
+        performanceCard.addView(perfHint);
+        root.addView(performanceCard);
+
         root.addView(sectionTitle("Keamanan & Fitur Pintar"), marginTop(18));
         LinearLayout securityCard = card();
         securityCard.addView(toggleRow("Biometrik PIN / Transiva Pay", "Gunakan sidik jari/wajah untuk membuka PIN dan mengotorisasi Transiva Pay di perangkat ini", BiometricSecurityManager.isEnabled(this), (button, checked) -> {
@@ -180,6 +204,38 @@ public class CustomerSettingsActivity extends Activity {
         deviceCard.addView(progress, new LinearLayout.LayoutParams(-1, dp(38)));
         root.addView(deviceCard);
         return shell;
+    }
+
+    private void showPerformanceModeDialog() {
+        final String[] modes = {CustomerPerformanceManager.MODE_AUTO, CustomerPerformanceManager.MODE_ECO, CustomerPerformanceManager.MODE_NORMAL, CustomerPerformanceManager.MODE_HIGH};
+        final String[] labels = {"Otomatis (disarankan)", "Hemat Daya", "Normal", "Performa Tinggi"};
+        String current = CustomerPerformanceManager.selectedMode(this);
+        int checked = 0;
+        for (int i = 0; i < modes.length; i++) if (modes[i].equals(current)) checked = i;
+        new TransivaAlertDialogBuilder(this)
+                .setTitle("Mode performa customer")
+                .setSingleChoiceItems(labels, checked, (dialog, which) -> {
+                    String chosen = modes[which];
+                    dialog.dismiss();
+                    if (CustomerPerformanceManager.isAboveRecommendation(this, chosen)) {
+                        new TransivaAlertDialogBuilder(this)
+                                .setTitle("Mode di atas kemampuan yang disarankan")
+                                .setMessage("Perangkat ini direkomendasikan menggunakan " + CustomerPerformanceManager.label(CustomerPerformanceManager.recommendedMode(this)) + ". Memilih " + CustomerPerformanceManager.label(chosen) + " dapat membuat perangkat lebih panas, baterai lebih boros, atau animasi tidak stabil.")
+                                .setNegativeButton("Batal", null)
+                                .setPositiveButton("Tetap gunakan", (d, w) -> applyPerformanceMode(chosen))
+                                .show();
+                    } else {
+                        applyPerformanceMode(chosen);
+                    }
+                })
+                .setNegativeButton("Tutup", null)
+                .show();
+    }
+
+    private void applyPerformanceMode(String mode) {
+        CustomerPerformanceManager.setSelectedMode(this, mode);
+        Toast.makeText(this, "Mode performa: " + CustomerPerformanceManager.label(CustomerPerformanceManager.effectiveMode(this)), Toast.LENGTH_SHORT).show();
+        recreate();
     }
 
     private View actionRow(String title, String subtitle, Class<?> target) {

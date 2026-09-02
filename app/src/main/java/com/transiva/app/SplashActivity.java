@@ -17,7 +17,7 @@ public class SplashActivity extends Activity {
     private boolean routed;
     private boolean securityCheckStarted;
     private boolean updateChecking;
-    private static final int SPLASH_DELAY = 900;
+    private static final int SPLASH_DELAY = 80;
     private TextView statusText;
 
     @Override

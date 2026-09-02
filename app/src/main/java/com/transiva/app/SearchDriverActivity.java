@@ -378,8 +378,8 @@ public class SearchDriverActivity extends Activity {
         mainHandler.removeCallbacks(checkOrderRunnable);
         loadIdleDriversToRadar();
         checkOrderStatus();
-        mainHandler.postDelayed(driverRadarRunnable, 8000);
-        mainHandler.postDelayed(checkOrderRunnable, 3000);
+        mainHandler.postDelayed(driverRadarRunnable, CustomerPerformanceManager.polling(this, 8000));
+        mainHandler.postDelayed(checkOrderRunnable, CustomerPerformanceManager.polling(this, 3000));
     }
 
     private void startMatchCountdown() {
@@ -1255,7 +1255,7 @@ public class SearchDriverActivity extends Activity {
                     sweep += 4;
                     if (sweep >= 360) sweep = 0;
                     invalidate();
-                    postDelayed(this, 33);
+                    postDelayed(this, CustomerPerformanceManager.animationFrame(SearchDriverActivity.this));
                 }
             }
         };

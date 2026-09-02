@@ -106,17 +106,18 @@ public final class CustomerAppSettings {
 
         if (dark) {
             applyRecursive(content, true, 0);
-            installDynamicViewWatcher(content);
-            // Menangkap card/promo/chat yang dibuat sesudah request API selesai.
-            content.post(() -> {
-                if (isDarkMode(activity)) applyRecursive(content, true, 0);
-            });
+            boolean eco = CustomerPerformanceManager.isEco(activity);
+            if (!eco) installDynamicViewWatcher(content);
+            else removeDynamicViewWatcher(content);
+            // Eco mode menghindari traversal seluruh view-tree pada setiap global layout.
             content.postDelayed(() -> {
                 if (isDarkMode(activity)) applyRecursive(content, true, 0);
-            }, 250L);
-            content.postDelayed(() -> {
-                if (isDarkMode(activity)) applyRecursive(content, true, 0);
-            }, 900L);
+            }, eco ? 550L : 250L);
+            if (!eco) {
+                content.postDelayed(() -> {
+                    if (isDarkMode(activity)) applyRecursive(content, true, 0);
+                }, 900L);
+            }
         } else {
             removeDynamicViewWatcher(content);
         }

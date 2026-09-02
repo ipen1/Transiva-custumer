@@ -1254,6 +1254,23 @@ public class CustomerHistoryActivity extends Activity {
             card.addView(route, routeLp);
         }
 
+        java.util.List<String> richSummary = CustomerOrderRichFormatter.compactLines(order);
+        if (!richSummary.isEmpty()) {
+            LinearLayout detailSummary = new LinearLayout(this);
+            detailSummary.setOrientation(LinearLayout.VERTICAL);
+            detailSummary.setPadding(dp(11), dp(9), dp(11), dp(9));
+            detailSummary.setBackground(roundStroke("#F8FBFF", "#DFEAF6", 12, 1));
+            for (String line : richSummary) {
+                if (line == null || line.trim().isEmpty()) continue;
+                TextView detailLine = text(line, 10, "#50657A", false);
+                detailLine.setPadding(0, dp(2), 0, dp(2));
+                detailSummary.addView(detailLine);
+            }
+            LinearLayout.LayoutParams richLp = new LinearLayout.LayoutParams(-1, -2);
+            richLp.setMargins(0, dp(8), 0, 0);
+            card.addView(detailSummary, richLp);
+        }
+
         String progress =
                 progressDescription(order);
 

@@ -25,6 +25,7 @@ import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import org.json.JSONArray;
 import org.json.JSONObject;
 
 import java.io.BufferedReader;
@@ -192,6 +193,21 @@ public class CustomerOrderDetailActivity extends Activity {
         totalBox.addView(text(rupiah(order.optDouble("price", 0)), 22, Color.WHITE, true));
         LinearLayout.LayoutParams tbp = new LinearLayout.LayoutParams(-1, -2); tbp.setMargins(0, dp(14), 0, 0); route.addView(totalBox, tbp);
         addCard(route);
+
+        java.util.List<CustomerOrderRichFormatter.Line> serviceDetails = CustomerOrderRichFormatter.detailLines(order);
+        if (!serviceDetails.isEmpty()) {
+            LinearLayout detailCard = card(24);
+            String detailTitle = service.toLowerCase(Locale.US).contains("food") ? "Detail Makanan & Harga" : "Detail Layanan";
+            detailCard.addView(sectionHeader(detailTitle, "Rincian lengkap item, layanan, dan komponen pesanan"));
+            LinearLayout detailPanel = infoPanel();
+            for (int i = 0; i < serviceDetails.size(); i++) {
+                CustomerOrderRichFormatter.Line line = serviceDetails.get(i);
+                if (i > 0) detailPanel.addView(divider());
+                detailPanel.addView(infoRow(line.label, line.value, line.icon));
+            }
+            detailCard.addView(detailPanel);
+            addCard(detailCard);
+        }
 
         double price = order.optDouble("price", 0);
         double original = order.optDouble("original_price", price);

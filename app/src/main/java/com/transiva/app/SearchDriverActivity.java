@@ -378,8 +378,8 @@ public class SearchDriverActivity extends Activity {
         mainHandler.removeCallbacks(checkOrderRunnable);
         loadIdleDriversToRadar();
         checkOrderStatus();
-        mainHandler.postDelayed(driverRadarRunnable, CustomerPerformanceManager.polling(this, 8000));
-        mainHandler.postDelayed(checkOrderRunnable, CustomerPerformanceManager.polling(this, 3000));
+        mainHandler.postDelayed(driverRadarRunnable, CustomerPerformanceManager.pollingCritical(this, 8000));
+        mainHandler.postDelayed(checkOrderRunnable, CustomerPerformanceManager.pollingCritical(this, 3000));
     }
 
     private void startMatchCountdown() {
@@ -1092,6 +1092,19 @@ public class SearchDriverActivity extends Activity {
         stopMatchCountdown();
         mainHandler.removeCallbacks(driverRadarRunnable);
         mainHandler.removeCallbacks(checkOrderRunnable);
+    }
+
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        CustomerRealtimeCoordinator.enter(CustomerRealtimeCoordinator.Role.SEARCH);
+    }
+
+    @Override
+    protected void onPause() {
+        CustomerRealtimeCoordinator.leave(CustomerRealtimeCoordinator.Role.SEARCH);
+        super.onPause();
     }
 
     @Override protected void onDestroy() {

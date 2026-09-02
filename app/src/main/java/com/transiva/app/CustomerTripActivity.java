@@ -1182,6 +1182,7 @@ public class CustomerTripActivity extends Activity {
         if (mapView != null) mapView.onPauseMap();
         mainHandler.removeCallbacks(trackingRunnable);
         trackingGeneration.incrementAndGet(); // invalidate late network callbacks
+        CustomerRealtimeCoordinator.leave(CustomerRealtimeCoordinator.Role.TRIP);
         super.onPause();
     }
 
@@ -1192,6 +1193,7 @@ public class CustomerTripActivity extends Activity {
 
     @Override protected void onResume() {
         super.onResume();
+        CustomerRealtimeCoordinator.enter(CustomerRealtimeCoordinator.Role.TRIP);
         if (mapView != null) mapView.onResumeMap();
         CustomerAppSettings.apply(this);
         if (trackingStarted && !finishedCountdownStarted) {

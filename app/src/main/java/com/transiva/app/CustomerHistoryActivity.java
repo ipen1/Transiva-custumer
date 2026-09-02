@@ -48,7 +48,7 @@ import java.util.Locale;
 
 public class CustomerHistoryActivity extends Activity {
 
-    private final CustomerLifecycleNetworkScope networkScope = new CustomerLifecycleNetworkScope();
+    private final CustomerFeatureRuntimeController featureRuntime = new CustomerFeatureRuntimeController(CustomerRealtimeCoordinator.Role.HISTORY);
 
     private static final String BASE_URL =
             "https://transiva.my.id/";
@@ -103,7 +103,7 @@ public class CustomerHistoryActivity extends Activity {
                 loadHistory(true);
             }
 
-            mainHandler.postDelayed(this, REALTIME_REFRESH_MS);
+            mainHandler.postDelayed(this, CustomerPerformanceManager.pollingBackground(CustomerHistoryActivity.this, REALTIME_REFRESH_MS));
         }
     };
 
@@ -129,6 +129,7 @@ public class CustomerHistoryActivity extends Activity {
     @Override
     protected void onResume() {
         super.onResume();
+        featureRuntime.onResume();
         CustomerAppSettings.apply(this);
         activityVisible = true;
 
@@ -138,19 +139,20 @@ public class CustomerHistoryActivity extends Activity {
             loadHistory(true);
         }
 
-        mainHandler.postDelayed(realtimeRefresh, REALTIME_REFRESH_MS);
+        mainHandler.postDelayed(realtimeRefresh, CustomerPerformanceManager.pollingBackground(this, REALTIME_REFRESH_MS));
     }
 
     @Override
     protected void onPause() {
         activityVisible = false;
         mainHandler.removeCallbacks(realtimeRefresh);
+        featureRuntime.onPause();
         super.onPause();
     }
 
     @Override
     protected void onDestroy() {
-        networkScope.destroy();
+        featureRuntime.destroy();
         activityVisible = false;
         mainHandler.removeCallbacksAndMessages(null);
         super.onDestroy();
@@ -1638,14 +1640,14 @@ public class CustomerHistoryActivity extends Activity {
         if (loading) return;
         loading = true;
         progressBar.setVisibility(View.VISIBLE);
-        networkScope.newThread(() -> {
+        featureRuntime.newThread(() -> {
             try {
                 String endpoint = FOOD_ORDER_REVIEW_URL
                         + "?id=" + order.optInt("id", 0)
                         + "&order_id=" + Uri.encode(first(order.optString("order_id"), ""))
                         + "&v=" + System.currentTimeMillis();
                 JSONObject state = getJson(endpoint);
-                networkScope.post(mainHandler, () -> {
+                featureRuntime.post(mainHandler, () -> {
                     loading = false;
                     progressBar.setVisibility(View.GONE);
                     if (!state.optBoolean("success", false)) {
@@ -1659,7 +1661,7 @@ public class CustomerHistoryActivity extends Activity {
                     buildFoodOrderReviewDialog(order, state);
                 });
             } catch (Exception e) {
-                networkScope.post(mainHandler, () -> {
+                featureRuntime.post(mainHandler, () -> {
                     loading = false;
                     progressBar.setVisibility(View.GONE);
                     toast("Gagal memuat penilaian pesanan.");
@@ -1831,12 +1833,12 @@ public class CustomerHistoryActivity extends Activity {
 
         loading = true;
         progressBar.setVisibility(View.VISIBLE);
-        networkScope.newThread(() -> {
+        featureRuntime.newThread(() -> {
             try {
                 JSONObject response = postJson(FOOD_ORDER_REVIEW_URL, payload);
                 boolean success = response.optBoolean("success", false);
                 String message = first(response.optString("message"), success ? "Penilaian berhasil disimpan." : "Penilaian gagal disimpan.");
-                networkScope.post(mainHandler, () -> {
+                featureRuntime.post(mainHandler, () -> {
                     loading = false;
                     progressBar.setVisibility(View.GONE);
                     if (success && dialog != null && dialog.isShowing()) dialog.dismiss();
@@ -1847,7 +1849,7 @@ public class CustomerHistoryActivity extends Activity {
                             .show();
                 });
             } catch (Exception e) {
-                networkScope.post(mainHandler, () -> {
+                featureRuntime.post(mainHandler, () -> {
                     loading = false;
                     progressBar.setVisibility(View.GONE);
                     toast("Koneksi gagal menyimpan penilaian.");
@@ -1861,7 +1863,7 @@ public class CustomerHistoryActivity extends Activity {
         loading = true;
         progressBar.setVisibility(View.VISIBLE);
 
-        networkScope.newThread(() -> {
+        featureRuntime.newThread(() -> {
             try {
                 boolean food = isFoodOrder(order);
                 JSONObject payload = new JSONObject();
@@ -1878,7 +1880,7 @@ public class CustomerHistoryActivity extends Activity {
                         success ? "Terima kasih atas penilaian Anda." : "Rating gagal disimpan."
                 );
 
-                networkScope.post(mainHandler, () -> {
+                featureRuntime.post(mainHandler, () -> {
                     loading = false;
                     progressBar.setVisibility(View.GONE);
                     if (success) {
@@ -1896,7 +1898,7 @@ public class CustomerHistoryActivity extends Activity {
                             .show();
                 });
             } catch (Exception error) {
-                networkScope.post(mainHandler, () -> {
+                featureRuntime.post(mainHandler, () -> {
                     loading = false;
                     progressBar.setVisibility(View.GONE);
                     new TransivaAlertDialogBuilder(this)
@@ -1926,7 +1928,7 @@ public class CustomerHistoryActivity extends Activity {
         loading = true;
         progressBar.setVisibility(View.VISIBLE);
 
-        networkScope.newThread(() -> {
+        featureRuntime.newThread(() -> {
             try {
                 JSONObject payload = new JSONObject();
                 payload.put(
@@ -1948,7 +1950,7 @@ public class CustomerHistoryActivity extends Activity {
                         success ? "Pesanan berhasil dikonfirmasi diterima." : "Konfirmasi gagal."
                 );
 
-                networkScope.post(mainHandler, () -> {
+                featureRuntime.post(mainHandler, () -> {
                     loading = false;
                     progressBar.setVisibility(View.GONE);
 
@@ -1968,7 +1970,7 @@ public class CustomerHistoryActivity extends Activity {
                 });
 
             } catch (Exception error) {
-                networkScope.post(mainHandler, () -> {
+                featureRuntime.post(mainHandler, () -> {
                     loading = false;
                     progressBar.setVisibility(View.GONE);
 
@@ -2177,7 +2179,7 @@ public class CustomerHistoryActivity extends Activity {
             renderOrders();
         }
 
-        networkScope.newThread(() -> {
+        featureRuntime.newThread(() -> {
             try {
                 String endpoint =
                         BASE_URL
@@ -2220,7 +2222,7 @@ public class CustomerHistoryActivity extends Activity {
                     }
                 }
 
-                networkScope.post(mainHandler, () -> {
+                featureRuntime.post(mainHandler, () -> {
                     allOrders.clear();
                     allOrders.addAll(fresh);
 
@@ -2231,7 +2233,7 @@ public class CustomerHistoryActivity extends Activity {
                 });
 
             } catch (Exception error) {
-                networkScope.post(mainHandler, () -> {
+                featureRuntime.post(mainHandler, () -> {
                     loading = false;
                     progressBar.setVisibility(View.GONE);
 

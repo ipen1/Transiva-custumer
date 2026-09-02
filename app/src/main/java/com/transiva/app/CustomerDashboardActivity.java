@@ -173,6 +173,7 @@ public class CustomerDashboardActivity extends Activity
     @Override
     protected void onResume() {
         super.onResume();
+        CustomerRealtimeCoordinator.enter(CustomerRealtimeCoordinator.Role.DASHBOARD);
 
         // Terapkan ulang agar perubahan tema dari menu Pengaturan langsung
         // terlihat saat kembali ke Dashboard.
@@ -203,6 +204,7 @@ public class CustomerDashboardActivity extends Activity
     @Override
     protected void onPause() {
         stopPromoAutoSlide();
+        CustomerRealtimeCoordinator.leave(CustomerRealtimeCoordinator.Role.DASHBOARD);
         super.onPause();
     }
 

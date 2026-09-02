@@ -90,6 +90,7 @@ public class CustomerChatRoomActivity extends Activity {
 
     private final Handler mainHandler =
             new Handler(Looper.getMainLooper());
+    private final CustomerFeatureRuntimeController featureRuntime = new CustomerFeatureRuntimeController(CustomerRealtimeCoordinator.Role.CHAT);
 
     private LinearLayout messagesBox;
     private ScrollView messagesScroll;
@@ -145,7 +146,7 @@ public class CustomerChatRoomActivity extends Activity {
 
                         mainHandler.postDelayed(
                                 this,
-                                REFRESH_MS
+                                CustomerPerformanceManager.polling(CustomerChatRoomActivity.this, REFRESH_MS)
                         );
                     }
                 }
@@ -813,7 +814,7 @@ public class CustomerChatRoomActivity extends Activity {
         attachButton.setEnabled(false);
         sendButton.setEnabled(false);
 
-        new Thread(() -> {
+        featureRuntime.newThread(() -> {
             try {
                 ChatImageProcessor.ImagePayload payload =
                         ChatImageProcessor.fromUri(
@@ -863,7 +864,7 @@ public class CustomerChatRoomActivity extends Activity {
         attachButton.setEnabled(false);
         sendButton.setEnabled(false);
 
-        new Thread(() -> {
+        featureRuntime.newThread(() -> {
             java.io.File file =
                     new java.io.File(filePath);
 
@@ -926,7 +927,7 @@ public class CustomerChatRoomActivity extends Activity {
 
         scrollBottom();
 
-        new Thread(() -> {
+        featureRuntime.newThread(() -> {
             try {
                 JSONObject response =
                         CustomerMessageApi.uploadImagePair(
@@ -1327,7 +1328,7 @@ public class CustomerChatRoomActivity extends Activity {
         if (readOnly || uploading || file == null) return;
         uploading = true;
         voiceButton.setEnabled(false);
-        new Thread(() -> {
+        featureRuntime.newThread(() -> {
             try {
                 JSONObject upload = CustomerMessageApi.uploadVoice(
                         UPLOAD_VOICE_URL, roomId, "customer", file, durationMs);
@@ -1384,7 +1385,7 @@ public class CustomerChatRoomActivity extends Activity {
 
         int requestedLastId = 0;
 
-        new Thread(() -> {
+        featureRuntime.newThread(() -> {
             try {
                 String endpoint =
                         GET_CHAT_URL
@@ -1608,7 +1609,7 @@ public class CustomerChatRoomActivity extends Activity {
                 SystemClock.elapsedRealtime() - focusedSinceElapsedMs
         );
 
-        new Thread(() -> {
+        featureRuntime.newThread(() -> {
             try {
                 if (generation != readVisibilityGeneration || !isChatActuallyVisible()) return;
 
@@ -1851,7 +1852,7 @@ public class CustomerChatRoomActivity extends Activity {
     private void loadRemoteImage(ImageView target, String imageUrl) {
         final String fixed = CustomerChatRoomFormatter.absoluteUrl(imageUrl);
 
-        new Thread(() -> {
+        featureRuntime.newThread(() -> {
             Bitmap bitmap = null;
             HttpURLConnection connection = null;
 
@@ -2025,7 +2026,7 @@ public class CustomerChatRoomActivity extends Activity {
         final String fixed =
                 CustomerChatRoomFormatter.absoluteUrl(imageUrl);
 
-        new Thread(() -> {
+        featureRuntime.newThread(() -> {
             Bitmap bitmap = null;
             HttpURLConnection connection = null;
 
@@ -2149,7 +2150,7 @@ public class CustomerChatRoomActivity extends Activity {
         final PendingText pending = addPendingText(originalMessage);
         input.setText("");
 
-        new Thread(() -> {
+        featureRuntime.newThread(() -> {
             try {
                 JSONObject payload = new JSONObject();
                 payload.put("room_id", roomId);
@@ -2212,7 +2213,7 @@ public class CustomerChatRoomActivity extends Activity {
     }
 
     private void verifyDelivered(String originalMessage) {
-        new Thread(() -> {
+        featureRuntime.newThread(() -> {
             boolean delivered = false;
 
             try {
@@ -2427,6 +2428,7 @@ public class CustomerChatRoomActivity extends Activity {
     @Override
     protected void onResume() {
         super.onResume();
+        featureRuntime.onResume();
         chatVisible = true;
         readVisibilityGeneration++;
         focusedSinceElapsedMs = hasWindowFocus()
@@ -2440,7 +2442,7 @@ public class CustomerChatRoomActivity extends Activity {
             if (lastId > 0) {
                 scheduleMessagesReadThrough(lastId);
             }
-            mainHandler.postDelayed(refreshRunnable, REFRESH_MS);
+            mainHandler.postDelayed(refreshRunnable, CustomerPerformanceManager.polling(this, REFRESH_MS));
         }
     }
 
@@ -2452,11 +2454,13 @@ public class CustomerChatRoomActivity extends Activity {
         mainHandler.removeCallbacks(refreshRunnable);
         mainHandler.removeCallbacks(readReceiptRunnable);
         CustomerChatNotificationPoller.clearOpenRoom(roomId);
+        featureRuntime.onPause();
         super.onPause();
     }
 
     @Override
     protected void onDestroy() {
+        featureRuntime.destroy();
         destroyed = true;
         CustomerChatNotificationPoller.clearOpenRoom(roomId);
         mainHandler.removeCallbacks(readReceiptRunnable);

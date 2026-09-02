@@ -77,6 +77,9 @@ public class ProfileActivity extends Activity {
     private final Handler mainHandler =
             new Handler(Looper.getMainLooper());
 
+    private final CustomerLifecycleNetworkScope networkScope =
+            new CustomerLifecycleNetworkScope();
+
     private SessionManager session;
 
     private ImageView avatarView;
@@ -1045,7 +1048,7 @@ public class ProfileActivity extends Activity {
         deviceLoading = true;
         updateDeviceButton(false, "Memeriksa...");
 
-        new Thread(() -> {
+        networkScope.newThread(() -> {
             HttpURLConnection connection = null;
             try {
                 connection = (HttpURLConnection) new URL(DEVICE_URL).openConnection();
@@ -1176,7 +1179,7 @@ public class ProfileActivity extends Activity {
         deviceLoading = true;
         updateDeviceButton(false, "Memutuskan...");
 
-        new Thread(() -> {
+        networkScope.newThread(() -> {
             HttpURLConnection connection = null;
             try {
                 connection = (HttpURLConnection) new URL(DEVICE_URL).openConnection();
@@ -1296,7 +1299,7 @@ public class ProfileActivity extends Activity {
     private void resolveAddress(
             Location location
     ) {
-        new Thread(() -> {
+        networkScope.newThread(() -> {
             String addressText = "";
 
             try {
@@ -1446,7 +1449,7 @@ public class ProfileActivity extends Activity {
 
         setLoading(true);
 
-        new Thread(() -> {
+        networkScope.newThread(() -> {
             try {
                 byte[] image =
                         ProfileImageProcessor.createSquareWebp(getContentResolver(), uri);
@@ -1499,7 +1502,7 @@ public class ProfileActivity extends Activity {
 
         setLoading(true);
 
-        new Thread(() -> {
+        networkScope.newThread(() -> {
             HttpURLConnection connection = null;
 
             try {
@@ -1702,7 +1705,7 @@ public class ProfileActivity extends Activity {
         String fixed =
                 absoluteUrl(rawUrl);
 
-        new Thread(() -> {
+        networkScope.newThread(() -> {
             HttpURLConnection connection = null;
 
             try {
@@ -1750,7 +1753,7 @@ public class ProfileActivity extends Activity {
         if (token.isEmpty()) return;
 
         loyaltyLoading = true;
-        new Thread(() -> {
+        networkScope.newThread(() -> {
             HttpURLConnection connection = null;
             try {
                 connection = (HttpURLConnection) new URL(
@@ -1903,7 +1906,7 @@ public class ProfileActivity extends Activity {
 
         setLoading(true);
 
-        new Thread(() -> {
+        networkScope.newThread(() -> {
             HttpURLConnection connection = null;
 
             try {
@@ -2843,4 +2846,12 @@ public class ProfileActivity extends Activity {
                 Toast.LENGTH_SHORT
         ).show();
     }
+
+    @Override
+    protected void onDestroy() {
+        networkScope.destroy();
+        mainHandler.removeCallbacksAndMessages(null);
+        super.onDestroy();
+    }
+
 }

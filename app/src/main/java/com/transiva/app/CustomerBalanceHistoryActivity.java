@@ -69,6 +69,9 @@ public class CustomerBalanceHistoryActivity
     private final Handler mainHandler =
             new Handler(Looper.getMainLooper());
 
+    private final CustomerLifecycleNetworkScope networkScope =
+            new CustomerLifecycleNetworkScope();
+
     private final List<JSONObject> transactions =
             new ArrayList<>();
 
@@ -1016,7 +1019,7 @@ public class CustomerBalanceHistoryActivity
         loadingData = true;
         setLoading(true);
 
-        new Thread(() -> {
+        networkScope.newThread(() -> {
             try {
                 JSONObject request =
                         new JSONObject();
@@ -1635,7 +1638,7 @@ public class CustomerBalanceHistoryActivity
     ) {
         setLoading(true);
 
-        new Thread(() -> {
+        networkScope.newThread(() -> {
             try {
                 JSONObject request =
                         new JSONObject();
@@ -1853,7 +1856,7 @@ public class CustomerBalanceHistoryActivity
 
         setLoading(true);
 
-        new Thread(() -> {
+        networkScope.newThread(() -> {
             try {
                 JSONObject request =
                         new JSONObject();
@@ -2204,7 +2207,7 @@ public class CustomerBalanceHistoryActivity
     ) {
         setLoading(true);
 
-        new Thread(() -> {
+        networkScope.newThread(() -> {
             try {
                 JSONObject request =
                         new JSONObject();
@@ -2682,4 +2685,12 @@ public class CustomerBalanceHistoryActivity
                 Toast.LENGTH_SHORT
         ).show();
     }
+
+    @Override
+    protected void onDestroy() {
+        networkScope.destroy();
+        mainHandler.removeCallbacksAndMessages(null);
+        super.onDestroy();
+    }
+
 }

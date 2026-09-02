@@ -63,6 +63,7 @@ public class TransShopActivity extends Activity {
     private static final int TIMEOUT_MS = 25000;
 
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
+    private final CustomerFeatureRuntimeController featureRuntime = new CustomerFeatureRuntimeController(CustomerRealtimeCoordinator.Role.SHOP);
 
     private TransivaGoogleMapView mapView;
     private TextView pickupText, deliveryText, modeText, fareText, paymentSummaryText, driverAvailabilityText;
@@ -497,7 +498,7 @@ public class TransShopActivity extends Activity {
             toastDialog("User ID tidak ditemukan. Silakan login ulang.");
             return;
         }
-        new Thread(() -> {
+        featureRuntime.newThread(() -> {
             try {
                 JSONObject res = getJson(PROFILE_URL + "?id=" + userId);
                 JSONObject user = res.optJSONObject("user");
@@ -688,7 +689,7 @@ public class TransShopActivity extends Activity {
         final String rawLocation = shared.trim();
         setLoading(true);
 
-        new Thread(() -> {
+        featureRuntime.newThread(() -> {
             String resolved = rawLocation;
             try {
                 if (resolved.startsWith("geo:")) {
@@ -758,7 +759,7 @@ public class TransShopActivity extends Activity {
         }
         hideKeyboard();
         setLoading(true);
-        new Thread(() -> {
+        featureRuntime.newThread(() -> {
             String finalLink = link;
             try {
                 if (link.contains("maps.app.goo.gl") || link.contains("goo.gl/maps")) {
@@ -803,7 +804,7 @@ public class TransShopActivity extends Activity {
 
 
     private void resolveAddressAsync(boolean isPickup, double lat, double lng) {
-        new Thread(() -> {
+        featureRuntime.newThread(() -> {
             String address = buildSmartAddress(lat, lng);
 
             mainHandler.post(() -> {
@@ -974,7 +975,7 @@ public class TransShopActivity extends Activity {
     }
 
     private void loadMapPlaces() {
-        new Thread(() -> {
+        featureRuntime.newThread(() -> {
             try {
                 JSONObject food = getJson(GET_BUSINESSES_URL + "?v=" + System.currentTimeMillis());
                 JSONObject laundry = getJson(GET_LAUNDRIES_URL + "?v=" + System.currentTimeMillis());
@@ -1021,7 +1022,7 @@ public class TransShopActivity extends Activity {
     private void loadOnlineDrivers() {
         if (destroyed) return;
 
-        new Thread(() -> {
+        featureRuntime.newThread(() -> {
             try {
                 JSONObject res = getJson(GET_ONLINE_DRIVERS_URL + "?type=bike&v=" + System.currentTimeMillis());
                 JSONArray arr = res.optJSONArray("drivers");
@@ -1166,7 +1167,7 @@ public class TransShopActivity extends Activity {
         orderBtn.setEnabled(false);
         orderBtn.setText("Proses...");
 
-        new Thread(() -> {
+        featureRuntime.newThread(() -> {
             try {
                 String orderId = "ORD-" + System.currentTimeMillis();
 
@@ -1312,7 +1313,7 @@ public class TransShopActivity extends Activity {
         finalPriceText.setTextColor(Color.parseColor("#64748B"));
         paymentSummaryText.setText("Mengambil tarif dari database...");
 
-        new Thread(() -> {
+        featureRuntime.newThread(() -> {
             try {
                 JSONObject payload = new JSONObject();
 
@@ -1523,7 +1524,7 @@ public class TransShopActivity extends Activity {
     private void requestVisibleOsrmRoute() {
         if (!mapReady || mapView == null || !validCoord(pickupLat, pickupLng) || !validCoord(deliveryLat, deliveryLng)) return;
         final double aLat = pickupLat, aLng = pickupLng, bLat = deliveryLat, bLng = deliveryLng;
-        new Thread(() -> {
+        featureRuntime.newThread(() -> {
             try {
                 StableRouteEngine.Result route = StableRouteEngine.fetch(aLat, aLng, bLat, bLng);
                 mainHandler.post(() -> { if (!destroyed && mapView != null) mapView.drawRideRoute(route.latLngPoints); });
@@ -1641,11 +1642,13 @@ public class TransShopActivity extends Activity {
 
     @Override protected void onResume() {
         super.onResume();
+        featureRuntime.onResume();
         if (mapView != null) mapView.onResumeMap();
     }
 
     @Override protected void onPause() {
         if (mapView != null) mapView.onPauseMap();
+        featureRuntime.onPause();
         super.onPause();
     }
 
@@ -1660,6 +1663,7 @@ public class TransShopActivity extends Activity {
     }
 
     @Override protected void onDestroy() {
+        featureRuntime.destroy();
         destroyed = true;
         try {
             mainHandler.removeCallbacksAndMessages(null);

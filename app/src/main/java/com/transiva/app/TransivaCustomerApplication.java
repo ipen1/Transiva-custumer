@@ -32,6 +32,7 @@ public class TransivaCustomerApplication extends Application implements Applicat
         TransivaCrashReporter.user(activity);
         CustomerFcmTokenSync.syncIfNeeded(activity);
         AppUpdateRuntimeGate.onActivityResumed(activity);
+        NetworkStatusBanner.attach(activity);
         if (activity instanceof SplashActivity || activity instanceof UpdateDownloadActivity) return;
         main.postDelayed(() -> {
             if (!activity.isFinishing()) {
@@ -88,6 +89,7 @@ public class TransivaCustomerApplication extends Application implements Applicat
     @Override public void onActivityCreated(Activity activity, Bundle state) { }
     @Override public void onActivityStarted(Activity activity) { }
     @Override public void onActivityPaused(Activity activity) {
+        NetworkStatusBanner.detach(activity);
         Activity current = currentActivity.get();
         if (current == activity) {
             currentActivity = new WeakReference<>(null);

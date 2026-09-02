@@ -2143,13 +2143,10 @@ public class CustomerDashboardActivity extends Activity
     }
 
     private void openActiveOrder() {
-        if (activeOrderJson != null) {
-            Intent intent = new Intent(this, CustomerOrderDetailActivity.class);
-            intent.putExtra("order_json", activeOrderJson.toString());
-            startActivity(intent);
-        } else {
-            startActivity(new Intent(this, CustomerHistoryActivity.class));
-        }
+        // Unified Live Order Center is the single entry point for all active services.
+        // It refreshes from the server and routes each order to radar/trip safely.
+        if (dashboardController != null) dashboardController.openLiveOrderCenter();
+        else startActivity(new Intent(this, LiveOrderCenterActivity.class));
     }
 
     private void buildRecommendationSection() {

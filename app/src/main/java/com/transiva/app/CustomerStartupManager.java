@@ -10,7 +10,7 @@ public final class CustomerStartupManager {
     private CustomerStartupManager(){}
     public static void installCritical(Application app){
         TransivaCrashReporter.initialize(app); TransivaNetworkMonitor.install(app); AdaptiveTlsPinning.install(app);
-        CustomerReliabilityManager.install(app); CustomerMessageApi.initialize(app); CustomerAnalytics.initialize(app); TransivaAnrWatchdog.install();
+        CustomerReliabilityManager.install(app); NetworkResilienceManager.install(app); NetworkStatusBanner.install(); CustomerMessageApi.initialize(app); CustomerAnalytics.initialize(app); TransivaAnrWatchdog.install();
     }
     public static void deferNonCritical(Application app){ new Handler(Looper.getMainLooper()).postDelayed(() -> TransivaNetworkExecutor.execute(() -> {
         try{ CustomerFcmTokenSync.syncIfNeeded(app); }catch(Throwable ignored){}

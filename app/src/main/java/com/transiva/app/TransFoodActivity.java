@@ -5,6 +5,7 @@ import android.app.AlertDialog;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.Color;
+import android.graphics.Paint;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
 import android.net.Uri;
@@ -86,6 +87,7 @@ public class TransFoodActivity extends Activity {
     private int coinValueRupiah = 1;
     private int coinMinOrderAfterDiscount = 1000;
     private String hematTier = "BRONZE";
+    private final Runnable realtimeFoodRefresh = new Runnable() { @Override public void run() { if (!isFinishing()) { if (activeRestaurant == null) loadRestaurants(false); else loadMenus(activeRestaurant.optInt("id",0), false); mainHandler.postDelayed(this, 30000); } } };
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -111,8 +113,11 @@ public class TransFoodActivity extends Activity {
             }
         }));
         showRestaurantList();
-        loadRestaurants();
+        loadRestaurants(true);
     }
+
+    @Override protected void onResume() { super.onResume(); mainHandler.removeCallbacks(realtimeFoodRefresh); mainHandler.postDelayed(realtimeFoodRefresh, 30000); }
+    @Override protected void onPause() { mainHandler.removeCallbacks(realtimeFoodRefresh); super.onPause(); }
 
     private void loadSession() {
         try {
@@ -297,6 +302,19 @@ public class TransFoodActivity extends Activity {
             }
         }
 
+        if (q.length() == 0 && !allMenuSearchItems.isEmpty()) {
+            List<MenuSearchItem> smart = new ArrayList<>(allMenuSearchItems);
+            java.util.Collections.sort(smart, (a,b) -> Double.compare(smartMenuScore(b), smartMenuScore(a)));
+            TextView smartTitle = text("✨ Pilihan pintar untuk kamu", 16, "#0B3A78", true);
+            addWithMarginTo(homeResultsBox, smartTitle, 0, 0, 0, dp(4));
+            TextView smartSub = text("Terlaris • terbaru • rating • jarak hingga 15 km", 11, "#64748B", false);
+            addWithMarginTo(homeResultsBox, smartSub, 0, 0, 0, dp(10));
+            int smartLimit = Math.min(8, smart.size());
+            for (int i=0;i<smartLimit;i++) addMenuSearchCard(homeResultsBox, smart.get(i));
+            TextView restoTitleSmart = text("Merchant di sekitar titik antar", 16, "#0B3A78", true);
+            addWithMarginTo(homeResultsBox, restoTitleSmart, 0, dp(8), 0, dp(10));
+        }
+
         if (q.length() > 0) {
             TextView menuTitle = text("Hasil menu makanan", 15, "#0B3A78", true);
             addWithMarginTo(homeResultsBox, menuTitle, 0, 0, 0, dp(10));
@@ -379,11 +397,12 @@ public class TransFoodActivity extends Activity {
         card.addView(body, new LinearLayout.LayoutParams(0, -2, 1));
 
         body.addView(text(firstNonEmpty(item.menuName, "Menu"), 16, "#0F172A", true));
-        TextView owner = text("Milik merchant: " + firstNonEmpty(item.restaurantName, "Merchant"), 12, "#64748B", false);
+        TextView owner = text("Milik merchant: " + firstNonEmpty(item.restaurantName, "Merchant") + " • " + Math.max(0,(int)Math.round(item.restaurantDistanceKm)) + " km", 12, "#64748B", false);
         owner.setPadding(0, dp(3), 0, 0);
         body.addView(owner);
+        if (item.discountActive) { TextView old=text(rupiah(item.originalPrice),11,"#94A3B8",false);old.setPaintFlags(old.getPaintFlags()|Paint.STRIKE_THRU_TEXT_FLAG);body.addView(old);body.addView(text("🏷️ -"+String.format(Locale.US,"%.0f%%",item.discountPercent)+" merchant",11,"#C2410C",true)); }
         TextView price = text(rupiah(item.price), 14, "#0B7CFF", true);
-        price.setPadding(0, dp(6), 0, 0);
+        price.setPadding(0, dp(4), 0, 0);
         body.addView(price);
         if (item.trackStock) {
             TextView stock = text(item.stock <= 0 ? "Habis" : ("Stok " + item.stock), 11, item.stock <= 0 ? "#EF4444" : "#16A34A", true);
@@ -396,6 +415,16 @@ public class TransFoodActivity extends Activity {
         body.addView(open);
 
         addWithMarginTo(parent, card, 0, 0, 0, dp(10));
+    }
+
+    private double smartMenuScore(MenuSearchItem item) {
+        if (item == null) return 0;
+        double popularity = Math.log10(1d + Math.max(0,item.salesCount)) * 42d;
+        double rating = Math.max(0d, Math.min(5d,item.restaurantRating)) * 14d;
+        double distance = Math.max(0d, 15d - Math.max(0d,item.restaurantDistanceKm)) * 3.2d;
+        double newest = Math.min(18d, Math.log10(10d + Math.max(0,item.menuId)) * 3d);
+        double discount = item.discountActive ? Math.min(12d, item.discountPercent * 0.4d) : 0d;
+        return popularity + rating + distance + newest + discount;
     }
 
     private void openRestaurantFromSearch(MenuSearchItem item) {
@@ -463,6 +492,11 @@ public class TransFoodActivity extends Activity {
         TextView info = text(open ? ("⭐ " + r.optString("rating", "0.0") + " (" + r.optInt("review_count",0) + ") • " + firstNonEmpty(r.optString("duration"), "15 menit")) : ("🔴 " + availabilityReason), 11, "#64748B", false);
         info.setPadding(0, dp(5), 0, 0);
         body.addView(info);
+        if (!r.isNull("distance_rounded_km")) {
+            int roundedKm = Math.max(0, r.optInt("distance_rounded_km", 0));
+            TextView dist = text("📍 " + roundedKm + " km dari titik antar", 11, "#475569", true);
+            dist.setPadding(0, dp(4), 0, 0); body.addView(dist);
+        }
         if (!todayHours.isEmpty()) {
             TextView hours = text("🕒 " + todayHours, 10, "#64748B", false);
             hours.setPadding(0, dp(4), 0, 0);
@@ -473,6 +507,10 @@ public class TransFoodActivity extends Activity {
             TextView promo = text("💸 " + firstNonEmpty(r.optString("promo_label"), "Promo tersedia"), 10, "#B45309", true);
             promo.setPadding(0, dp(6), 0, 0);
             body.addView(promo);
+        }
+        if (r.optBoolean("has_merchant_discount", false)) {
+            TextView promo = text("🏷️ " + firstNonEmpty(r.optString("merchant_discount_label"), "Diskon merchant"), 10, "#C2410C", true);
+            promo.setPadding(0, dp(5), 0, 0); body.addView(promo);
         }
         if (r.optInt("review_count",0) >= 10 && r.optDouble("rating",0) >= 4.5) {
             TextView hot = text("🔥 Favorit customer", 10, "#DC2626", true);
@@ -598,8 +636,14 @@ public class TransFoodActivity extends Activity {
             body.addView(d);
         }
 
+        boolean merchantDiscount = m.optInt("discount_active",0) == 1 && m.optDouble("discount_percent",0) > 0;
+        if (merchantDiscount) {
+            TextView oldPrice = text(rupiah(m.optDouble("original_display_price", m.optDouble("original_price", m.optDouble("price",0)))), 12, "#94A3B8", false);
+            oldPrice.setPaintFlags(oldPrice.getPaintFlags() | Paint.STRIKE_THRU_TEXT_FLAG); oldPrice.setPadding(0,dp(5),0,0); body.addView(oldPrice);
+            TextView disc = text("🏷️ Diskon merchant " + String.format(Locale.US,"%.0f%%",m.optDouble("discount_percent",0)), 11, "#C2410C", true); body.addView(disc);
+        }
         TextView price = text(rupiah(m.optDouble("price", 0)), 15, "#0B7CFF", true);
-        price.setPadding(0, dp(6), 0, dp(4));
+        price.setPadding(0, dp(merchantDiscount?2:6), 0, dp(4));
         body.addView(price);
 
         LinearLayout socialRow = new LinearLayout(this);
@@ -1006,19 +1050,20 @@ public class TransFoodActivity extends Activity {
         return row;
     }
 
-    private void loadRestaurants() {
-        setLoading(true);
+    private void loadRestaurants() { loadRestaurants(true); }
+    private void loadRestaurants(boolean showLoading) {
+        if (showLoading) setLoading(true);
         featureRuntime.newThread(() -> {
             try {
-                JSONObject res = getJson(BASE_URL + "server/get_food_restaurants.php?v=" + System.currentTimeMillis());
+                JSONObject res = getJson(BASE_URL + "server/get_food_restaurants.php?user_id=" + Uri.encode(String.valueOf(userId)) + "&v=" + System.currentTimeMillis());
                 restaurants.clear();
                 JSONArray arr = res.optJSONArray("restaurants");
                 if (res.optBoolean("success", false) && arr != null) {
                     for (int i = 0; i < arr.length(); i++) restaurants.add(arr.getJSONObject(i));
-                    featureRuntime.post(mainHandler, () -> { setLoading(false); showRestaurantList(); loadAllMenuIndex(); });
+                    featureRuntime.post(mainHandler, () -> { if (showLoading) setLoading(false); if (activeRestaurant == null) showRestaurantList(); loadAllMenuIndex(); });
                 } else throw new Exception(firstNonEmpty(res.optString("message"), "Gagal memuat merchant"));
             } catch (Exception e) {
-                featureRuntime.post(mainHandler, () -> { setLoading(false); root.removeAllViews(); buildTopBar("Trans Food", "", true); addStatus("Koneksi gagal memuat merchant"); showInfo("Gagal", e.getMessage()); });
+                featureRuntime.post(mainHandler, () -> { if (showLoading) { setLoading(false); root.removeAllViews(); buildTopBar("Trans Food", "", true); addStatus("Koneksi gagal memuat merchant"); showInfo("Gagal", e.getMessage()); } });
             }
         }).start();
     }
@@ -1046,6 +1091,12 @@ public class TransFoodActivity extends Activity {
                             item.description = firstNonEmpty(m.optString("description"), "");
                             item.image = firstNonEmpty(m.optString("image"), "assets/no-image.png");
                             item.price = m.optDouble("price", 0);
+                            item.originalPrice = m.optDouble("original_display_price", m.optDouble("original_price", item.price));
+                            item.discountPercent = m.optDouble("discount_percent", 0);
+                            item.discountActive = m.optInt("discount_active",0) == 1 && item.discountPercent > 0;
+                            item.salesCount = m.optLong("sales_count", 0);
+                            item.restaurantRating = r.optDouble("rating", 0);
+                            item.restaurantDistanceKm = r.isNull("distance_km") ? 15d : r.optDouble("distance_km", 15d);
                             item.active = m.optInt("is_active", 1) == 1;
                             item.trackStock = m.optInt("track_stock", 0) == 1;
                             item.stock = m.optInt("stock", -1);
@@ -1062,8 +1113,9 @@ public class TransFoodActivity extends Activity {
         }).start();
     }
 
-    private void loadMenus(int restaurantId) {
-        setLoading(true);
+    private void loadMenus(int restaurantId) { loadMenus(restaurantId, true); }
+    private void loadMenus(int restaurantId, boolean showLoading) {
+        if (showLoading) setLoading(true);
         featureRuntime.newThread(() -> {
             try {
                 JSONObject res = getJson(BASE_URL + "server/get_food_menus.php?restaurant_id=" + restaurantId + "&v=" + System.currentTimeMillis());
@@ -1103,10 +1155,10 @@ public class TransFoodActivity extends Activity {
                 if (res.optBoolean("success", false) && arr != null) {
                     for (int i = 0; i < arr.length(); i++) menus.add(arr.getJSONObject(i));
                     try { mergeFoodSocial(getJson(BASE_URL + "server/customer_food_social.php?restaurant_id=" + restaurantId)); } catch (Exception ignored) {}
-                    featureRuntime.post(mainHandler, () -> { setLoading(false); showMenuPage(); });
+                    featureRuntime.post(mainHandler, () -> { if (showLoading) setLoading(false); showMenuPage(); });
                 } else throw new Exception(firstNonEmpty(res.optString("message"), "Gagal memuat menu"));
             } catch (Exception e) {
-                featureRuntime.post(mainHandler, () -> { setLoading(false); showMenuPage(); addStatus("Gagal memuat menu"); showInfo("Gagal", e.getMessage()); });
+                featureRuntime.post(mainHandler, () -> { if (showLoading) { setLoading(false); showMenuPage(); addStatus("Gagal memuat menu"); showInfo("Gagal", e.getMessage()); } });
             }
         }).start();
     }
@@ -1556,7 +1608,7 @@ public class TransFoodActivity extends Activity {
         return CustomerCommonFormatters.firstBasic(values);
     }
 
-    private static class MenuSearchItem { int restaurantId; int menuId; String restaurantName; String menuName; String category; String description; String image; double price; boolean active; boolean trackStock; int stock; JSONObject restaurant; }
+    private static class MenuSearchItem { int restaurantId; int menuId; String restaurantName; String menuName; String category; String description; String image; double price; double originalPrice; double discountPercent; boolean discountActive; long salesCount; double restaurantRating; double restaurantDistanceKm; boolean active; boolean trackStock; int stock; JSONObject restaurant; }
     private static class CartItem { int id; int restaurantId; String name; double basePrice; double price; int qty; String key; String optionText; JSONArray selectedOptions; }
     private static class OptionSelection { String type; String label; JSONArray items; RadioGroup radioGroup; LinearLayout checkBoxContainer; }
 

@@ -7,6 +7,7 @@ import com.transiva.app.CustomerApiClient;
 import com.transiva.app.ApiConfig;
 import com.transiva.app.CustomerResourceConfig;
 import com.transiva.app.TransivaHttpRepository;
+import com.transiva.app.TransivaNetworkExecutor;
 
 import com.transiva.app.customer.domain.CustomerDashboardRepository;
 import com.transiva.app.customer.domain.DashboardState;
@@ -21,6 +22,7 @@ import java.io.InputStreamReader;
 import java.net.HttpURLConnection;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.Future;
 
 public final class CustomerDashboardRepositoryImpl
         implements CustomerDashboardRepository {
@@ -42,13 +44,22 @@ public final class CustomerDashboardRepositoryImpl
             String username,
             int userId
     ) throws Exception {
-        double balance = loadBalance(username);
-        JSONObject activeOrder = loadActiveOrderJson(username, userId);
+        // P1: independent dashboard endpoints run concurrently instead of serially.
+        // This keeps a slow optional endpoint from multiplying total dashboard latency.
+        Future<Double> balanceTask = TransivaNetworkExecutor.submit(() -> loadBalance(username));
+        Future<JSONObject> activeTask = TransivaNetworkExecutor.submit(() -> loadActiveOrderJson(username, userId));
+        Future<JSONObject> loyaltyTask = TransivaNetworkExecutor.submit(() -> loadOptional(BASE_URL + "server/customer_loyalty.php"));
+        Future<JSONObject> referralTask = TransivaNetworkExecutor.submit(() -> loadOptional(BASE_URL + "server/customer_referral.php"));
+        Future<JSONObject> bestOfferTask = TransivaNetworkExecutor.submit(() -> loadOptional(BASE_URL + "server/customer_best_offer.php"));
+        Future<List<Promo>> promoTask = TransivaNetworkExecutor.submit(this::loadPromos);
+
+        double balance = safeGet(balanceTask, 0d);
+        JSONObject activeOrder = safeGet(activeTask, null);
+        JSONObject loyalty = safeGet(loyaltyTask, null);
+        JSONObject referral = safeGet(referralTask, null);
+        JSONObject bestOffer = safeGet(bestOfferTask, null);
+        List<Promo> promos = safeGet(promoTask, new ArrayList<>());
         String order = formatActiveOrder(activeOrder);
-        JSONObject loyalty = loadOptional(BASE_URL + "server/customer_loyalty.php");
-        JSONObject referral = loadOptional(BASE_URL + "server/customer_referral.php");
-        JSONObject bestOffer = loadOptional(BASE_URL + "server/customer_best_offer.php");
-        List<Promo> promos = loadPromos();
 
         return new DashboardState(
                 balance, order, activeOrder, loyalty, referral, bestOffer, promos
@@ -227,6 +238,17 @@ public final class CustomerDashboardRepositoryImpl
         }
 
         return color;
+    }
+
+    private <T> T safeGet(Future<T> future, T fallback) {
+        if (future == null) return fallback;
+        try {
+            T value = future.get();
+            return value != null ? value : fallback;
+        } catch (Exception ignored) {
+            try { future.cancel(true); } catch (Throwable ignoredCancel) {}
+            return fallback;
+        }
     }
 
     private String first(String... values) {

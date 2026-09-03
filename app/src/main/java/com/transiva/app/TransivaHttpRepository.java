@@ -9,6 +9,7 @@ import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.nio.charset.StandardCharsets;
+import java.util.concurrent.ThreadLocalRandom;
 
 /** Central JSON HTTP repository with bounded retry for idempotent reads. */
 public final class TransivaHttpRepository {
@@ -67,7 +68,10 @@ public final class TransivaHttpRepository {
                 TransivaCrashReporter.recordNetworkFailure(error, method, url);
                 if (attempt + 1 >= attempts) throw error;
             } finally { if (c != null) c.disconnect(); }
-            try { Thread.sleep(220L * (attempt + 1)); }
+            // P2: bounded exponential backoff + jitter prevents many clients retrying together.
+            long baseDelay = Math.min(1200L, 220L * (1L << Math.min(attempt, 2)));
+            long jitter = ThreadLocalRandom.current().nextLong(60L, 181L);
+            try { Thread.sleep(baseDelay + jitter); }
             catch (InterruptedException interrupted) { Thread.currentThread().interrupt(); throw interrupted; }
         }
         throw last == null ? new IllegalStateException("request failed") : last;

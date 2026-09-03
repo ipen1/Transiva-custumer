@@ -7,92 +7,58 @@ import android.widget.ImageView;
 import java.io.BufferedInputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 
+/** Shared non-blocking remote image loader backed by the app network pool and memory/disk cache. */
 public final class RemoteImageLoader {
+    private RemoteImageLoader() {}
 
-    private static final ExecutorService EXECUTOR =
-            Executors.newFixedThreadPool(3);
-
-    private RemoteImageLoader() {
-    }
-
-    public static void loadCenterCrop(
-            ImageView view,
-            String imageUrl,
-            int fallbackDrawable
-    ) {
+    public static void loadCenterCrop(ImageView view, String imageUrl, int fallbackDrawable) {
         if (view == null) return;
-
-        String clean =
-                imageUrl == null ? "" : imageUrl.trim();
-
+        String clean = imageUrl == null ? "" : imageUrl.trim();
         view.setScaleType(ImageView.ScaleType.CENTER_CROP);
-
-        if (fallbackDrawable != 0) {
-            view.setImageResource(fallbackDrawable);
-        }
-
+        if (fallbackDrawable != 0) view.setImageResource(fallbackDrawable);
         if (clean.isEmpty()) return;
 
         view.setTag(clean);
+        Bitmap memory = ImageMemoryDiskCache.getMemory(clean);
+        if (memory != null) { view.setImageBitmap(memory); return; }
 
-        android.graphics.Bitmap cached = ImageMemoryDiskCache.get(view.getContext(), clean);
-        if (cached != null) { view.setImageBitmap(cached); return; }
+        final android.content.Context app = view.getContext().getApplicationContext();
+        TransivaNetworkExecutor.execute(() -> {
+            // P2: disk decode is background-only; never block the UI thread.
+            Bitmap cached = ImageMemoryDiskCache.getDisk(app, clean);
+            if (cached != null) { postIfStillBound(view, clean, cached); return; }
 
-        EXECUTOR.execute(() -> {
             HttpURLConnection connection = null;
-            Bitmap bitmap = null;
-
             try {
-                connection =
-                        (HttpURLConnection)
-                                new URL(clean).openConnection();
-
-                connection.setConnectTimeout(12000);
-                connection.setReadTimeout(18000);
+                connection = (HttpURLConnection) new URL(clean).openConnection();
+                CustomerApiClient.applySecurity(app, connection);
+                connection.setConnectTimeout(10000);
+                connection.setReadTimeout(15000);
                 connection.setUseCaches(true);
                 connection.setRequestProperty("Accept", "image/*");
-
                 int status = connection.getResponseCode();
-
                 if (status < 200 || status >= 300) return;
-
-                BufferedInputStream input =
-                        new BufferedInputStream(
-                                connection.getInputStream()
-                        );
-
-                bitmap = BitmapFactory.decodeStream(input);
-                input.close();
-
+                Bitmap bitmap;
+                try (BufferedInputStream input = new BufferedInputStream(connection.getInputStream())) {
+                    bitmap = BitmapFactory.decodeStream(input);
+                }
                 if (bitmap == null) return;
-
-                Bitmap result = bitmap;
-                bitmap = null;
-                ImageMemoryDiskCache.put(view.getContext().getApplicationContext(), clean, result);
-
-                view.post(() -> {
-                    Object tag = view.getTag();
-
-                    if (
-                            tag != null
-                                    && clean.equals(String.valueOf(tag))
-                    ) {
-                        view.setImageBitmap(result);
-                    } else if (!result.isRecycled()) {
-                        result.recycle();
-                    }
-                });
-
+                ImageMemoryDiskCache.put(app, clean, bitmap);
+                // Do not recycle here: the same Bitmap is owned by the shared memory cache.
+                postIfStillBound(view, clean, bitmap);
             } catch (Exception ignored) {
             } finally {
-                if (bitmap != null && !bitmap.isRecycled()) {
-                    bitmap.recycle();
-                }
-
                 if (connection != null) connection.disconnect();
+            }
+        });
+    }
+
+    private static void postIfStillBound(ImageView view, String key, Bitmap bitmap) {
+        view.post(() -> {
+            Object tag = view.getTag();
+            if (tag != null && key.equals(String.valueOf(tag)) && bitmap != null && !bitmap.isRecycled()) {
+                view.setImageBitmap(bitmap);
             }
         });
     }

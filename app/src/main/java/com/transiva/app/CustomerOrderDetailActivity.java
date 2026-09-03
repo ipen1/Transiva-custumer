@@ -530,7 +530,7 @@ public class CustomerOrderDetailActivity extends Activity {
     }
 
     private void loadImage(ImageView v, String u) {
-        new Thread(() -> { try (InputStream in = new URL(u).openStream()) { Bitmap b = BitmapFactory.decodeStream(in); if (b != null) main.post(() -> v.setImageBitmap(b)); } catch (Exception ignored) {} }, "detail-photo").start();
+        RemoteImageLoader.loadCenterCrop(v, u, android.R.drawable.ic_menu_gallery);
     }
 
     private String absoluteUrl(String p) {

@@ -6,14 +6,17 @@ import android.os.Looper;
 import com.transiva.app.customer.domain.CustomerDashboardRepository;
 import com.transiva.app.customer.domain.DashboardState;
 
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
+import android.os.SystemClock;
+import java.util.concurrent.Future;
+import com.transiva.app.TransivaNetworkExecutor;
 
 public final class CustomerDashboardPresenter {
 
     private final CustomerDashboardRepository repository;
     private CustomerDashboardContract.View view;
-    private final ExecutorService executor = Executors.newSingleThreadExecutor();
+    private Future<?> currentTask;
+    private volatile long lastSuccessAt;
+    private static final long MIN_REFRESH_MS = 12000L;
     private final Handler main = new Handler(Looper.getMainLooper());
     private volatile boolean loading;
 
@@ -30,6 +33,8 @@ public final class CustomerDashboardPresenter {
     }
 
     public void refresh(String username, int userId) {
+        long now = SystemClock.elapsedRealtime();
+        if (lastSuccessAt > 0L && now - lastSuccessAt < MIN_REFRESH_MS) return;
         request(username, userId, false);
     }
 
@@ -38,11 +43,12 @@ public final class CustomerDashboardPresenter {
         loading = true;
         if (visibleLoading) view.showLoading(true);
 
-        executor.execute(() -> {
+        currentTask = TransivaNetworkExecutor.execute(() -> {
             try {
                 DashboardState state = repository.load(username, userId);
                 main.post(() -> {
                     loading = false;
+                    lastSuccessAt = SystemClock.elapsedRealtime();
                     if (view == null) return;
                     view.showLoading(false);
                     view.showDashboard(state);
@@ -60,7 +66,9 @@ public final class CustomerDashboardPresenter {
 
     public void destroy() {
         view = null;
-        executor.shutdownNow();
+        Future<?> task = currentTask;
+        if (task != null) task.cancel(true);
+        currentTask = null;
         main.removeCallbacksAndMessages(null);
     }
 }

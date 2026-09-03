@@ -39,7 +39,7 @@ public final class ImageMemoryDiskCache {
         if(c==null||key==null||b==null||b.isRecycled())return;
         MEMORY.put(key,b);
         final Context app=c.getApplicationContext();
-        TransivaNetworkExecutor.execute(() -> {
+        TransivaImageExecutor.execute(() -> {
             File f=file(app,key);
             if(f.exists())return;
             try(FileOutputStream o=new FileOutputStream(f)){ b.compress(Bitmap.CompressFormat.WEBP_LOSSY,86,o); }catch(Throwable ignored){}

@@ -46,7 +46,7 @@ public final class CustomerFcmTokenSync {
         // Hindari beberapa Activity/Service mengirim token yang sama bersamaan.
         if (!UPLOADING.compareAndSet(false, true)) return;
 
-        new Thread(() -> {
+        TransivaNetworkExecutor.execute(() -> {
             HttpURLConnection c = null;
             try {
                 SessionManager sm = new SessionManager(app);
@@ -94,7 +94,7 @@ public final class CustomerFcmTokenSync {
                 if (c != null) c.disconnect();
                 UPLOADING.set(false);
             }
-        }, "customer-fcm-sync").start();
+        });
     }
 
     private static void consume(InputStream in) {

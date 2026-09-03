@@ -10,7 +10,7 @@ public final class CustomerBestOffer {
     public interface Callback { void onOffer(JSONObject offer); }
     private CustomerBestOffer() {}
     public static void load(Context context, String service, Callback cb) {
-        new Thread(() -> {
+        TransivaNetworkExecutor.execute(() -> {
             JSONObject offer = null;
             try {
                 String url = ApiConfig.server("customer_best_offer.php") + "?service=" + java.net.URLEncoder.encode(service == null ? "" : service, "UTF-8") + "&_=" + System.currentTimeMillis();
@@ -29,6 +29,6 @@ public final class CustomerBestOffer {
             } catch (Exception ignored) {}
             final JSONObject result = offer;
             if (cb != null) cb.onOffer(result);
-        }, "best-offer").start();
+        });
     }
 }

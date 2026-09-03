@@ -632,7 +632,7 @@ public class RegisterActivity extends Activity {
         catch (Exception ignored) {}
     }
 
-    private void runNetwork(Runnable runnable) { new Thread(runnable).start(); }
+    private void runNetwork(Runnable runnable) { TransivaNetworkExecutor.execute(runnable); }
 
     private int findDrawable(String name) {
         try { return getResources().getIdentifier(name, "drawable", getPackageName()); }

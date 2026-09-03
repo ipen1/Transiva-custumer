@@ -13,9 +13,18 @@ public final class RemoteImageLoader {
     private RemoteImageLoader() {}
 
     public static void loadCenterCrop(ImageView view, String imageUrl, int fallbackDrawable) {
+        load(view, imageUrl, fallbackDrawable, true);
+    }
+
+    /** Loads using the ImageView's existing ScaleType (useful for chat/photo viewers). */
+    public static void loadPreserveScale(ImageView view, String imageUrl, int fallbackDrawable) {
+        load(view, imageUrl, fallbackDrawable, false);
+    }
+
+    private static void load(ImageView view, String imageUrl, int fallbackDrawable, boolean centerCrop) {
         if (view == null) return;
         String clean = imageUrl == null ? "" : imageUrl.trim();
-        view.setScaleType(ImageView.ScaleType.CENTER_CROP);
+        if (centerCrop) view.setScaleType(ImageView.ScaleType.CENTER_CROP);
         if (fallbackDrawable != 0) view.setImageResource(fallbackDrawable);
         if (clean.isEmpty()) return;
 
@@ -24,7 +33,7 @@ public final class RemoteImageLoader {
         if (memory != null) { view.setImageBitmap(memory); return; }
 
         final android.content.Context app = view.getContext().getApplicationContext();
-        TransivaNetworkExecutor.execute(() -> {
+        TransivaImageExecutor.execute(() -> {
             // P2: disk decode is background-only; never block the UI thread.
             Bitmap cached = ImageMemoryDiskCache.getDisk(app, clean);
             if (cached != null) { postIfStillBound(view, clean, cached); return; }

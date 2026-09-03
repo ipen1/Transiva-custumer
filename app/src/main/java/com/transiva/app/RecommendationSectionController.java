@@ -90,7 +90,7 @@ public final class RecommendationSectionController {
         loading = true;
         progress.setVisibility(View.VISIBLE);
 
-        new Thread(() -> {
+        TransivaNetworkExecutor.execute(() -> {
             JSONArray items = new JSONArray();
             try {
                 HttpURLConnection connection =
@@ -130,7 +130,7 @@ public final class RecommendationSectionController {
                 progress.setVisibility(View.GONE);
                 render(finalItems);
             });
-        }).start();
+        });
     }
 
     private void render(JSONArray items) {

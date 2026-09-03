@@ -26,7 +26,7 @@ public class NativeLogoutClient {
     public static void logoutAndDeleteToken(Context context, Callback callback) {
         Context appContext = context.getApplicationContext();
 
-        new Thread(() -> {
+        TransivaNetworkExecutor.execute(() -> {
             boolean success = false;
             String response = "";
             HttpURLConnection conn = null;
@@ -93,7 +93,7 @@ public class NativeLogoutClient {
             new Handler(Looper.getMainLooper()).post(() -> {
                 if (callback != null) callback.onDone(finalSuccess, finalResponse);
             });
-        }).start();
+        });
     }
 
     private static String firstNonEmpty(String... values) {

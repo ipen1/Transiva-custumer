@@ -2,8 +2,6 @@ package com.transiva.app;
 
 import android.app.Activity;
 import android.app.AlertDialog;
-import android.graphics.Bitmap;
-import android.graphics.BitmapFactory;
 import android.graphics.Color;
 import android.graphics.Paint;
 import android.graphics.Typeface;
@@ -44,8 +42,6 @@ import java.text.NumberFormat;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
-import java.util.HashMap;
-import java.util.Map;
 
 public class TransFoodActivity extends Activity {
 
@@ -63,7 +59,6 @@ public class TransFoodActivity extends Activity {
     private final List<JSONObject> restaurants = new ArrayList<>();
     private final List<JSONObject> menus = new ArrayList<>();
     private final List<CartItem> cart = new ArrayList<>();
-    private final Map<String, Bitmap> imageCache = new HashMap<>();
     private final List<MenuSearchItem> allMenuSearchItems = new ArrayList<>();
     private JSONObject activeRestaurant;
     private String menuSearchQuery = "";
@@ -87,7 +82,7 @@ public class TransFoodActivity extends Activity {
     private int coinValueRupiah = 1;
     private int coinMinOrderAfterDiscount = 1000;
     private String hematTier = "BRONZE";
-    private final Runnable realtimeFoodRefresh = new Runnable() { @Override public void run() { if (!isFinishing()) { if (activeRestaurant == null) loadRestaurants(false); else loadMenus(activeRestaurant.optInt("id",0), false); mainHandler.postDelayed(this, 30000); } } };
+    private final Runnable realtimeFoodRefresh = new Runnable() { @Override public void run() { if (!isFinishing()) { if (activeRestaurant == null) loadRestaurants(false); else loadMenus(activeRestaurant.optInt("id",0), false); mainHandler.postDelayed(this, CustomerPerformanceManager.pollingBackground(TransFoodActivity.this, 30000L)); } } };
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -1050,7 +1045,7 @@ public class TransFoodActivity extends Activity {
     private void loadRestaurants() { loadRestaurants(true); }
     private void loadRestaurants(boolean showLoading) {
         if (showLoading) setLoading(true);
-        featureRuntime.newThread(() -> {
+        featureRuntime.execute(() -> {
             try {
                 JSONObject res = getJson(BASE_URL + "server/get_food_restaurants.php?user_id=" + Uri.encode(String.valueOf(userId)) + "&v=" + System.currentTimeMillis());
                 restaurants.clear();
@@ -1062,11 +1057,11 @@ public class TransFoodActivity extends Activity {
             } catch (Exception e) {
                 featureRuntime.post(mainHandler, () -> { if (showLoading) { setLoading(false); root.removeAllViews(); buildTopBar("Trans Food", "", true); addStatus("Koneksi gagal memuat merchant"); showInfo("Gagal", e.getMessage()); } });
             }
-        }).start();
+        });
     }
 
     private void loadAllMenuIndex() {
-        featureRuntime.newThread(() -> {
+        featureRuntime.execute(() -> {
             try {
                 List<MenuSearchItem> fresh = new ArrayList<>();
                 for (JSONObject r : restaurants) {
@@ -1107,13 +1102,13 @@ public class TransFoodActivity extends Activity {
                     if (activeRestaurant == null) renderHomeResults();
                 });
             } catch (Exception ignored) {}
-        }).start();
+        });
     }
 
     private void loadMenus(int restaurantId) { loadMenus(restaurantId, true); }
     private void loadMenus(int restaurantId, boolean showLoading) {
         if (showLoading) setLoading(true);
-        featureRuntime.newThread(() -> {
+        featureRuntime.execute(() -> {
             try {
                 JSONObject res = getJson(BASE_URL + "server/get_food_menus.php?restaurant_id=" + restaurantId + "&v=" + System.currentTimeMillis());
                 menus.clear();
@@ -1157,12 +1152,12 @@ public class TransFoodActivity extends Activity {
             } catch (Exception e) {
                 featureRuntime.post(mainHandler, () -> { if (showLoading) { setLoading(false); showMenuPage(); addStatus("Gagal memuat menu"); showInfo("Gagal", e.getMessage()); } });
             }
-        }).start();
+        });
     }
 
     private void calculateOngkirThenRender() {
         setLoading(true);
-        featureRuntime.newThread(() -> {
+        featureRuntime.execute(() -> {
             try {
                 String url = BASE_URL + "server/calculateOngkir.php?service_type=Transbike" +
                         "&restaurant_id=" + Uri.encode(String.valueOf(activeRestaurant.optInt("id", 0))) +
@@ -1186,7 +1181,7 @@ public class TransFoodActivity extends Activity {
             } catch (Exception e) {
                 featureRuntime.post(mainHandler, () -> { setLoading(false); deliveryFee = standardFee = hematFee = 0; distanceKm = 0; renderCheckout(); showInfo("Ongkir", e.getMessage()); });
             }
-        }).start();
+        });
     }
 
     private void createFoodOrder() {
@@ -1198,7 +1193,7 @@ public class TransFoodActivity extends Activity {
         }
         if (cart.isEmpty()) { showInfo("Keranjang kosong", "Tambahkan menu terlebih dahulu."); return; }
         setLoading(true);
-        featureRuntime.newThread(() -> {
+        featureRuntime.execute(() -> {
             try {
                 JSONObject payload = new JSONObject();
                 payload.put("user_id", userId);
@@ -1231,7 +1226,7 @@ public class TransFoodActivity extends Activity {
             } catch (Exception e) {
                 featureRuntime.post(mainHandler, () -> { setLoading(false); showInfo("Error", "Koneksi gagal membuat pesanan makanan."); });
             }
-        }).start();
+        });
     }
 
     private void mergeFoodSocial(JSONObject social) {
@@ -1262,7 +1257,7 @@ public class TransFoodActivity extends Activity {
         if (targetId <= 0) return;
         boolean next = !target.optBoolean("is_favorite", false);
         button.setEnabled(false);
-        featureRuntime.newThread(() -> {
+        featureRuntime.execute(() -> {
             try {
                 JSONObject payload = new JSONObject();
                 payload.put("action", "favorite");
@@ -1280,21 +1275,21 @@ public class TransFoodActivity extends Activity {
             } catch (Exception e) {
                 featureRuntime.post(mainHandler, () -> { button.setEnabled(true); showInfo("Favorit", "Koneksi gagal memperbarui favorit."); });
             }
-        }, "food-favorite").start();
+        });
     }
 
     private void showMenuReviews(JSONObject menu) {
         int menuId = menu.optInt("id", 0);
         if (menuId <= 0) return;
         setLoading(true);
-        featureRuntime.newThread(() -> {
+        featureRuntime.execute(() -> {
             try {
                 JSONObject res = getJson(BASE_URL + "server/customer_food_social.php?action=reviews&menu_id=" + menuId);
                 featureRuntime.post(mainHandler, () -> { setLoading(false); showReviewDialog(menu, res); });
             } catch (Exception e) {
                 featureRuntime.post(mainHandler, () -> { setLoading(false); showInfo("Penilaian Menu", "Gagal memuat komentar customer."); });
             }
-        }, "food-reviews").start();
+        });
     }
 
     private void showReviewDialog(JSONObject menu, JSONObject data) {
@@ -1351,7 +1346,7 @@ public class TransFoodActivity extends Activity {
     }
 
     private void submitMenuReview(JSONObject menu, int rating, String comment) {
-        featureRuntime.newThread(() -> {
+        featureRuntime.execute(() -> {
             try {
                 JSONObject payload = new JSONObject(); payload.put("action", "review"); payload.put("menu_id", menu.optInt("id",0)); payload.put("rating", rating); payload.put("comment", comment == null ? "" : comment.trim());
                 JSONObject res = postJson(BASE_URL + "server/customer_food_social.php", payload);
@@ -1362,18 +1357,18 @@ public class TransFoodActivity extends Activity {
                     } else showInfo("Penilaian Menu", res.optString("message", "Penilaian gagal disimpan."));
                 });
             } catch (Exception e) { featureRuntime.post(mainHandler, () -> showInfo("Penilaian Menu", "Koneksi gagal menyimpan penilaian.")); }
-        }, "food-review-save").start();
+        });
     }
 
     private void showMerchantReviews(JSONObject merchant) {
         int rid = merchant == null ? 0 : merchant.optInt("id", 0); if (rid <= 0) return;
         setLoading(true);
-        featureRuntime.newThread(() -> {
+        featureRuntime.execute(() -> {
             try {
                 JSONObject res = getJson(BASE_URL + "server/customer_food_social.php?action=merchant_reviews&restaurant_id=" + rid);
                 featureRuntime.post(mainHandler, () -> { setLoading(false); showMerchantReviewDialog(merchant, res); });
             } catch (Exception e) { featureRuntime.post(mainHandler, () -> { setLoading(false); showInfo("Penilaian Merchant", "Gagal memuat penilaian merchant."); }); }
-        }, "merchant-reviews").start();
+        });
     }
 
     private void showMerchantReviewDialog(JSONObject merchant, JSONObject data) {
@@ -1436,7 +1431,7 @@ public class TransFoodActivity extends Activity {
     }
 
     private void submitMerchantReview(JSONObject merchant,int rating,String comment){
-        featureRuntime.newThread(()->{try{JSONObject payload=new JSONObject();payload.put("action","merchant_review");payload.put("restaurant_id",merchant.optInt("id",0));payload.put("rating",rating);payload.put("comment",comment==null?"":comment.trim());JSONObject res=postJson(BASE_URL+"server/customer_food_social.php",payload);featureRuntime.post(mainHandler, ()->{if(res.optBoolean("success",false)){try{merchant.put("social_rating",res.optDouble("rating",rating));merchant.put("social_review_count",res.optInt("review_count",1));}catch(Exception ignored){}showInfo("Terima kasih","Penilaian merchant berhasil disimpan.");renderMenus();}else showInfo("Penilaian Merchant",res.optString("message","Penilaian gagal disimpan."));});}catch(Exception e){featureRuntime.post(mainHandler, ()->showInfo("Penilaian Merchant","Koneksi gagal menyimpan penilaian."));}},"merchant-review-save").start();
+        featureRuntime.execute(()->{try{JSONObject payload=new JSONObject();payload.put("action","merchant_review");payload.put("restaurant_id",merchant.optInt("id",0));payload.put("rating",rating);payload.put("comment",comment==null?"":comment.trim());JSONObject res=postJson(BASE_URL+"server/customer_food_social.php",payload);featureRuntime.post(mainHandler, ()->{if(res.optBoolean("success",false)){try{merchant.put("social_rating",res.optDouble("rating",rating));merchant.put("social_review_count",res.optInt("review_count",1));}catch(Exception ignored){}showInfo("Terima kasih","Penilaian merchant berhasil disimpan.");renderMenus();}else showInfo("Penilaian Merchant",res.optString("message","Penilaian gagal disimpan."));});}catch(Exception e){featureRuntime.post(mainHandler, ()->showInfo("Penilaian Merchant","Koneksi gagal menyimpan penilaian."));}});
     }
 
     private ImageButton favoriteButton(boolean active) { ImageButton b=new ImageButton(this); b.setPadding(dp(9),dp(9),dp(9),dp(9)); b.setScaleType(ImageView.ScaleType.CENTER_INSIDE); b.setBackground(roundStroke(active?"#FFF1F2":"#FFFFFF","#FECDD3",dp(18),1)); setFavoriteIcon(b,active); return b; }
@@ -1469,32 +1464,10 @@ public class TransFoodActivity extends Activity {
     }
 
     private void loadImage(ImageView view, String urlText) {
-        String finalUrl = firstNonEmpty(urlText, "");
-        view.setTag(finalUrl);
-
-        Bitmap cached = imageCache.get(finalUrl);
-        if (cached != null) {
-            view.setImageBitmap(cached);
-            return;
-        }
-
-        // Jangan kosongkan ImageView saat render ulang qty, supaya gambar tidak kedip.
-        featureRuntime.newThread(() -> {
-            try {
-                HttpURLConnection c = CustomerApiClient.open(this, finalUrl);
-                c.setConnectTimeout(10000);
-                c.setReadTimeout(10000);
-                Bitmap bm = BitmapFactory.decodeStream(c.getInputStream());
-                c.disconnect();
-                if (bm != null) imageCache.put(finalUrl, bm);
-                featureRuntime.post(mainHandler, () -> {
-                    Object tag = view.getTag();
-                    if (bm != null && tag != null && finalUrl.equals(tag.toString())) {
-                        view.setImageBitmap(bm);
-                    }
-                });
-            } catch (Exception ignored) {}
-        }).start();
+        String finalUrl = absoluteUrl(firstNonEmpty(urlText, ""));
+        // Phase 2: all TransFood remote images share the app memory/disk cache and bounded executor.
+        // fallback=0 keeps the currently rendered bitmap while quantity/cart UI is redrawn, avoiding flicker.
+        RemoteImageLoader.loadCenterCrop(view, finalUrl, 0);
     }
 
     private String absoluteUrl(String value) {
@@ -1616,7 +1589,7 @@ public class TransFoodActivity extends Activity {
         super.onResume();
         featureRuntime.onResume();
         mainHandler.removeCallbacks(realtimeFoodRefresh);
-        mainHandler.postDelayed(realtimeFoodRefresh, 30000);
+        mainHandler.postDelayed(realtimeFoodRefresh, CustomerPerformanceManager.pollingBackground(this, 30000L));
     }
 
     @Override

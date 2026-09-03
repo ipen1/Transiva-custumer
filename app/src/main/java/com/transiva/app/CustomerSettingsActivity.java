@@ -298,7 +298,7 @@ public class CustomerSettingsActivity extends Activity {
         if (deviceLoading || session == null || !session.isLoggedIn()) return;
         String token = first(session.getToken()); if (token.isEmpty()) return;
         deviceLoading = true; showLoading(true);
-        new Thread(() -> {
+        TransivaNetworkExecutor.execute(() -> {
             HttpURLConnection c = null;
             try {
                 c = (HttpURLConnection) new URL(DEVICE_URL + "?action=get_device").openConnection();
@@ -312,7 +312,7 @@ public class CustomerSettingsActivity extends Activity {
             } catch (Exception e) {
                 main.post(() -> { deviceLoading = false; showLoading(false); deviceName.setText("Perangkat tidak dapat diperiksa"); deviceDetail.setText(first(e.getMessage(), "Coba lagi.")); updateButton(false); });
             } finally { if (c != null) c.disconnect(); }
-        }).start();
+        });
     }
 
     private void applyDevice(JSONObject d) {
@@ -333,7 +333,7 @@ public class CustomerSettingsActivity extends Activity {
     private void disconnect() {
         if (deviceLoading) return; deviceLoading = true; showLoading(true); updateButton(false);
         String token = first(session.getToken());
-        new Thread(() -> {
+        TransivaNetworkExecutor.execute(() -> {
             HttpURLConnection c = null;
             try {
                 c = (HttpURLConnection) new URL(DEVICE_URL).openConnection(); c.setRequestMethod("POST"); c.setDoOutput(true);
@@ -346,7 +346,7 @@ public class CustomerSettingsActivity extends Activity {
                 main.post(() -> { Toast.makeText(this, "Perangkat berhasil diputuskan.", Toast.LENGTH_LONG).show(); session.forceLogout("customer_device_disconnected"); Intent i = new Intent(this, LoginActivity.class); i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP); startActivity(i); finish(); });
             } catch (Exception e) { main.post(() -> { deviceLoading = false; showLoading(false); updateButton(true); Toast.makeText(this, first(e.getMessage(), "Perangkat gagal diputuskan."), Toast.LENGTH_LONG).show(); }); }
             finally { if (c != null) c.disconnect(); }
-        }).start();
+        });
     }
 
     private static String read(HttpURLConnection c) throws Exception {

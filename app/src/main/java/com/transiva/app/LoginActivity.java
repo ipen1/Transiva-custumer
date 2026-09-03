@@ -278,7 +278,7 @@ public class LoginActivity extends Activity {
 
         setLoading(true);
 
-        new Thread(() -> {
+        TransivaNetworkExecutor.execute(() -> {
             LoginResult result = doLogin(username, password);
 
             mainHandler.post(() -> {
@@ -379,7 +379,7 @@ public class LoginActivity extends Activity {
                         500
                 );
             });
-        }).start();
+        });
     }
 
     private LoginResult doLogin(
@@ -652,7 +652,7 @@ public class LoginActivity extends Activity {
             return;
         }
 
-        new Thread(() -> {
+        TransivaNetworkExecutor.execute(() -> {
             HttpURLConnection connection = null;
 
             try {
@@ -724,7 +724,7 @@ public class LoginActivity extends Activity {
                     connection.disconnect();
                 }
             }
-        }).start();
+        });
     }
 
     private String getCachedFcmToken() {

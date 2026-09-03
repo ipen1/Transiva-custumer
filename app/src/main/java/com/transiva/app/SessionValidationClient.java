@@ -32,7 +32,7 @@ public final class SessionValidationClient {
         final String token = session.getToken() == null ? "" : session.getToken().trim();
         if (!session.isLoggedIn() || token.isEmpty()) return;
 
-        new Thread(() -> {
+        TransivaNetworkExecutor.execute(() -> {
             HttpURLConnection conn = null;
             try {
                 // Satu jalur koneksi dengan dashboard/API lain agar header keamanan selalu konsisten.
@@ -66,7 +66,7 @@ public final class SessionValidationClient {
             } finally {
                 if (conn != null) conn.disconnect();
             }
-        }, "transiva-session-validate").start();
+        });
     }
 
     private static String read(InputStream stream) throws Exception {

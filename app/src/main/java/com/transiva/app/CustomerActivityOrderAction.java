@@ -34,7 +34,7 @@ public final class CustomerActivityOrderAction {
             String username,
             Callback callback
     ) {
-        new Thread(() -> {
+        TransivaNetworkExecutor.execute(() -> {
             try {
                 JSONObject payload =
                         new JSONObject();
@@ -106,7 +106,7 @@ public final class CustomerActivityOrderAction {
                         )
                 );
             }
-        }).start();
+        });
     }
 
     private static String sourceTable(

@@ -814,7 +814,7 @@ public class CustomerChatRoomActivity extends Activity {
         attachButton.setEnabled(false);
         sendButton.setEnabled(false);
 
-        featureRuntime.newThread(() -> {
+        featureRuntime.execute(() -> {
             try {
                 ChatImageProcessor.ImagePayload payload =
                         ChatImageProcessor.fromUri(
@@ -845,7 +845,7 @@ public class CustomerChatRoomActivity extends Activity {
                     );
                 });
             }
-        }).start();
+        });
     }
 
     private void processCameraFile(
@@ -864,7 +864,7 @@ public class CustomerChatRoomActivity extends Activity {
         attachButton.setEnabled(false);
         sendButton.setEnabled(false);
 
-        featureRuntime.newThread(() -> {
+        featureRuntime.execute(() -> {
             java.io.File file =
                     new java.io.File(filePath);
 
@@ -900,7 +900,7 @@ public class CustomerChatRoomActivity extends Activity {
                     );
                 });
             }
-        }).start();
+        });
     }
 
 
@@ -927,7 +927,7 @@ public class CustomerChatRoomActivity extends Activity {
 
         scrollBottom();
 
-        featureRuntime.newThread(() -> {
+        featureRuntime.execute(() -> {
             try {
                 JSONObject response =
                         CustomerMessageApi.uploadImagePair(
@@ -990,7 +990,7 @@ public class CustomerChatRoomActivity extends Activity {
                     cleanupCameraFile();
                 });
             }
-        }).start();
+        });
     }
 
     private void refreshMessagesAfterUpload(
@@ -1328,7 +1328,7 @@ public class CustomerChatRoomActivity extends Activity {
         if (readOnly || uploading || file == null) return;
         uploading = true;
         voiceButton.setEnabled(false);
-        featureRuntime.newThread(() -> {
+        featureRuntime.execute(() -> {
             try {
                 JSONObject upload = CustomerMessageApi.uploadVoice(
                         UPLOAD_VOICE_URL, roomId, "customer", file, durationMs);
@@ -1346,7 +1346,7 @@ public class CustomerChatRoomActivity extends Activity {
             } catch (Exception e) {
                 mainHandler.post(() -> { uploading = false; voiceButton.setEnabled(!readOnly); voiceButton.setText("🎙"); statusText.setText("Voice note pending • jaringan"); toast(first(e.getMessage(), "Voice note gagal dikirim")); });
             } finally { file.delete(); }
-        }).start();
+        });
     }
 
     private String absoluteVoiceContent(String content) {
@@ -1385,7 +1385,7 @@ public class CustomerChatRoomActivity extends Activity {
 
         int requestedLastId = 0;
 
-        featureRuntime.newThread(() -> {
+        featureRuntime.execute(() -> {
             try {
                 String endpoint =
                         GET_CHAT_URL
@@ -1426,7 +1426,7 @@ public class CustomerChatRoomActivity extends Activity {
                     statusText.setText(reason);
                 });
             }
-        }).start();
+        });
     }
 
     private void handleResponse(
@@ -1609,7 +1609,7 @@ public class CustomerChatRoomActivity extends Activity {
                 SystemClock.elapsedRealtime() - focusedSinceElapsedMs
         );
 
-        featureRuntime.newThread(() -> {
+        featureRuntime.execute(() -> {
             try {
                 if (generation != readVisibilityGeneration || !isChatActuallyVisible()) return;
 
@@ -1641,7 +1641,7 @@ public class CustomerChatRoomActivity extends Activity {
                         1200L
                 );
             }
-        }, "chat-read-ack").start();
+        });
     }
 
     @Override
@@ -1851,36 +1851,8 @@ public class CustomerChatRoomActivity extends Activity {
 
     private void loadRemoteImage(ImageView target, String imageUrl) {
         final String fixed = CustomerChatRoomFormatter.absoluteUrl(imageUrl);
-
-        featureRuntime.newThread(() -> {
-            Bitmap bitmap = null;
-            HttpURLConnection connection = null;
-
-            try {
-                connection = (HttpURLConnection)new URL(fixed).openConnection();
-                connection.setConnectTimeout(15000);
-                connection.setReadTimeout(15000);
-                connection.setUseCaches(true);
-
-                try (InputStream stream = connection.getInputStream()) {
-                    bitmap = BitmapFactory.decodeStream(stream);
-                }
-            } catch (Exception ignored) {
-            } finally {
-                if (connection != null) connection.disconnect();
-            }
-
-            Bitmap result = bitmap;
-            mainHandler.post(() -> {
-                if (result != null) {
-                    target.setAlpha(0f);
-                    target.setImageBitmap(result);
-                    target.animate().alpha(1f).setDuration(180).start();
-                } else target.setImageResource(
-                        android.R.drawable.ic_menu_report_image
-                );
-            });
-        }).start();
+        // Phase 2: reuse the shared memory/disk cache instead of decoding the same chat image repeatedly.
+        RemoteImageLoader.loadPreserveScale(target, fixed, android.R.drawable.ic_menu_report_image);
     }
 
     private void showHdImage(
@@ -2026,7 +1998,7 @@ public class CustomerChatRoomActivity extends Activity {
         final String fixed =
                 CustomerChatRoomFormatter.absoluteUrl(imageUrl);
 
-        featureRuntime.newThread(() -> {
+        featureRuntime.execute(() -> {
             Bitmap bitmap = null;
             HttpURLConnection connection = null;
 
@@ -2086,7 +2058,7 @@ public class CustomerChatRoomActivity extends Activity {
                     );
                 }
             });
-        }).start();
+        });
     }
 
     private void addSystemMessage(
@@ -2150,7 +2122,7 @@ public class CustomerChatRoomActivity extends Activity {
         final PendingText pending = addPendingText(originalMessage);
         input.setText("");
 
-        featureRuntime.newThread(() -> {
+        featureRuntime.execute(() -> {
             try {
                 JSONObject payload = new JSONObject();
                 payload.put("room_id", roomId);
@@ -2209,11 +2181,11 @@ public class CustomerChatRoomActivity extends Activity {
                     showMessage("Pesan belum terkirim", reason, false);
                 });
             }
-        }).start();
+        });
     }
 
     private void verifyDelivered(String originalMessage) {
-        featureRuntime.newThread(() -> {
+        featureRuntime.execute(() -> {
             boolean delivered = false;
 
             try {
@@ -2272,7 +2244,7 @@ public class CustomerChatRoomActivity extends Activity {
                     );
                 }
             });
-        }).start();
+        });
     }
 
     private void scrollBottom() {

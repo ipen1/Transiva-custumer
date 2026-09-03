@@ -71,7 +71,7 @@ public final class CustomerAccountDeletionController {
 
     private static void delete(Activity activity, String password, Listener listener) {
         if (listener != null) listener.onBusyChanged(true);
-        new Thread(() -> {
+        TransivaNetworkExecutor.execute(() -> {
             HttpURLConnection c = null;
             String message = "Penghapusan akun gagal diproses.";
             boolean success = false;
@@ -112,7 +112,7 @@ public final class CustomerAccountDeletionController {
                 activity.startActivity(intent);
                 activity.finish();
             });
-        }, "customer-account-delete").start();
+        });
     }
 
     private static String read(InputStream stream) throws Exception {

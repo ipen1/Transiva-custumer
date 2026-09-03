@@ -29,7 +29,7 @@ public final class AppUpdateClient {
 
     public static void check(Context context, Callback callback) {
         final Context app = context.getApplicationContext();
-        new Thread(() -> {
+        TransivaNetworkExecutor.execute(() -> {
             HttpURLConnection connection = null;
             try {
                 String requestUrl = UPDATE_ENDPOINT
@@ -103,7 +103,7 @@ public final class AppUpdateClient {
             } finally {
                 if (connection != null) connection.disconnect();
             }
-        }, "transiva-customer-update-check").start();
+        });
     }
 
     public static int installedVersionCode(Context context) throws Exception {

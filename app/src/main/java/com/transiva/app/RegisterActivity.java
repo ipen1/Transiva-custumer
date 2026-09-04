@@ -45,7 +45,7 @@ public class RegisterActivity extends Activity {
     private static final String SEND_OTP_URL = BASE_URL + "server/sendEmailOtp.php";
     private static final String VERIFY_OTP_URL = BASE_URL + "server/verifyEmailOtp.php";
     private static final String REGISTER_URL = BASE_URL + "server/register.php";
-    private static final String PRIVACY_URL = BASE_URL + "customer_privacy.html";
+    private static final String PRIVACY_URL = BASE_URL + "privacy-policy.html";
     private static final String TERMS_URL = BASE_URL + "terms.html";
     private static final int TIMEOUT_MS = 25000;
 

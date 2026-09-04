@@ -48,7 +48,7 @@ public class LoginActivity extends Activity {
     private static final String LOGIN_URL = BASE_URL + "server/customer_login_native.php";
     private static final String SAVE_FCM_URL =
             BASE_URL + "server/save_fcm_token.php";
-    private static final String PRIVACY_URL = BASE_URL + "customer_privacy.html";
+    private static final String PRIVACY_URL = BASE_URL + "privacy-policy.html";
     private static final String TERMS_URL = BASE_URL + "terms.html";
     private static final int TIMEOUT_MS = 25000;
 

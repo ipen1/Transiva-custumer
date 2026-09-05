@@ -61,7 +61,8 @@ import java.util.Locale;
 
 public class SearchDriverActivity extends Activity {
 
-    private final CustomerLifecycleNetworkScope networkScope = new CustomerLifecycleNetworkScope();
+    private final CustomerFeatureRuntimeController featureRuntime =
+            new CustomerFeatureRuntimeController(CustomerRealtimeCoordinator.Role.SEARCH);
 
     private static final String BASE_URL = "https://transiva.my.id/";
     private static final int TIMEOUT_MS = 20000;
@@ -503,7 +504,7 @@ public class SearchDriverActivity extends Activity {
 
     private void loadIdleDriversToRadar() {
         if (!radarRequestInFlight.compareAndSet(false, true)) return;
-        networkScope.execute(() -> {
+        featureRuntime.execute(() -> {
             try {
                 JSONObject payload = new JSONObject();
                 payload.put("type", normalizeDriverType(cachedDriverType));
@@ -518,7 +519,7 @@ public class SearchDriverActivity extends Activity {
 
                 JSONObject res = postJson(BASE_URL + "server/get_idle_drivers.php", payload);
                 if (!res.optBoolean("success", false)) {
-                    networkScope.post(mainHandler, () -> setSubtitle(firstNonEmpty(res.optString("message"), "Gagal mengambil driver")));
+                    featureRuntime.post(mainHandler, () -> setSubtitle(firstNonEmpty(res.optString("message"), "Gagal mengambil driver")));
                     return;
                 }
 
@@ -526,7 +527,7 @@ public class SearchDriverActivity extends Activity {
                 List<RadarDriver> drivers = parseDrivers(arr);
                 int serverPhase = Math.max(1, Math.min(3, res.optInt("search_phase", searchPhase)));
                 String activeOffer = firstNonEmpty(res.optString("offered_driver", ""), offeredDriverUsername);
-                networkScope.post(mainHandler, () -> {
+                featureRuntime.post(mainHandler, () -> {
                     searchPhase = serverPhase;
                     offeredDriverUsername = activeOffer;
                     radarView.setSearchPhase(serverPhase);
@@ -542,7 +543,7 @@ public class SearchDriverActivity extends Activity {
                     }
                 });
             } catch (Exception e) {
-                networkScope.post(mainHandler, () -> setSubtitle("Koneksi gagal mengambil driver"));
+                featureRuntime.post(mainHandler, () -> setSubtitle("Koneksi gagal mengambil driver"));
             } finally {
                 radarRequestInFlight.set(false);
             }
@@ -579,7 +580,7 @@ public class SearchDriverActivity extends Activity {
 
     private void checkOrderStatus() {
         if (!statusRequestInFlight.compareAndSet(false, true)) return;
-        networkScope.execute(() -> {
+        featureRuntime.execute(() -> {
             try {
                 JSONObject payload = new JSONObject();
                 payload.put("order_id", activeOrderId);
@@ -604,7 +605,7 @@ public class SearchDriverActivity extends Activity {
                 if (phaseFromServer <= 0) phaseFromServer = searchPhase;
                 final int finalPhaseFromServer = phaseFromServer;
                 final String finalCurrentOffer = currentOffer;
-                networkScope.post(mainHandler, () -> {
+                featureRuntime.post(mainHandler, () -> {
                     offeredDriverUsername = finalCurrentOffer;
                     setSearchPhase(finalPhaseFromServer);
                     if (radarView != null) radarView.setOfferedDriver(finalCurrentOffer);
@@ -625,14 +626,14 @@ public class SearchDriverActivity extends Activity {
                     else merchantLine = "";
                     if (!merchantLine.isEmpty()) {
                         String finalMerchantLine = merchantLine;
-                        networkScope.post(mainHandler, () -> setSubtitle(finalMerchantLine));
+                        featureRuntime.post(mainHandler, () -> setSubtitle(finalMerchantLine));
                     }
                 }
 
                 if (status.equals("canceled") || status.equals("cancelled")) {
                     CustomerRedispatchService.stop(this);
                     clearOrderPrefs();
-                    networkScope.post(mainHandler, () -> {
+                    featureRuntime.post(mainHandler, () -> {
                         destroyLoops();
                         openCustomerDashboard();
                     });
@@ -658,7 +659,7 @@ public class SearchDriverActivity extends Activity {
                         || (serverDriverFound && !assignedDriver.isEmpty());
 
                 if (trulyAccepted) {
-                    networkScope.post(mainHandler, () -> showDriver(res));
+                    featureRuntime.post(mainHandler, () -> showDriver(res));
                 }
             } catch (Exception ignored) {
             } finally {
@@ -831,7 +832,7 @@ public class SearchDriverActivity extends Activity {
                 ? value
                 : BASE_URL + (value.startsWith("/") ? value.substring(1) : value);
 
-        networkScope.execute(() -> {
+        featureRuntime.execute(() -> {
             HttpURLConnection conn = null;
             try {
                 conn = CustomerApiClient.open(this, photoUrl);
@@ -842,7 +843,7 @@ public class SearchDriverActivity extends Activity {
                 try (InputStream in = conn.getInputStream()) {
                     Bitmap bitmap = BitmapFactory.decodeStream(in);
                     if (bitmap != null) {
-                        networkScope.post(mainHandler, () -> {
+                        featureRuntime.post(mainHandler, () -> {
                             if (destroyed || driverPhotoView == null) return;
                             driverPhotoView.setImageBitmap(bitmap);
                             driverPhotoView.setVisibility(View.VISIBLE);
@@ -851,7 +852,7 @@ public class SearchDriverActivity extends Activity {
                     }
                 }
             } catch (Exception ignored) {
-                networkScope.post(mainHandler, () -> {
+                featureRuntime.post(mainHandler, () -> {
                     if (driverPhotoView != null) driverPhotoView.setVisibility(View.GONE);
                     if (driverAvatarText != null) driverAvatarText.setVisibility(View.VISIBLE);
                 });
@@ -965,7 +966,7 @@ public class SearchDriverActivity extends Activity {
         setSubtitle("Mohon tunggu sebentar");
         progressBar.setVisibility(View.VISIBLE);
 
-        networkScope.execute(() -> {
+        featureRuntime.execute(() -> {
             try {
                 String token = new SessionManager(this).getToken();
                 if (token == null || token.trim().isEmpty()) {
@@ -983,7 +984,7 @@ public class SearchDriverActivity extends Activity {
                 );
                 boolean ok = res.optBoolean("success", false);
                 String msg = firstNonEmpty(res.optString("message"), ok ? "Order dibatalkan" : "Order gagal dibatalkan");
-                networkScope.post(mainHandler, () -> {
+                featureRuntime.post(mainHandler, () -> {
                     progressBar.setVisibility(View.GONE);
                     if (ok) {
                         clearOrderPrefs();
@@ -998,7 +999,7 @@ public class SearchDriverActivity extends Activity {
                     }
                 });
             } catch (Exception e) {
-                networkScope.post(mainHandler, () -> {
+                featureRuntime.post(mainHandler, () -> {
                     progressBar.setVisibility(View.GONE);
                     isCanceling = false;
                     cancelBtn.setEnabled(true);
@@ -1064,6 +1065,7 @@ public class SearchDriverActivity extends Activity {
             int code = conn.getResponseCode();
             InputStream is = code >= 200 && code < 400 ? conn.getInputStream() : conn.getErrorStream();
             String body = readStream(is).trim();
+            CustomerApiClient.handleSessionResponse(this, code, body);
             if (body.length() == 0) return new JSONObject();
             return new JSONObject(body);
         } finally {
@@ -1098,17 +1100,17 @@ public class SearchDriverActivity extends Activity {
     @Override
     protected void onResume() {
         super.onResume();
-        CustomerRealtimeCoordinator.enter(CustomerRealtimeCoordinator.Role.SEARCH);
+        featureRuntime.onResume();
     }
 
     @Override
     protected void onPause() {
-        CustomerRealtimeCoordinator.leave(CustomerRealtimeCoordinator.Role.SEARCH);
+        featureRuntime.onPause();
         super.onPause();
     }
 
     @Override protected void onDestroy() {
-        networkScope.destroy();
+        featureRuntime.destroy();
         destroyLoops();
         try { if (miniMap != null) miniMap.destroy(); } catch (Exception ignored) {}
         super.onDestroy();

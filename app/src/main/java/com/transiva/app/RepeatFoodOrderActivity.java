@@ -25,6 +25,9 @@ import java.util.Locale;
 import java.util.Map;
 
 public class RepeatFoodOrderActivity extends FragmentActivity {
+    private final CustomerLifecycleNetworkScope networkScope =
+            new CustomerLifecycleNetworkScope();
+
 
     private static final String BASE_URL =
             "https://transiva.my.id/";
@@ -330,7 +333,7 @@ public class RepeatFoodOrderActivity extends FragmentActivity {
             return;
         }
 
-        new Thread(() -> {
+        networkScope.newThread(() -> {
             try {
                 JSONObject response =
                         RepeatOrderApi.get(
@@ -807,7 +810,7 @@ public class RepeatFoodOrderActivity extends FragmentActivity {
         submitting = true;
         loading.setVisibility(ProgressBar.VISIBLE);
 
-        new Thread(() -> {
+        networkScope.newThread(() -> {
             try {
                 JSONObject payload =
                         new JSONObject();
@@ -993,5 +996,11 @@ public class RepeatFoodOrderActivity extends FragmentActivity {
         }
 
         return "";
+    }
+
+    @Override
+    protected void onDestroy() {
+        networkScope.destroy();
+        super.onDestroy();
     }
 }

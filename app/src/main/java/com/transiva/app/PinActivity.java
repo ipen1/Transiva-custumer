@@ -32,6 +32,9 @@ import java.nio.charset.StandardCharsets;
 import java.util.Locale;
 
 public class PinActivity extends FragmentActivity {
+    private final CustomerLifecycleNetworkScope networkScope =
+            new CustomerLifecycleNetworkScope();
+
 
     private static final String TAG = "TRANSIVA_PIN";
     private static final String BASE_URL = "https://transiva.my.id/server/";
@@ -313,7 +316,7 @@ public class PinActivity extends FragmentActivity {
     private void checkPinStatus() {
         setLoading(true);
 
-        new Thread(() -> {
+        networkScope.newThread(() -> {
             ApiResult result = request(STATUS_URL, null);
             mainHandler.post(() -> {
                 if (pinContentRoot != null) {
@@ -382,7 +385,7 @@ public class PinActivity extends FragmentActivity {
         } catch (Exception ignored) {}
 
         setLoading(true);
-        new Thread(() -> {
+        networkScope.newThread(() -> {
             ApiResult result = request(SET_URL, body);
             mainHandler.post(() -> {
                 if (pinContentRoot != null) {
@@ -420,7 +423,7 @@ public class PinActivity extends FragmentActivity {
         } catch (Exception ignored) {}
 
         setLoading(true);
-        new Thread(() -> {
+        networkScope.newThread(() -> {
             ApiResult result = request(VERIFY_URL, body);
             mainHandler.post(() -> {
                 if (pinContentRoot != null) {
@@ -455,7 +458,7 @@ public class PinActivity extends FragmentActivity {
         HttpURLConnection conn = null;
 
         try {
-            conn = (HttpURLConnection) new URL(endpoint).openConnection();
+            conn = CustomerApiClient.open(this, endpoint);
             conn.setRequestMethod(payload == null ? "GET" : "POST");
             conn.setConnectTimeout(TIMEOUT_MS);
             conn.setReadTimeout(TIMEOUT_MS);
@@ -516,14 +519,7 @@ public class PinActivity extends FragmentActivity {
             // Jangan logout hanya karena HTTP 401/403 generik.
             // Endpoint PIN dapat memakai status tersebut untuk error PIN;
             // logout hanya untuk kode sesi/perangkat yang memang final.
-            if (ForceLogoutManager.isForceLogoutCode(code)) {
-                mainHandler.post(() ->
-                        ForceLogoutManager.execute(
-                                PinActivity.this,
-                                code.isEmpty() ? "SESSION_REVOKED" : code
-                        )
-                );
-            }
+            CustomerApiClient.handleSessionResponse(this, status, raw);
 
             return new ApiResult(
                     status >= 200 && status < 300 && json.optBoolean("success", false),
@@ -736,5 +732,11 @@ public class PinActivity extends FragmentActivity {
             this.message = message == null ? "" : message;
             this.data = data == null ? new JSONObject() : data;
         }
+    }
+
+    @Override
+    protected void onDestroy() {
+        networkScope.destroy();
+        super.onDestroy();
     }
 }

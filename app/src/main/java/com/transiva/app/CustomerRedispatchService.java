@@ -99,11 +99,10 @@ public final class CustomerRedispatchService extends Service {
     private void pollOnce() {
         if (!requestRunning.compareAndSet(false, true)) return;
         final String currentOrder = orderId;
-        new Thread(() -> {
+        TransivaNetworkExecutor.execute(() -> {
             HttpURLConnection conn = null;
             try {
-                conn = (HttpURLConnection) new URL(STATUS_URL).openConnection();
-                CustomerApiClient.applySecurity(this, conn);
+                conn = CustomerApiClient.open(this, STATUS_URL);
                 conn.setRequestMethod("POST");
                 conn.setConnectTimeout(15000);
                 conn.setReadTimeout(15000);
@@ -116,7 +115,8 @@ public final class CustomerRedispatchService extends Service {
                     w.write(payload.toString());
                     w.flush();
                 }
-                InputStream stream = conn.getResponseCode() < 400 ? conn.getInputStream() : conn.getErrorStream();
+                int httpCode = conn.getResponseCode();
+                InputStream stream = httpCode < 400 ? conn.getInputStream() : conn.getErrorStream();
                 StringBuilder body = new StringBuilder();
                 if (stream != null) try (BufferedReader r = new BufferedReader(new InputStreamReader(stream, StandardCharsets.UTF_8))) {
                     String line; while ((line = r.readLine()) != null) body.append(line);

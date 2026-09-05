@@ -301,11 +301,11 @@ public class CustomerSettingsActivity extends Activity {
         TransivaNetworkExecutor.execute(() -> {
             HttpURLConnection c = null;
             try {
-                c = (HttpURLConnection) new URL(DEVICE_URL + "?action=get_device").openConnection();
+                c = CustomerApiClient.open(this, DEVICE_URL + "?action=get_device");
                 c.setRequestMethod("GET"); c.setRequestProperty("Authorization", "Bearer " + token); c.setConnectTimeout(30000); c.setReadTimeout(30000);
                 c.setRequestProperty("X-Device-UUID", DeviceIdentityManager.getInstallationUuid(this));
                 c.setRequestProperty("X-App-Scope", "customer");
-                JSONObject response = new JSONObject(read(c));
+                JSONObject response = new JSONObject(readAndGuard(c));
                 if (!response.optBoolean("success", false)) throw new IllegalStateException(response.optString("message", "Gagal memeriksa perangkat."));
                 JSONObject device = response.optJSONObject("device");
                 main.post(() -> { deviceLoading = false; showLoading(false); applyDevice(device); });
@@ -336,22 +336,28 @@ public class CustomerSettingsActivity extends Activity {
         TransivaNetworkExecutor.execute(() -> {
             HttpURLConnection c = null;
             try {
-                c = (HttpURLConnection) new URL(DEVICE_URL).openConnection(); c.setRequestMethod("POST"); c.setDoOutput(true);
+                c = CustomerApiClient.open(this, DEVICE_URL); c.setRequestMethod("POST"); c.setDoOutput(true);
                 c.setRequestProperty("Authorization", "Bearer " + token); c.setRequestProperty("Content-Type", "application/json; charset=UTF-8"); c.setConnectTimeout(30000); c.setReadTimeout(30000);
                 c.setRequestProperty("X-Device-UUID", DeviceIdentityManager.getInstallationUuid(this));
                 c.setRequestProperty("X-App-Scope", "customer");
                 JSONObject body = new JSONObject(); body.put("action", "disconnect_device"); body.put("installation_uuid", DeviceIdentityManager.getInstallationUuid(this));
                 try (OutputStream out = c.getOutputStream()) { out.write(body.toString().getBytes(StandardCharsets.UTF_8)); }
-                JSONObject response = new JSONObject(read(c)); if (!response.optBoolean("success", false)) throw new IllegalStateException(response.optString("message", "Perangkat gagal diputuskan."));
+                JSONObject response = new JSONObject(readAndGuard(c)); if (!response.optBoolean("success", false)) throw new IllegalStateException(response.optString("message", "Perangkat gagal diputuskan."));
                 main.post(() -> { Toast.makeText(this, "Perangkat berhasil diputuskan.", Toast.LENGTH_LONG).show(); session.forceLogout("customer_device_disconnected"); Intent i = new Intent(this, LoginActivity.class); i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP); startActivity(i); finish(); });
             } catch (Exception e) { main.post(() -> { deviceLoading = false; showLoading(false); updateButton(true); Toast.makeText(this, first(e.getMessage(), "Perangkat gagal diputuskan."), Toast.LENGTH_LONG).show(); }); }
             finally { if (c != null) c.disconnect(); }
         });
     }
 
-    private static String read(HttpURLConnection c) throws Exception {
-        int code = c.getResponseCode(); BufferedReader r = new BufferedReader(new InputStreamReader(code >= 200 && code < 300 ? c.getInputStream() : c.getErrorStream(), StandardCharsets.UTF_8));
-        StringBuilder b = new StringBuilder(); String line; while ((line = r.readLine()) != null) b.append(line); r.close(); return b.toString();
+    private String readAndGuard(HttpURLConnection c) throws Exception {
+        int code = c.getResponseCode();
+        java.io.InputStream input = code >= 200 && code < 300 ? c.getInputStream() : c.getErrorStream();
+        if (input == null) return "";
+        BufferedReader r = new BufferedReader(new InputStreamReader(input, StandardCharsets.UTF_8));
+        StringBuilder b = new StringBuilder(); String line; while ((line = r.readLine()) != null) b.append(line); r.close();
+        String raw = b.toString();
+        CustomerApiClient.handleSessionResponse(this, code, raw);
+        return raw;
     }
     private void showLoading(boolean show) { if (progress != null) progress.setVisibility(show ? ProgressBar.VISIBLE : ProgressBar.GONE); }
     private void updateButton(boolean enabled) { disconnectButton.setEnabled(enabled && !deviceLoading); disconnectButton.setAlpha(disconnectButton.isEnabled() ? 1f : .55f); }

@@ -31,13 +31,7 @@ import android.text.TextWatcher;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
-import java.io.BufferedReader;
-import java.io.InputStream;
-import java.io.InputStreamReader;
-import java.io.OutputStream;
-import java.net.HttpURLConnection;
 import java.net.URL;
-import java.nio.charset.StandardCharsets;
 import java.text.NumberFormat;
 import java.util.ArrayList;
 import java.util.List;
@@ -1438,29 +1432,11 @@ public class TransFoodActivity extends Activity {
     private void setFavoriteIcon(ImageButton b, boolean active) { b.setImageResource(active ? R.drawable.ic_favorite_filled : R.drawable.ic_favorite_outline); b.setBackground(roundStroke(active?"#FFF1F2":"#FFFFFF","#FECDD3",dp(18),1)); }
 
     private JSONObject getJson(String urlText) throws Exception {
-        HttpURLConnection c = CustomerApiClient.open(this, urlText);
-        c.setConnectTimeout(TIMEOUT_MS); c.setReadTimeout(TIMEOUT_MS); c.setRequestMethod("GET");
-        return new JSONObject(readStream(c));
+        return TransivaHttpRepository.getJson(this, urlText, TIMEOUT_MS);
     }
 
     private JSONObject postJson(String urlText, JSONObject payload) throws Exception {
-        HttpURLConnection c = CustomerApiClient.open(this, urlText);
-        c.setConnectTimeout(TIMEOUT_MS); c.setReadTimeout(TIMEOUT_MS); c.setRequestMethod("POST");
-        c.setRequestProperty("Content-Type", "application/json; charset=utf-8");
-        c.setDoOutput(true);
-        OutputStream os = c.getOutputStream();
-        os.write(payload.toString().getBytes(StandardCharsets.UTF_8));
-        os.flush(); os.close();
-        return new JSONObject(readStream(c));
-    }
-
-    private String readStream(HttpURLConnection c) throws Exception {
-        InputStream is = c.getResponseCode() >= 400 ? c.getErrorStream() : c.getInputStream();
-        BufferedReader br = new BufferedReader(new InputStreamReader(is, StandardCharsets.UTF_8));
-        StringBuilder sb = new StringBuilder(); String line;
-        while ((line = br.readLine()) != null) sb.append(line);
-        br.close(); c.disconnect();
-        return sb.toString();
+        return TransivaHttpRepository.postJson(this, urlText, payload, TIMEOUT_MS);
     }
 
     private void loadImage(ImageView view, String urlText) {

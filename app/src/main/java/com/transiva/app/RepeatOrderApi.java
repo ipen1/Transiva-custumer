@@ -29,102 +29,13 @@ public final class RepeatOrderApi {
         return request("POST", url, body);
     }
 
-    private static JSONObject request(
-            String method,
-            String url,
-            JSONObject body
-    ) throws Exception {
-        HttpURLConnection connection = null;
-
-        try {
-            connection =
-                    (HttpURLConnection)
-                            new URL(url).openConnection();
-
-            android.app.Application app = TransivaCustomerApplication.appContext();
-            if (app != null) {
-                CustomerApiClient.applySecurity(app, connection);
-            }
-            connection.setRequestMethod(method);
-            connection.setConnectTimeout(TIMEOUT_MS);
-            connection.setReadTimeout(TIMEOUT_MS);
-            connection.setUseCaches(false);
-            connection.setRequestProperty(
-                    "Accept",
-                    "application/json"
-            );
-
-            if (body != null) {
-                connection.setDoOutput(true);
-                connection.setRequestProperty(
-                        "Content-Type",
-                        "application/json; charset=UTF-8"
-                );
-
-                try (
-                        OutputStream output =
-                                connection.getOutputStream()
-                ) {
-                    output.write(
-                            body.toString().getBytes(
-                                    StandardCharsets.UTF_8
-                            )
-                    );
-                }
-            }
-
-            int status = connection.getResponseCode();
-
-            InputStream stream =
-                    status >= 200 && status < 400
-                            ? connection.getInputStream()
-                            : connection.getErrorStream();
-
-            if (stream == null) {
-                throw new IllegalStateException(
-                        "Respons server kosong"
-                );
-            }
-
-            BufferedReader reader =
-                    new BufferedReader(
-                            new InputStreamReader(
-                                    stream,
-                                    StandardCharsets.UTF_8
-                            )
-                    );
-
-            StringBuilder raw = new StringBuilder();
-            String line;
-
-            while ((line = reader.readLine()) != null) {
-                raw.append(line);
-            }
-
-            reader.close();
-
-            JSONObject response =
-                    new JSONObject(
-                            raw.length() == 0
-                                    ? "{}"
-                                    : raw.toString()
-                    );
-
-            if (status < 200 || status >= 400) {
-                throw new IllegalStateException(
-                        response.optString(
-                                "message",
-                                "HTTP " + status
-                        )
-                );
-            }
-
-            return response;
-
-        } finally {
-            if (connection != null) {
-                connection.disconnect();
-            }
+    private static JSONObject request(String method, String url, JSONObject body) throws Exception {
+        android.app.Application app = TransivaCustomerApplication.appContext();
+        if (app == null) throw new IllegalStateException("Application context unavailable");
+        if ("GET".equalsIgnoreCase(method)) {
+            return TransivaHttpRepository.getJson(app, url, TIMEOUT_MS);
         }
+        return TransivaHttpRepository.postJson(app, url, body == null ? new JSONObject() : body, TIMEOUT_MS);
     }
+
 }

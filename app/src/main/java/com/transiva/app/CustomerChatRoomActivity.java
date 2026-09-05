@@ -2004,9 +2004,7 @@ public class CustomerChatRoomActivity extends Activity {
 
             try {
                 connection =
-                        (HttpURLConnection)
-                                new URL(fixed)
-                                        .openConnection();
+                        CustomerApiClient.open(this, fixed);
 
                 connection.setConnectTimeout(25000);
                 connection.setReadTimeout(45000);
@@ -2426,6 +2424,7 @@ public class CustomerChatRoomActivity extends Activity {
         mainHandler.removeCallbacks(refreshRunnable);
         mainHandler.removeCallbacks(readReceiptRunnable);
         CustomerChatNotificationPoller.clearOpenRoom(roomId);
+        ChatVoiceNote.release(this);
         featureRuntime.onPause();
         super.onPause();
     }
@@ -2433,6 +2432,7 @@ public class CustomerChatRoomActivity extends Activity {
     @Override
     protected void onDestroy() {
         featureRuntime.destroy();
+        ChatVoiceNote.release(this);
         destroyed = true;
         CustomerChatNotificationPoller.clearOpenRoom(roomId);
         mainHandler.removeCallbacks(readReceiptRunnable);

@@ -51,6 +51,9 @@ import java.util.Locale;
 import java.util.Random;
 
 public class TransPickupActivity extends FragmentActivity {
+    private final CustomerLifecycleNetworkScope networkScope =
+            new CustomerLifecycleNetworkScope();
+
 
     private static final String BASE_URL = "https://transiva.my.id/";
     private static final String PREF_NAME = "transiva";
@@ -368,7 +371,7 @@ public class TransPickupActivity extends FragmentActivity {
     }
 
     private void reverseGeocode(boolean pickup, double lat, double lng) {
-        new Thread(() -> {
+        networkScope.newThread(() -> {
             String address = "";
             try {
                 Geocoder geo = new Geocoder(this, new Locale("id", "ID"));
@@ -397,7 +400,7 @@ public class TransPickupActivity extends FragmentActivity {
 
     private void drawPickupRoute() {
         if (mapView == null || !validLocation()) return;
-        new Thread(() -> {
+        networkScope.newThread(() -> {
             try {
                 StableRouteEngine.Result route = StableRouteEngine.fetch(
                         pickupLat, pickupLng, deliveryLat, deliveryLng
@@ -653,7 +656,7 @@ public class TransPickupActivity extends FragmentActivity {
         }
 
         setLoading(true);
-        new Thread(() -> {
+        networkScope.newThread(() -> {
             try {
                 Geocoder geo = new Geocoder(this, new Locale("id", "ID"));
                 List<Address> list = geo.getFromLocationName(q, 1);
@@ -692,7 +695,7 @@ public class TransPickupActivity extends FragmentActivity {
     private void calculateOngkir() {
         if (!validLocation()) return;
         setLoading(true);
-        new Thread(() -> {
+        networkScope.newThread(() -> {
             try {
                 String url = BASE_URL + "server/calculatePickupOngkir.php" +
                         "?pickup_lat=" + Uri.encode(String.valueOf(pickupLat)) +
@@ -740,7 +743,7 @@ public class TransPickupActivity extends FragmentActivity {
         if (receiverName.length() < 2 || receiverPhone.length() < 6) { showInfo("Penerima", "Nama dan nomor HP penerima wajib diisi."); return; }
         if (deliveryFee <= 0) { calculateOngkir(); return; }
         setLoading(true);
-        new Thread(() -> {
+        networkScope.newThread(() -> {
             try {
                 JSONObject p = new JSONObject();
                 p.put("user_id", userId); p.put("username", username);
@@ -797,21 +800,11 @@ public class TransPickupActivity extends FragmentActivity {
     private String generateOtp() { return String.valueOf(100000 + new Random().nextInt(900000)); }
 
     private JSONObject getJson(String urlText) throws Exception {
-        HttpURLConnection c = (HttpURLConnection) new URL(urlText).openConnection();
-        CustomerApiClient.applySecurity(this, c);
-        c.setConnectTimeout(TIMEOUT_MS); c.setReadTimeout(TIMEOUT_MS); c.setRequestProperty("Accept", "application/json");
-        InputStream is = c.getResponseCode() >= 400 ? c.getErrorStream() : c.getInputStream();
-        String body = readStream(is); c.disconnect(); return new JSONObject(body);
+        return TransivaHttpRepository.getJson(this, urlText, TIMEOUT_MS);
     }
 
     private JSONObject postJson(String urlText, JSONObject payload) throws Exception {
-        HttpURLConnection c = (HttpURLConnection) new URL(urlText).openConnection();
-        CustomerApiClient.applySecurity(this, c);
-        c.setConnectTimeout(TIMEOUT_MS); c.setReadTimeout(TIMEOUT_MS); c.setRequestMethod("POST"); c.setDoOutput(true);
-        c.setRequestProperty("Content-Type", "application/json; charset=utf-8"); c.setRequestProperty("Accept", "application/json");
-        OutputStream os = c.getOutputStream(); os.write(payload.toString().getBytes(StandardCharsets.UTF_8)); os.flush(); os.close();
-        InputStream is = c.getResponseCode() >= 400 ? c.getErrorStream() : c.getInputStream();
-        String body = readStream(is); c.disconnect(); return new JSONObject(body);
+        return TransivaHttpRepository.postJson(this, urlText, payload, TIMEOUT_MS);
     }
 
     private String readStream(InputStream is) throws Exception { if (is == null) return "{}"; BufferedReader br = new BufferedReader(new InputStreamReader(is, StandardCharsets.UTF_8)); StringBuilder sb = new StringBuilder(); String line; while ((line = br.readLine()) != null) sb.append(line); br.close(); return sb.toString(); }
@@ -844,6 +837,7 @@ public class TransPickupActivity extends FragmentActivity {
     }
 
     @Override protected void onDestroy() {
+        networkScope.destroy();
         mainHandler.removeCallbacksAndMessages(null);
         if (mapView != null) {
             mapView.onDestroyMap();

@@ -9,20 +9,16 @@ import android.net.Uri;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.Bitmap;
-import android.graphics.BitmapFactory;
 import android.graphics.drawable.GradientDrawable;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.view.Gravity;
 import android.view.View;
-import android.webkit.JavascriptInterface;
 import android.webkit.WebChromeClient;
 import android.webkit.WebResourceError;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebSettings;
-import android.webkit.WebView;
-import android.webkit.WebViewClient;
 import android.widget.Button;
 import android.widget.FrameLayout;
 import android.widget.ImageView;
@@ -36,7 +32,6 @@ import org.json.JSONObject;
 
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
-import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
@@ -47,11 +42,11 @@ import java.nio.charset.StandardCharsets;
 import java.util.Locale;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
-import android.util.Base64;
 
 public class CustomerTripActivity extends Activity {
 
-    private final CustomerLifecycleNetworkScope networkScope = new CustomerLifecycleNetworkScope();
+    private final CustomerFeatureRuntimeController featureRuntime =
+            new CustomerFeatureRuntimeController(CustomerRealtimeCoordinator.Role.TRIP);
 
     private static final String BASE_URL = "https://transiva.my.id/";
     private static final String CHECK_STATUS_URL = BASE_URL + "server/check_order_status.php";
@@ -62,13 +57,9 @@ public class CustomerTripActivity extends Activity {
     private static final String SHARE_TRIP_URL = BASE_URL + "share_trip.php";
     private static final String CREATE_SHARED_TRIP_URL = BASE_URL + "server/create_shared_trip.php";
 
-    // Pakai file Leaflet lokal/server sendiri, bukan CDN, agar stabil di WebView.
-    private static final String LEAFLET_CSS = BASE_URL + "js/leaflet.css";
-    private static final String LEAFLET_JS  = BASE_URL + "js/leaflet.js";
 
     private static final int TIMEOUT_MS = 25000;
     private static final long TRACKING_MS = 3000;
-    private static final long MAP_FALLBACK_READY_MS = 2500;
 
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
     private final AtomicBoolean trackingRequestInFlight = new AtomicBoolean(false);
@@ -154,18 +145,9 @@ public class CustomerTripActivity extends Activity {
             statusText.setText("Mengambil data lokasi order...");
         }
 
-        // FIX PENTING:
-        // Tracking langsung jalan, tidak menunggu mapReady.
-        // Kalau Leaflet lambat/gagal, data driver tetap diambil dari server.
+        // Tracking tidak menunggu peta siap. Saat native map selesai initialize,
+        // marker/rute terbaru langsung dipush oleh listener onReady().
         startTrackingOnce();
-
-        // Fallback agar WebView tetap mencoba render marker walaupun callback JS lambat.
-        mainHandler.postDelayed(() -> {
-            if (!mapReady && mapView != null) {
-                mapReady = true;
-                pushAllMarkersToMap();
-            }
-        }, MAP_FALLBACK_READY_MS);
     }
 
     private void readIntentAndSavedData() {
@@ -353,78 +335,6 @@ public class CustomerTripActivity extends Activity {
         CustomerAppSettings.apply(this);
     }
 
-    private String mapHtml() {
-        String carIcon = drawableDataUri("map_car_top", "ic_car_top", "car_top", "ic_transcar", "transcar", "car", "transcar_marker");
-        String bikeIcon = drawableDataUri("map_motor_top", "ic_motor_top", "motor_top", "ic_transbike", "transbike", "motor", "bike_marker");
-
-        return "<!DOCTYPE html><html><head>" +
-                "<meta charset='UTF-8'>" +
-                "<meta name='viewport' content='width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no'>" +
-                "<link rel='stylesheet' href='" + LEAFLET_CSS + "?v=route_snap_1'>" +
-                "<script src='" + LEAFLET_JS + "?v=route_snap_1'></script>" +
-                "<style>" +
-                "html,body,#map{height:100%;width:100%;margin:0;padding:0;background:#eaf4ff;overflow:hidden;}" +
-                ".leaflet-container{height:100%;width:100%;font-family:Arial,sans-serif;background:#eaf4ff;border-radius:18px;}" +
-                ".leaflet-control-attribution,.leaflet-control-zoom{display:none!important;}" +
-                ".leaflet-tile-pane{filter:saturate(.92) contrast(.98) brightness(1.03);}" +
-                ".pin{width:40px;height:40px;border-radius:20px;display:flex;align-items:center;justify-content:center;font-size:21px;background:#fff;box-shadow:0 5px 14px rgba(15,23,42,.24);border:3px solid #fff;}" +
-                ".pickup{background:#16a34a;color:#fff;}" +
-                ".delivery{background:#ef4444;color:#fff;}" +
-                ".vehicle{width:48px;height:48px;object-fit:contain;transition:transform .30s linear;filter:drop-shadow(0 5px 6px rgba(0,0,0,.38));}" +
-                ".vehicleFallback{width:46px;height:46px;border-radius:23px;background:#fff;display:flex;align-items:center;justify-content:center;font-size:28px;transition:transform .30s linear;filter:drop-shadow(0 5px 6px rgba(0,0,0,.38));}" +
-                ".popup{font-weight:700;color:#0B3A78;min-width:130px;line-height:1.35;}" +
-                "</style></head><body><div id='map'></div><script>" +
-
-                "var map=null,pickup=null,delivery=null,driver=null,line=null;" +
-                "var lastRouteKey='',drawing=false,lastRouteTime=0,routePts=[],routeProgress=0,driverAnim=null,currentVehicleType='';" +
-                "var carIconData='" + carIcon + "',bikeIconData='" + bikeIcon + "',driverRaw=null;" +
-                "function ready(){try{AndroidTrip.onMapReady();}catch(e){}}" +
-                "function esc(s){return String(s||'').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/'/g,'&#39;');}" +
-                "function valid(a,b){a=+a;b=+b;return isFinite(a)&&isFinite(b)&&a!==0&&b!==0;}" +
-                "function init(){" +
-                " if(typeof L==='undefined'){setTimeout(init,300);return;}" +
-                " if(map){ready();return;}" +
-                " map=L.map('map',{zoomControl:false,attributionControl:false,preferCanvas:true}).setView([-0.018137,120.087380],15);" +
-                " L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:20,crossOrigin:true,attribution:''}).addTo(map);" +
-                " setTimeout(function(){try{map.invalidateSize(true);}catch(e){} ready();},600);" +
-                "}" +
-                "function iconPin(cls,txt){return L.divIcon({html:'<div class=\"pin '+cls+'\">'+txt+'</div>',className:'',iconSize:[42,42],iconAnchor:[21,21],popupAnchor:[0,-22]});}" +
-                "function vehicleIcon(type){var data=(type==='car')?carIconData:bikeIconData;var html='';if(data&&data.length>20){html='<img class=vehicle src='+data+'>';}else{html='<div class=vehicleFallback>'+((type==='car')?'🚘':'🏍️')+'</div>';}return L.divIcon({html:html,className:'',iconSize:[50,50],iconAnchor:[25,25],popupAnchor:[0,-30]});}" +
-                "function setPickup(lat,lng,label){if(!map||!valid(lat,lng))return;var p=[+lat,+lng];if(pickup){pickup.setLatLng(p);}else{pickup=L.marker(p,{icon:iconPin('pickup','👤'),zIndexOffset:600}).addTo(map);}pickup.bindPopup('<div class=popup>'+esc(label||'Lokasi Penjemputan')+'</div>');}" +
-                "function setDelivery(lat,lng,label){if(!map||!valid(lat,lng))return;var p=[+lat,+lng];if(delivery){delivery.setLatLng(p);}else{delivery=L.marker(p,{icon:iconPin('delivery','⌂'),zIndexOffset:600}).addTo(map);}delivery.bindPopup('<div class=popup>'+esc(label||'Lokasi Delivery')+'</div>');}" +
-                "function bearingOf(a,b){try{var lat1=a[0]*Math.PI/180,lat2=b[0]*Math.PI/180;var dLng=(b[1]-a[1])*Math.PI/180;var y=Math.sin(dLng)*Math.cos(lat2);var x=Math.cos(lat1)*Math.sin(lat2)-Math.sin(lat1)*Math.cos(lat2)*Math.cos(dLng);var br=(Math.atan2(y,x)*180/Math.PI)%360;return br<0?br+360:br;}catch(e){return null;}}" +
-                "function snapToRoute(lat,lng){lat=+lat;lng=+lng;if(!routePts||routePts.length<2)return{lat:lat,lng:lng,bearing:null};var cos=Math.cos(lat*Math.PI/180);if(!isFinite(cos)||Math.abs(cos)<0.000001)cos=1;var px=lng*cos,py=lat,bestD=999999999,bx=lng,by=lat,bi=routeProgress;var start=Math.max(0,routeProgress-2),end=Math.min(routePts.length-2,routeProgress+80);for(var i=start;i<=end;i++){var a=routePts[i],b=routePts[i+1];var ax=a[1]*cos,ay=a[0],cx=b[1]*cos,cy=b[0];var vx=cx-ax,vy=cy-ay,wx=px-ax,wy=py-ay;var len=vx*vx+vy*vy,t=len?((wx*vx+wy*vy)/len):0;if(t<0)t=0;if(t>1)t=1;var qx=ax+vx*t,qy=ay+vy*t,dx=px-qx,dy=py-qy,dd=dx*dx+dy*dy;if(dd<bestD){bestD=dd;bx=qx/cos;by=qy;bi=i;}}var meters=Math.sqrt(bestD)*111320;if(meters>80)return{lat:lat,lng:lng,bearing:null};if(bi>=routeProgress)routeProgress=bi;var br=bearingOf(routePts[bi],routePts[Math.min(bi+1,routePts.length-1)]);return{lat:by,lng:bx,bearing:br};}" +
-                "function rotateVehicle(bearing){if(!driver)return;var el=driver.getElement();if(!el)return;var img=el.querySelector('.vehicle')||el.querySelector('.vehicleFallback');if(img){img.style.transform='rotate('+(+bearing||0)+'deg)';}}" +
-                "function animateDriverTo(target,bearing){if(!driver)return;if(driverAnim)clearInterval(driverAnim);var start=driver.getLatLng();var steps=24,i=0;driverAnim=setInterval(function(){i++;var f=i/steps;var ilat=start.lat+(target.lat-start.lat)*f;var ilng=start.lng+(target.lng-start.lng)*f;var s=snapToRoute(ilat,ilng);driver.setLatLng([s.lat,s.lng]);rotateVehicle((s.bearing!==null&&s.bearing!==undefined)?s.bearing:bearing);if(i>=steps){clearInterval(driverAnim);driverAnim=null;driver.setLatLng(target);rotateVehicle(bearing);}},45);}" +
-                "function setDriver(lat,lng,bearing,type,name,status){if(!map||!valid(lat,lng))return;type=(type==='car')?'car':'motor';lat=+lat;lng=+lng;bearing=+bearing||0;driverRaw={lat:lat,lng:lng,bearing:bearing,type:type,name:name,status:status};var s=snapToRoute(lat,lng);var useBearing=(s.bearing!==null&&s.bearing!==undefined)?s.bearing:bearing;var target=L.latLng(s.lat,s.lng);if(!driver){driver=L.marker(target,{icon:vehicleIcon(type),zIndexOffset:9999}).addTo(map);currentVehicleType=type;rotateVehicle(useBearing);}else{if(currentVehicleType!==type){driver.setIcon(vehicleIcon(type));currentVehicleType=type;}animateDriverTo(target,useBearing);}driver.bindPopup('<div class=popup><b>'+esc(name||'Driver')+'</b><br>'+esc(status||'Dalam perjalanan')+'</div>');}" +
-                "function clearLine(){if(line&&map){map.removeLayer(line);line=null;}routePts=[];}" +
-                "function fitAll(){if(!map)return;var p=[];if(driver)p.push(driver.getLatLng());if(pickup)p.push(pickup.getLatLng());if(delivery)p.push(delivery.getLatLng());if(p.length===1)map.setView(p[0],16,{animate:true});else if(p.length>1)map.fitBounds(L.latLngBounds(p),{padding:[55,55],maxZoom:16,animate:true});setTimeout(function(){try{map.invalidateSize(true);}catch(e){}},250);}" +
-                "function fitTrip(){fitAll();}" +
-                "function drawStraight(a,b,color){if(!map)return;clearLine();routePts=[a,b];routeProgress=0;line=L.polyline(routePts,{color:color||'#2563eb',weight:5,opacity:.8,dashArray:'8,8',lineCap:'round'}).addTo(map);try{line.bringToBack();}catch(e){}if(driverRaw){setDriver(driverRaw.lat,driverRaw.lng,driverRaw.bearing,driverRaw.type,driverRaw.name,driverRaw.status);}}" +
-                "function applyNativeRoute(pts,km,sec,status){try{if(typeof pts==='string')pts=JSON.parse(pts);if(!pts||pts.length<2)return;var color=status==='on_delivery'?'#16a34a':(status==='arrived_pickup'?'#f59e0b':'#2563eb');clearLine();routePts=pts;routeProgress=0;line=L.polyline(routePts,{color:color,weight:5,opacity:.92,lineCap:'round',lineJoin:'round'}).addTo(map);try{line.bringToBack();}catch(e){}if(driverRaw)setDriver(driverRaw.lat,driverRaw.lng,driverRaw.bearing,driverRaw.type,driverRaw.name,driverRaw.status);try{AndroidTrip.onRoute((+km||0),(+sec||0));}catch(e){}fitAll();}catch(e){}}"+
-                "window.applyNativeRoute=applyNativeRoute;"+
-                "function drawRoute(dLat,dLng,tLat,tLng,status){if(!line&&map&&valid(dLat,dLng)&&valid(tLat,tLng))drawStraight([+dLat,+dLng],[+tLat,+tLng],status==='on_delivery'?'#16a34a':'#2563eb');}"+
-                "init();setTimeout(init,1000);" +
-                "</script></body></html>";
-    }
-
-    public class TripBridge {
-        @JavascriptInterface public void onMapReady() {
-            networkScope.post(mainHandler, () -> {
-                mapReady = true;
-                pushAllMarkersToMap();
-            });
-        }
-
-        @JavascriptInterface public void onRoute(double km, double seconds) {
-            networkScope.post(mainHandler, () -> {
-                if (km > 0 && seconds > 0) {
-                    tripInfoText.setText("Estimasi rute driver: " + String.format(Locale.US, "%.1f", km) + " KM • " + Math.max(1, (int)Math.ceil(seconds / 60.0)) + " menit");
-                }
-            });
-        }
-    }
-
     private void startTrackingOnce() {
         if (trackingStarted || orderId.length() == 0) return;
         trackingStarted = true;
@@ -438,7 +348,7 @@ public class CustomerTripActivity extends Activity {
         if (!trackingRequestInFlight.compareAndSet(false, true)) return;
 
         final long generation = trackingGeneration.incrementAndGet();
-        networkScope.execute(() -> {
+        featureRuntime.execute(() -> {
             try {
                 final JSONObject res;
                 if (orderSource.contains("pickup")) {
@@ -447,7 +357,7 @@ public class CustomerTripActivity extends Activity {
                     JSONObject payload = new JSONObject().put("order_id", orderId);
                     res = postJson(CHECK_STATUS_URL, payload);
                 }
-                networkScope.post(mainHandler, () -> {
+                featureRuntime.post(mainHandler, () -> {
                     if (generation != trackingGeneration.get() || isFinishing() || isDestroyed()) return;
                     setLoading(false);
                     if (res.optBoolean("success", false)) {
@@ -460,7 +370,7 @@ public class CustomerTripActivity extends Activity {
                 TransivaCrashReporter.recordNetworkFailure(e,
                         orderSource.contains("pickup") ? "GET" : "POST",
                         orderSource.contains("pickup") ? PICKUP_STATUS_URL : CHECK_STATUS_URL);
-                networkScope.post(mainHandler, () -> {
+                featureRuntime.post(mainHandler, () -> {
                     if (generation != trackingGeneration.get() || isFinishing() || isDestroyed()) return;
                     setLoading(false);
                     if (statusText != null) statusText.setText("Koneksi tracking belum stabil. Mencoba lagi...");
@@ -636,11 +546,11 @@ public class CustomerTripActivity extends Activity {
         if(priceActions!=null) priceActions.setVisibility(change.equals("pending")?View.VISIBLE:View.GONE);
     }
     private void sendCustomerAction(String action){
-        if(orderId.isEmpty()) return; setLoading(true); networkScope.execute(()->{ try{
+        if(orderId.isEmpty()) return; setLoading(true); featureRuntime.execute(()->{ try{
             JSONObject p=new JSONObject(); p.put("order_id",orderId); p.put("source",orderSource.contains("pickup")?"pickup_orders":"orders"); p.put("action",action);
             JSONObject r=postJson(CUSTOMER_ACTION_URL,p); boolean ok=r.optBoolean("success",false); String m=firstNonEmpty(r.optString("message",""),ok?"Berhasil":"Gagal");
-            networkScope.post(mainHandler, ()->{setLoading(false); showInfo(ok?"Berhasil":"Gagal",m); if(ok) fetchDriverPosition();});
-        }catch(Exception e){TransivaCrashReporter.recordNetworkFailure(e,"POST",CUSTOMER_ACTION_URL);networkScope.post(mainHandler, ()->{setLoading(false);showInfo("Gagal","Koneksi server bermasalah.");});}});
+            featureRuntime.post(mainHandler, ()->{setLoading(false); showInfo(ok?"Berhasil":"Gagal",m); if(ok) fetchDriverPosition();});
+        }catch(Exception e){TransivaCrashReporter.recordNetworkFailure(e,"POST",CUSTOMER_ACTION_URL);featureRuntime.post(mainHandler, ()->{setLoading(false);showInfo("Gagal","Koneksi server bermasalah.");});}});
     }
     private String rupiah(double value){
         return CustomerCommonFormatters.rupiahCompactPrefix(value);
@@ -656,12 +566,12 @@ public class CustomerTripActivity extends Activity {
         routeRequestInFlight=true; lastRouteRequestAt=now;
         final double fromLat=lastDriverLat,fromLng=lastDriverLng;
         final String status=lastStatus;
-        networkScope.execute(() -> {
+        featureRuntime.execute(() -> {
             try{
                 StableRouteEngine.Result r=StableRouteEngine.fetch(fromLat,fromLng,toLat,toLng);
                 lastRouteFromLat=fromLat; lastRouteFromLng=fromLng; lastRouteToLat=toLat; lastRouteToLng=toLng; lastRouteStatus=status;
                 final String pts=r.pointsJson(); final double km=r.distanceMeters/1000d,sec=r.durationSeconds;
-                networkScope.post(mainHandler, () -> { if (mapView != null) { mapView.drawOsrmRoute(r.latLngPoints, status); mapView.fitAll(); } if (tripInfoText != null && km > 0 && sec > 0) tripInfoText.setText("Estimasi rute driver: " + String.format(Locale.US, "%.1f", km) + " KM • " + Math.max(1, (int)Math.ceil(sec / 60.0)) + " menit"); });
+                featureRuntime.post(mainHandler, () -> { if (mapView != null) { mapView.drawOsrmRoute(r.latLngPoints, status); mapView.fitAll(); } if (tripInfoText != null && km > 0 && sec > 0) tripInfoText.setText("Estimasi rute driver: " + String.format(Locale.US, "%.1f", km) + " KM • " + Math.max(1, (int)Math.ceil(sec / 60.0)) + " menit"); });
             }catch(Exception error){ TransivaCrashReporter.record(error,"customer_route","stable_route"); } finally{ routeRequestInFlight=false; }
         });
     }
@@ -773,7 +683,7 @@ public class CustomerTripActivity extends Activity {
 
     private void submitFoodReview(JSONObject order, int rating, String review, AlertDialog dialog) {
         setLoading(true);
-        networkScope.execute(() -> {
+        featureRuntime.execute(() -> {
             try {
                 JSONObject body = new JSONObject();
                 body.put("id", order.optInt("id", 0));
@@ -783,14 +693,14 @@ public class CustomerTripActivity extends Activity {
                 JSONObject res = postJson(SAVE_FOOD_REVIEW_URL, body);
                 boolean ok = res.optBoolean("success", false);
                 String msg = firstNonEmpty(res.optString("message"), ok ? "Terima kasih atas ulasannya." : "Rating makanan gagal disimpan.");
-                networkScope.post(mainHandler, () -> {
+                featureRuntime.post(mainHandler, () -> {
                     setLoading(false);
                     if (ok) { dialog.dismiss(); showInfo("Terima kasih", msg); mainHandler.postDelayed(this::goHomeAfterFinished, 700); }
                     else showInfo("Gagal", msg);
                 });
             } catch (Exception e) {
                 TransivaCrashReporter.recordNetworkFailure(e,"POST",SAVE_FOOD_REVIEW_URL);
-                networkScope.post(mainHandler, () -> { setLoading(false); showInfo("Gagal", "Koneksi server bermasalah."); });
+                featureRuntime.post(mainHandler, () -> { setLoading(false); showInfo("Gagal", "Koneksi server bermasalah."); });
             }
         });
     }
@@ -829,7 +739,7 @@ public class CustomerTripActivity extends Activity {
 
     private void submitDriverReview(int rating, String review, AlertDialog dialog) {
         setLoading(true);
-        networkScope.execute(() -> {
+        featureRuntime.execute(() -> {
             try {
                 JSONObject body = new JSONObject();
                 body.put("order_id", orderId);
@@ -839,14 +749,14 @@ public class CustomerTripActivity extends Activity {
                 JSONObject res = postJson(SAVE_REVIEW_URL, body);
                 boolean ok = res.optBoolean("success", false);
                 String msg = firstNonEmpty(res.optString("message"), ok ? "Terima kasih atas ulasannya." : "Rating gagal disimpan.");
-                networkScope.post(mainHandler, () -> {
+                featureRuntime.post(mainHandler, () -> {
                     setLoading(false);
                     if (ok) { dialog.dismiss(); showInfo("Terima kasih", msg); mainHandler.postDelayed(this::goHomeAfterFinished, 700); }
                     else showInfo("Gagal", msg);
                 });
             } catch (Exception e) {
                 TransivaCrashReporter.recordNetworkFailure(e,"POST",SAVE_REVIEW_URL);
-                networkScope.post(mainHandler, () -> { setLoading(false); showInfo("Gagal", "Koneksi server bermasalah."); });
+                featureRuntime.post(mainHandler, () -> { setLoading(false); showInfo("Gagal", "Koneksi server bermasalah."); });
             }
         });
     }
@@ -868,7 +778,7 @@ public class CustomerTripActivity extends Activity {
                 mainHandler.postDelayed(this, 1000);
             }
         };
-        networkScope.post(mainHandler, r);
+        featureRuntime.post(mainHandler, r);
     }
 
     private void goHomeAfterFinished() {
@@ -885,13 +795,13 @@ public class CustomerTripActivity extends Activity {
     private void shareTrip() {
         if (orderId == null || orderId.trim().isEmpty()) { showInfo("Bagikan Trip", "ID order belum tersedia."); return; }
         setLoading(true);
-        networkScope.execute(() -> {
+        featureRuntime.execute(() -> {
             try {
                 JSONObject req = new JSONObject(); req.put("order_id", orderId);
                 JSONObject res = postJson(CREATE_SHARED_TRIP_URL, req);
                 final String liveUrl = res.optString("share_url", "");
                 final boolean ok = res.optBoolean("success", false) && !liveUrl.isEmpty();
-                networkScope.post(mainHandler, () -> {
+                featureRuntime.post(mainHandler, () -> {
                     setLoading(false);
                     if (!ok) { showInfo("Bagikan Trip", res.optString("message", "Gagal membuat tautan aman.")); return; }
                     try {
@@ -901,7 +811,7 @@ public class CustomerTripActivity extends Activity {
                         startActivity(Intent.createChooser(send, "Bagikan perjalanan live"));
                     } catch (Exception e) { showInfo("Bagikan Trip", "Tidak dapat membuka menu berbagi."); }
                 });
-            } catch (Exception e) { networkScope.post(mainHandler, () -> { setLoading(false); showInfo("Bagikan Trip", "Koneksi server bermasalah."); }); }
+            } catch (Exception e) { featureRuntime.post(mainHandler, () -> { setLoading(false); showInfo("Bagikan Trip", "Koneksi server bermasalah."); }); }
         });
     }
 
@@ -962,51 +872,11 @@ public class CustomerTripActivity extends Activity {
     }
 
     private JSONObject getJson(String urlText) throws Exception {
-        HttpURLConnection conn = null;
-        try {
-            conn = CustomerApiClient.open(this, urlText);
-            conn.setRequestMethod("GET");
-            conn.setConnectTimeout(TIMEOUT_MS);
-            conn.setReadTimeout(TIMEOUT_MS);
-            conn.setUseCaches(false);
-            conn.setRequestProperty("Accept", "application/json");
-            int code = conn.getResponseCode();
-            InputStream is = code >= 200 && code < 400 ? conn.getInputStream() : conn.getErrorStream();
-            String body = readStream(is).trim();
-            return body.isEmpty() ? new JSONObject() : new JSONObject(body);
-        } finally {
-            if (conn != null) conn.disconnect();
-        }
+        return TransivaHttpRepository.getJson(this, urlText, TIMEOUT_MS);
     }
 
     private JSONObject postJson(String urlText, JSONObject payload) throws Exception {
-        HttpURLConnection conn = null;
-        try {
-            conn = CustomerApiClient.open(this, urlText);
-            conn.setRequestMethod("POST");
-            conn.setConnectTimeout(TIMEOUT_MS);
-            conn.setReadTimeout(TIMEOUT_MS);
-            conn.setDoInput(true);
-            conn.setDoOutput(true);
-            conn.setUseCaches(false);
-            conn.setRequestProperty("Content-Type", "application/json; charset=UTF-8");
-            conn.setRequestProperty("Accept", "application/json");
-
-            OutputStream os = conn.getOutputStream();
-            BufferedWriter writer = new BufferedWriter(new OutputStreamWriter(os, StandardCharsets.UTF_8));
-            writer.write(payload.toString());
-            writer.flush();
-            writer.close();
-            os.close();
-
-            int code = conn.getResponseCode();
-            InputStream is = code >= 200 && code < 400 ? conn.getInputStream() : conn.getErrorStream();
-            String body = readStream(is).trim();
-            if (body.isEmpty()) return new JSONObject();
-            return new JSONObject(body);
-        } finally {
-            if (conn != null) conn.disconnect();
-        }
+        return TransivaHttpRepository.postJson(this, urlText, payload, TIMEOUT_MS);
     }
 
     private String readStream(InputStream stream) throws Exception {
@@ -1120,25 +990,6 @@ public class CustomerTripActivity extends Activity {
     }
 
 
-    private String drawableDataUri(String... names) {
-        try {
-            for (String name : names) {
-                int id = getResources().getIdentifier(name, "drawable", getPackageName());
-                if (id <= 0) continue;
-
-                Bitmap bm = BitmapFactory.decodeResource(getResources(), id);
-                if (bm == null) continue;
-
-                ByteArrayOutputStream out = new ByteArrayOutputStream();
-                bm.compress(Bitmap.CompressFormat.PNG, 100, out);
-                String b64 = Base64.encodeToString(out.toByteArray(), Base64.NO_WRAP);
-                try { bm.recycle(); } catch (Exception ignored) {}
-                return "data:image/png;base64," + b64;
-            }
-        } catch (Exception ignored) {}
-        return "";
-    }
-
     private int dp(int v) {
         return CustomerUiPrimitives.dp(this, v);
     }
@@ -1179,10 +1030,10 @@ public class CustomerTripActivity extends Activity {
     }
 
     @Override protected void onPause() {
+        featureRuntime.onPause();
         if (mapView != null) mapView.onPauseMap();
         mainHandler.removeCallbacks(trackingRunnable);
         trackingGeneration.incrementAndGet(); // invalidate late network callbacks
-        CustomerRealtimeCoordinator.leave(CustomerRealtimeCoordinator.Role.TRIP);
         super.onPause();
     }
 
@@ -1193,7 +1044,7 @@ public class CustomerTripActivity extends Activity {
 
     @Override protected void onResume() {
         super.onResume();
-        CustomerRealtimeCoordinator.enter(CustomerRealtimeCoordinator.Role.TRIP);
+        featureRuntime.onResume();
         if (mapView != null) mapView.onResumeMap();
         CustomerAppSettings.apply(this);
         if (trackingStarted && !finishedCountdownStarted) {
@@ -1213,7 +1064,7 @@ public class CustomerTripActivity extends Activity {
     }
 
     @Override protected void onDestroy() {
-        networkScope.destroy();
+        featureRuntime.destroy();
         trackingGeneration.incrementAndGet();
         trackingRequestInFlight.set(false);
         mainHandler.removeCallbacksAndMessages(null);

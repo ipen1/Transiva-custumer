@@ -436,9 +436,7 @@ public final class PromoImagePickerHelper {
         HttpURLConnection connection = null;
 
         try {
-            connection =
-                    (HttpURLConnection)
-                            new URL(UPLOAD_URL).openConnection();
+            connection = CustomerApiClient.open(activity, UPLOAD_URL);
 
             connection.setRequestMethod("POST");
             connection.setConnectTimeout(25000);

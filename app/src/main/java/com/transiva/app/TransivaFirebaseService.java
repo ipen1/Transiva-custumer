@@ -876,14 +876,8 @@ public class TransivaFirebaseService extends FirebaseMessagingService {
                         "android_native"
                 );
 
-                URL url = new URL(
-                        BASE_URL + "save_fcm_token.php"
-                );
-
-                connection =
-                        (HttpURLConnection)
-                                url.openConnection();
-                CustomerApiClient.applySecurity(this, connection);
+                connection = CustomerApiClient.open(
+                        this, BASE_URL + "save_fcm_token.php");
 
                 connection.setRequestMethod("POST");
                 connection.setConnectTimeout(15000);

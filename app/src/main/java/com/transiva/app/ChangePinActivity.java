@@ -30,6 +30,9 @@ import java.net.URL;
 import java.nio.charset.StandardCharsets;
 
 public class ChangePinActivity extends Activity {
+    private final CustomerLifecycleNetworkScope networkScope =
+            new CustomerLifecycleNetworkScope();
+
 
     private static final String CHANGE_PIN_URL = "https://transiva.my.id/server/pin_change.php";
     private static final int TIMEOUT_MS = 25000;
@@ -170,7 +173,7 @@ public class ChangePinActivity extends Activity {
         }
 
         setLoading(true);
-        new Thread(() -> {
+        networkScope.newThread(() -> {
             ApiResult result = changePin(oldPin, newPin);
             mainHandler.post(() -> {
                 setLoading(false);
@@ -188,7 +191,7 @@ public class ChangePinActivity extends Activity {
     private ApiResult changePin(String oldPin, String newPin) {
         HttpURLConnection connection = null;
         try {
-            connection = (HttpURLConnection) new URL(CHANGE_PIN_URL).openConnection();
+            connection = CustomerApiClient.open(this, CHANGE_PIN_URL);
             connection.setRequestMethod("POST");
             connection.setConnectTimeout(TIMEOUT_MS);
             connection.setReadTimeout(TIMEOUT_MS);
@@ -320,5 +323,11 @@ public class ChangePinActivity extends Activity {
             this.success = success;
             this.message = message;
         }
+    }
+
+    @Override
+    protected void onDestroy() {
+        networkScope.destroy();
+        super.onDestroy();
     }
 }

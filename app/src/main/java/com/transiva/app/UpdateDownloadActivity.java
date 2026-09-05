@@ -35,6 +35,9 @@ import java.util.Locale;
 
 /** Layar update Customer: DownloadManager background + force gate + verifikasi APK. */
 public class UpdateDownloadActivity extends Activity {
+    private final CustomerLifecycleNetworkScope networkScope =
+            new CustomerLifecycleNetworkScope();
+
     public static final String EXTRA_ROLE = "role";
     public static final String EXTRA_FORCE = "force_update";
     public static final String EXTRA_AUTO_START = "auto_start";
@@ -121,6 +124,7 @@ public class UpdateDownloadActivity extends Activity {
     }
 
     @Override protected void onDestroy() {
+        networkScope.destroy();
         main.removeCallbacks(pollDownload);
         super.onDestroy();
     }
@@ -362,7 +366,7 @@ public class UpdateDownloadActivity extends Activity {
         statusView.setText("Memeriksa paket, versi, tanda tangan, dan SHA-256...");
         actionButton.setVisibility(View.GONE);
 
-        new Thread(() -> {
+        networkScope.newThread(() -> {
             try {
                 verifyApk(downloadedApk);
                 main.post(this::downloadFinished);

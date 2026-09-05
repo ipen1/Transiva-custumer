@@ -5,6 +5,7 @@ import java.io.IOException;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.util.UUID;
+import org.json.JSONObject;
 
 /** Single customer HTTP/security gateway for Transiva-owned endpoints. */
 public final class CustomerApiClient {
@@ -42,6 +43,28 @@ public final class CustomerApiClient {
         }
         connection.setRequestProperty("X-App-Scope", "customer");
         connection.setRequestProperty("Accept", "application/json");
+    }
+
+
+    /**
+     * Central session-replacement guard. Call after reading a Transiva-owned response body.
+     * Network errors/5xx never log the user out; only explicit 401/403 session codes do.
+     */
+    public static boolean handleSessionResponse(Context context, int httpCode, String rawBody) {
+        if (context == null || (httpCode != 401 && httpCode != 403)) return false;
+        String code = "";
+        try {
+            JSONObject json = new JSONObject(rawBody == null || rawBody.trim().isEmpty() ? "{}" : rawBody);
+            code = json.optString("code", "");
+            if (code.trim().isEmpty()) code = json.optString("error_code", "");
+            if (code.trim().isEmpty()) {
+                JSONObject error = json.optJSONObject("error");
+                if (error != null) code = error.optString("code", "");
+            }
+        } catch (Exception ignored) { }
+        if (!ForceLogoutManager.isForceLogoutCode(code)) return false;
+        ForceLogoutManager.execute(context.getApplicationContext(), code);
+        return true;
     }
 
     public static String idempotencyKey(String action) {

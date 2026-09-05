@@ -10,7 +10,6 @@ import java.io.BufferedReader;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.net.HttpURLConnection;
-import java.net.URL;
 
 /**
  * Policy keamanan Customer dari server.
@@ -71,7 +70,7 @@ public final class CustomerSecurityPolicy {
             if (!userId.isEmpty()) link.append("&user_id=").append(Uri.encode(userId));
             if (!username.isEmpty()) link.append("&username=").append(Uri.encode(username));
 
-            connection = (HttpURLConnection) new URL(link.toString()).openConnection();
+            connection = CustomerApiClient.open(app, link.toString());
             connection.setConnectTimeout(4500);
             connection.setReadTimeout(4500);
             connection.setUseCaches(false);

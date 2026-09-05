@@ -49,16 +49,10 @@ public final class SessionValidationClient {
                         : conn.getErrorStream();
                 final String raw = read(stream);
 
-                String code = "";
-                try {
-                    code = new JSONObject(raw).optString("code", "");
-                } catch (Exception ignored) {}
-
-                // Logout hanya jika server benar-benar menyatakan token/sesi invalid.
-                // Jangan logout hanya karena timeout, DNS, TLS, server 5xx, atau response non-JSON.
-                if ((status == 401 || status == 403) && ForceLogoutManager.isForceLogoutCode(code)) {
-                    ForceLogoutManager.execute(app, code.isEmpty() ? "SESSION_REVOKED" : code);
-                } else if (status >= 200 && status < 300) {
+                // Logout hanya bila server memberi kode pencabutan sesi yang eksplisit.
+                // Semua gateway customer memakai aturan yang sama melalui CustomerApiClient.
+                boolean revoked = CustomerApiClient.handleSessionResponse(app, status, raw);
+                if (!revoked && status >= 200 && status < 300) {
                     session.touchSession();
                 }
             } catch (Exception ignored) {

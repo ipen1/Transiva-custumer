@@ -53,8 +53,7 @@ public class NativeLogoutClient {
                 payload.put("token", fcmToken);
                 payload.put("source", "android_profile_logout");
 
-                URL url = new URL(LOGOUT_URL);
-                conn = (HttpURLConnection) url.openConnection();
+                conn = CustomerApiClient.open(appContext, LOGOUT_URL);
                 conn.setRequestMethod("POST");
                 conn.setConnectTimeout(TIMEOUT_MS);
                 conn.setReadTimeout(TIMEOUT_MS);

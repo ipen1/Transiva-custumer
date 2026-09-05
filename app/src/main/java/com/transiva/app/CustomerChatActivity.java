@@ -32,6 +32,9 @@ import java.util.List;
 import java.util.Locale;
 
 public class CustomerChatActivity extends Activity {
+    private final CustomerLifecycleNetworkScope networkScope =
+            new CustomerLifecycleNetworkScope();
+
 
     private static final String BASE_URL =
             "https://transiva.my.id/";
@@ -576,7 +579,7 @@ public class CustomerChatActivity extends Activity {
 
         render();
 
-        new Thread(() -> {
+        networkScope.newThread(() -> {
             try {
                 String endpoint =
                         CONVERSATIONS_URL
@@ -1798,5 +1801,11 @@ public class CustomerChatActivity extends Activity {
                 message,
                 Toast.LENGTH_SHORT
         ).show();
+    }
+
+    @Override
+    protected void onDestroy() {
+        networkScope.destroy();
+        super.onDestroy();
     }
 }

@@ -28,8 +28,10 @@ import java.io.File;
 import java.io.FileOutputStream;
 import java.io.InputStream;
 import java.net.HttpURLConnection;
-import java.net.URL;
 import java.util.Locale;
+import java.util.Collections;
+import java.util.Set;
+import java.util.WeakHashMap;
 
 public final class ChatVoiceNote {
     public static final String PREFIX = "[[VOICE]]";
@@ -40,7 +42,46 @@ public final class ChatVoiceNote {
         void onError(String message);
     }
 
+    private static final java.util.Map<Activity, Set<MediaPlayer>> ACTIVE_PLAYERS =
+            Collections.synchronizedMap(new WeakHashMap<>());
+
     private ChatVoiceNote() {}
+
+    /** Release voice playback owned by a closing chat Activity. */
+    public static void release(Activity activity) {
+        if (activity == null) return;
+        Set<MediaPlayer> players;
+        synchronized (ACTIVE_PLAYERS) { players = ACTIVE_PLAYERS.remove(activity); }
+        if (players == null) return;
+        for (MediaPlayer player : players) {
+            try { player.stop(); } catch (Exception ignored) {}
+            try { player.reset(); } catch (Exception ignored) {}
+            try { player.release(); } catch (Exception ignored) {}
+        }
+        players.clear();
+    }
+
+    private static void registerPlayer(Activity activity, MediaPlayer player) {
+        if (activity == null || player == null) return;
+        synchronized (ACTIVE_PLAYERS) {
+            Set<MediaPlayer> set = ACTIVE_PLAYERS.get(activity);
+            if (set == null) {
+                set = Collections.newSetFromMap(new java.util.concurrent.ConcurrentHashMap<MediaPlayer, Boolean>());
+                ACTIVE_PLAYERS.put(activity, set);
+            }
+            set.add(player);
+        }
+    }
+
+    private static void unregisterPlayer(Activity activity, MediaPlayer player) {
+        synchronized (ACTIVE_PLAYERS) {
+            Set<MediaPlayer> set = ACTIVE_PLAYERS.get(activity);
+            if (set != null) {
+                set.remove(player);
+                if (set.isEmpty()) ACTIVE_PLAYERS.remove(activity);
+            }
+        }
+    }
 
     public static void attachRecorder(
             Activity activity,
@@ -249,22 +290,29 @@ public final class ChatVoiceNote {
             play.setText("…");
             label.setText("Memuat voice note…");
 
-            new Thread(() -> {
+            TransivaNetworkExecutor.execute(() -> {
                 File cached = null;
                 try {
                     cached = downloadToCache(activity, url);
                     File finalCached = cached;
-                    activity.runOnUiThread(() -> playLocalVoice(activity, finalCached, play, label, durationMs));
+                    activity.runOnUiThread(() -> {
+                        if (activity.isFinishing() || (android.os.Build.VERSION.SDK_INT >= 17 && activity.isDestroyed())) {
+                            try { finalCached.delete(); } catch (Exception ignored) {}
+                            return;
+                        }
+                        playLocalVoice(activity, finalCached, play, label, durationMs);
+                    });
                 } catch (Exception e) {
                     if (cached != null) cached.delete();
                     String reason = e.getMessage();
                     activity.runOnUiThread(() -> {
+                        if (activity.isFinishing() || (android.os.Build.VERSION.SDK_INT >= 17 && activity.isDestroyed())) return;
                         play.setText("▶");
                         play.setEnabled(true);
                         label.setText("Gagal memuat voice note");
                     });
                 }
-            }, "chat-voice-download").start();
+            });
         });
 
         return box;
@@ -276,10 +324,10 @@ public final class ChatVoiceNote {
         FileOutputStream output = null;
         File temp = new File(activity.getCacheDir(), "play_voice_" + System.nanoTime() + ".m4a");
         try {
-            URL current = new URL(sourceUrl);
+            java.net.URL current = new java.net.URL(sourceUrl);
             int redirects = 0;
             while (true) {
-                connection = (HttpURLConnection) current.openConnection();
+                connection = CustomerApiClient.open(activity, current.toString());
                 connection.setConnectTimeout(15000);
                 connection.setReadTimeout(30000);
                 connection.setInstanceFollowRedirects(false);
@@ -324,6 +372,7 @@ public final class ChatVoiceNote {
 
     private static void playLocalVoice(Activity activity, File file, Button play, TextView label, long durationMs) {
         final MediaPlayer player = new MediaPlayer();
+        registerPlayer(activity, player);
         try {
             if (android.os.Build.VERSION.SDK_INT >= 21) {
                 player.setAudioAttributes(new AudioAttributes.Builder()
@@ -345,6 +394,7 @@ public final class ChatVoiceNote {
                 play.setText("▶");
                 play.setEnabled(true);
                 label.setText(String.format(Locale.US, "Voice note  %s", durationLabel(durationMs)));
+                unregisterPlayer(activity, mp);
                 try { mp.release(); } catch (Exception ignored) {}
                 try { file.delete(); } catch (Exception ignored) {}
             });
@@ -352,6 +402,7 @@ public final class ChatVoiceNote {
                 play.setText("▶");
                 play.setEnabled(true);
                 label.setText("Audio tidak dapat diputar");
+                unregisterPlayer(activity, mp);
                 try { mp.release(); } catch (Exception ignored) {}
                 try { file.delete(); } catch (Exception ignored) {}
                 return true;
@@ -361,6 +412,7 @@ public final class ChatVoiceNote {
             play.setText("▶");
             play.setEnabled(true);
             label.setText("Audio tidak dapat diputar");
+            unregisterPlayer(activity, player);
             try { player.release(); } catch (Exception ignored) {}
             try { file.delete(); } catch (Exception ignored) {}
         }

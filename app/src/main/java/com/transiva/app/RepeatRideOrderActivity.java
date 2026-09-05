@@ -17,6 +17,9 @@ import android.widget.Toast;
 import org.json.JSONObject;
 
 public class RepeatRideOrderActivity extends Activity {
+    private final CustomerLifecycleNetworkScope networkScope =
+            new CustomerLifecycleNetworkScope();
+
 
     private static final String CREATE_ORDER_URL =
             "https://transiva.my.id/server/createOrder.php";
@@ -308,7 +311,7 @@ public class RepeatRideOrderActivity extends Activity {
         submitting = true;
         loading.setVisibility(ProgressBar.VISIBLE);
 
-        new Thread(() -> {
+        networkScope.newThread(() -> {
             try {
                 JSONObject payload =
                         new JSONObject();
@@ -532,5 +535,11 @@ public class RepeatRideOrderActivity extends Activity {
         }
 
         return "";
+    }
+
+    @Override
+    protected void onDestroy() {
+        networkScope.destroy();
+        super.onDestroy();
     }
 }

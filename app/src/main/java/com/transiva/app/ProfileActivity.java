@@ -77,8 +77,8 @@ public class ProfileActivity extends Activity {
     private final Handler mainHandler =
             new Handler(Looper.getMainLooper());
 
-    private final CustomerLifecycleNetworkScope networkScope =
-            new CustomerLifecycleNetworkScope();
+    private final CustomerFeatureRuntimeController featureRuntime =
+            new CustomerFeatureRuntimeController(CustomerRealtimeCoordinator.Role.IDLE);
 
     private SessionManager session;
 
@@ -148,6 +148,7 @@ public class ProfileActivity extends Activity {
     @Override
     protected void onResume() {
         super.onResume();
+        featureRuntime.onResume();
 
         if (
                 avatarView != null
@@ -1048,10 +1049,10 @@ public class ProfileActivity extends Activity {
         deviceLoading = true;
         updateDeviceButton(false, "Memeriksa...");
 
-        networkScope.newThread(() -> {
+        featureRuntime.newThread(() -> {
             HttpURLConnection connection = null;
             try {
-                connection = (HttpURLConnection) new URL(DEVICE_URL).openConnection();
+                connection = CustomerApiClient.open(this, DEVICE_URL);
                 connection.setRequestMethod("GET");
                 connection.setConnectTimeout(TIMEOUT_MS);
                 connection.setReadTimeout(TIMEOUT_MS);
@@ -1070,6 +1071,7 @@ public class ProfileActivity extends Activity {
                         ? connection.getInputStream()
                         : connection.getErrorStream();
                 String body = readStream(stream);
+                CustomerApiClient.handleSessionResponse(this, code, body);
                 JSONObject response = new JSONObject(body);
 
                 if (!response.optBoolean("success", false)) {
@@ -1179,10 +1181,10 @@ public class ProfileActivity extends Activity {
         deviceLoading = true;
         updateDeviceButton(false, "Memutuskan...");
 
-        networkScope.newThread(() -> {
+        featureRuntime.newThread(() -> {
             HttpURLConnection connection = null;
             try {
-                connection = (HttpURLConnection) new URL(DEVICE_URL).openConnection();
+                connection = CustomerApiClient.open(this, DEVICE_URL);
                 connection.setRequestMethod("POST");
                 connection.setConnectTimeout(TIMEOUT_MS);
                 connection.setReadTimeout(TIMEOUT_MS);
@@ -1211,7 +1213,9 @@ public class ProfileActivity extends Activity {
                 InputStream stream = code >= 200 && code < 300
                         ? connection.getInputStream()
                         : connection.getErrorStream();
-                JSONObject response = new JSONObject(readStream(stream));
+                String rawBody = readStream(stream);
+                CustomerApiClient.handleSessionResponse(this, code, rawBody);
+                JSONObject response = new JSONObject(rawBody);
 
                 if (!response.optBoolean("success", false)) {
                     throw new IllegalStateException(
@@ -1299,7 +1303,7 @@ public class ProfileActivity extends Activity {
     private void resolveAddress(
             Location location
     ) {
-        networkScope.newThread(() -> {
+        featureRuntime.newThread(() -> {
             String addressText = "";
 
             try {
@@ -1449,7 +1453,7 @@ public class ProfileActivity extends Activity {
 
         setLoading(true);
 
-        networkScope.newThread(() -> {
+        featureRuntime.newThread(() -> {
             try {
                 byte[] image =
                         ProfileImageProcessor.createSquareWebp(getContentResolver(), uri);
@@ -1502,7 +1506,7 @@ public class ProfileActivity extends Activity {
 
         setLoading(true);
 
-        networkScope.newThread(() -> {
+        featureRuntime.newThread(() -> {
             HttpURLConnection connection = null;
 
             try {
@@ -1519,8 +1523,7 @@ public class ProfileActivity extends Activity {
                         );
 
                 connection =
-                        (HttpURLConnection)
-                                url.openConnection();
+                        CustomerApiClient.open(this, url.toString());
 
                 connection.setConnectTimeout(
                         TIMEOUT_MS
@@ -1705,14 +1708,12 @@ public class ProfileActivity extends Activity {
         String fixed =
                 absoluteUrl(rawUrl);
 
-        networkScope.newThread(() -> {
+        featureRuntime.newThread(() -> {
             HttpURLConnection connection = null;
 
             try {
                 connection =
-                        (HttpURLConnection)
-                                new URL(fixed)
-                                        .openConnection();
+                        CustomerApiClient.open(this, fixed);
 
                 connection.setConnectTimeout(
                         20000
@@ -1753,12 +1754,10 @@ public class ProfileActivity extends Activity {
         if (token.isEmpty()) return;
 
         loyaltyLoading = true;
-        networkScope.newThread(() -> {
+        featureRuntime.newThread(() -> {
             HttpURLConnection connection = null;
             try {
-                connection = (HttpURLConnection) new URL(
-                        LOYALTY_URL + "?_=" + System.currentTimeMillis()
-                ).openConnection();
+                connection = CustomerApiClient.open(this, LOYALTY_URL + "?_=" + System.currentTimeMillis());
                 connection.setRequestMethod("GET");
                 connection.setConnectTimeout(TIMEOUT_MS);
                 connection.setReadTimeout(TIMEOUT_MS);
@@ -1779,7 +1778,9 @@ public class ProfileActivity extends Activity {
                 InputStream stream = code >= 200 && code < 400
                         ? connection.getInputStream()
                         : connection.getErrorStream();
-                JSONObject response = new JSONObject(readStream(stream));
+                String rawBody = readStream(stream);
+                CustomerApiClient.handleSessionResponse(this, code, rawBody);
+                JSONObject response = new JSONObject(rawBody);
                 if (!response.optBoolean("success", false)) {
                     throw new IllegalStateException(response.optString("message", "Royalty tidak dapat dimuat."));
                 }
@@ -1906,7 +1907,7 @@ public class ProfileActivity extends Activity {
 
         setLoading(true);
 
-        networkScope.newThread(() -> {
+        featureRuntime.newThread(() -> {
             HttpURLConnection connection = null;
 
             try {
@@ -1916,9 +1917,7 @@ public class ProfileActivity extends Activity {
                                 .currentTimeMillis();
 
                 connection =
-                        (HttpURLConnection)
-                                new URL(UPDATE_URL)
-                                        .openConnection();
+                        CustomerApiClient.open(this, UPDATE_URL);
 
                 connection.setRequestMethod(
                         "POST"
@@ -2848,8 +2847,14 @@ public class ProfileActivity extends Activity {
     }
 
     @Override
+    protected void onPause() {
+        featureRuntime.onPause();
+        super.onPause();
+    }
+
+    @Override
     protected void onDestroy() {
-        networkScope.destroy();
+        featureRuntime.destroy();
         mainHandler.removeCallbacksAndMessages(null);
         super.onDestroy();
     }

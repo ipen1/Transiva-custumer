@@ -57,7 +57,8 @@ public class PassengerTransportActivity extends Activity {
     private String orderButtonText() { return isCarService() ? "🚘 Order Mobil" : "🏍️ Order Motor"; }
     private String orderNoun() { return isCarService() ? "mobil" : "motor"; }
 
-    private final CustomerLifecycleNetworkScope networkScope = new CustomerLifecycleNetworkScope();
+    private final CustomerFeatureRuntimeController featureRuntime =
+            new CustomerFeatureRuntimeController(CustomerRealtimeCoordinator.Role.SEARCH);
     private CustomerGeocodingRepository geocodingRepository;
 
     private static final String BASE_URL = "https://transiva.my.id/";
@@ -145,7 +146,7 @@ public class PassengerTransportActivity extends Activity {
         familyMemberName = getIntent() == null ? "" : firstNonEmpty(getIntent().getStringExtra("family_member_name"), "");
         buildLayout();
         applySmartFavoriteIntent();
-        CustomerBestOffer.load(this, offerService(), offer -> networkScope.post(mainHandler, () -> {
+        CustomerBestOffer.load(this, offerService(), offer -> featureRuntime.post(mainHandler, () -> {
             if (offer != null && voucherInput != null && voucherInput.getText().toString().trim().isEmpty()) {
                 String code = offer.optString("promo_code", "").trim();
                 if (!code.isEmpty()) {
@@ -531,10 +532,10 @@ public class PassengerTransportActivity extends Activity {
         if (!ensureAuthTokenForOrder()) return;
         hematBtn.setEnabled(false);
         TierBadgeUi.showSpinner(hematBtn, dp(20));
-        networkScope.newThread(() -> {
+        featureRuntime.newThread(() -> {
             try {
                 JSONObject res = postJson(HEMAT_STATUS_URL, new JSONObject());
-                networkScope.post(mainHandler, () -> {
+                featureRuntime.post(mainHandler, () -> {
                     hematBtn.setEnabled(true);
                     if (!res.optBoolean("success", false)) {
                         TierBadgeUi.restoreHematButton(hematBtn, TierBadgeUi.getCachedActiveTier(this), dp(20), dp(2));
@@ -567,7 +568,7 @@ public class PassengerTransportActivity extends Activity {
                             .show();
                 });
             } catch (Exception e) {
-                networkScope.post(mainHandler, () -> { hematBtn.setEnabled(true); TierBadgeUi.restoreHematButton(hematBtn, TierBadgeUi.getCachedActiveTier(this), dp(20), dp(2)); toastDialog("Gagal memeriksa Transiva Coin: " + e.getMessage()); });
+                featureRuntime.post(mainHandler, () -> { hematBtn.setEnabled(true); TierBadgeUi.restoreHematButton(hematBtn, TierBadgeUi.getCachedActiveTier(this), dp(20), dp(2)); toastDialog("Gagal memeriksa Transiva Coin: " + e.getMessage()); });
             }
         }).start();
     }
@@ -725,7 +726,7 @@ public class PassengerTransportActivity extends Activity {
         final String rawLocation = shared.trim();
         setLoading(true);
 
-        networkScope.newThread(() -> {
+        featureRuntime.newThread(() -> {
             String resolved = rawLocation;
             try {
                 if (resolved.startsWith("geo:")) {
@@ -744,7 +745,7 @@ public class PassengerTransportActivity extends Activity {
                 }
 
                 final double[] coordinate = extractLatLng(resolved);
-                networkScope.post(mainHandler, () -> {
+                featureRuntime.post(mainHandler, () -> {
                     setLoading(false);
                     if (coordinate == null || !validCoord(coordinate[0], coordinate[1])) {
                         toastDialog("Lokasi dari WhatsApp/Google Maps tidak bisa dibaca.");
@@ -779,7 +780,7 @@ public class PassengerTransportActivity extends Activity {
                     updateModeUI();
                 });
             } catch (Exception ignored) {
-                networkScope.post(mainHandler, () -> {
+                featureRuntime.post(mainHandler, () -> {
                     setLoading(false);
                     toastDialog("Gagal membuka lokasi yang dibagikan.");
                 });
@@ -797,7 +798,7 @@ public class PassengerTransportActivity extends Activity {
         hideKeyboard();
         setLoading(true);
 
-        networkScope.newThread(() -> {
+        featureRuntime.newThread(() -> {
             String finalLink = link;
 
             try {
@@ -810,7 +811,7 @@ public class PassengerTransportActivity extends Activity {
 
                 double[] c = extractLatLng(finalLink);
 
-                networkScope.post(mainHandler, () -> {
+                featureRuntime.post(mainHandler, () -> {
                     setLoading(false);
 
                     if (c == null || !validCoord(c[0], c[1])) {
@@ -833,7 +834,7 @@ public class PassengerTransportActivity extends Activity {
                     updateModeUI();
                 });
             } catch (Exception e) {
-                networkScope.post(mainHandler, () -> {
+                featureRuntime.post(mainHandler, () -> {
                     setLoading(false);
                     toastDialog("Gagal membaca link Google Maps.");
                 });
@@ -860,10 +861,10 @@ public class PassengerTransportActivity extends Activity {
 
 
     private void resolveAddressAsync(boolean isPickup, double lat, double lng) {
-        networkScope.newThread(() -> {
+        featureRuntime.newThread(() -> {
             String address = buildSmartAddress(lat, lng);
 
-            networkScope.post(mainHandler, () -> {
+            featureRuntime.post(mainHandler, () -> {
                 if (destroyed) return;
 
                 if (isPickup) {
@@ -978,12 +979,12 @@ public class PassengerTransportActivity extends Activity {
     }
 
     private void loadMapPlaces() {
-        networkScope.newThread(() -> {
+        featureRuntime.newThread(() -> {
             try {
                 JSONObject food = getJson(GET_BUSINESSES_URL + "?v=" + System.currentTimeMillis());
                 JSONObject laundry = getJson(GET_LAUNDRIES_URL + "?v=" + System.currentTimeMillis());
 
-                networkScope.post(mainHandler, () -> {
+                featureRuntime.post(mainHandler, () -> {
                     if (destroyed || !mapReady) return;
 
                     if (mapView != null) mapView.clearPlaces();
@@ -1025,12 +1026,12 @@ public class PassengerTransportActivity extends Activity {
     private void loadOnlineDrivers() {
         if (destroyed) return;
 
-        networkScope.newThread(() -> {
+        featureRuntime.newThread(() -> {
             try {
                 JSONObject res = getJson(GET_ONLINE_DRIVERS_URL + "?type=" + driverType() + "&v=" + System.currentTimeMillis());
                 JSONArray arr = res.optJSONArray("drivers");
 
-                networkScope.post(mainHandler, () -> {
+                featureRuntime.post(mainHandler, () -> {
                     if (destroyed || !mapReady) return;
 
                     if (mapView != null) mapView.clearOnlineDrivers();
@@ -1169,7 +1170,7 @@ public class PassengerTransportActivity extends Activity {
         orderBtn.setEnabled(false);
         orderBtn.setText("Proses...");
 
-        networkScope.newThread(() -> {
+        featureRuntime.newThread(() -> {
             try {
                 String orderId = "ORD-" + System.currentTimeMillis();
 
@@ -1210,9 +1211,9 @@ public class PassengerTransportActivity extends Activity {
                 payload.put("voucher_code", voucherInput == null ? "" : voucherInput.getText().toString().trim().toUpperCase(Locale.US));
 
                 JSONObject res = postJson(CREATE_ORDER_URL, payload);
-                networkScope.post(mainHandler, () -> handleOrderResult(res));
+                featureRuntime.post(mainHandler, () -> handleOrderResult(res));
             } catch (Exception e) {
-                networkScope.post(mainHandler, () -> {
+                featureRuntime.post(mainHandler, () -> {
                     resetOrderButton();
                     toastDialog("Gagal membuat order " + serviceName() + ". " + cleanError(e.getMessage()));
                 });
@@ -1324,7 +1325,7 @@ public class PassengerTransportActivity extends Activity {
         finalPriceText.setTextColor(Color.parseColor("#64748B"));
         paymentSummaryText.setText("Mengambil tarif dari database...");
 
-        networkScope.newThread(() -> {
+        featureRuntime.newThread(() -> {
             try {
                 JSONObject payload = new JSONObject();
 
@@ -1358,7 +1359,7 @@ public class PassengerTransportActivity extends Activity {
 
                 JSONObject res = postJson(PAYMENT_QUOTE_URL, payload);
 
-                networkScope.post(mainHandler, () -> {
+                featureRuntime.post(mainHandler, () -> {
                     if (destroyed) return;
 
                     if (!res.optBoolean("success", false)) {
@@ -1462,7 +1463,7 @@ public class PassengerTransportActivity extends Activity {
                     paymentSummaryText.setText(info);
                 });
             } catch (Exception e) {
-                networkScope.post(mainHandler, () -> {
+                featureRuntime.post(mainHandler, () -> {
                     if (destroyed) return;
                     paymentSummaryText.setText("Gagal terhubung ke server tarif");
                     finalPriceText.setText("Rp -");
@@ -1489,31 +1490,7 @@ public class PassengerTransportActivity extends Activity {
     }
 
     private JSONObject postJson(String urlText, JSONObject payload) throws Exception {
-        HttpURLConnection conn = null;
-        try {
-            conn = CustomerApiClient.open(this, urlText);
-            conn.setRequestMethod("POST");
-            conn.setConnectTimeout(TIMEOUT_MS);
-            conn.setReadTimeout(TIMEOUT_MS);
-            conn.setDoInput(true);
-            conn.setDoOutput(true);
-            conn.setUseCaches(false);
-            conn.setRequestProperty("Content-Type", "application/json; charset=UTF-8");
-            conn.setRequestProperty("Accept", "application/json");
-            String requestToken = refreshAuthToken();
-            if (!requestToken.isEmpty()) {
-                conn.setRequestProperty("Authorization", "Bearer " + requestToken);
-                conn.setRequestProperty("X-App-Scope", "customer");
-            }
-            conn.setRequestProperty("X-Device-UUID", DeviceIdentityManager.getInstallationUuid(this));
-            OutputStream os = conn.getOutputStream();
-            BufferedWriter writer = new BufferedWriter(new OutputStreamWriter(os, StandardCharsets.UTF_8));
-            writer.write(payload.toString()); writer.flush(); writer.close(); os.close();
-            int code = conn.getResponseCode();
-            InputStream is = code >= 200 && code < 400 ? conn.getInputStream() : conn.getErrorStream();
-            String body = readStream(is).trim();
-            return body.length() == 0 ? new JSONObject() : new JSONObject(body);
-        } finally { if (conn != null) conn.disconnect(); }
+        return TransivaHttpRepository.postJson(this, urlText, payload, TIMEOUT_MS);
     }
 
     private String readStream(InputStream stream) throws Exception {
@@ -1545,10 +1522,10 @@ public class PassengerTransportActivity extends Activity {
     private void requestVisibleOsrmRoute() {
         if (!mapReady || mapView == null || !validCoord(pickupLat, pickupLng) || !validCoord(deliveryLat, deliveryLng)) return;
         final double aLat = pickupLat, aLng = pickupLng, bLat = deliveryLat, bLng = deliveryLng;
-        networkScope.newThread(() -> {
+        featureRuntime.newThread(() -> {
             try {
                 StableRouteEngine.Result route = StableRouteEngine.fetch(aLat, aLng, bLat, bLng);
-                networkScope.post(mainHandler, () -> { if (!destroyed && mapView != null) mapView.drawRideRoute(route.latLngPoints); });
+                featureRuntime.post(mainHandler, () -> { if (!destroyed && mapView != null) mapView.drawRideRoute(route.latLngPoints); });
             } catch (Exception ignored) {}
         }, "transiva-google-osrm-preview").start();
     }
@@ -1642,10 +1619,12 @@ public class PassengerTransportActivity extends Activity {
 
     @Override protected void onResume() {
         super.onResume();
+        featureRuntime.onResume();
         if (mapView != null) mapView.onResumeMap();
     }
 
     @Override protected void onPause() {
+        featureRuntime.onPause();
         if (mapView != null) mapView.onPauseMap();
         super.onPause();
     }
@@ -1661,7 +1640,7 @@ public class PassengerTransportActivity extends Activity {
     }
 
     @Override protected void onDestroy() {
-        networkScope.destroy();
+        featureRuntime.destroy();
         destroyed = true;
         try {
             mainHandler.removeCallbacksAndMessages(null);

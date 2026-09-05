@@ -93,30 +93,8 @@ public final class RecommendationSectionController {
         TransivaNetworkExecutor.execute(() -> {
             JSONArray items = new JSONArray();
             try {
-                HttpURLConnection connection =
-                        (HttpURLConnection) new URL(
-                                API + "?role=customer&_=" + System.currentTimeMillis()
-                        ).openConnection();
-                connection.setConnectTimeout(15000);
-                connection.setReadTimeout(20000);
-                connection.setUseCaches(false);
-                connection.setRequestProperty("Accept", "application/json");
-
-                int status = connection.getResponseCode();
-                InputStream stream = status >= 400
-                        ? connection.getErrorStream()
-                        : connection.getInputStream();
-
-                BufferedReader reader = new BufferedReader(
-                        new InputStreamReader(stream, "UTF-8")
-                );
-                StringBuilder raw = new StringBuilder();
-                String line;
-                while ((line = reader.readLine()) != null) raw.append(line);
-                reader.close();
-                connection.disconnect();
-
-                JSONObject response = new JSONObject(raw.toString());
+                JSONObject response = TransivaHttpRepository.getJson(
+                        activity, API + "?role=customer&_=" + System.currentTimeMillis(), 20000);
                 JSONArray received = response.optJSONArray("recommendations");
                 if (response.optBoolean("success", false) && received != null) {
                     items = received;

@@ -17,44 +17,14 @@ public final class WebRtcSignalApi {
     private WebRtcSignalApi() {}
 
     public static JSONObject post(SessionManager session, JSONObject payload) throws Exception {
-        HttpURLConnection connection = null;
-        try {
-            connection = (HttpURLConnection) new URL(ENDPOINT).openConnection();
-            connection.setRequestMethod("POST");
-            connection.setConnectTimeout(TIMEOUT_MS);
-            connection.setReadTimeout(TIMEOUT_MS);
-            connection.setUseCaches(false);
-            connection.setDoOutput(true);
-            connection.setRequestProperty("Accept", "application/json");
-            connection.setRequestProperty("Content-Type", "application/json; charset=UTF-8");
-            if (session != null && session.getAppContext() != null) {
-                CustomerApiClient.applySecurity(session.getAppContext(), connection);
-            }
-            try (OutputStream out = connection.getOutputStream()) {
-                out.write(payload.toString().getBytes(StandardCharsets.UTF_8));
-                out.flush();
-            }
-            int status = connection.getResponseCode();
-            InputStream stream = status >= 200 && status < 400
-                    ? connection.getInputStream() : connection.getErrorStream();
-            if (stream == null) throw new IllegalStateException("Respons signaling kosong");
-            StringBuilder raw = new StringBuilder();
-            try (BufferedReader reader = new BufferedReader(new InputStreamReader(stream, StandardCharsets.UTF_8))) {
-                String line;
-                while ((line = reader.readLine()) != null) raw.append(line);
-            }
-            String body = raw.toString().trim();
-            int a = body.indexOf('{');
-            int b = body.lastIndexOf('}');
-            if (a >= 0 && b > a) body = body.substring(a, b + 1);
-            JSONObject json = new JSONObject(body);
-            if (status < 200 || status >= 400 || !json.optBoolean("success", false)) {
-                throw new IllegalStateException(json.optString("message", "Signaling gagal (HTTP " + status + ")"));
-            }
-            return json;
-        } finally {
-            if (connection != null) connection.disconnect();
+        if (session == null || session.getAppContext() == null) {
+            throw new IllegalStateException("Sesi signaling tidak tersedia");
         }
+        JSONObject json = TransivaHttpRepository.postJson(session.getAppContext(), ENDPOINT, payload, TIMEOUT_MS);
+        if (!json.optBoolean("success", false)) {
+            throw new IllegalStateException(json.optString("message", "Signaling gagal"));
+        }
+        return json;
     }
 
     private static String safe(String value) {

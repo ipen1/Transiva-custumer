@@ -69,8 +69,8 @@ public class CustomerBalanceHistoryActivity
     private final Handler mainHandler =
             new Handler(Looper.getMainLooper());
 
-    private final CustomerLifecycleNetworkScope networkScope =
-            new CustomerLifecycleNetworkScope();
+    private final CustomerFeatureRuntimeController featureRuntime =
+            new CustomerFeatureRuntimeController(CustomerRealtimeCoordinator.Role.HISTORY);
 
     private final List<JSONObject> transactions =
             new ArrayList<>();
@@ -113,6 +113,7 @@ public class CustomerBalanceHistoryActivity
     @Override
     protected void onResume() {
         super.onResume();
+        featureRuntime.onResume();
         CustomerAppSettings.apply(this);
 
         if (
@@ -1019,7 +1020,7 @@ public class CustomerBalanceHistoryActivity
         loadingData = true;
         setLoading(true);
 
-        networkScope.newThread(() -> {
+        featureRuntime.newThread(() -> {
             try {
                 JSONObject request =
                         new JSONObject();
@@ -1638,7 +1639,7 @@ public class CustomerBalanceHistoryActivity
     ) {
         setLoading(true);
 
-        networkScope.newThread(() -> {
+        featureRuntime.newThread(() -> {
             try {
                 JSONObject request =
                         new JSONObject();
@@ -1856,7 +1857,7 @@ public class CustomerBalanceHistoryActivity
 
         setLoading(true);
 
-        networkScope.newThread(() -> {
+        featureRuntime.newThread(() -> {
             try {
                 JSONObject request =
                         new JSONObject();
@@ -2207,7 +2208,7 @@ public class CustomerBalanceHistoryActivity
     ) {
         setLoading(true);
 
-        networkScope.newThread(() -> {
+        featureRuntime.newThread(() -> {
             try {
                 JSONObject request =
                         new JSONObject();
@@ -2304,10 +2305,7 @@ public class CustomerBalanceHistoryActivity
             JSONObject request
     ) throws Exception {
         HttpURLConnection connection =
-                (HttpURLConnection)
-                        new URL(endpoint)
-                                .openConnection();
-        CustomerApiClient.applySecurity(this, connection);
+                CustomerApiClient.open(this, endpoint);
         connection.setRequestProperty("Idempotency-Key", ApiSecurity.idempotencyKey("wallet-withdraw"));
 
         connection.setConnectTimeout(25000);
@@ -2372,6 +2370,8 @@ public class CustomerBalanceHistoryActivity
             }
         }
 
+        String rawResponse = response.toString();
+        CustomerApiClient.handleSessionResponse(this, code, rawResponse);
         connection.disconnect();
 
         if (response.length() == 0) {
@@ -2687,8 +2687,14 @@ public class CustomerBalanceHistoryActivity
     }
 
     @Override
+    protected void onPause() {
+        featureRuntime.onPause();
+        super.onPause();
+    }
+
+    @Override
     protected void onDestroy() {
-        networkScope.destroy();
+        featureRuntime.destroy();
         mainHandler.removeCallbacksAndMessages(null);
         super.onDestroy();
     }

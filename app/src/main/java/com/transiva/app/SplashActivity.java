@@ -56,11 +56,10 @@ public class SplashActivity extends Activity {
         if (routed || securityCheckStarted || updateChecking || isFinishing()) return;
         securityCheckStarted = true;
         statusText.setText("Memeriksa keamanan perangkat...");
-        RootSecurityGuard.checkBeforeContinue(this,
-                () -> MockLocationGuard.checkBeforeContinue(this, () -> {
-                    securityCheckStarted = false;
-                    checkAppUpdate();
-                }));
+        CustomerStartupSecurityGate.check(this, () -> {
+            securityCheckStarted = false;
+            checkAppUpdate();
+        });
     }
 
     @Override

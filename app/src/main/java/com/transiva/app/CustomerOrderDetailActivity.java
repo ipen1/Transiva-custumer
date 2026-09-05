@@ -39,6 +39,9 @@ import java.text.NumberFormat;
 import java.util.Locale;
 
 public class CustomerOrderDetailActivity extends Activity {
+    private final CustomerLifecycleNetworkScope networkScope =
+            new CustomerLifecycleNetworkScope();
+
     private static final String BASE_URL = "https://transiva.my.id/";
     private static final String ACTION_URL = BASE_URL + "server/customer_order_action.php";
     private static final String REVIEW_URL = BASE_URL + "server/save_driver_review.php";
@@ -402,7 +405,7 @@ public class CustomerOrderDetailActivity extends Activity {
 
     private void sendTip(int amount) {
         progress.setVisibility(View.VISIBLE);
-        new Thread(() -> {
+        networkScope.newThread(() -> {
             try {
                 JSONObject p = new JSONObject();
                 p.put("order_id", first(order.optString("order_id"), order.optString("id")));
@@ -457,7 +460,7 @@ public class CustomerOrderDetailActivity extends Activity {
         if (selectedRating < 1) { Toast.makeText(this, "Pilih minimal 1 bintang", Toast.LENGTH_SHORT).show(); return; }
         progress.setVisibility(View.VISIBLE); submitReviewButton.setEnabled(false); submitReviewButton.setText("Mengirim...");
         final String review = reviewInput == null ? "" : reviewInput.getText().toString().trim();
-        new Thread(() -> {
+        networkScope.newThread(() -> {
             try {
                 JSONObject payload = new JSONObject();
                 payload.put("order_id", first(order.optString("order_id"), order.optString("id")));
@@ -496,7 +499,7 @@ public class CustomerOrderDetailActivity extends Activity {
 
     private void sendAction(String action) {
         progress.setVisibility(View.VISIBLE);
-        new Thread(() -> {
+        networkScope.newThread(() -> {
             try {
                 JSONObject p = new JSONObject();
                 p.put("order_id", first(order.optString("order_id"), order.optString("id")));
@@ -543,11 +546,7 @@ public class CustomerOrderDetailActivity extends Activity {
     }
 
     private JSONObject post(String url, JSONObject payload) throws Exception {
-        HttpURLConnection c = (HttpURLConnection) new URL(url).openConnection(); CustomerApiClient.applySecurity(this, c); c.setConnectTimeout(20000); c.setReadTimeout(20000); c.setRequestMethod("POST"); c.setDoOutput(true); c.setRequestProperty("Content-Type", "application/json; charset=UTF-8");
-        try (OutputStream o = c.getOutputStream()) { o.write(payload.toString().getBytes(StandardCharsets.UTF_8)); }
-        InputStream in = c.getResponseCode() >= 400 ? c.getErrorStream() : c.getInputStream(); StringBuilder b = new StringBuilder();
-        try (BufferedReader r = new BufferedReader(new InputStreamReader(in))) { String line; while ((line = r.readLine()) != null) b.append(line); }
-        c.disconnect(); return new JSONObject(b.toString());
+        return TransivaHttpRepository.postJson(this, url, payload, 20000);
     }
 
     private LinearLayout card(int radius) { LinearLayout x = new LinearLayout(this); x.setOrientation(LinearLayout.VERTICAL); x.setPadding(dp(18), dp(18), dp(18), dp(18)); x.setBackground(round("#FFFFFF", radius)); x.setElevation(dp(2)); return x; }
@@ -591,4 +590,10 @@ public class CustomerOrderDetailActivity extends Activity {
     private int statusTextColor(String s) { if (isFinishedStatus(s)) return Color.parseColor("#047857"); if (s.contains("cancel")) return Color.parseColor("#B91C1C"); if (s.contains("arrived")) return Color.parseColor("#075985"); return Color.parseColor("#9A6700"); }
     private String statusBackground(String s) { if (isFinishedStatus(s)) return "#D1FAE5"; if (s.contains("cancel")) return "#FEE2E2"; if (s.contains("arrived")) return "#E0F2FE"; return "#FFF4D6"; }
     private String ratingLabel(int rating) { if (rating <= 1) return "Kirim • Perlu Diperbaiki"; if (rating == 2) return "Kirim • Kurang"; if (rating == 3) return "Kirim • Cukup"; if (rating == 4) return "Kirim • Bagus"; return "Kirim • Sangat Memuaskan"; }
+
+    @Override
+    protected void onDestroy() {
+        networkScope.destroy();
+        super.onDestroy();
+    }
 }

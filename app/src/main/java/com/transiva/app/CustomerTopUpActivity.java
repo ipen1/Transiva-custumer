@@ -41,6 +41,9 @@ import java.text.NumberFormat;
 import java.util.Locale;
 
 public class CustomerTopUpActivity extends Activity {
+    private final CustomerLifecycleNetworkScope networkScope =
+            new CustomerLifecycleNetworkScope();
+
 
     private static final String BASE_URL = "https://transiva.my.id/";
     private static final String PREF_NAME = "transiva";
@@ -288,11 +291,10 @@ public class CustomerTopUpActivity extends Activity {
     private void loadQrisImage() {
         if (qrisImage == null) return;
         setLoading(true);
-        new Thread(() -> {
+        networkScope.newThread(() -> {
             Bitmap bm = null;
             try {
-                HttpURLConnection c = (HttpURLConnection) new URL(BASE_URL + "assets/qris.jpg?v=" + System.currentTimeMillis()).openConnection();
-                CustomerApiClient.applySecurity(this, c);
+                HttpURLConnection c = CustomerApiClient.open(this, BASE_URL + "assets/qris.jpg?v=" + System.currentTimeMillis());
                 c.setConnectTimeout(10000);
                 c.setReadTimeout(10000);
                 bm = BitmapFactory.decodeStream(c.getInputStream());
@@ -346,7 +348,7 @@ public class CustomerTopUpActivity extends Activity {
         setSubmitEnabled(false);
         setStatus("⏳ Mengirim bukti pembayaran...", false);
 
-        new Thread(() -> {
+        networkScope.newThread(() -> {
             try {
                 JSONObject res = uploadDeposit(proofUri, selectedAmount);
                 boolean ok = res.optBoolean("success", false);
@@ -381,8 +383,7 @@ public class CustomerTopUpActivity extends Activity {
         String boundary = "----TransivaBoundary" + System.currentTimeMillis();
         HttpURLConnection conn = null;
         try {
-            conn = (HttpURLConnection) new URL(BASE_URL + "server/customer_upload_deposit.php").openConnection();
-            CustomerApiClient.applySecurity(this, conn);
+            conn = CustomerApiClient.open(this, BASE_URL + "server/customer_upload_deposit.php");
             conn.setRequestMethod("POST");
             conn.setConnectTimeout(TIMEOUT_MS);
             conn.setReadTimeout(TIMEOUT_MS);
@@ -444,7 +445,7 @@ public class CustomerTopUpActivity extends Activity {
 
     private void loadBalance() {
         setLoading(true);
-        new Thread(() -> {
+        networkScope.newThread(() -> {
             String result = rupiah(0);
             try {
                 JSONObject json = getJson(BASE_URL + "server/getBalance.php?username=" + Uri.encode(username));
@@ -461,8 +462,7 @@ public class CustomerTopUpActivity extends Activity {
     private JSONObject getJson(String urlText) throws Exception {
         HttpURLConnection conn = null;
         try {
-            conn = (HttpURLConnection) new URL(urlText).openConnection();
-            CustomerApiClient.applySecurity(this, conn);
+            conn = CustomerApiClient.open(this, urlText);
             conn.setRequestMethod("GET");
             conn.setConnectTimeout(TIMEOUT_MS);
             conn.setReadTimeout(TIMEOUT_MS);
@@ -618,5 +618,11 @@ public class CustomerTopUpActivity extends Activity {
 
     private int dp(int v) {
         return (int) (v * getResources().getDisplayMetrics().density + 0.5f);
+    }
+
+    @Override
+    protected void onDestroy() {
+        networkScope.destroy();
+        super.onDestroy();
     }
 }

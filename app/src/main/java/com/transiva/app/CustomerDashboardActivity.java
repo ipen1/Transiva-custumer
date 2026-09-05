@@ -52,6 +52,8 @@ public class CustomerDashboardActivity extends Activity
         implements CustomerDashboardContract.View {
 
     private final CustomerLifecycleNetworkScope networkScope = new CustomerLifecycleNetworkScope();
+    private final CustomerFeatureRuntimeController featureRuntime =
+            new CustomerFeatureRuntimeController(CustomerRealtimeCoordinator.Role.DASHBOARD);
 
     // Menyimpan pilihan customer ketika card transisi K Online di Dashboard ditutup.
     private static final String PREF_KONLINE_TRANSITION = "k_online_transition";
@@ -173,7 +175,7 @@ public class CustomerDashboardActivity extends Activity
     @Override
     protected void onResume() {
         super.onResume();
-        CustomerRealtimeCoordinator.enter(CustomerRealtimeCoordinator.Role.DASHBOARD);
+        featureRuntime.onResume();
 
         // Terapkan ulang agar perubahan tema dari menu Pengaturan langsung
         // terlihat saat kembali ke Dashboard.
@@ -204,13 +206,14 @@ public class CustomerDashboardActivity extends Activity
     @Override
     protected void onPause() {
         stopPromoAutoSlide();
-        CustomerRealtimeCoordinator.leave(CustomerRealtimeCoordinator.Role.DASHBOARD);
+        featureRuntime.onPause();
         super.onPause();
     }
 
     @Override
     protected void onDestroy() {
         if (dashboardController != null) dashboardController.onDestroy();
+        featureRuntime.destroy();
         networkScope.destroy();
         stopPromoAutoSlide();
 

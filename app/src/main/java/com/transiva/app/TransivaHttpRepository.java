@@ -58,6 +58,7 @@ public final class TransivaHttpRepository {
                 TransivaCrashReporter.recordHttpStatus(code, method, url, SystemClock.elapsedRealtime() - started);
                 InputStream in = code >= 200 && code < 400 ? c.getInputStream() : c.getErrorStream();
                 String raw = read(in);
+                CustomerApiClient.handleSessionResponse(context, code, raw);
                 if (code >= 200 && code < 300) return new JSONObject(raw.isEmpty() ? "{}" : raw);
                 boolean retryable = code == 408 || code == 429 || code >= 500;
                 IllegalStateException error = new IllegalStateException("HTTP " + code);

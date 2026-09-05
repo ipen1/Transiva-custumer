@@ -46,6 +46,9 @@ import java.util.Locale;
 import java.util.Map;
 
 public class TranstourActivity extends Activity {
+    private final CustomerLifecycleNetworkScope networkScope =
+            new CustomerLifecycleNetworkScope();
+
 
     private static final String BASE_URL = "https://transiva.my.id/";
     private static final int TIMEOUT_MS = 20000;
@@ -100,6 +103,7 @@ public class TranstourActivity extends Activity {
 
     @Override
     protected void onDestroy() {
+        networkScope.destroy();
         stopTicketPolling();
         try {
             if (barcodeDialog != null && barcodeDialog.isShowing()) barcodeDialog.dismiss();
@@ -442,7 +446,7 @@ public class TranstourActivity extends Activity {
 
     private void loadWisata() {
         setLoading(true);
-        new Thread(() -> {
+        networkScope.newThread(() -> {
             try {
                 JSONObject res = getJson(BASE_URL + "server/getWisataPlaces.php?v=" + System.currentTimeMillis());
                 JSONArray arr = res.optJSONArray("places");
@@ -462,7 +466,7 @@ public class TranstourActivity extends Activity {
         if (ticketLoading) return;
         ticketLoading = true;
         if (showLoader) setLoading(true);
-        new Thread(() -> {
+        networkScope.newThread(() -> {
             try {
                 JSONObject payload = new JSONObject();
                 payload.put("user_id", userId);
@@ -528,7 +532,7 @@ public class TranstourActivity extends Activity {
         if (selectedProofUri == null) { showInfo("Bukti Transfer", "Upload bukti transfer terlebih dahulu."); return; }
 
         setLoading(true);
-        new Thread(() -> {
+        networkScope.newThread(() -> {
             try {
                 Map<String, String> fields = new HashMap<>();
                 fields.put("user_id", String.valueOf(userId));
@@ -555,33 +559,16 @@ public class TranstourActivity extends Activity {
     }
 
     private JSONObject getJson(String urlText) throws Exception {
-        HttpURLConnection c = (HttpURLConnection) new URL(urlText).openConnection();
-        CustomerApiClient.applySecurity(this, c);
-        c.setConnectTimeout(TIMEOUT_MS);
-        c.setReadTimeout(TIMEOUT_MS);
-        c.setRequestMethod("GET");
-        return new JSONObject(readStream(c));
+        return TransivaHttpRepository.getJson(this, urlText, TIMEOUT_MS);
     }
 
     private JSONObject postJson(String urlText, JSONObject payload) throws Exception {
-        HttpURLConnection c = (HttpURLConnection) new URL(urlText).openConnection();
-        CustomerApiClient.applySecurity(this, c);
-        c.setConnectTimeout(TIMEOUT_MS);
-        c.setReadTimeout(TIMEOUT_MS);
-        c.setRequestMethod("POST");
-        c.setRequestProperty("Content-Type", "application/json; charset=utf-8");
-        c.setDoOutput(true);
-        OutputStream os = c.getOutputStream();
-        os.write(payload.toString().getBytes(StandardCharsets.UTF_8));
-        os.flush();
-        os.close();
-        return new JSONObject(readStream(c));
+        return TransivaHttpRepository.postJson(this, urlText, payload, TIMEOUT_MS);
     }
 
     private JSONObject postMultipart(String urlText, Map<String, String> fields, String fileField, Uri fileUri, String fileName) throws Exception {
         String boundary = "----TransivaBoundary" + System.currentTimeMillis();
-        HttpURLConnection c = (HttpURLConnection) new URL(urlText).openConnection();
-        CustomerApiClient.applySecurity(this, c);
+        HttpURLConnection c = CustomerApiClient.open(this, urlText);
         c.setConnectTimeout(TIMEOUT_MS);
         c.setReadTimeout(TIMEOUT_MS);
         c.setRequestMethod("POST");
@@ -636,9 +623,9 @@ public class TranstourActivity extends Activity {
         Bitmap cached = imageCache.get(finalUrl);
         if (cached != null) { view.setImageBitmap(cached); return; }
 
-        new Thread(() -> {
+        networkScope.newThread(() -> {
             try {
-                HttpURLConnection c = (HttpURLConnection) new URL(finalUrl).openConnection();
+                HttpURLConnection c = CustomerApiClient.open(this, finalUrl);
                 c.setConnectTimeout(10000);
                 c.setReadTimeout(10000);
                 Bitmap bm = BitmapFactory.decodeStream(c.getInputStream());

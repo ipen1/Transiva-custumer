@@ -1,11 +1,8 @@
 package com.transiva.app;
 
-import android.annotation.SuppressLint;
 import android.app.Activity;
 import android.content.Intent;
 import android.content.SharedPreferences;
-import android.graphics.Bitmap;
-import android.graphics.BitmapFactory;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
@@ -13,16 +10,8 @@ import android.location.Location;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
-import android.util.Base64;
 import android.view.Gravity;
 import android.view.View;
-import android.webkit.WebChromeClient;
-import android.webkit.WebResourceError;
-import android.webkit.WebResourceRequest;
-import android.webkit.WebResourceResponse;
-import android.webkit.WebSettings;
-import android.webkit.WebView;
-import android.webkit.WebViewClient;
 import android.widget.Button;
 import android.widget.FrameLayout;
 import android.widget.LinearLayout;
@@ -31,22 +20,12 @@ import android.widget.TextView;
 
 import org.json.JSONObject;
 
-import java.io.BufferedReader;
-import java.io.ByteArrayOutputStream;
-import java.io.BufferedWriter;
-import java.io.InputStream;
-import java.io.InputStreamReader;
-import java.io.OutputStream;
-import java.io.OutputStreamWriter;
-import java.net.HttpURLConnection;
-import java.net.URL;
-import java.nio.charset.StandardCharsets;
 import java.util.Locale;
 
 /**
- * Live Driver customer screen rendered with MapLibre GL JS.
- * This screen does not initialize Google Maps, reducing Google Maps requests.
- * Driver location still comes from the existing Transiva status endpoint.
+ * Live Driver customer screen rendered with the shared native Google Map runtime.
+ * No CDN/JavaScript/WebView is required for active-order tracking. Driver location still
+ * comes from the existing Transiva status endpoint and the standard order status flow.
  */
 public final class CustomerLiveDriverActivity extends Activity {
     private static final String STATUS_URL =
@@ -58,7 +37,9 @@ public final class CustomerLiveDriverActivity extends Activity {
     private final Handler handler = new Handler(Looper.getMainLooper());
     private final RemoteLocationSmoother smoother = new RemoteLocationSmoother();
 
-    private WebView mapWebView;
+    private TransivaGoogleMapView mapView;
+    private final CustomerFeatureRuntimeController featureRuntime =
+            new CustomerFeatureRuntimeController(CustomerRealtimeCoordinator.Role.TRIP);
     private TextView speedText;
     private TextView statusText;
     private TextView distanceText;
@@ -78,7 +59,6 @@ public final class CustomerLiveDriverActivity extends Activity {
     private long previousRawAt;
 
     private boolean mapReady;
-    private boolean fallbackMapLoaded;
     private boolean requestInFlight;
     private boolean routeInFlight;
     private long lastRouteAt;
@@ -100,7 +80,7 @@ public final class CustomerLiveDriverActivity extends Activity {
         } catch (Exception ignored) {}
 
         readInput();
-        buildUi();
+        buildUi(state);
 
         if (orderId.isEmpty()) {
             statusText.setText("Order tidak ditemukan.");
@@ -134,49 +114,20 @@ public final class CustomerLiveDriverActivity extends Activity {
         deliveryLng = readCoord(i, sp, "delivery_lng");
     }
 
-    @SuppressLint("SetJavaScriptEnabled")
-    private void buildUi() {
+    private void buildUi(Bundle state) {
         FrameLayout page = new FrameLayout(this);
         page.setBackgroundColor(Color.parseColor("#071426"));
 
-        mapWebView = new WebView(this);
-        mapWebView.setBackgroundColor(Color.parseColor("#071426"));
-        WebSettings settings = mapWebView.getSettings();
-        settings.setJavaScriptEnabled(true);
-        settings.setDomStorageEnabled(true);
-        settings.setDatabaseEnabled(false);
-        settings.setAllowFileAccess(false);
-        settings.setAllowContentAccess(false);
-        settings.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
-        settings.setCacheMode(WebSettings.LOAD_DEFAULT);
-        settings.setMediaPlaybackRequiresUserGesture(true);
-        settings.setBuiltInZoomControls(false);
-        settings.setDisplayZoomControls(false);
-        settings.setSupportZoom(false);
-
-        mapWebView.setWebChromeClient(new WebChromeClient());
-        mapWebView.setWebViewClient(new WebViewClient() {
-            @Override public void onPageFinished(WebView view, String url) {
+        mapView = new TransivaGoogleMapView(this, TransivaGoogleMapView.Mode.TRIP);
+        mapView.initialize(state, new TransivaGoogleMapView.Listener() {
+            @Override public void onReady(double lat, double lng) {
                 mapReady = true;
-                loading.setVisibility(View.GONE);
+                if (loading != null) loading.setVisibility(View.GONE);
                 renderMap();
             }
-            @Override public void onReceivedError(WebView view, WebResourceRequest request, WebResourceError error) {
-                if (request != null && request.isForMainFrame()) loadFallbackMap();
-            }
-            @Override public void onReceivedHttpError(WebView view, WebResourceRequest request, WebResourceResponse response) {
-                if (request != null && request.isForMainFrame()) loadFallbackMap();
-            }
+            @Override public void onCenterChanged(double lat, double lng) { }
         });
-
-        page.addView(mapWebView, new FrameLayout.LayoutParams(-1, -1));
-        mapWebView.loadDataWithBaseURL(
-                "https://transiva.my.id/",
-                createMapHtml(),
-                "text/html",
-                "UTF-8",
-                null
-        );
+        page.addView(mapView, new FrameLayout.LayoutParams(-1, -1));
 
         Button back = new Button(this);
         back.setText("‹");
@@ -185,8 +136,7 @@ public final class CustomerLiveDriverActivity extends Activity {
         back.setAllCaps(false);
         back.setPadding(0, 0, 0, dp(3));
         back.setBackground(round("#CC071426", dp(24)));
-        FrameLayout.LayoutParams backLp =
-                new FrameLayout.LayoutParams(dp(48), dp(48));
+        FrameLayout.LayoutParams backLp = new FrameLayout.LayoutParams(dp(48), dp(48));
         backLp.gravity = Gravity.TOP | Gravity.START;
         backLp.setMargins(dp(16), dp(18), 0, 0);
         page.addView(back, backLp);
@@ -196,20 +146,13 @@ public final class CustomerLiveDriverActivity extends Activity {
         top.setOrientation(LinearLayout.VERTICAL);
         top.setPadding(dp(14), dp(10), dp(14), dp(10));
         top.setBackground(round("#E60B2038", dp(18)));
-
-        FrameLayout.LayoutParams topLp =
-                new FrameLayout.LayoutParams(-1, -2);
+        FrameLayout.LayoutParams topLp = new FrameLayout.LayoutParams(-1, -2);
         topLp.gravity = Gravity.TOP;
         topLp.setMargins(dp(76), dp(18), dp(16), 0);
         page.addView(top, topLp);
 
-        driverText = text("Live Driver • MapLibre", 15, "#FFFFFF", true);
-        statusText = text(
-                "Menghubungkan lokasi driver...",
-                12,
-                "#D7E8FF",
-                false
-        );
+        driverText = text("Live Driver • Native Map", 15, "#FFFFFF", true);
+        statusText = text("Menghubungkan lokasi driver...", 12, "#D7E8FF", false);
         top.addView(driverText);
         top.addView(statusText);
 
@@ -217,9 +160,7 @@ public final class CustomerLiveDriverActivity extends Activity {
         bottom.setOrientation(LinearLayout.VERTICAL);
         bottom.setPadding(dp(16), dp(14), dp(16), dp(16));
         bottom.setBackground(round("#F20B2038", dp(24)));
-
-        FrameLayout.LayoutParams bottomLp =
-                new FrameLayout.LayoutParams(-1, -2);
+        FrameLayout.LayoutParams bottomLp = new FrameLayout.LayoutParams(-1, -2);
         bottomLp.gravity = Gravity.BOTTOM;
         bottomLp.setMargins(dp(14), 0, dp(14), dp(18));
         page.addView(bottom, bottomLp);
@@ -234,229 +175,40 @@ public final class CustomerLiveDriverActivity extends Activity {
         speedBox.setGravity(Gravity.CENTER);
         speedBox.setPadding(dp(12), dp(8), dp(12), dp(8));
         speedBox.setBackground(round("#162D4A", dp(18)));
-        metrics.addView(
-                speedBox,
-                new LinearLayout.LayoutParams(dp(126), dp(82))
-        );
+        metrics.addView(speedBox, new LinearLayout.LayoutParams(dp(126), dp(82)));
 
         speedText = text("0", 34, "#FFFFFF", true);
         speedText.setGravity(Gravity.CENTER);
-
         TextView kmh = text("KM/JAM", 10, "#8FC5FF", true);
         kmh.setGravity(Gravity.CENTER);
-
         speedBox.addView(speedText, new LinearLayout.LayoutParams(-1, -2));
         speedBox.addView(kmh, new LinearLayout.LayoutParams(-1, -2));
 
         LinearLayout routeBox = new LinearLayout(this);
         routeBox.setOrientation(LinearLayout.VERTICAL);
         routeBox.setPadding(dp(14), dp(6), 0, dp(6));
-        metrics.addView(
-                routeBox,
-                new LinearLayout.LayoutParams(0, -2, 1)
-        );
-
-        TextView routeLabel = text(
-                "RUTE AKTIF",
-                10,
-                "#8FC5FF",
-                true
-        );
-        distanceText = text(
-                "Menunggu posisi terbaru",
-                15,
-                "#FFFFFF",
-                true
-        );
-
-        routeBox.addView(routeLabel);
+        metrics.addView(routeBox, new LinearLayout.LayoutParams(0, -2, 1));
+        routeBox.addView(text("RUTE AKTIF", 10, "#8FC5FF", true));
+        distanceText = text("Menunggu posisi terbaru", 15, "#FFFFFF", true);
         routeBox.addView(distanceText);
 
-        TextView note = text(
-                "MapLibre aktif • gerakan kendaraan dianimasikan halus.",
-                10,
-                "#AFC8E5",
-                false
-        );
+        TextView note = text("Posisi diperbarui otomatis. Peta native tetap digunakan saat CDN eksternal bermasalah.", 11, "#B8CEE8", false);
         note.setPadding(0, dp(10), 0, 0);
         bottom.addView(note);
 
         loading = new ProgressBar(this);
-        FrameLayout.LayoutParams loadLp =
-                new FrameLayout.LayoutParams(dp(48), dp(48));
-        loadLp.gravity = Gravity.CENTER;
-        page.addView(loading, loadLp);
+        FrameLayout.LayoutParams loadingLp = new FrameLayout.LayoutParams(dp(42), dp(42));
+        loadingLp.gravity = Gravity.CENTER;
+        page.addView(loading, loadingLp);
 
         setContentView(page);
-        CustomerAppSettings.apply(this);
-    }
-
-    private void loadFallbackMap() {
-        if (fallbackMapLoaded || mapWebView == null) return;
-        fallbackMapLoaded = true;
-        mapReady = false;
-        mapWebView.loadDataWithBaseURL("https://transiva.my.id/", createFallbackMapHtml(), "text/html", "UTF-8", null);
-        if (statusText != null) statusText.setText("Mode peta ringan aktif. Lokasi driver tetap diperbarui.");
-    }
-
-    /** Local zero-CDN fallback so tracking never becomes a blank screen. */
-    private String createFallbackMapHtml() {
-        return "<!doctype html><html><head><meta name='viewport' content='width=device-width,initial-scale=1'>"
-                + "<style>html,body{margin:0;height:100%;overflow:hidden;background:#071426}canvas{width:100%;height:100%}"
-                + ".tag{position:fixed;top:92px;left:16px;background:#dbeafe;color:#0b2038;padding:7px 10px;border-radius:12px;font:600 11px sans-serif}</style></head>"
-                + "<body><canvas id='c'></canvas><div class='tag'>Peta ringan • tracking tetap aktif</div><script>"
-                + "const c=document.getElementById('c'),x=c.getContext('2d');let d=null,p=null,t=null,r=[];"
-                + "function rs(){c.width=innerWidth*devicePixelRatio;c.height=innerHeight*devicePixelRatio;draw()}addEventListener('resize',rs);"
-                + "function xy(q){if(!q)return null;let pts=[d,p,t].concat(r.map(z=>({lng:z[1],lat:z[0]}))).filter(Boolean);"
-                + "let minx=Math.min(...pts.map(v=>v.lng)),maxx=Math.max(...pts.map(v=>v.lng)),miny=Math.min(...pts.map(v=>v.lat)),maxy=Math.max(...pts.map(v=>v.lat));"
-                + "let sx=(c.width*.78)/Math.max(.00001,maxx-minx),sy=(c.height*.62)/Math.max(.00001,maxy-miny),s=Math.min(sx,sy);"
-                + "return[c.width*.11+(q.lng-minx)*s,c.height*.18+(maxy-q.lat)*s]}"
-                + "function dot(q,col,rad){let a=xy(q);if(!a)return;x.beginPath();x.arc(a[0],a[1],rad*devicePixelRatio,0,7);x.fillStyle=col;x.fill()}"
-                + "function draw(){x.fillStyle='#071426';x.fillRect(0,0,c.width,c.height);x.strokeStyle='#102b48';x.lineWidth=devicePixelRatio;"
-                + "for(let i=0;i<c.width;i+=42*devicePixelRatio){x.beginPath();x.moveTo(i,0);x.lineTo(i,c.height);x.stroke()}"
-                + "for(let i=0;i<c.height;i+=42*devicePixelRatio){x.beginPath();x.moveTo(0,i);x.lineTo(c.width,i);x.stroke()}"
-                + "if(r.length>1){x.strokeStyle='#1476ff';x.lineWidth=6*devicePixelRatio;x.lineCap='round';x.beginPath();r.forEach((z,i)=>{let a=xy({lat:z[0],lng:z[1]});if(a)(i?x.lineTo(...a):x.moveTo(...a))});x.stroke()}"
-                + "dot(p,'#22c55e',8);dot(t,'#ef4444',8);dot(d,'#38bdf8',11)}"
-                + "window.TransivaLive={updateDriver:(lng,lat)=>{d={lng:+lng,lat:+lat};draw()},setTarget:(k,lng,lat)=>{if(k==='pickup')p={lng:+lng,lat:+lat};else t={lng:+lng,lat:+lat};draw()},drawRoute:(a)=>{r=a||[];draw()},setFollow:()=>{}};rs();"
-                + "</script></body></html>";
-    }
-
-    private String createMapHtml() {
-        boolean dark = CustomerAppSettings.isDarkMode(this);
-        String styleUrl = dark
-                ? "https://tiles.openfreemap.org/styles/dark"
-                : "https://tiles.openfreemap.org/styles/liberty";
-
-        String carImage = drawableDataUrl("map_car_top");
-        String motorImage = drawableDataUrl("map_motor_top");
-
-        return "<!doctype html><html><head>"
-                + "<meta charset='utf-8'>"
-                + "<meta name='viewport' content='width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no'>"
-                + "<link href='https://unpkg.com/maplibre-gl@5.6.1/dist/maplibre-gl.css' rel='stylesheet'>"
-                + "<script src='https://unpkg.com/maplibre-gl@5.6.1/dist/maplibre-gl.js'></script>"
-                + "<style>"
-                + "html,body,#map{width:100%;height:100%;margin:0;padding:0;overflow:hidden;background:#071426}"
-                + ".maplibregl-ctrl-bottom-left,.maplibregl-ctrl-bottom-right,.maplibregl-ctrl-top-left,.maplibregl-ctrl-top-right{display:none!important}"
-                + ".vehicle{width:52px;height:52px;display:flex;align-items:center;justify-content:center;"
-                + "will-change:transform;transform-origin:center center;filter:drop-shadow(0 4px 5px rgba(0,0,0,.38))}"
-                + ".vehicle img{width:100%;height:100%;object-fit:contain;display:block;pointer-events:none}"
-                + ".target{width:20px;height:20px;border-radius:50%;background:#fff;"
-                + "border:5px solid #1476ff;box-shadow:0 3px 10px rgba(0,0,0,.32)}"
-                + "</style></head><body><div id='map'></div>"
-                + "<script>"
-                + "const CAR_IMG='" + carImage + "',MOTOR_IMG='" + motorImage + "';"
-                + "const map=new maplibregl.Map({container:'map',style:'" + styleUrl + "',"
-                + "center:[120.0,-0.9],zoom:15.8,pitch:44,bearing:0,"
-                + "attributionControl:false,dragRotate:true,pitchWithRotate:true,"
-                + "maxPitch:60,fadeDuration:0});"
-                + "let driverMarker=null,pickupMarker=null,deliveryMarker=null;"
-                + "let displayLng=0,displayLat=0,serverLng=0,serverLat=0;"
-                + "let prevServerLng=0,prevServerLat=0,lastServerAt=0;"
-                + "let velocityLng=0,velocityLat=0,speedMps=0;"
-                + "let displayBearing=0,serverBearing=0,follow=true,vehicleType='motor';"
-                + "let routeCoords=[],routeCum=[],routeLength=0,serverProgress=-1;"
-                + "let animationStarted=false,lastFrameAt=0,lastTrimAt=0,lastTrimProgress=-999;"
-                + "function angleDelta(a,b){return ((b-a+540)%360)-180}"
-                + "function meters(a,b,c,d){const R=6371000,p1=a*Math.PI/180,p2=c*Math.PI/180;"
-                + "const dp=(c-a)*Math.PI/180,dl=(d-b)*Math.PI/180;"
-                + "const q=Math.sin(dp/2)**2+Math.cos(p1)*Math.cos(p2)*Math.sin(dl/2)**2;return 2*R*Math.atan2(Math.sqrt(q),Math.sqrt(1-q))}"
-                + "function bearing(a,b,c,d){const p1=a*Math.PI/180,p2=c*Math.PI/180,dl=(d-b)*Math.PI/180;"
-                + "return (Math.atan2(Math.sin(dl)*Math.cos(p2),Math.cos(p1)*Math.sin(p2)-Math.sin(p1)*Math.cos(p2)*Math.cos(dl))*180/Math.PI+360)%360}"
-                + "function vehicleEl(type){const e=document.createElement('div');e.className='vehicle';"
-                + "const img=document.createElement('img');img.alt=type==='car'?'mobil':'motor';img.src=type==='car'?CAR_IMG:MOTOR_IMG;e.appendChild(img);return e}"
-                + "function targetEl(){const e=document.createElement('div');e.className='target';return e}"
-                + "function ensureDriver(type){if(driverMarker&&vehicleType===type)return;vehicleType=type;"
-                + "if(driverMarker)driverMarker.remove();driverMarker=new maplibregl.Marker({element:vehicleEl(type),anchor:'center',rotationAlignment:'map'});"
-                + "if(displayLng&&displayLat)driverMarker.setLngLat([displayLng,displayLat]).addTo(map)}"
-                + "function setTarget(kind,lng,lat){if(!lng||!lat)return;let m=kind==='pickup'?pickupMarker:deliveryMarker;"
-                + "if(!m){m=new maplibregl.Marker({element:targetEl(),anchor:'center'}).setLngLat([lng,lat]).addTo(map);"
-                + "if(kind==='pickup')pickupMarker=m;else deliveryMarker=m}else m.setLngLat([lng,lat])}"
-                + "function rebuildRoute(){routeCum=[];routeLength=0;if(routeCoords.length){routeCum.push(0);"
-                + "for(let i=1;i<routeCoords.length;i++){routeLength+=meters(routeCoords[i-1][1],routeCoords[i-1][0],routeCoords[i][1],routeCoords[i][0]);routeCum.push(routeLength)}}}"
-                + "function projectRoute(lng,lat){if(routeCoords.length<2)return null;let best=null,bestD=1e12;"
-                + "const k=Math.cos(lat*Math.PI/180);for(let i=0;i<routeCoords.length-1;i++){const a=routeCoords[i],b=routeCoords[i+1];"
-                + "const ax=a[0]*k,ay=a[1],bx=b[0]*k,by=b[1],px=lng*k,py=lat;const dx=bx-ax,dy=by-ay;"
-                + "let t=((px-ax)*dx+(py-ay)*dy)/(dx*dx+dy*dy||1);t=Math.max(0,Math.min(1,t));"
-                + "const qlng=a[0]+(b[0]-a[0])*t,qlat=a[1]+(b[1]-a[1])*t,d=meters(lat,lng,qlat,qlng);"
-                + "if(d<bestD){const seg=meters(a[1],a[0],b[1],b[0]);bestD=d;best={lng:qlng,lat:qlat,progress:routeCum[i]+seg*t,bearing:bearing(a[1],a[0],b[1],b[0]),distance:d}}}"
-                + "return best}"
-                + "function pointAt(progress){if(routeCoords.length<2)return null;progress=Math.max(0,Math.min(routeLength,progress));"
-                + "let i=1;while(i<routeCum.length&&routeCum[i]<progress)i++;i=Math.min(i,routeCoords.length-1);"
-                + "const a=routeCoords[i-1],b=routeCoords[i],seg=Math.max(.01,routeCum[i]-routeCum[i-1]);const t=(progress-routeCum[i-1])/seg;"
-                + "return{lng:a[0]+(b[0]-a[0])*t,lat:a[1]+(b[1]-a[1])*t,bearing:bearing(a[1],a[0],b[1],b[0])}}"
-                + "function routeFrom(progress){if(routeCoords.length<2)return routeCoords;progress=Math.max(0,Math.min(routeLength,progress));"
-                + "let i=1;while(i<routeCum.length&&routeCum[i]<progress)i++;i=Math.min(i,routeCoords.length-1);"
-                + "const a=routeCoords[i-1],b=routeCoords[i],seg=Math.max(.01,routeCum[i]-routeCum[i-1]);const t=(progress-routeCum[i-1])/seg;"
-                + "const first=[a[0]+(b[0]-a[0])*t,a[1]+(b[1]-a[1])*t];return [first].concat(routeCoords.slice(i))}"
-                + "function trimRoute(progress,now){if(!map.getSource('route')||routeCoords.length<2)return;"
-                + "const start=Math.max(0,progress-4);if(now-lastTrimAt<80&&Math.abs(start-lastTrimProgress)<1.5)return;"
-                + "lastTrimAt=now;lastTrimProgress=start;const visible=routeFrom(start);"
-                + "map.getSource('route').setData({type:'Feature',properties:{},geometry:{type:'LineString',coordinates:visible}})}"
-                + "function updateDriver(lng,lat,bearingValue,type,speedKmh){if(!lng||!lat)return;ensureDriver(type);const now=performance.now();"
-                + "if(serverLng&&serverLat&&lastServerAt){const dt=Math.max(.25,(now-lastServerAt)/1000);velocityLng=(lng-serverLng)/dt;velocityLat=(lat-serverLat)/dt}"
-                + "prevServerLng=serverLng;prevServerLat=serverLat;serverLng=lng;serverLat=lat;lastServerAt=now;serverBearing=Number(bearingValue)||serverBearing;"
-                + "speedMps=Math.max(0,Math.min(55,(Number(speedKmh)||0)/3.6));const snap=projectRoute(lng,lat);"
-                + "if(snap&&snap.distance<55){serverLng=snap.lng;serverLat=snap.lat;serverProgress=snap.progress;serverBearing=snap.bearing}else serverProgress=-1;"
-                + "if(!displayLng||!displayLat){displayLng=serverLng;displayLat=serverLat;displayBearing=serverBearing;driverMarker.setLngLat([displayLng,displayLat]).addTo(map);"
-                + "map.jumpTo({center:[displayLng,displayLat],zoom:17.1,pitch:46,bearing:displayBearing})}startAnimation()}"
-                + "function startAnimation(){if(animationStarted)return;animationStarted=true;requestAnimationFrame(frame)}"
-                + "function frame(now){const dt=Math.min(.05,Math.max(.008,lastFrameAt?(now-lastFrameAt)/1000:.016));lastFrameAt=now;"
-                + "const age=Math.max(0,Math.min(2.6,lastServerAt?(now-lastServerAt)/1000:0));let desiredLng=serverLng,desiredLat=serverLat,desiredBearing=serverBearing;"
-                + "if(serverProgress>=0&&routeCoords.length>1){const p=pointAt(serverProgress+speedMps*age);if(p){desiredLng=p.lng;desiredLat=p.lat;desiredBearing=p.bearing}}"
-                + "else if(speedMps>.6){desiredLng=serverLng+velocityLng*age;desiredLat=serverLat+velocityLat*age}"
-                + "if(displayLng&&displayLat){const d=meters(displayLat,displayLng,desiredLat,desiredLng);let tau=d>35?.16:(speedMps>8?.30:.42);"
-                + "const alpha=1-Math.exp(-dt/tau);displayLng+=(desiredLng-displayLng)*alpha;displayLat+=(desiredLat-displayLat)*alpha;"
-                + "displayBearing=(displayBearing+angleDelta(displayBearing,desiredBearing)*(1-Math.exp(-dt/.24))+360)%360}"
-                + "if(driverMarker&&displayLng&&displayLat){driverMarker.setLngLat([displayLng,displayLat]);driverMarker.setRotation(displayBearing)}"
-                + "if(routeCoords.length>1&&displayLng&&displayLat){const liveSnap=projectRoute(displayLng,displayLat);if(liveSnap&&liveSnap.distance<65)trimRoute(liveSnap.progress,now)}"
-                + "if(follow&&displayLng&&displayLat){map.jumpTo({center:[displayLng,displayLat],bearing:displayBearing,zoom:17.1,pitch:46})}requestAnimationFrame(frame)}"
-                + "function drawRoute(points){if(!Array.isArray(points)||points.length<2)return;routeCoords=points.map(p=>[Number(p[1]),Number(p[0])]);rebuildRoute();"
-                + "const data={type:'Feature',properties:{},geometry:{type:'LineString',coordinates:routeCoords}};"
-                + "if(map.getSource('route'))map.getSource('route').setData(data);else{map.addSource('route',{type:'geojson',data:data});"
-                + "map.addLayer({id:'route-shadow',type:'line',source:'route',layout:{'line-join':'round','line-cap':'round'},paint:{'line-color':'#071426','line-width':11,'line-opacity':.58}});"
-                + "map.addLayer({id:'route',type:'line',source:'route',layout:{'line-join':'round','line-cap':'round'},paint:{'line-color':'#1476ff','line-width':7,'line-opacity':.96}})}"
-                + "lastTrimProgress=-999;if(serverLng&&serverLat){const s=projectRoute(serverLng,serverLat);if(s&&s.distance<55){serverProgress=s.progress;serverLng=s.lng;serverLat=s.lat;trimRoute(s.progress,performance.now())}}}"
-                + "map.on('dragstart',()=>follow=false);map.on('zoomstart',()=>follow=false);map.on('load',()=>{follow=true;startAnimation()});"
-                + "window.TransivaLive={updateDriver,setTarget,drawRoute,setFollow:(v)=>{follow=!!v}};"
-                + "</script></body></html>";
-    }
-
-    private String drawableDataUrl(String drawableName) {
-        try {
-            int id = getResources().getIdentifier(
-                    drawableName,
-                    "drawable",
-                    getPackageName()
-            );
-            if (id <= 0) return "";
-
-            Bitmap bitmap = BitmapFactory.decodeResource(
-                    getResources(),
-                    id
-            );
-            if (bitmap == null) return "";
-
-            ByteArrayOutputStream output =
-                    new ByteArrayOutputStream();
-            bitmap.compress(Bitmap.CompressFormat.PNG, 100, output);
-            String encoded = Base64.encodeToString(
-                    output.toByteArray(),
-                    Base64.NO_WRAP
-            );
-            output.close();
-            bitmap.recycle();
-            return "data:image/png;base64," + encoded;
-        } catch (Exception ignored) {
-            return "";
-        }
     }
 
     private void fetchStatus() {
         if (requestInFlight || orderId.isEmpty()) return;
         requestInFlight = true;
 
-        new Thread(() -> {
+        featureRuntime.execute(() -> {
             try {
                 JSONObject result = postJson(
                         STATUS_URL,
@@ -475,7 +227,7 @@ public final class CustomerLiveDriverActivity extends Activity {
                     if (loading != null) loading.setVisibility(View.GONE);
                 });
             }
-        }, "transiva-live-driver-maplibre").start();
+        });
     }
 
     private void applyStatus(JSONObject res) {
@@ -639,7 +391,7 @@ public final class CustomerLiveDriverActivity extends Activity {
         driverText.setText(
                 ("car".equals(driverType) ? "🚘 " : "🏍️ ")
                         + driverName
-                        + " • MapLibre Live"
+                        + " • Native Live"
         );
 
         statusText.setText(statusLabel());
@@ -652,29 +404,15 @@ public final class CustomerLiveDriverActivity extends Activity {
     }
 
     private void renderMap() {
-        if (!mapReady || mapWebView == null) return;
-
-        if (valid(pickupLat, pickupLng)) {
-            evaluate("window.TransivaLive&&TransivaLive.setTarget('pickup',"
-                    + pickupLng + "," + pickupLat + ");");
-        }
-
-        if (valid(deliveryLat, deliveryLng)) {
-            evaluate("window.TransivaLive&&TransivaLive.setTarget('delivery',"
-                    + deliveryLng + "," + deliveryLat + ");");
-        }
-
+        if (!mapReady || mapView == null) return;
+        if (valid(pickupLat, pickupLng)) mapView.setPickup(pickupLat, pickupLng, "Lokasi jemput");
+        if (valid(deliveryLat, deliveryLng)) mapView.setDelivery(deliveryLat, deliveryLng, "Lokasi tujuan");
         if (valid(driverLat, driverLng)) {
-            evaluate("window.TransivaLive&&TransivaLive.updateDriver("
-                    + driverLng + ","
-                    + driverLat + ","
-                    + bearing + ",'"
-                    + ("car".equals(driverType) ? "car" : "motor")
-                    + "',"
-                    + speedKmh
-                    + ");");
-
+            mapView.setTripDriver(driverLat, driverLng, bearing, "car".equals(driverType), driverName, status);
+            mapView.moveTo(driverLat, driverLng, 17f);
             requestRouteIfNeeded();
+        } else if (valid(pickupLat, pickupLng)) {
+            mapView.moveTo(pickupLat, pickupLng, 16f);
         }
     }
 
@@ -716,7 +454,7 @@ public final class CustomerLiveDriverActivity extends Activity {
         final double toLat = target[0];
         final double toLng = target[1];
 
-        new Thread(() -> {
+        featureRuntime.execute(() -> {
             try {
                 StableRouteEngine.Result result =
                         StableRouteEngine.fetch(
@@ -733,10 +471,7 @@ public final class CustomerLiveDriverActivity extends Activity {
                 lastRouteToLng = toLng;
 
                 handler.post(() -> {
-                    evaluate("window.TransivaLive&&TransivaLive.drawRoute("
-                            + result.pointsJson()
-                            + ");");
-
+                    if (mapView != null && mapReady) mapView.drawOsrmRoute(result.latLngPoints, status);
                     double km = result.distanceMeters / 1000d;
                     int min = Math.max(
                             1,
@@ -756,13 +491,9 @@ public final class CustomerLiveDriverActivity extends Activity {
             } finally {
                 routeInFlight = false;
             }
-        }, "transiva-live-route-maplibre").start();
+        });
     }
 
-    private void evaluate(String script) {
-        if (mapWebView == null || !mapReady) return;
-        mapWebView.evaluateJavascript(script, null);
-    }
 
     private void updateDistanceText() {
         double[] target = target();
@@ -836,84 +567,8 @@ public final class CustomerLiveDriverActivity extends Activity {
                 : "motor";
     }
 
-    private JSONObject postJson(
-            String urlText,
-            JSONObject payload
-    ) throws Exception {
-        HttpURLConnection connection = null;
-
-        try {
-            connection = (HttpURLConnection)
-                    new URL(urlText).openConnection();
-            CustomerApiClient.applySecurity(this, connection);
-
-            connection.setRequestMethod("POST");
-            connection.setConnectTimeout(TIMEOUT_MS);
-            connection.setReadTimeout(TIMEOUT_MS);
-            connection.setDoInput(true);
-            connection.setDoOutput(true);
-            connection.setUseCaches(false);
-            connection.setRequestProperty(
-                    "Content-Type",
-                    "application/json; charset=UTF-8"
-            );
-            connection.setRequestProperty(
-                    "Accept",
-                    "application/json"
-            );
-
-            OutputStream os = connection.getOutputStream();
-            BufferedWriter writer = new BufferedWriter(
-                    new OutputStreamWriter(
-                            os,
-                            StandardCharsets.UTF_8
-                    )
-            );
-
-            writer.write(payload.toString());
-            writer.flush();
-            writer.close();
-            os.close();
-
-            int code = connection.getResponseCode();
-
-            InputStream stream =
-                    code >= 200 && code < 400
-                            ? connection.getInputStream()
-                            : connection.getErrorStream();
-
-            String body = read(stream).trim();
-
-            return body.isEmpty()
-                    ? new JSONObject()
-                    : new JSONObject(body);
-
-        } finally {
-            if (connection != null) {
-                connection.disconnect();
-            }
-        }
-    }
-
-    private String read(InputStream stream) throws Exception {
-        if (stream == null) return "";
-
-        BufferedReader reader = new BufferedReader(
-                new InputStreamReader(
-                        stream,
-                        StandardCharsets.UTF_8
-                )
-        );
-
-        StringBuilder result = new StringBuilder();
-        String line;
-
-        while ((line = reader.readLine()) != null) {
-            result.append(line);
-        }
-
-        reader.close();
-        return result.toString();
+    private JSONObject postJson(String urlText, JSONObject payload) throws Exception {
+        return TransivaHttpRepository.postJson(this, urlText, payload, TIMEOUT_MS);
     }
 
     private double readCoord(
@@ -1155,13 +810,32 @@ public final class CustomerLiveDriverActivity extends Activity {
         );
     }
 
+    @Override protected void onStart() {
+        super.onStart();
+        if (mapView != null) mapView.onStartMap();
+    }
+
+    @Override protected void onStop() {
+        if (mapView != null) mapView.onStopMap();
+        super.onStop();
+    }
+
+    @Override public void onLowMemory() {
+        super.onLowMemory();
+        if (mapView != null) mapView.onLowMemoryMap();
+    }
+
+    @Override protected void onSaveInstanceState(Bundle outState) {
+        if (mapView != null) mapView.onSaveInstanceStateMap(outState);
+        super.onSaveInstanceState(outState);
+    }
+
     @Override protected void onResume() {
         super.onResume();
         CustomerAppSettings.apply(this);
 
-        if (mapWebView != null) {
-            mapWebView.onResume();
-        }
+        featureRuntime.onResume();
+        if (mapView != null) mapView.onResumeMap();
 
         handler.removeCallbacks(pollTask);
 
@@ -1173,9 +847,8 @@ public final class CustomerLiveDriverActivity extends Activity {
     @Override protected void onPause() {
         handler.removeCallbacks(pollTask);
 
-        if (mapWebView != null) {
-            mapWebView.onPause();
-        }
+        featureRuntime.onPause();
+        if (mapView != null) mapView.onPauseMap();
 
         super.onPause();
     }
@@ -1183,13 +856,10 @@ public final class CustomerLiveDriverActivity extends Activity {
     @Override protected void onDestroy() {
         handler.removeCallbacksAndMessages(null);
 
-        if (mapWebView != null) {
-            mapWebView.stopLoading();
-            mapWebView.loadUrl("about:blank");
-            mapWebView.clearHistory();
-            mapWebView.removeAllViews();
-            mapWebView.destroy();
-            mapWebView = null;
+        featureRuntime.destroy();
+        if (mapView != null) {
+            mapView.onDestroyMap();
+            mapView = null;
         }
 
         super.onDestroy();

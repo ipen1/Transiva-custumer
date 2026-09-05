@@ -138,7 +138,7 @@ public final class CustomerRedispatchService extends Service {
                 requestRunning.set(false);
                 if (conn != null) conn.disconnect();
             }
-        }, "customer-redispatch").start();
+        });
     }
 
     private boolean isTerminalOrAccepted(String s) {

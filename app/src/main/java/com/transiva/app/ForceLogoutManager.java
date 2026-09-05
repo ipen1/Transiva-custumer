@@ -33,6 +33,7 @@ public final class ForceLogoutManager {
         if (code == null) return false;
         String c = code.trim().toUpperCase();
         return c.equals("SESSION_REVOKED")
+                || c.equals("SESSION_REPLACED")
                 || c.equals("DEVICE_RESET")
                 || c.equals("DEVICE_BANNED")
                 || c.equals("DEVICE_MISMATCH")

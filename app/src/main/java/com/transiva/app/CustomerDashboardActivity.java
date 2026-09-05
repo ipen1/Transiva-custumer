@@ -2062,8 +2062,16 @@ public class CustomerDashboardActivity extends Activity
                             () -> {
                                 currentLocation = finalResult;
                                 locationText.setText(finalResult);
-                                TransivaCluster.Item cluster = TransivaCluster.nearest(location.getLatitude(), location.getLongitude());
-                                if (clusterText != null) clusterText.setText("Cluster " + cluster.id + " • " + cluster.name);
+                                if (clusterText != null) clusterText.setText("Cluster: sinkronisasi...");
+                                networkScope.newThread(() -> {
+                                    RegionalClusterResolver.Result area = RegionalClusterResolver.resolve(CustomerDashboardActivity.this, location.getLatitude(), location.getLongitude());
+                                    networkScope.post(uiHandler, () -> {
+                                        if (clusterText != null) {
+                                            String prefix = area.regionalName == null || area.regionalName.isEmpty() ? "" : area.regionalName + " • ";
+                                            clusterText.setText(prefix + "Cluster " + area.clusterId + " • " + area.clusterName);
+                                        }
+                                    });
+                                }).start();
                                 refreshSmartRecommendation();
                             }
                     );

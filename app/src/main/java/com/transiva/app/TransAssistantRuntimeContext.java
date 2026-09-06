@@ -16,13 +16,14 @@ public final class TransAssistantRuntimeContext {
     public final String activeOrderId;
     public final String activeOrderStatus;
     public final String activeService;
+    public final String balance;
 
     private TransAssistantRuntimeContext(boolean online, boolean locationEnabled, boolean overlayAllowed,
                                          boolean hasActiveOrder, String activeOrderId, String activeOrderStatus,
-                                         String activeService) {
+                                         String activeService, String balance) {
         this.online=online; this.locationEnabled=locationEnabled; this.overlayAllowed=overlayAllowed;
         this.hasActiveOrder=hasActiveOrder; this.activeOrderId=activeOrderId;
-        this.activeOrderStatus=activeOrderStatus; this.activeService=activeService;
+        this.activeOrderStatus=activeOrderStatus; this.activeService=activeService; this.balance=safe(balance);
     }
 
     public static TransAssistantRuntimeContext read(Context c) {
@@ -44,7 +45,9 @@ public final class TransAssistantRuntimeContext {
             UnifiedLiveOrderCenter.Order order=UnifiedLiveOrderCenter.primary(orders);
             if(order!=null){ active=true; id=order.id; status=order.status; service=order.title(); }
         } catch(Throwable ignored) { }
-        return new TransAssistantRuntimeContext(online,gps,overlay,active,id,status,service);
+        String balance="0";
+        try { balance=new SessionManager(c).getBalance(); } catch(Throwable ignored) { }
+        return new TransAssistantRuntimeContext(online,gps,overlay,active,id,status,service,balance);
     }
 
     private static String safe(String s){ return s==null?"":s.trim(); }

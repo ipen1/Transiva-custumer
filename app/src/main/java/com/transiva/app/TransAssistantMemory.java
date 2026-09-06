@@ -11,7 +11,7 @@ import java.util.List;
 public final class TransAssistantMemory {
     private static final String PREF="trans_assistant_memory";
     private static final String KEY="turns";
-    private static final int MAX_TURNS=8;
+    private static final int MAX_TURNS=12;
     private TransAssistantMemory(){}
 
     public static void add(Context c,String role,String text,String intent){

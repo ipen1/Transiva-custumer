@@ -37,7 +37,7 @@ public final class AppUpdateClient {
                         + "&installed_version_code=" + installedVersionCode(app)
                         + "&_=" + System.currentTimeMillis();
 
-                connection = (HttpURLConnection) new URL(requestUrl).openConnection();
+                connection = (HttpURLConnection) CustomerApiClient.open(context, requestUrl);
                 connection.setRequestMethod("GET");
                 connection.setConnectTimeout(12000);
                 connection.setReadTimeout(12000);

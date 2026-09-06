@@ -419,7 +419,7 @@ public class RegisterActivity extends Activity {
         HttpURLConnection conn = null;
         try {
             URL url = new URL(urlText);
-            conn = (HttpURLConnection) url.openConnection();
+            conn = (HttpURLConnection) CustomerApiClient.open(this, url.toString());
             conn.setRequestMethod("POST");
             conn.setConnectTimeout(TIMEOUT_MS);
             conn.setReadTimeout(TIMEOUT_MS);

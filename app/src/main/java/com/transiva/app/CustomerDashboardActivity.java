@@ -166,6 +166,7 @@ public class CustomerDashboardActivity extends Activity
                 );
 
         setContentView(buildScreen());
+        CustomerResponsiveUi.apply(this);
         CustomerAppSettings.apply(this);
 
         presenter.load(username, userId);

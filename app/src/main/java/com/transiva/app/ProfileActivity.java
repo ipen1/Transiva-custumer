@@ -140,6 +140,7 @@ public class ProfileActivity extends Activity {
 
         readSession();
         setContentView(buildScreen());
+        CustomerResponsiveUi.apply(this);
         CustomerAppSettings.apply(this);
         loadProfile();
         loadLoyalty();
@@ -1049,7 +1050,7 @@ public class ProfileActivity extends Activity {
         deviceLoading = true;
         updateDeviceButton(false, "Memeriksa...");
 
-        featureRuntime.newThread(() -> {
+        featureRuntime.execute(() -> {
             HttpURLConnection connection = null;
             try {
                 connection = CustomerApiClient.open(this, DEVICE_URL);
@@ -1094,7 +1095,7 @@ public class ProfileActivity extends Activity {
             } finally {
                 if (connection != null) connection.disconnect();
             }
-        }).start();
+        });
     }
 
     private void applyDeviceInfo(JSONObject device) {
@@ -1181,7 +1182,7 @@ public class ProfileActivity extends Activity {
         deviceLoading = true;
         updateDeviceButton(false, "Memutuskan...");
 
-        featureRuntime.newThread(() -> {
+        featureRuntime.execute(() -> {
             HttpURLConnection connection = null;
             try {
                 connection = CustomerApiClient.open(this, DEVICE_URL);
@@ -1252,7 +1253,7 @@ public class ProfileActivity extends Activity {
             } finally {
                 if (connection != null) connection.disconnect();
             }
-        }).start();
+        });
     }
 
     private void requestCurrentLocation() {
@@ -1303,7 +1304,7 @@ public class ProfileActivity extends Activity {
     private void resolveAddress(
             Location location
     ) {
-        featureRuntime.newThread(() -> {
+        featureRuntime.execute(() -> {
             String addressText = "";
 
             try {
@@ -1375,7 +1376,7 @@ public class ProfileActivity extends Activity {
                         "Alamat berhasil diisi dari lokasi"
                 );
             });
-        }).start();
+        });
     }
 
     @Override
@@ -1453,7 +1454,7 @@ public class ProfileActivity extends Activity {
 
         setLoading(true);
 
-        featureRuntime.newThread(() -> {
+        featureRuntime.execute(() -> {
             try {
                 byte[] image =
                         ProfileImageProcessor.createSquareWebp(getContentResolver(), uri);
@@ -1491,7 +1492,7 @@ public class ProfileActivity extends Activity {
                     );
                 });
             }
-        }).start();
+        });
     }
 
 
@@ -1506,7 +1507,7 @@ public class ProfileActivity extends Activity {
 
         setLoading(true);
 
-        featureRuntime.newThread(() -> {
+        featureRuntime.execute(() -> {
             HttpURLConnection connection = null;
 
             try {
@@ -1594,7 +1595,7 @@ public class ProfileActivity extends Activity {
                     connection.disconnect();
                 }
             }
-        }).start();
+        });
     }
 
     private void applyUser(
@@ -1708,7 +1709,7 @@ public class ProfileActivity extends Activity {
         String fixed =
                 absoluteUrl(rawUrl);
 
-        featureRuntime.newThread(() -> {
+        featureRuntime.execute(() -> {
             HttpURLConnection connection = null;
 
             try {
@@ -1744,7 +1745,7 @@ public class ProfileActivity extends Activity {
                     connection.disconnect();
                 }
             }
-        }).start();
+        });
     }
 
     private void loadLoyalty() {
@@ -1754,7 +1755,7 @@ public class ProfileActivity extends Activity {
         if (token.isEmpty()) return;
 
         loyaltyLoading = true;
-        featureRuntime.newThread(() -> {
+        featureRuntime.execute(() -> {
             HttpURLConnection connection = null;
             try {
                 connection = CustomerApiClient.open(this, LOYALTY_URL + "?_=" + System.currentTimeMillis());
@@ -1799,7 +1800,7 @@ public class ProfileActivity extends Activity {
             } finally {
                 if (connection != null) connection.disconnect();
             }
-        }).start();
+        });
     }
 
     private void applyLoyaltyBadge(String tier, int points) {
@@ -1907,7 +1908,7 @@ public class ProfileActivity extends Activity {
 
         setLoading(true);
 
-        featureRuntime.newThread(() -> {
+        featureRuntime.execute(() -> {
             HttpURLConnection connection = null;
 
             try {
@@ -2125,7 +2126,7 @@ public class ProfileActivity extends Activity {
                     connection.disconnect();
                 }
             }
-        }).start();
+        });
     }
 
     private boolean isValidDeliveryCoordinate(double lat, double lng) {

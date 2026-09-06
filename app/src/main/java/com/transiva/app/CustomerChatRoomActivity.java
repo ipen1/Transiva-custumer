@@ -90,6 +90,7 @@ public class CustomerChatRoomActivity extends Activity {
 
     private final Handler mainHandler =
             new Handler(Looper.getMainLooper());
+    private CustomerChatStabilityController chatStability;
     private final CustomerFeatureRuntimeController featureRuntime = new CustomerFeatureRuntimeController(CustomerRealtimeCoordinator.Role.CHAT);
 
     private LinearLayout messagesBox;
@@ -155,6 +156,8 @@ public class CustomerChatRoomActivity extends Activity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        chatStability = new CustomerChatStabilityController(this, mainHandler);
+        chatStability.onCreate();
 
         getWindow().setStatusBarColor(
                 Color.parseColor("#0B7CFF")
@@ -166,6 +169,7 @@ public class CustomerChatRoomActivity extends Activity {
 
         readIntent();
         setContentView(buildScreen());
+        CustomerResponsiveUi.apply(this);
         CustomerAppSettings.apply(this);
 
         CustomerChatNotificationPoller.requestPermission(
@@ -2398,6 +2402,7 @@ public class CustomerChatRoomActivity extends Activity {
     @Override
     protected void onResume() {
         super.onResume();
+        if (chatStability != null) chatStability.onResume();
         featureRuntime.onResume();
         chatVisible = true;
         readVisibilityGeneration++;
@@ -2418,6 +2423,7 @@ public class CustomerChatRoomActivity extends Activity {
 
     @Override
     protected void onPause() {
+        if (chatStability != null) chatStability.onPause();
         chatVisible = false;
         readVisibilityGeneration++;
         focusedSinceElapsedMs = 0L;
@@ -2431,6 +2437,7 @@ public class CustomerChatRoomActivity extends Activity {
 
     @Override
     protected void onDestroy() {
+        if (chatStability != null) chatStability.destroy();
         featureRuntime.destroy();
         ChatVoiceNote.release(this);
         destroyed = true;

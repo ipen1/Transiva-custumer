@@ -46,11 +46,11 @@ public final class CustomerResourceUpdateManager {
         long age = System.currentTimeMillis() - sp.getLong(K_LAST_CHECK, 0L);
         if (age >= 0 && age < CHECK_INTERVAL_MS) return;
         if (!RUNNING.compareAndSet(false, true)) return;
-        new Thread(() -> {
+        TransivaNetworkExecutor.execute(() -> {
             try { checkAndInstall(app); }
             catch (Throwable ignored) { }
             finally { RUNNING.set(false); }
-        }, "customer-resource-update").start();
+        });
     }
 
     public static int installedVersion(Context context) {
@@ -86,7 +86,7 @@ public final class CustomerResourceUpdateManager {
             String u = ENDPOINT + "?resource_version=" + current
                     + "&app_version_code=" + appVersion
                     + "&_=" + System.currentTimeMillis();
-            c = (HttpURLConnection) new URL(u).openConnection();
+            c = (HttpURLConnection) CustomerApiClient.open(app, u);
             c.setConnectTimeout(12000);
             c.setReadTimeout(12000);
             c.setUseCaches(false);
@@ -148,7 +148,7 @@ public final class CustomerResourceUpdateManager {
     private static void download(String url, File out, long expectedSize) throws Exception {
         HttpURLConnection c = null;
         try {
-            c = (HttpURLConnection) new URL(url).openConnection();
+            c = (HttpURLConnection) CustomerApiClient.open(app, url);
             c.setConnectTimeout(15000); c.setReadTimeout(30000); c.setUseCaches(false);
             if (c.getResponseCode() < 200 || c.getResponseCode() >= 300) throw new Exception("download");
             long declared = c.getContentLengthLong();

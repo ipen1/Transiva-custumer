@@ -122,6 +122,7 @@ public class CustomerHistoryActivity extends Activity {
 
         loadSession();
         setContentView(buildScreen());
+        CustomerResponsiveUi.apply(this);
         CustomerAppSettings.apply(this);
         loadHistory();
     }

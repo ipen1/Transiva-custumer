@@ -106,6 +106,7 @@ public class CustomerBalanceHistoryActivity
 
         readSession();
         setContentView(buildScreen());
+        CustomerResponsiveUi.apply(this);
         CustomerAppSettings.apply(this);
         loadWallet();
     }
@@ -1020,7 +1021,7 @@ public class CustomerBalanceHistoryActivity
         loadingData = true;
         setLoading(true);
 
-        featureRuntime.newThread(() -> {
+        featureRuntime.execute(() -> {
             try {
                 JSONObject request =
                         new JSONObject();
@@ -1140,7 +1141,7 @@ public class CustomerBalanceHistoryActivity
                     );
                 });
             }
-        }).start();
+        });
     }
 
     private void renderTransactions() {
@@ -1639,7 +1640,7 @@ public class CustomerBalanceHistoryActivity
     ) {
         setLoading(true);
 
-        featureRuntime.newThread(() -> {
+        featureRuntime.execute(() -> {
             try {
                 JSONObject request =
                         new JSONObject();
@@ -1717,7 +1718,7 @@ public class CustomerBalanceHistoryActivity
                     );
                 });
             }
-        }).start();
+        });
     }
 
     private void showTransferConfirmation(
@@ -1857,7 +1858,7 @@ public class CustomerBalanceHistoryActivity
 
         setLoading(true);
 
-        featureRuntime.newThread(() -> {
+        featureRuntime.execute(() -> {
             try {
                 JSONObject request =
                         new JSONObject();
@@ -1972,7 +1973,7 @@ public class CustomerBalanceHistoryActivity
                     );
                 });
             }
-        }).start();
+        });
     }
 
     private void installRupiahFormatting(
@@ -2208,7 +2209,7 @@ public class CustomerBalanceHistoryActivity
     ) {
         setLoading(true);
 
-        featureRuntime.newThread(() -> {
+        featureRuntime.execute(() -> {
             try {
                 JSONObject request =
                         new JSONObject();
@@ -2297,7 +2298,7 @@ public class CustomerBalanceHistoryActivity
                     );
                 });
             }
-        }).start();
+        });
     }
 
     private JSONObject postJson(

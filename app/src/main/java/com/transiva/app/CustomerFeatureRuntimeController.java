@@ -21,6 +21,10 @@ public final class CustomerFeatureRuntimeController {
     public Thread newThread(Runnable task) { return networkScope.newThread(task); }
     public Thread newThread(Runnable task, String name) { return networkScope.newThread(task, name); }
     public boolean post(Handler handler, Runnable task) { return networkScope.post(handler, task); }
+    public boolean postDelayed(Handler handler, Runnable task, long delayMs) {
+        if (handler == null || task == null || networkScope.isDestroyed()) return false;
+        return handler.postDelayed(() -> { if (!networkScope.isDestroyed()) task.run(); }, Math.max(0L, delayMs));
+    }
     public boolean isDestroyed() { return networkScope.isDestroyed(); }
     public void destroy() {
         CustomerRealtimeCoordinator.leave(role);

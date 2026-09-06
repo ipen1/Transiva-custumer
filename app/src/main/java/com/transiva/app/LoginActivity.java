@@ -390,7 +390,7 @@ public class LoginActivity extends Activity {
 
         try {
             connection = (HttpURLConnection)
-                    new URL(LOGIN_URL).openConnection();
+                    CustomerApiClient.open(this, LOGIN_URL);
 
             connection.setRequestMethod("POST");
             connection.setConnectTimeout(TIMEOUT_MS);
@@ -657,7 +657,7 @@ public class LoginActivity extends Activity {
 
             try {
                 connection = (HttpURLConnection)
-                        new URL(SAVE_FCM_URL).openConnection();
+                        CustomerApiClient.open(this, SAVE_FCM_URL);
                 CustomerApiClient.applySecurity(this, connection);
 
                 connection.setRequestMethod("POST");

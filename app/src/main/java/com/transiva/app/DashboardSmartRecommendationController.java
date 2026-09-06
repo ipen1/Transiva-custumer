@@ -2,11 +2,14 @@ package com.transiva.app;
 
 import android.app.Activity;
 import android.content.Intent;
+import android.animation.ValueAnimator;
 import android.os.Handler;
 import android.view.Gravity;
 import android.view.View;
 import android.widget.LinearLayout;
 import android.widget.TextView;
+
+import com.airbnb.lottie.LottieAnimationView;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -41,6 +44,7 @@ public final class DashboardSmartRecommendationController {
     private TextView titleText;
     private TextView messageText;
     private TextView actionText;
+    private LottieAnimationView mascot;
     private Runnable action;
     private JSONObject homeFavorite;
     private JSONObject workFavorite;
@@ -59,48 +63,85 @@ public final class DashboardSmartRecommendationController {
 
     public void attach(LinearLayout content) {
         if (content == null || card != null) return;
+
+        // Dashboard Trans Asisten 2.0: mascot-first entry point, not a generic AI card.
         card = new LinearLayout(activity);
         card.setOrientation(LinearLayout.HORIZONTAL);
         card.setGravity(Gravity.CENTER_VERTICAL);
-        card.setPadding(dp(13), dp(12), dp(12), dp(12));
-        card.setBackground(Shape.roundStroke("#FFFFFF", "#D9E9FF", dp(19), 1));
-        card.setElevation(dp(2));
+        card.setPadding(dp(8), dp(8), dp(10), dp(8));
+        card.setBackground(Shape.gradient("#061A39", "#0878F9", dp(22)));
+        card.setElevation(dp(4));
 
-        LinearLayout.LayoutParams cardLp = new LinearLayout.LayoutParams(-1, -2);
+        LinearLayout.LayoutParams cardLp = new LinearLayout.LayoutParams(-1, dp(112));
         cardLp.setMargins(0, 0, 0, dp(13));
         content.addView(card, cardLp);
 
-        TextView icon = text("✦", 23, "#0B7CFF", true);
-        icon.setGravity(Gravity.CENTER);
-        icon.setBackground(Shape.round("#EAF4FF", dp(18)));
-        card.addView(icon, new LinearLayout.LayoutParams(dp(48), dp(48)));
+        mascot = new LottieAnimationView(activity);
+        mascot.setAnimation("trans_assistant_premium.json");
+        mascot.setImageAssetsFolder("images/");
+        mascot.setRenderMode(com.airbnb.lottie.RenderMode.HARDWARE);
+        mascot.setMinAndMaxFrame(0, 59);
+        mascot.setRepeatCount(ValueAnimator.INFINITE);
+        mascot.setContentDescription("Buka Trans Asisten 2.0");
+        mascot.playAnimation();
+        LinearLayout.LayoutParams mascotLp = new LinearLayout.LayoutParams(dp(94), dp(94));
+        mascotLp.setMargins(0, 0, dp(5), 0);
+        card.addView(mascot, mascotLp);
 
         LinearLayout copy = new LinearLayout(activity);
         copy.setOrientation(LinearLayout.VERTICAL);
-        LinearLayout.LayoutParams copyLp = new LinearLayout.LayoutParams(0, -2, 1);
-        copyLp.setMargins(dp(11), 0, dp(8), 0);
+        copy.setGravity(Gravity.CENTER_VERTICAL);
+        LinearLayout.LayoutParams copyLp = new LinearLayout.LayoutParams(0, -1, 1);
+        copyLp.setMargins(dp(3), 0, 0, 0);
         card.addView(copy, copyLp);
 
-        titleText = text("Trans Asisten", 12, "#0B3A78", true);
-        copy.addView(titleText);
-        messageText = text("Menyiapkan rekomendasi terbaik untuk Anda...", 11, "#64748B", false);
+        TextView badge = text("TRANS ASISTEN 2.0  •  AKTIF", 9, "#9CEEFF", true);
+        badge.setLetterSpacing(.08f);
+        copy.addView(badge);
+
+        titleText = text("Mau kirim barang?", 15, "#FFFFFF", true);
+        titleText.setMaxLines(1);
+        LinearLayout.LayoutParams titleLp = new LinearLayout.LayoutParams(-1, -2);
+        titleLp.setMargins(0, dp(3), 0, 0);
+        copy.addView(titleText, titleLp);
+
+        messageText = text("Tanya saya apa saja — pesan, perjalanan, makanan, lokasi, dan pesanan.", 10, "#D8EDFF", false);
         messageText.setMaxLines(2);
         LinearLayout.LayoutParams messageLp = new LinearLayout.LayoutParams(-1, -2);
-        messageLp.setMargins(0, dp(3), 0, 0);
+        messageLp.setMargins(0, dp(2), 0, dp(5));
         copy.addView(messageText, messageLp);
 
-        actionText = text("Lihat ›", 10, "#FFFFFF", true);
+        actionText = text("Tanya Asisten  ›", 10, "#075EF4", true);
         actionText.setGravity(Gravity.CENTER);
-        actionText.setPadding(dp(10), dp(8), dp(10), dp(8));
-        actionText.setBackground(Shape.round("#0B7CFF", dp(13)));
-        card.addView(actionText, new LinearLayout.LayoutParams(-2, -2));
+        actionText.setPadding(dp(10), dp(6), dp(10), dp(6));
+        actionText.setBackground(Shape.round("#FFFFFF", dp(13)));
+        copy.addView(actionText, new LinearLayout.LayoutParams(-2, -2));
 
-        View.OnClickListener listener = v -> { if (action != null) action.run(); };
-        card.setOnClickListener(listener);
-        actionText.setOnClickListener(listener);
+        View.OnClickListener openAssistant = v -> openAssistant(currentPrompt());
+        card.setOnClickListener(openAssistant);
+        mascot.setOnClickListener(openAssistant);
+        actionText.setOnClickListener(openAssistant);
+
         refresh();
         loadFavorites();
         loadFamilyMeta();
+    }
+
+    private void openAssistant(String prompt) {
+        Intent i = new Intent(activity, TransAssistantActivity.class);
+        i.putExtra("ai_prompt", prompt == null ? "" : prompt);
+        activity.startActivity(i);
+    }
+
+    private String currentPrompt() {
+        CharSequence t = titleText == null ? "" : titleText.getText();
+        String value = t == null ? "" : t.toString();
+        if (value.contains("makan") || value.contains("lapar")) return "Saya lapar";
+        if (value.contains("Pulang") || value.contains("pulang")) return "Pulang kantor";
+        if (value.contains("Kirim") || value.contains("kirim")) return "Mau kirim barang";
+        if (value.contains("pesanan") || value.contains("Pesanan")) return "Cek pesanan";
+        if (value.contains("mobil") || value.contains("Mobil")) return "Cari mobil";
+        return "";
     }
 
     public void refresh() {
@@ -180,10 +221,20 @@ public final class DashboardSmartRecommendationController {
             }
         }
 
-        titleText.setText(title);
-        messageText.setText(message);
-        actionText.setText(button);
-        action = nextAction;
+        // Keep the smart context, but present it as speech beside the animated robot.
+        String assistantTitle = title;
+        if (host.hasActiveOrder()) assistantTitle = "Mau cek pesanan?";
+        else if (hour >= 5 && hour < 11) assistantTitle = "Mau berangkat kerja?";
+        else if (hour >= 10 && hour < 14) assistantTitle = "Lapar? Cari makanan?";
+        else if (hour >= 16 && hour < 22) assistantTitle = "Mau pulang kantor?";
+        else if (weekend && hour >= 8 && hour < 18) assistantTitle = "Mau kirim barang?";
+        else if (hour >= 21 || hour < 5) assistantTitle = "Butuh mobil malam ini?";
+        else assistantTitle = "Mau kirim barang?";
+
+        titleText.setText(assistantTitle);
+        messageText.setText("Tanya saya: “mau kirim barang”, “pulang kantor”, “lapar”, atau kebutuhan lainnya.");
+        actionText.setText("Tanya Asisten  ›");
+        action = nextAction; // retained for compatibility with existing smart recommendation state.
         card.setAlpha(0f);
         card.animate().alpha(1f).setDuration(280L).start();
     }

@@ -47,6 +47,17 @@ public class TransAssistantActivity extends Activity {
         setContentView(build());
         setState("IDLE", 0, 59, true);
         addBot("Halo! Saya Trans Asisten 2.0. Ceritakan kebutuhan Anda—misalnya mau pesan barang, pulang kantor, lapar, cari tempat, atau cek pesanan.", "", "");
+
+        // Dashboard can hand a suggested phrase directly to the assistant.
+        String dashboardPrompt = getIntent() == null ? "" : getIntent().getStringExtra("ai_prompt");
+        if (dashboardPrompt != null && !dashboardPrompt.trim().isEmpty()) {
+            final String p = dashboardPrompt.trim();
+            handler.postDelayed(() -> {
+                if (isFinishing() || isDestroyed() || input == null) return;
+                input.setText(p);
+                input.setSelection(input.length());
+            }, 180L);
+        }
     }
 
     @Override protected void onDestroy() {

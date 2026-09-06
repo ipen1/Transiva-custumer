@@ -10,7 +10,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 
 /** Versioned knowledge sync. Cache is used instantly; refresh is throttled and lifecycle-independent. */
 public final class TransAssistantSync {
-    private static final long TTL=6L*60L*60L*1000L;
+    private static final long TTL=2L*60L*1000L;
     private static final AtomicBoolean RUNNING=new AtomicBoolean(false);
     private TransAssistantSync(){}
 

@@ -77,7 +77,7 @@ public final class TransAssistantEngine {
         if(hasAny(q,"lapar","mau makan","ingin makan","cari makanan"))return r("Sepertinya Anda ingin makanan. Buka TransFood untuk memilih merchant dan menu yang tersedia.","OPEN_FOOD","Cari makanan","ORDER_FOOD",.90,false);
         if(hasAny(q,"pulang kantor","mau pulang","ke kantor","berangkat kerja","butuh kendaraan","pesan ojek"))return r("Untuk perjalanan motor, gunakan TransRide. Tentukan titik jemput dan tujuan, lalu cek estimasi sebelum memesan.","OPEN_RIDE","Buka TransRide","ORDER_RIDE",.90,false);
         if(hasAny(q,"kirim barang","antar paket","kirim paket","ambil barang"))return r("Gunakan TransPickup untuk mengambil atau mengirim barang. Isi lokasi pengambilan, tujuan, dan detail barang.","OPEN_PICKUP","Kirim barang","PICKUP",.90,false);
-        if(hasAny(q,"pesan barang","belanja barang","titip belanja"))return r("Untuk membeli barang gunakan TransShop. Jika barang sudah ada dan hanya perlu dikirim, gunakan TransPickup.","OPEN_SHOP","Buka TransShop","ORDER_SHOP",.88,false);
+        if(hasAny(q,"pesan barang","belanja barang","titip belanja","beli obat","pesan obat","butuh obat","apotek"))return r("Untuk membeli kebutuhan atau obat dari toko/apotek yang tersedia, gunakan TransShop. Pilih barang atau toko, isi tujuan, lalu konfirmasi pesanan.","OPEN_SHOP","Buka TransShop","ORDER_SHOP",.90,false);
         return null;
     }
 

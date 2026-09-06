@@ -47,7 +47,7 @@ public class TransAssistantActivity extends Activity {
         w.setStatusBarColor(dark ? Color.rgb(4,13,25) : NAVY);
         w.setNavigationBarColor(dark ? Color.rgb(5,16,29) : Color.WHITE);
         engine = new TransAssistantEngine(this);
-        TransAssistantSync.sync(this);
+        TransAssistantSync.sync(this,true);
         setContentView(build());
         setState("IDLE", 0, 59, true);
         addBot("Halo! Saya Trans Asisten 3.0. Saya memahami bahasa sehari-hari, konteks percakapan, dan pertanyaan dari pengetahuan admin. Ceritakan kebutuhan Anda.", "", "", 1.0, false);

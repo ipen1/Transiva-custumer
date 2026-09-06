@@ -15,6 +15,7 @@ import android.view.WindowManager;
 import android.view.inputmethod.EditorInfo;
 import android.widget.EditText;
 import android.widget.HorizontalScrollView;
+import android.widget.FrameLayout;
 import android.widget.ImageButton;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
@@ -34,6 +35,7 @@ public class TransAssistantActivity extends Activity {
     private TransAssistantEngine engine;
     private LottieAnimationView mascot;
     private TextView stateText;
+    private TextView robotMode;
     private final Handler handler = new Handler(Looper.getMainLooper());
 
     @Override protected void onCreate(Bundle b) {
@@ -93,12 +95,19 @@ public class TransAssistantActivity extends Activity {
         bar.addView(local);
         hero.addView(bar, new LinearLayout.LayoutParams(-1, -2));
 
+        FrameLayout mascotStage = new FrameLayout(this);
         mascot = new LottieAnimationView(this);
         mascot.setAnimation("trans_assistant_premium.json");
         mascot.setImageAssetsFolder("images/");
         mascot.setRenderMode(com.airbnb.lottie.RenderMode.HARDWARE);
-        mascot.setContentDescription("Robot Trans Asisten bergerak");
-        hero.addView(mascot, new LinearLayout.LayoutParams(-1, dp(205)));
+        mascot.setContentDescription("Robot Trans Asisten bergerak dan berubah mode");
+        mascotStage.addView(mascot, new FrameLayout.LayoutParams(-1, dp(205)));
+        robotMode = text("👋  SIAP", 10, "#FFFFFF", true);
+        robotMode.setGravity(Gravity.CENTER); robotMode.setPadding(dp(10),dp(6),dp(10),dp(6));
+        robotMode.setBackground(round("#3320D8FF","#7BEAFF",18,1));
+        FrameLayout.LayoutParams rmp = new FrameLayout.LayoutParams(-2,-2,Gravity.BOTTOM|Gravity.RIGHT); rmp.setMargins(0,0,dp(8),dp(8));
+        mascotStage.addView(robotMode,rmp);
+        hero.addView(mascotStage, new LinearLayout.LayoutParams(-1, dp(205)));
 
         stateText = text("SIAP MEMBANTU", 11, "#D8F7FF", true);
         stateText.setGravity(Gravity.CENTER);
@@ -143,6 +152,7 @@ public class TransAssistantActivity extends Activity {
         input.setPadding(dp(14), dp(10), dp(14), dp(10));
         input.setBackground(round("#F3F8FF", "#CFE3F8", 22, 1));
         input.setSingleLine(false); input.setMaxLines(3); input.setImeOptions(EditorInfo.IME_ACTION_SEND);
+        input.setOnFocusChangeListener((v,focused)->{ if(focused && input.getText().length()==0) setState("MENDENGARKAN",60,119,true); else if(!focused) setState("SIAP MEMBANTU",0,59,true); });
         input.setOnEditorActionListener((v, action, e) -> { if (action == EditorInfo.IME_ACTION_SEND) { send(); return true; } return false; });
         composerWrap.addView(input, new LinearLayout.LayoutParams(0, -2, 1));
 
@@ -167,17 +177,30 @@ public class TransAssistantActivity extends Activity {
             TransAssistantEngine.Reply r = engine.answer(q);
             setState("MENJAWAB", 180, 239, true);
             addBot(r.text, r.action, r.actionLabel);
-            handler.postDelayed(() -> { if (!isFinishing() && !isDestroyed()) setState("SIAP MEMBANTU", 0, 59, true); }, 1200);
+            handler.postDelayed(() -> { if (!isFinishing() && !isDestroyed()) setState("SELESAI", 240, 299, false); }, 520);
+            handler.postDelayed(() -> { if (!isFinishing() && !isDestroyed()) setState("SIAP MEMBANTU", 0, 59, true); }, 1450);
         }, 420);
     }
 
     private void setState(String label, int min, int max, boolean loop) {
         if (stateText != null) stateText.setText(label);
+        if (robotMode != null) {
+            String mode = "👋  SIAP"; String fill="#3320D8FF";
+            if(label.contains("MENDENGAR")){mode="🎧  MENDENGAR";fill="#334BE6FF";}
+            else if(label.contains("MEMIKIRKAN")){mode="•••  BERPIKIR";fill="#335B6CFF";}
+            else if(label.contains("MENJAWAB")){mode="▂▄▆  BICARA";fill="#3337D67A";}
+            else if(label.contains("SELESAI")){mode="✓  SELESAI";fill="#3334C759";}
+            robotMode.setText(mode); robotMode.setBackground(round(fill,"#7BEAFF",18,1));
+        }
         if (mascot == null) return;
-        mascot.cancelAnimation();
-        mascot.setMinAndMaxFrame(min, max);
-        mascot.setRepeatCount(loop ? ValueAnimator.INFINITE : 0);
-        mascot.playAnimation();
+        mascot.animate().cancel();
+        float scale=1f,rot=0f,tx=0f;
+        if(label.contains("MENDENGAR")){scale=1.035f;rot=-1.5f;}
+        else if(label.contains("MEMIKIRKAN")){scale=1.07f;rot=2.5f;}
+        else if(label.contains("MENJAWAB")){scale=1.04f;tx=dp(3);}
+        else if(label.contains("SELESAI")){scale=1.09f;rot=-2f;}
+        mascot.animate().scaleX(scale).scaleY(scale).rotation(rot).translationX(tx).setDuration(220).start();
+        mascot.cancelAnimation(); mascot.setMinAndMaxFrame(min,max); mascot.setRepeatCount(loop?ValueAnimator.INFINITE:0); mascot.playAnimation();
     }
 
     private void addUser(String s) {

@@ -81,7 +81,7 @@ public final class DashboardSmartRecommendationController {
         copyLp.setMargins(dp(11), 0, dp(8), 0);
         card.addView(copy, copyLp);
 
-        titleText = text("Transiva AI", 12, "#0B3A78", true);
+        titleText = text("Trans Asisten", 12, "#0B3A78", true);
         copy.addView(titleText);
         messageText = text("Menyiapkan rekomendasi terbaik untuk Anda...", 11, "#64748B", false);
         messageText.setMaxLines(2);
@@ -121,17 +121,17 @@ public final class DashboardSmartRecommendationController {
             button = "Pantau ›";
             nextAction = () -> activity.startActivity(new Intent(activity, CustomerHistoryActivity.class));
         } else if (hour >= 5 && hour < 11 && workFavorite != null) {
-            title = "Transiva AI • Berangkat ke Kantor? 🏢";
+            title = "Trans Asisten • Berangkat ke Kantor? 🏢";
             message = "Tujuan Kantor sudah tersimpan. Saya bisa isi lokasi jemput Anda otomatis.";
             button = "Motor ›";
             nextAction = () -> openFavorite(workFavorite, false);
         } else if (hour >= 16 && hour < 22 && homeFavorite != null) {
-            title = "Transiva AI • Pulang ke Rumah? 🏠";
+            title = "Trans Asisten • Pulang ke Rumah? 🏠";
             message = "Rumah sudah siap sebagai tujuan. Titik jemput akan mengikuti lokasi Anda sekarang.";
             button = "Motor ›";
             nextAction = () -> openFavorite(homeFavorite, false);
         } else if ((hour >= 22 || hour < 5) && homeFavorite != null) {
-            title = "Transiva AI • Pulang lebih nyaman 🌙";
+            title = "Trans Asisten • Pulang lebih nyaman 🌙";
             message = "Saya siapkan Rumah sebagai tujuan dan TransCar untuk perjalanan malam.";
             button = "Mobil ›";
             nextAction = () -> openFavorite(homeFavorite, true);
@@ -141,7 +141,7 @@ public final class DashboardSmartRecommendationController {
             button = "Top Up ›";
             nextAction = () -> activity.startActivity(new Intent(activity, CustomerTopUpActivity.class));
         } else if (familyCount == 0 && hour >= 14 && hour < 17) {
-            title = "Transiva AI • Family belum diatur 👨‍👩‍👧";
+            title = "Trans Asisten • Family belum diatur 👨‍👩‍👧";
             message = "Anda punya " + familyMax + " slot Family. Tambahkan orang terdekat agar bisa dipesankan perjalanan lebih cepat.";
             button = "Atur Family ›";
             nextAction = () -> activity.startActivity(new Intent(activity, TransivaFamilyActivity.class));
@@ -173,9 +173,9 @@ public final class DashboardSmartRecommendationController {
                 button = "Buka ›";
                 nextAction = () -> host.openTrackedService(favorite);
             } else {
-                title = "Transiva AI siap membantu ✦";
-                message = "Ketik kebutuhan seperti ‘mau pulang’, ‘lagi lapar’, atau ‘cari mobil’. Saya akan arahkan ke layanan yang cocok.";
-                button = "Tanya AI ›";
+                title = "Trans Asisten siap membantu ✦";
+                message = "Tanyakan kebutuhan Anda seperti ‘mau pesan barang’, ‘pulang kantor’, ‘lapar’, atau ‘cari mobil’.";
+                button = "Tanya Asisten ›";
                 nextAction = () -> { Intent i = new Intent(activity, GlobalSearchActivity.class); i.putExtra("ai_prompt", ""); activity.startActivity(i); };
             }
         }

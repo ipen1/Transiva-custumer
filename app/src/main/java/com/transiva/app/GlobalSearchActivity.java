@@ -22,47 +22,64 @@ import java.io.*;
 import java.net.*;
 import java.nio.charset.StandardCharsets;
 
-/** Global Search + Transiva AI intent suggestions. */
+/** Global Search + Trans Asisten intent suggestions. */
 public class GlobalSearchActivity extends Activity {
     private static final String URL="https://transiva.my.id/server/customer_global_search.php?q=";
     private final Handler handler=new Handler(Looper.getMainLooper());
     private Runnable pending;
     private LinearLayout results, chips;
     private EditText query;
-    private TextView aiCopy, countText;
+    private TextView aiCopy, countText, assistantAction;
+    private LinearLayout assistantCard;
     private ProgressBar loading;
+    private TransAssistantEngine assistantEngine;
+    private String assistantActionCode = "";
+    private final String[] rotatingHints = new String[]{
+            "Mau pesan barang?", "Pulang kantor?", "Lapar?", "Mau kirim paket?",
+            "Cari motor?", "Butuh mobil?", "Driver di mana?", "Panggilan tidak muncul?"
+    };
+    private int rotatingHintIndex = 0;
+    private final Runnable rotateHint = new Runnable(){ @Override public void run(){
+        if(query!=null && query.getText().length()==0){ query.setHint(rotatingHints[rotatingHintIndex++ % rotatingHints.length]); }
+        handler.postDelayed(this, 3200L);
+    }};
 
     @Override public void onCreate(Bundle b){
         super.onCreate(b);
         try { getWindow().setStatusBarColor(Color.parseColor(CustomerAppSettings.isDarkMode(this) ? "#071426" : "#0B7CFF")); } catch(Exception ignored){}
+        assistantEngine=new TransAssistantEngine(this);
+        TransAssistantSync.sync(this);
         build();
+        handler.post(rotateHint);
         String initial=getIntent()==null?"":safe(getIntent().getStringExtra("ai_prompt"));
         if(!initial.isEmpty()) query.setText(initial); else search("");
     }
 
 
     @Override protected void onResume(){ super.onResume(); CustomerAppSettings.apply(this); }
+    @Override protected void onDestroy(){ handler.removeCallbacks(rotateHint); if(pending!=null)handler.removeCallbacks(pending); super.onDestroy(); }
     private void build(){
         LinearLayout root=new LinearLayout(this); root.setOrientation(LinearLayout.VERTICAL); root.setBackgroundColor(Color.parseColor(themeColor("#F4F8FD")));
         LinearLayout hero=new LinearLayout(this); hero.setOrientation(LinearLayout.VERTICAL); hero.setPadding(dp(18),dp(18),dp(18),dp(18)); hero.setBackground(bg("#0878F9",0,0));
         LinearLayout top=new LinearLayout(this); top.setGravity(Gravity.CENTER_VERTICAL);
         TextView back=tx("‹",32,"#FFFFFF",true); back.setGravity(Gravity.CENTER); back.setOnClickListener(v->finish()); top.addView(back,new LinearLayout.LayoutParams(dp(40),dp(42)));
         LinearLayout titles=new LinearLayout(this); titles.setOrientation(LinearLayout.VERTICAL);
-        titles.addView(tx("Cari di Transiva",22,"#FFFFFF",true)); titles.addView(tx("Tulis kebutuhan Anda, Transiva AI bantu carikan.",12,"#DCEEFF",false));
+        titles.addView(tx("Tanya Asisten",22,"#FFFFFF",true)); titles.addView(tx("Ceritakan kebutuhan Anda. Trans Asisten akan membantu memilih langkah yang tepat.",12,"#DCEEFF",false));
         top.addView(titles,new LinearLayout.LayoutParams(0,-2,1)); hero.addView(top);
 
         LinearLayout searchBox=new LinearLayout(this); searchBox.setGravity(Gravity.CENTER_VERTICAL); searchBox.setPadding(dp(13),0,dp(10),0); searchBox.setBackground(bg("#FFFFFF",18,0));
         TextView icon=tx("⌕",23,"#0878F9",true); searchBox.addView(icon,new LinearLayout.LayoutParams(dp(32),dp(54)));
-        query=new EditText(this); query.setSingleLine(true); query.setTextSize(15); query.setTextColor(Color.parseColor(themeColor("#0F172A"))); query.setHintTextColor(Color.parseColor(themeColor("#94A3B8"))); query.setHint("Contoh: mau pulang, lapar, cari motor..."); query.setBackgroundColor(Color.TRANSPARENT); query.setPadding(0,0,0,0);
+        query=new EditText(this); query.setSingleLine(true); query.setTextSize(15); query.setTextColor(Color.parseColor(themeColor("#0F172A"))); query.setHintTextColor(Color.parseColor(themeColor("#94A3B8"))); query.setHint(rotatingHints[0]); query.setBackgroundColor(Color.TRANSPARENT); query.setPadding(0,0,0,0); query.setImeOptions(android.view.inputmethod.EditorInfo.IME_ACTION_SEARCH);
         searchBox.addView(query,new LinearLayout.LayoutParams(0,dp(54),1));
         TextView clear=tx("×",24,"#64748B",false); clear.setGravity(Gravity.CENTER); clear.setOnClickListener(v->query.setText("")); searchBox.addView(clear,new LinearLayout.LayoutParams(dp(36),dp(54)));
         LinearLayout.LayoutParams sbLp=new LinearLayout.LayoutParams(-1,dp(54)); sbLp.setMargins(0,dp(14),0,0); hero.addView(searchBox,sbLp); root.addView(hero);
 
         ScrollView scroll=new ScrollView(this); LinearLayout body=new LinearLayout(this); body.setOrientation(LinearLayout.VERTICAL); body.setPadding(dp(16),dp(14),dp(16),dp(24)); scroll.addView(body);
-        LinearLayout ai=new LinearLayout(this); ai.setOrientation(LinearLayout.HORIZONTAL); ai.setGravity(Gravity.CENTER_VERTICAL); ai.setPadding(dp(14),dp(12),dp(14),dp(12)); ai.setBackground(bgStroke("#FFFFFF","#D5E8FF",18,1));
-        TextView sparkle=tx("✦",23,"#0878F9",true); sparkle.setGravity(Gravity.CENTER); sparkle.setBackground(bg("#EAF4FF",14,0)); ai.addView(sparkle,new LinearLayout.LayoutParams(dp(44),dp(44)));
-        LinearLayout copy=new LinearLayout(this); copy.setOrientation(LinearLayout.VERTICAL); LinearLayout.LayoutParams cp=new LinearLayout.LayoutParams(0,-2,1); cp.setMargins(dp(10),0,0,0); ai.addView(copy,cp);
-        copy.addView(tx("Transiva AI",12,"#0B3A78",true)); aiCopy=tx("Saya bisa memahami kata seperti ‘lapar’, ‘pulang’, ‘mobil’, atau ‘belanja’.",12,"#64748B",false); copy.addView(aiCopy); body.addView(ai);
+        assistantCard=new LinearLayout(this); assistantCard.setOrientation(LinearLayout.HORIZONTAL); assistantCard.setGravity(Gravity.CENTER_VERTICAL); assistantCard.setPadding(dp(14),dp(12),dp(14),dp(12)); assistantCard.setBackground(bgStroke("#FFFFFF","#D5E8FF",18,1));
+        TextView sparkle=tx("✦",23,"#0878F9",true); sparkle.setGravity(Gravity.CENTER); sparkle.setBackground(bg("#EAF4FF",14,0)); assistantCard.addView(sparkle,new LinearLayout.LayoutParams(dp(44),dp(44)));
+        LinearLayout copy=new LinearLayout(this); copy.setOrientation(LinearLayout.VERTICAL); LinearLayout.LayoutParams cp=new LinearLayout.LayoutParams(0,-2,1); cp.setMargins(dp(10),0,dp(8),0); assistantCard.addView(copy,cp);
+        copy.addView(tx("Trans Asisten 2.0",12,"#0B3A78",true)); aiCopy=tx("Tulis kebutuhan seperti ‘lapar’, ‘pulang kantor’, ‘pesan barang’, atau ‘cek pesanan’.",12,"#64748B",false); copy.addView(aiCopy);
+        assistantAction=tx("",11,"#0878F9",true); assistantAction.setGravity(Gravity.CENTER); assistantAction.setVisibility(View.GONE); assistantCard.addView(assistantAction); assistantCard.setOnClickListener(v->{ if(!assistantActionCode.isEmpty()) TransAssistantActions.run(this, assistantActionCode); }); body.addView(assistantCard);
 
         TextView st=tx("Saran untuk Anda",13,"#0B3A78",true); st.setPadding(0,dp(15),0,dp(7)); body.addView(st);
         HorizontalScrollView hsc=new HorizontalScrollView(this); hsc.setHorizontalScrollBarEnabled(false); chips=new LinearLayout(this); chips.setOrientation(LinearLayout.HORIZONTAL); hsc.addView(chips); body.addView(hsc,new LinearLayout.LayoutParams(-1,dp(45)));
@@ -87,7 +104,15 @@ public class GlobalSearchActivity extends Activity {
 
     private void render(JSONArray a,JSONArray suggestions,String intent,String q){
         loading.setVisibility(View.GONE); results.removeAllViews(); chips.removeAllViews();
-        if(!intent.isEmpty()) aiCopy.setText(aiSentence(intent)); else if(q.isEmpty()) aiCopy.setText("Ceritakan kebutuhan Anda. Saya akan arahkan ke layanan, makanan, atau merchant yang paling cocok."); else aiCopy.setText("Saya juga mencoba kata dan maksud yang mirip agar hasilnya lebih relevan.");
+        if(q.isEmpty()){
+            aiCopy.setText("Tulis kebutuhan seperti ‘lapar’, ‘pulang kantor’, ‘pesan barang’, atau ‘cek pesanan’.");
+            assistantActionCode=""; assistantAction.setVisibility(View.GONE);
+        } else {
+            TransAssistantEngine.Reply reply=assistantEngine.answer(q);
+            aiCopy.setText(reply.text); assistantActionCode=reply.action==null?"":reply.action;
+            if(!assistantActionCode.isEmpty()){ assistantAction.setText((reply.actionLabel==null||reply.actionLabel.isEmpty()?"Buka":reply.actionLabel)+" ›"); assistantAction.setVisibility(View.VISIBLE); }
+            else assistantAction.setVisibility(View.GONE);
+        }
         if(suggestions!=null) for(int i=0;i<suggestions.length();i++){ String s=suggestions.optString(i,""); if(!s.isEmpty()) addChip(s); }
         int n=a==null?0:a.length(); countText.setText(n+" hasil");
         if(n==0){ LinearLayout empty=card(); empty.addView(tx("Belum menemukan hasil",16,"#0B3A78",true)); empty.addView(tx("Coba kata lain seperti ‘lapar’, ‘motor’, ‘mobil’, ‘belanja’, atau nama merchant.",12,"#64748B",false)); results.addView(empty); return; }
@@ -109,7 +134,7 @@ public class GlobalSearchActivity extends Activity {
     private void open(String kind,String name){ hideKeyboard(); if("service".equals(kind)){ Class<?> c=TransRideActivity.class; if(name.equalsIgnoreCase("TransCar"))c=PassengerCarActivity.class; else if(name.equalsIgnoreCase("TransFood"))c=TransFoodActivity.class; else if(name.equalsIgnoreCase("TransShop"))c=TransShopActivity.class; else if(name.equalsIgnoreCase("TransSend")){ try{ c=Class.forName("com.transiva.app.TransSendActivity"); }catch(Exception ignored){} } startActivity(new Intent(this,c)); return; } Intent i=new Intent(this,TransFoodActivity.class); i.putExtra("global_search_query",name); startActivity(i); }
     private String aiSentence(String intent){ if("food".equals(intent))return "Sepertinya Anda sedang mencari makanan. Saya prioritaskan TransFood dan pilihan yang berhubungan."; if("ride".equals(intent))return "Saya menangkap kebutuhan perjalanan motor. TransRide dan opsi pulang/ke kantor saya naikkan ke atas."; if("car".equals(intent))return "Saya menangkap kebutuhan perjalanan mobil. Saya prioritaskan TransCar dan perjalanan nyaman."; if("shop".equals(intent))return "Sepertinya Anda ingin titip belanja. Saya arahkan ke TransShop dan kata terkait."; if("send".equals(intent))return "Sepertinya Anda ingin mengirim barang. Saya arahkan ke layanan kirim Transiva."; return "Saya mencari layanan yang paling sesuai."; }
     private String iconFor(String k){return "service".equals(k)?"✦":("merchant".equals(k)?"🏪":"🍜");} private String labelFor(String k){return "service".equals(k)?"Layanan Transiva":("merchant".equals(k)?"Merchant":"Menu makanan");}
-    private void renderError(){results.removeAllViews();LinearLayout c=card();c.addView(tx("Pencarian belum tersedia",15,"#B45309",true));c.addView(tx("Periksa koneksi lalu coba lagi.",12,"#64748B",false));results.addView(c);}
+    private void renderError(){results.removeAllViews(); String q=safe(query==null?"":query.getText().toString()); if(!q.isEmpty()){TransAssistantEngine.Reply r=assistantEngine.answer(q);aiCopy.setText(r.text);assistantActionCode=r.action==null?"":r.action;if(!assistantActionCode.isEmpty()){assistantAction.setText((r.actionLabel==null||r.actionLabel.isEmpty()?"Buka":r.actionLabel)+" ›");assistantAction.setVisibility(View.VISIBLE);}else assistantAction.setVisibility(View.GONE);} LinearLayout c=card();c.addView(tx("Pencarian online belum tersedia",15,"#B45309",true));c.addView(tx("Trans Asisten lokal tetap bisa memberi panduan. Periksa koneksi untuk hasil merchant dan layanan terbaru.",12,"#64748B",false));results.addView(c);}
     private LinearLayout card(){LinearLayout c=new LinearLayout(this);c.setOrientation(LinearLayout.VERTICAL);c.setPadding(dp(15),dp(14),dp(15),dp(14));c.setBackground(bgStroke("#FFFFFF","#E0ECF8",17,1));return c;}
     private JSONObject read(HttpURLConnection c)throws Exception{InputStream in=c.getResponseCode()<400?c.getInputStream():c.getErrorStream();BufferedReader br=new BufferedReader(new InputStreamReader(in,StandardCharsets.UTF_8));StringBuilder s=new StringBuilder();String l;while((l=br.readLine())!=null)s.append(l);return new JSONObject(s.toString());}
     private TextView tx(String s,int z,String color,boolean bold){TextView v=new TextView(this);v.setText(s);v.setTextSize(z);v.setTextColor(Color.parseColor(themeColor(color)));if(bold)v.setTypeface(Typeface.DEFAULT,Typeface.BOLD);return v;}

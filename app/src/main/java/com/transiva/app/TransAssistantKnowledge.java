@@ -30,6 +30,6 @@ public final class TransAssistantKnowledge {
         x.add(new Entry("HISTORY","Riwayat","Riwayat pesanan menampilkan pesanan sebelumnya dan detail statusnya.","OPEN_HISTORY","Buka Riwayat","riwayat","pesanan lama","order sebelumnya"));
         x.add(new Entry("ACCOUNT","Akun","Pengaturan akun, profil, keamanan, dan preferensi aplikasi tersedia pada menu Akun/Pengaturan.","OPEN_PROFILE","Buka Akun","akun","profil","ubah nama","pengaturan akun"));
         x.add(new Entry("PAYMENT","Pembayaran","Periksa metode pembayaran dan saldo sebelum membuat pesanan. Untuk isi saldo, gunakan menu Top Up yang tersedia di aplikasi.","OPEN_TOPUP","Buka Top Up","bayar","pembayaran","saldo","top up","isi saldo"));
-        x.add(new Entry("ORDER_STATUS","Status pesanan","Status pesanan aktif dapat dilihat dari Dashboard atau Riwayat. Trans Assistant tidak akan menebak status real-time bila datanya belum tersedia.","OPEN_HISTORY","Lihat pesanan","status pesanan","driver dimana","pesanan saya","order saya"));
+        x.add(new Entry("ORDER_STATUS","Status pesanan","Status pesanan aktif dapat dilihat dari Dashboard atau Riwayat. Trans Asisten tidak akan menebak status real-time bila datanya belum tersedia.","OPEN_HISTORY","Lihat pesanan","status pesanan","driver dimana","pesanan saya","order saya"));
         return x; }
 }

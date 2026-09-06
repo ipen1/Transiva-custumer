@@ -34,6 +34,26 @@ public final class CustomerFcmTokenSync {
         requestFirebaseToken(context.getApplicationContext());
     }
 
+    public static void syncTokenNow(Context context, String token) {
+        if (context == null || token == null) return;
+        String clean = token.trim();
+        if (clean.length() < 20) return;
+        Context app = context.getApplicationContext();
+
+        app.getSharedPreferences("transiva_fcm", Context.MODE_PRIVATE)
+                .edit()
+                .putString("fcm_token", clean)
+                .putLong("fcm_token_saved_at", System.currentTimeMillis())
+                .putLong("server_sync_at", 0L)
+                .apply();
+
+        try {
+            new SessionManager(app).saveFcmToken(clean);
+        } catch (Throwable ignored) {}
+
+        upload(app, clean);
+    }
+
     private static void requestFirebaseToken(Context app) {
         FirebaseMessaging.getInstance().getToken()
                 .addOnSuccessListener(token -> {

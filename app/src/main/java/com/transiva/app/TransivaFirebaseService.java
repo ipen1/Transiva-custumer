@@ -66,7 +66,7 @@ public class TransivaFirebaseService extends FirebaseMessagingService {
         }
 
         saveTokenLocal(cleanToken);
-        sendTokenToServer(cleanToken);
+        CustomerFcmTokenSync.syncTokenNow(this, cleanToken);
     }
 
     @Override
@@ -770,7 +770,7 @@ public class TransivaFirebaseService extends FirebaseMessagingService {
 
     private int getSmallIcon() {
         try {
-            return getApplicationInfo().icon;
+            return R.drawable.ic_notification_bell;
         } catch (Exception ignored) {
             return android.R.drawable.ic_dialog_info;
         }

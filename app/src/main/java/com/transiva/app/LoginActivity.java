@@ -369,6 +369,7 @@ public class LoginActivity extends Activity {
                 );
 
                 saveFcmTokenAfterLogin(result.user);
+                CustomerFcmTokenSync.forceSync(LoginActivity.this);
 
                 showMessage("Login berhasil", true);
 
@@ -760,10 +761,14 @@ public class LoginActivity extends Activity {
         String cleanToken =
                 token == null ? "" : token.trim();
 
-        getSharedPreferences(
+        android.content.SharedPreferences fcmPrefs = getSharedPreferences(
                 "transiva_fcm",
                 MODE_PRIVATE
-        ).edit()
+        );
+        String previousToken = fcmPrefs.getString("fcm_token", "");
+        int previousUserId = fcmPrefs.getInt("user_id", 0);
+
+        android.content.SharedPreferences.Editor fcmEditor = fcmPrefs.edit()
                 .putString("fcm_token", cleanToken)
                 .putInt("user_id", userId)
                 .putString("username", username)
@@ -771,8 +776,13 @@ public class LoginActivity extends Activity {
                 .putLong(
                         "fcm_token_saved_at",
                         System.currentTimeMillis()
-                )
-                .apply();
+                );
+
+        // Sesi/perangkat baru wajib sinkron ulang ke server walau token Firebase kebetulan sama.
+        if (previousUserId != userId || !cleanToken.equals(previousToken)) {
+            fcmEditor.putLong("server_sync_at", 0L);
+        }
+        fcmEditor.apply();
 
         try {
             new SessionManager(this)

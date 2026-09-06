@@ -1,18 +1,47 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
-    <!-- Google Play build does not use advertising identifiers or AdServices attribution.
-         Force-remove permissions contributed transitively by Firebase/Google dependencies. -->
-    <uses-permission android:name="com.google.android.gms.permission.AD_ID" tools:node="remove" />
-    <uses-permission android:name="android.permission.ACCESS_ADSERVICES_AD_ID" tools:node="remove" />
-    <uses-permission android:name="android.permission.ACCESS_ADSERVICES_ATTRIBUTION" tools:node="remove" />
 
-    <!-- Google Play build: APK side-loading and overlay are not core customer features. -->
-    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" tools:node="remove" />
-    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" tools:node="remove" />
-    <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" tools:node="remove" />
-    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" tools:node="remove" />
-    <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" tools:node="remove" />
-    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" tools:node="remove" />
-    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" tools:node="remove" />
+    <!--
+      Google Play distribution manifest.
+
+      IMPORTANT:
+      Keep customer runtime permissions/features aligned with the direct APK.
+      In particular, SYSTEM_ALERT_WINDOW and USE_FULL_SCREEN_INTENT are
+      intentionally inherited from src/main so Trans Asisten/call flows behave
+      the same in the Play AAB as they do in the direct release APK.
+
+      Only distribution-specific permissions are removed here:
+      - advertising identifiers / AdServices: Transiva does not use ads
+      - REQUEST_INSTALL_PACKAGES: Play builds must not self-update by sideloading APKs
+    -->
+
+    <!-- No advertising identifier / AdServices attribution in the Play build. -->
+    <uses-permission
+        android:name="com.google.android.gms.permission.AD_ID"
+        tools:node="remove" />
+    <uses-permission
+        android:name="android.permission.ACCESS_ADSERVICES_AD_ID"
+        tools:node="remove" />
+    <uses-permission
+        android:name="android.permission.ACCESS_ADSERVICES_ATTRIBUTION"
+        tools:node="remove" />
+
+    <!-- Direct APK updater only; keep removed for Google Play AAB. -->
+    <uses-permission
+        android:name="android.permission.REQUEST_INSTALL_PACKAGES"
+        tools:node="remove" />
+
+    <!--
+      DO NOT remove the following permissions here. They are declared in
+      src/main/AndroidManifest.xml and are needed by the same customer features
+      in both distributions:
+        android.permission.SYSTEM_ALERT_WINDOW
+        android.permission.USE_FULL_SCREEN_INTENT
+        android.permission.READ_MEDIA_IMAGES
+        android.permission.READ_MEDIA_VIDEO
+        android.permission.READ_EXTERNAL_STORAGE (legacy <= 32)
+        android.permission.WRITE_EXTERNAL_STORAGE (legacy <= 28)
+    -->
+
 </manifest>

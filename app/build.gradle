@@ -62,6 +62,9 @@ android {
 }
 
 dependencies {
+    // Premium Trans Asisten animated mascot (offline Lottie asset)
+    implementation 'com.airbnb.android:lottie:6.6.2'
+
     // Regression tests for critical customer order/chat state rules.
     testImplementation 'junit:junit:4.13.2'
 

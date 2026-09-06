@@ -7,7 +7,7 @@ import android.os.Build;
 import android.provider.Settings;
 import java.util.List;
 
-/** Local device/application state used by Trans Asisten 2.0. No external AI required. */
+/** Local device/application state used by Trans Asisten 3.0. No external AI required. */
 public final class TransAssistantRuntimeContext {
     public final boolean online;
     public final boolean locationEnabled;

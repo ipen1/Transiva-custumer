@@ -23,7 +23,7 @@ import android.widget.TextView;
 
 import com.airbnb.lottie.LottieAnimationView;
 
-/** Premium Trans Asisten 2.0 UI. All mascot animation is bundled locally: no API key/network needed. */
+/** Premium Trans Asisten 3.0 UI with native dark-mode palette and local intelligent engine. */
 public class TransAssistantActivity extends Activity {
     private static final int BLUE = Color.rgb(7, 94, 244);
     private static final int CYAN = Color.rgb(0, 210, 255);
@@ -36,19 +36,21 @@ public class TransAssistantActivity extends Activity {
     private LottieAnimationView mascot;
     private TextView stateText;
     private TextView robotMode;
+    private boolean dark;
     private final Handler handler = new Handler(Looper.getMainLooper());
 
     @Override protected void onCreate(Bundle b) {
         super.onCreate(b);
         Window w = getWindow();
         w.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
-        w.setStatusBarColor(NAVY);
-        w.setNavigationBarColor(Color.WHITE);
+        dark = CustomerAppSettings.isDarkMode(this);
+        w.setStatusBarColor(dark ? Color.rgb(4,13,25) : NAVY);
+        w.setNavigationBarColor(dark ? Color.rgb(5,16,29) : Color.WHITE);
         engine = new TransAssistantEngine(this);
         TransAssistantSync.sync(this);
         setContentView(build());
         setState("IDLE", 0, 59, true);
-        addBot("Halo! Saya Trans Asisten 2.0. Ceritakan kebutuhan Anda—misalnya mau pesan barang, pulang kantor, lapar, cari tempat, atau cek pesanan.", "", "");
+        addBot("Halo! Saya Trans Asisten 3.0. Saya memahami bahasa sehari-hari, konteks percakapan, dan pertanyaan dari pengetahuan admin. Ceritakan kebutuhan Anda.", "", "", 1.0, false);
 
         // Dashboard can hand a suggested phrase directly to the assistant.
         String dashboardPrompt = getIntent() == null ? "" : getIntent().getStringExtra("ai_prompt");
@@ -71,7 +73,7 @@ public class TransAssistantActivity extends Activity {
     private View build() {
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
-        root.setBackgroundColor(Color.rgb(246, 250, 255));
+        root.setBackgroundColor(dark ? Color.rgb(7,18,32) : Color.rgb(246,250,255));
 
         LinearLayout hero = new LinearLayout(this);
         hero.setOrientation(LinearLayout.VERTICAL);
@@ -86,8 +88,8 @@ public class TransAssistantActivity extends Activity {
         back.setOnClickListener(v -> finish());
         bar.addView(back, new LinearLayout.LayoutParams(dp(40), dp(44)));
         LinearLayout titleBox = new LinearLayout(this); titleBox.setOrientation(LinearLayout.VERTICAL);
-        titleBox.addView(text("Trans Asisten 2.0", 20, "#FFFFFF", true));
-        titleBox.addView(text("Asisten pintar Transiva • aktif 24/7", 11, "#CDEBFF", false));
+        titleBox.addView(text("Trans Asisten 3.0", 20, "#FFFFFF", true));
+        titleBox.addView(text("Asisten pintar lokal • konteks aktif • 24/7", 11, "#CDEBFF", false));
         bar.addView(titleBox, new LinearLayout.LayoutParams(0, -2, 1));
         TextView local = text("●  LOKAL", 10, "#BDF7FF", true);
         local.setPadding(dp(10), dp(6), dp(10), dp(6));
@@ -121,9 +123,9 @@ public class TransAssistantActivity extends Activity {
         chips.setPadding(dp(12), dp(10), dp(12), dp(6));
         String[] prompts = {"📦 Mau pesan barang", "🏍 Pulang kantor", "🍜 Saya lapar", "📍 Cari tempat", "🧾 Cek pesanan"};
         for (String p : prompts) {
-            TextView c = text(p, 12, "#0B4E9B", true);
+            TextView c = text(p, 12, dark ? "#D9ECFF" : "#0B4E9B", true);
             c.setPadding(dp(12), dp(9), dp(12), dp(9));
-            c.setBackground(round("#FFFFFF", "#CDE4FF", 18, 1));
+            c.setBackground(round(dark ? "#122A43" : "#FFFFFF", dark ? "#315B7F" : "#CDE4FF", 18, 1));
             LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-2, -2); lp.setMargins(0,0,dp(7),0);
             chips.addView(c, lp);
             c.setOnClickListener(v -> { input.setText(p.substring(p.indexOf(' ') + 1)); input.setSelection(input.length()); send(); });
@@ -142,15 +144,15 @@ public class TransAssistantActivity extends Activity {
         LinearLayout composerWrap = new LinearLayout(this);
         composerWrap.setGravity(Gravity.CENTER_VERTICAL);
         composerWrap.setPadding(dp(10), dp(8), dp(10), dp(10));
-        composerWrap.setBackgroundColor(Color.WHITE);
+        composerWrap.setBackgroundColor(dark ? Color.rgb(9,22,37) : Color.WHITE);
 
         input = new EditText(this);
         input.setHint("Tanya Trans Asisten...");
         input.setTextSize(14);
-        input.setTextColor(Color.parseColor("#17324D"));
-        input.setHintTextColor(Color.parseColor("#8296AD"));
+        input.setTextColor(Color.parseColor(dark ? "#EEF5FF" : "#17324D"));
+        input.setHintTextColor(Color.parseColor(dark ? "#8FA8C1" : "#8296AD"));
         input.setPadding(dp(14), dp(10), dp(14), dp(10));
-        input.setBackground(round("#F3F8FF", "#CFE3F8", 22, 1));
+        input.setBackground(round(dark ? "#132B42" : "#F3F8FF", dark ? "#315B7F" : "#CFE3F8", 22, 1));
         input.setSingleLine(false); input.setMaxLines(3); input.setImeOptions(EditorInfo.IME_ACTION_SEND);
         input.setOnFocusChangeListener((v,focused)->{ if(focused && input.getText().length()==0) setState("MENDENGARKAN",60,119,true); else if(!focused) setState("SIAP MEMBANTU",0,59,true); });
         input.setOnEditorActionListener((v, action, e) -> { if (action == EditorInfo.IME_ACTION_SEND) { send(); return true; } return false; });
@@ -176,7 +178,7 @@ public class TransAssistantActivity extends Activity {
             if (isFinishing() || isDestroyed()) return;
             TransAssistantEngine.Reply r = engine.answer(q);
             setState("MENJAWAB", 180, 239, true);
-            addBot(r.text, r.action, r.actionLabel);
+            addBot(r.text, r.action, r.actionLabel, r.confidence, r.needsConfirmation);
             handler.postDelayed(() -> { if (!isFinishing() && !isDestroyed()) setState("SELESAI", 240, 299, false); }, 520);
             handler.postDelayed(() -> { if (!isFinishing() && !isDestroyed()) setState("SIAP MEMBANTU", 0, 59, true); }, 1450);
         }, 420);
@@ -211,14 +213,19 @@ public class TransAssistantActivity extends Activity {
         messages.addView(v, lp); scrollBottom();
     }
 
-    private void addBot(String s, String action, String label) {
+    private void addBot(String s, String action, String label, double confidence, boolean confirm) {
         LinearLayout row = new LinearLayout(this); row.setGravity(Gravity.TOP);
         TextView badge = text("T", 15, "#FFFFFF", true); badge.setGravity(Gravity.CENTER); badge.setBackground(round("#075EF4", null, 18, 0));
         row.addView(badge, new LinearLayout.LayoutParams(dp(36), dp(36)));
-        LinearLayout box = new LinearLayout(this); box.setOrientation(LinearLayout.VERTICAL); box.setPadding(dp(13), dp(10), dp(13), dp(10)); box.setBackground(round("#FFFFFF", "#D7E8F8", 18, 1));
-        TextView v = text(s, 14, "#17324D", false); box.addView(v);
+        LinearLayout box = new LinearLayout(this); box.setOrientation(LinearLayout.VERTICAL); box.setPadding(dp(13), dp(10), dp(13), dp(10));
+        box.setBackground(round(dark ? "#122A43" : "#FFFFFF", dark ? "#315B7F" : "#D7E8F8", 18, 1));
+        TextView v = text(s, 14, dark ? "#EEF5FF" : "#17324D", false); box.addView(v);
+        if (confirm) {
+            TextView hint = text("Perkiraan maksud • " + Math.round(confidence * 100) + "%", 10, dark ? "#9FC5E8" : "#6685A3", true);
+            hint.setPadding(0, dp(7), 0, 0); box.addView(hint);
+        }
         if (action != null && !action.isEmpty()) {
-            TextView b = text((label == null || label.isEmpty() ? "Buka" : label) + "  ›", 13, "#0878F9", true);
+            TextView b = text((label == null || label.isEmpty() ? "Buka" : label) + "  ›", 13, dark ? "#67B6FF" : "#0878F9", true);
             b.setPadding(0, dp(9), 0, dp(2)); b.setOnClickListener(x -> TransAssistantActions.run(this, action)); box.addView(b);
         }
         LinearLayout.LayoutParams bp = new LinearLayout.LayoutParams(0, -2, 1); bp.setMargins(dp(8),0,dp(30),0); row.addView(box, bp);

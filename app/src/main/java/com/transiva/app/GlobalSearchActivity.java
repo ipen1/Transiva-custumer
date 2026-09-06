@@ -78,7 +78,7 @@ public class GlobalSearchActivity extends Activity {
         assistantCard=new LinearLayout(this); assistantCard.setOrientation(LinearLayout.HORIZONTAL); assistantCard.setGravity(Gravity.CENTER_VERTICAL); assistantCard.setPadding(dp(14),dp(12),dp(14),dp(12)); assistantCard.setBackground(bgStroke("#FFFFFF","#D5E8FF",18,1));
         TextView sparkle=tx("✦",23,"#0878F9",true); sparkle.setGravity(Gravity.CENTER); sparkle.setBackground(bg("#EAF4FF",14,0)); assistantCard.addView(sparkle,new LinearLayout.LayoutParams(dp(44),dp(44)));
         LinearLayout copy=new LinearLayout(this); copy.setOrientation(LinearLayout.VERTICAL); LinearLayout.LayoutParams cp=new LinearLayout.LayoutParams(0,-2,1); cp.setMargins(dp(10),0,dp(8),0); assistantCard.addView(copy,cp);
-        copy.addView(tx("Trans Asisten 2.0",12,"#0B3A78",true)); aiCopy=tx("Tulis kebutuhan seperti ‘lapar’, ‘pulang kantor’, ‘pesan barang’, atau ‘cek pesanan’.",12,"#64748B",false); copy.addView(aiCopy);
+        copy.addView(tx("Trans Asisten 3.0",12,"#0B3A78",true)); aiCopy=tx("Tulis kebutuhan seperti ‘lapar’, ‘pulang kantor’, ‘pesan barang’, atau ‘cek pesanan’.",12,"#64748B",false); copy.addView(aiCopy);
         assistantAction=tx("",11,"#0878F9",true); assistantAction.setGravity(Gravity.CENTER); assistantAction.setVisibility(View.GONE); assistantCard.addView(assistantAction); assistantCard.setOnClickListener(v->{ if(!assistantActionCode.isEmpty()) TransAssistantActions.run(this, assistantActionCode); }); body.addView(assistantCard);
 
         TextView st=tx("Saran untuk Anda",13,"#0B3A78",true); st.setPadding(0,dp(15),0,dp(7)); body.addView(st);

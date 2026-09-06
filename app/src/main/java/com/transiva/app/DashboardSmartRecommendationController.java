@@ -64,7 +64,7 @@ public final class DashboardSmartRecommendationController {
     public void attach(LinearLayout content) {
         if (content == null || card != null) return;
 
-        // Dashboard Trans Asisten 2.0: mascot-first entry point, not a generic AI card.
+        // Dashboard Trans Asisten 3.0: mascot-first entry point, not a generic AI card.
         card = new LinearLayout(activity);
         card.setOrientation(LinearLayout.HORIZONTAL);
         card.setGravity(Gravity.CENTER_VERTICAL);
@@ -82,7 +82,7 @@ public final class DashboardSmartRecommendationController {
         mascot.setRenderMode(com.airbnb.lottie.RenderMode.HARDWARE);
         mascot.setMinAndMaxFrame(0, 59);
         mascot.setRepeatCount(ValueAnimator.INFINITE);
-        mascot.setContentDescription("Buka Trans Asisten 2.0");
+        mascot.setContentDescription("Buka Trans Asisten 3.0");
         mascot.playAnimation();
         LinearLayout.LayoutParams mascotLp = new LinearLayout.LayoutParams(dp(94), dp(94));
         mascotLp.setMargins(0, 0, dp(5), 0);
@@ -95,7 +95,7 @@ public final class DashboardSmartRecommendationController {
         copyLp.setMargins(dp(3), 0, 0, 0);
         card.addView(copy, copyLp);
 
-        TextView badge = text("TRANS ASISTEN 2.0  •  AKTIF", 9, "#9CEEFF", true);
+        TextView badge = text("TRANS ASISTEN 3.0  •  AKTIF", 9, "#9CEEFF", true);
         badge.setLetterSpacing(.08f);
         copy.addView(badge);
 

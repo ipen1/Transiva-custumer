@@ -146,6 +146,11 @@ public class SplashActivity extends Activity {
     private void routeNext() {
         if (routed || isFinishing()) return;
         routed = true;
+        if (!TransAssistantTourActivity.isDone(this)) {
+            openRoot(new Intent(this, TransAssistantTourActivity.class));
+            return;
+        }
+
         SessionManager session = new SessionManager(this);
         if (!session.isLoggedIn()) {
             openRoot(new Intent(this, LoginActivity.class));

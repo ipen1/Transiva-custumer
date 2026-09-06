@@ -386,6 +386,12 @@ public class CustomerDashboardActivity extends Activity
         actions.addView(headerIconAction("ic_notification_bell", "Pemberitahuan", () ->
                 startActivity(new Intent(this, CustomerNotificationActivity.class))));
 
+        LinearLayout.LayoutParams assistantLp = new LinearLayout.LayoutParams(dp(44), dp(44));
+        assistantLp.setMargins(dp(8), 0, 0, 0);
+        View assistant = headerAction("✦", "Trans Assistant", () ->
+                startActivity(new Intent(this, TransAssistantActivity.class)));
+        actions.addView(assistant, assistantLp);
+
         LinearLayout.LayoutParams settingsLp = new LinearLayout.LayoutParams(dp(44), dp(44));
         settingsLp.setMargins(dp(8), 0, 0, 0);
         View settings = headerAction("⚙", "Pengaturan", () ->

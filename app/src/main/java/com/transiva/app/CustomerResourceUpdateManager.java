@@ -113,7 +113,7 @@ public final class CustomerResourceUpdateManager {
             File rootDir = rootDir(app);
             if (!rootDir.exists() && !rootDir.mkdirs()) return;
             File zip = new File(rootDir, "resource-v" + version + ".download");
-            download(url, zip, expectedSize);
+            download(app, url, zip, expectedSize);
             if (!sha256.equals(sha256(zip))) { zip.delete(); return; }
 
             File staging = new File(rootDir, ".staging-v" + version);
@@ -145,7 +145,7 @@ public final class CustomerResourceUpdateManager {
         }
     }
 
-    private static void download(String url, File out, long expectedSize) throws Exception {
+    private static void download(Context app, String url, File out, long expectedSize) throws Exception {
         HttpURLConnection c = null;
         try {
             c = (HttpURLConnection) CustomerApiClient.open(app, url);

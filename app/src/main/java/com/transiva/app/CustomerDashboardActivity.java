@@ -292,6 +292,11 @@ public class CustomerDashboardActivity extends Activity
         );
 
         buildHeader();
+
+        // Layanan utama ditempatkan paling atas seperti pola super-app modern (Grab/Gojek):
+        // customer dapat memilih layanan segera setelah header tanpa harus scroll panjang.
+        buildServiceSection();
+
         if (!isKOnlineDashboardCardDismissed()) {
             buildKOnlineTransitionCard();
         }
@@ -300,7 +305,6 @@ public class CustomerDashboardActivity extends Activity
         buildGrowthCards();
         buildFeatureShortcuts();
         buildPromoSection();
-        buildServiceSection();
         buildOrderSection();
         buildRecommendationSection();
 
@@ -1614,181 +1618,141 @@ public class CustomerDashboardActivity extends Activity
         );
     }
 
+    /**
+     * Dashboard service launcher 3.0
+     *
+     * Tujuan:
+     * - layanan utama berada tepat setelah header, sehingga terasa seperti aplikasi super-app modern;
+     * - 4 kolom x 2 baris pada ponsel normal, tetap aman pada layar kecil karena setiap item memakai weight;
+     * - tidak memakai lebar piksel tetap, sehingga tidak terpotong pada 320dp, mode font besar, atau tablet;
+     * - ikon memakai aset premium baru hasil desain Transiva.
+     */
     private void buildServiceSection() {
-        TextView header = text(
-                "Layanan Transiva",
-                16,
-                "#0B3A78",
-                true
-        );
+        LinearLayout section = new LinearLayout(this);
+        section.setOrientation(LinearLayout.VERTICAL);
+        section.setPadding(dp(2), dp(2), dp(2), dp(4));
 
-        content.addView(
-                header,
-                new LinearLayout.LayoutParams(-1, -2)
-        );
+        LinearLayout.LayoutParams sectionLp = new LinearLayout.LayoutParams(-1, -2);
+        sectionLp.setMargins(0, 0, 0, dp(14));
+        content.addView(section, sectionLp);
 
-        TextView serviceHint = text(
-                "Pilih layanan yang Anda butuhkan",
-                10,
-                "#7B8DA3",
-                false
-        );
-        LinearLayout.LayoutParams serviceHintLp = new LinearLayout.LayoutParams(-1, -2);
-        serviceHintLp.setMargins(0, dp(3), 0, 0);
-        content.addView(serviceHint, serviceHintLp);
+        LinearLayout titleRow = new LinearLayout(this);
+        titleRow.setOrientation(LinearLayout.HORIZONTAL);
+        titleRow.setGravity(Gravity.CENTER_VERTICAL);
+        section.addView(titleRow, new LinearLayout.LayoutParams(-1, -2));
+
+        LinearLayout titleBox = new LinearLayout(this);
+        titleBox.setOrientation(LinearLayout.VERTICAL);
+        titleRow.addView(titleBox, new LinearLayout.LayoutParams(0, -2, 1f));
+
+        titleBox.addView(text("Layanan Utama", 16, "#0B3A78", true));
+        TextView hint = text("Pilih layanan Transiva", 10, "#7B8DA3", false);
+        LinearLayout.LayoutParams hintLp = new LinearLayout.LayoutParams(-1, -2);
+        hintLp.setMargins(0, dp(2), 0, 0);
+        titleBox.addView(hint, hintLp);
 
         LinearLayout grid = new LinearLayout(this);
         grid.setOrientation(LinearLayout.VERTICAL);
+        LinearLayout.LayoutParams gridLp = new LinearLayout.LayoutParams(-1, -2);
+        gridLp.setMargins(0, dp(10), 0, 0);
+        section.addView(grid, gridLp);
 
-        LinearLayout.LayoutParams gridLp =
-                new LinearLayout.LayoutParams(-1, -2);
+        grid.addView(serviceRow(
+                service("TransRide", "ic_service_ride_premium", TransRideActivity.class),
+                service("TransCar", "ic_service_car_premium", PassengerCarActivity.class),
+                service("TransSend", "ic_service_send_premium", TransPickupActivity.class),
+                service("TransFood", "ic_service_food_premium", TransFoodActivity.class)
+        ));
 
-        gridLp.setMargins(
-                0,
-                dp(7),
-                0,
-                dp(14)
-        );
-
-        content.addView(grid, gridLp);
-
-        grid.addView(
-                serviceRow(
-                        service(
-                                "TransRide",
-                                "ic_service_ride",
-                                TransRideActivity.class
-                        ),
-                        service(
-                                "TransCar",
-                                "ic_service_car",
-                                PassengerCarActivity.class
-                        ),
-                        service(
-                                "TransFood",
-                                "ic_service_food",
-                                TransFoodActivity.class
-                        )
-                )
-        );
-
-        grid.addView(
-                serviceRow(
-                        service(
-                                "TransSend",
-                                "ic_service_pickup",
-                                TransPickupActivity.class
-                        ),
-                        service(
-                                "TransShop",
-                                "ic_service_mart",
-                                TransShopActivity.class
-                        )
-                )
-        );
+        grid.addView(serviceRow(
+                service("TransShop", "ic_service_shop_premium", TransShopActivity.class),
+                service("TransMart", "ic_service_mart_premium", TransShopActivity.class),
+                service("TransPay", "ic_service_pay_premium", CustomerTopUpActivity.class),
+                service("Asisten", "ic_service_assistant_premium", TransAssistantActivity.class)
+        ));
     }
 
     private View serviceRow(View... items) {
         LinearLayout row = new LinearLayout(this);
-        row.setOrientation(
-                LinearLayout.HORIZONTAL
-        );
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(Gravity.TOP);
 
         for (int i = 0; i < items.length; i++) {
-            LinearLayout.LayoutParams itemLp =
-                    new LinearLayout.LayoutParams(
-                            0,
-                            dp(84),
-                            1
-                    );
-
-            if (i > 0) {
-                itemLp.setMargins(
-                        dp(6),
-                        0,
-                        0,
-                        0
-                );
-            }
-
+            LinearLayout.LayoutParams itemLp = new LinearLayout.LayoutParams(0, -2, 1f);
+            int gap = dp(4);
+            if (i > 0) itemLp.leftMargin = gap;
+            if (i < items.length - 1) itemLp.rightMargin = gap;
             row.addView(items[i], itemLp);
         }
 
-        LinearLayout.LayoutParams rowLp =
-                new LinearLayout.LayoutParams(-1, -2);
-
-        rowLp.setMargins(
-                0,
-                0,
-                0,
-                dp(6)
-        );
-
+        LinearLayout.LayoutParams rowLp = new LinearLayout.LayoutParams(-1, -2);
+        rowLp.setMargins(0, 0, 0, dp(8));
         row.setLayoutParams(rowLp);
         return row;
     }
 
-    private View service(
-            String title,
-            String icon,
-            Class<?> destination
-    ) {
-        return serviceAction(
-                title,
-                icon,
-                () -> startActivity(
-                        new Intent(
-                                this,
-                                destination
-                        )
-                )
-        );
+    private View service(String title, String icon, Class<?> destination) {
+        return serviceAction(title, icon, () -> startActivity(new Intent(this, destination)));
     }
 
-    private View serviceAction(
-            String title,
-            String icon,
-            Runnable action
-    ) {
+    private View serviceAction(String title, String icon, Runnable action) {
         LinearLayout card = new LinearLayout(this);
         card.setOrientation(LinearLayout.VERTICAL);
-        card.setGravity(Gravity.CENTER);
-        card.setPadding(dp(4), dp(7), dp(4), dp(6));
-        card.setBackground(
-                Shape.roundStroke(
-                        "#FFFFFF",
-                        "#DDEBFA",
-                        dp(18),
-                        1
-                )
-        );
-        card.setElevation(dp(2));
+        card.setGravity(Gravity.TOP | Gravity.CENTER_HORIZONTAL);
+        card.setPadding(dp(3), dp(4), dp(3), dp(4));
+        card.setMinimumHeight(dp(88));
+        card.setBackground(Shape.round("#00FFFFFF", dp(16)));
+        card.setClickable(true);
+        card.setFocusable(true);
+        card.setContentDescription("Buka " + title);
+
+        int iconSize;
+        switch (CustomerResponsiveUi.profile(this)) {
+            case COMPACT:
+                iconSize = dp(48);
+                break;
+            case SMALL:
+                iconSize = dp(52);
+                break;
+            case TABLET:
+                iconSize = dp(68);
+                break;
+            default:
+                iconSize = dp(58);
+                break;
+        }
 
         FrameLayout iconHolder = new FrameLayout(this);
-        iconHolder.setBackground(Shape.round("#EEF6FF", dp(17)));
-        card.addView(iconHolder, new LinearLayout.LayoutParams(dp(46), dp(46)));
+        iconHolder.setBackground(Shape.roundStroke("#F6FAFF", "#DFEBF8", dp(18), 1));
+        iconHolder.setElevation(dp(1));
+        card.addView(iconHolder, new LinearLayout.LayoutParams(iconSize, iconSize));
 
         ImageView image = new ImageView(this);
         image.setImageResource(drawable(icon));
-        image.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
-        image.setPadding(dp(5), dp(5), dp(5), dp(5));
-        FrameLayout.LayoutParams imageLp = new FrameLayout.LayoutParams(dp(38), dp(38));
+        image.setScaleType(ImageView.ScaleType.CENTER_CROP);
+        int inset = Math.max(dp(1), iconSize / 28);
+        image.setPadding(inset, inset, inset, inset);
+        FrameLayout.LayoutParams imageLp = new FrameLayout.LayoutParams(-1, -1);
         imageLp.gravity = Gravity.CENTER;
         iconHolder.addView(image, imageLp);
 
-        TextView label = text(title, 9, "#0B3A78", true);
+        TextView label = text(title, 10, "#0B3A78", true);
         label.setGravity(Gravity.CENTER);
-        label.setSingleLine(true);
+        label.setMaxLines(2);
+        label.setSingleLine(false);
+        label.setEllipsize(null);
         LinearLayout.LayoutParams labelLp = new LinearLayout.LayoutParams(-1, -2);
         labelLp.setMargins(0, dp(5), 0, 0);
         card.addView(label, labelLp);
 
         card.setOnClickListener(view -> {
-            view.animate().scaleX(0.94f).scaleY(0.94f).setDuration(75L)
-                    .withEndAction(() -> view.animate().scaleX(1f).scaleY(1f).setDuration(110L).start())
+            view.animate().scaleX(0.94f).scaleY(0.94f).setDuration(70L)
+                    .withEndAction(() -> {
+                        view.animate().scaleX(1f).scaleY(1f).setDuration(100L).start();
+                        recordServiceUsage(title);
+                        action.run();
+                    })
                     .start();
-            recordServiceUsage(title);
-            action.run();
         });
 
         return card;

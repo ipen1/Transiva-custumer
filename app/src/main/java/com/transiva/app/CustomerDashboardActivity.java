@@ -7,7 +7,10 @@ import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.graphics.Color;
+import android.graphics.Paint;
+import android.graphics.Path;
 import android.graphics.Typeface;
+import android.graphics.Canvas;
 import android.location.Address;
 import android.location.Geocoder;
 import android.location.Location;
@@ -90,6 +93,7 @@ public class CustomerDashboardActivity extends Activity
     private TextView verificationText;
     private TextView greetingText;
     private double currentBalance;
+    private boolean balanceVisible = true;
     private String currentOrderText = "Belum ada pesanan aktif";
     private String currentLocation = "Lokasi saya";
 
@@ -409,20 +413,14 @@ public class CustomerDashboardActivity extends Activity
         financeRowLp.setMargins(0, dp(14), 0, 0);
         header.addView(financeRow, financeRowLp);
 
-        View balanceMini = buildHeaderMetricCard(
-                "ic_service_pay_premium",
-                "Saldo",
-                "Memuat saldo...",
-                () -> openBalanceTransactions()
-        );
-        balanceText = (TextView) balanceMini.findViewWithTag("metric_value");
-        LinearLayout.LayoutParams balanceMiniLp = new LinearLayout.LayoutParams(0, dp(78), 1f);
-        balanceMiniLp.setMargins(0, 0, dp(6), 0);
+        View balanceMini = buildHeaderBalanceCard();
+        LinearLayout.LayoutParams balanceMiniLp = new LinearLayout.LayoutParams(0, dp(62), 1.12f);
+        balanceMiniLp.setMargins(0, 0, dp(5), 0);
         financeRow.addView(balanceMini, balanceMiniLp);
 
         View loyaltyMini = buildHeaderLoyaltyCard();
-        LinearLayout.LayoutParams loyaltyMiniLp = new LinearLayout.LayoutParams(0, dp(78), 1f);
-        loyaltyMiniLp.setMargins(dp(6), 0, 0, 0);
+        LinearLayout.LayoutParams loyaltyMiniLp = new LinearLayout.LayoutParams(0, dp(62), 0.88f);
+        loyaltyMiniLp.setMargins(dp(5), 0, 0, 0);
         financeRow.addView(loyaltyMini, loyaltyMiniLp);
 
         View divider = new View(this);
@@ -461,62 +459,123 @@ public class CustomerDashboardActivity extends Activity
         header.addView(locationCard, new LinearLayout.LayoutParams(-1, -2));
     }
 
-    private View buildHeaderMetricCard(String iconName, String label, String value, Runnable action) {
+    private View buildHeaderBalanceCard() {
         LinearLayout card = new LinearLayout(this);
         card.setOrientation(LinearLayout.HORIZONTAL);
         card.setGravity(Gravity.CENTER_VERTICAL);
-        card.setPadding(dp(10), dp(9), dp(10), dp(9));
-        card.setBackground(Shape.roundStroke("#18FFFFFF", "#4FFFFFFF", dp(17), 1));
+        card.setPadding(dp(11), dp(7), dp(9), dp(7));
+        card.setBackground(Shape.roundStroke("#14FFFFFF", "#45FFFFFF", dp(16), 1));
         card.setClickable(true);
         card.setFocusable(true);
-
-        ImageView icon = new ImageView(this);
-        icon.setImageResource(drawable(iconName));
-        icon.setScaleType(ImageView.ScaleType.CENTER_CROP);
-        icon.setBackground(Shape.round("#22FFFFFF", dp(14)));
-        icon.setPadding(dp(2), dp(2), dp(2), dp(2));
-        card.addView(icon, new LinearLayout.LayoutParams(dp(44), dp(44)));
+        card.setContentDescription("Saldo Transiva");
 
         LinearLayout body = new LinearLayout(this);
         body.setOrientation(LinearLayout.VERTICAL);
         body.setGravity(Gravity.CENTER_VERTICAL);
-        LinearLayout.LayoutParams bodyLp = new LinearLayout.LayoutParams(0, -2, 1f);
-        bodyLp.setMargins(dp(8), 0, 0, 0);
-        card.addView(body, bodyLp);
+        card.addView(body, new LinearLayout.LayoutParams(0, -2, 1f));
 
-        body.addView(text(label, 9, "#D9EDFF", true));
-        TextView valueText = text(value, 13, "#FFFFFF", true);
-        valueText.setSingleLine(true);
-        valueText.setTag("metric_value");
-        body.addView(valueText);
+        body.addView(text("Saldo", 9, "#D9EDFF", true));
+        balanceText = text("Memuat saldo...", 14, "#FFFFFF", true);
+        balanceText.setSingleLine(true);
+        body.addView(balanceText);
 
-        card.setOnClickListener(v -> action.run());
+        EyeToggleView eye = new EyeToggleView(this);
+        eye.setContentDescription("Tampilkan atau sembunyikan saldo");
+        LinearLayout.LayoutParams eyeLp = new LinearLayout.LayoutParams(dp(36), dp(36));
+        eyeLp.setMargins(dp(5), 0, 0, 0);
+        card.addView(eye, eyeLp);
+
+        eye.setOnClickListener(v -> {
+            balanceVisible = !balanceVisible;
+            eye.setOpen(balanceVisible);
+            renderBalance();
+        });
+
+        card.setOnClickListener(v -> openBalanceTransactions());
         return card;
+    }
+
+    private void renderBalance() {
+        if (balanceText == null) return;
+        if (balanceVisible) {
+            balanceText.setText(rupiah(currentBalance));
+        } else {
+            balanceText.setText("Rp••••••");
+        }
+    }
+
+    private static final class EyeToggleView extends View {
+        private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private boolean open = true;
+
+        EyeToggleView(android.content.Context context) {
+            super(context);
+            setClickable(true);
+            setFocusable(true);
+            paint.setStyle(Paint.Style.STROKE);
+            paint.setStrokeWidth(dpStatic(context, 2f));
+            paint.setStrokeCap(Paint.Cap.ROUND);
+            paint.setStrokeJoin(Paint.Join.ROUND);
+            paint.setColor(Color.WHITE);
+        }
+
+        void setOpen(boolean open) {
+            this.open = open;
+            invalidate();
+        }
+
+        @Override protected void onDraw(Canvas canvas) {
+            super.onDraw(canvas);
+            float w = getWidth();
+            float h = getHeight();
+            float cx = w / 2f;
+            float cy = h / 2f;
+            float rx = w * 0.30f;
+            float ry = h * 0.19f;
+
+            Path eye = new Path();
+            eye.moveTo(cx - rx, cy);
+            eye.quadTo(cx, cy - ry * 1.55f, cx + rx, cy);
+            eye.quadTo(cx, cy + ry * 1.55f, cx - rx, cy);
+            canvas.drawPath(eye, paint);
+
+            paint.setStyle(Paint.Style.FILL);
+            canvas.drawCircle(cx, cy, Math.max(2f, w * 0.065f), paint);
+            paint.setStyle(Paint.Style.STROKE);
+
+            if (!open) {
+                canvas.drawLine(cx - rx * 0.9f, cy - ry * 1.35f, cx + rx * 0.9f, cy + ry * 1.35f, paint);
+            }
+        }
+
+        private static float dpStatic(android.content.Context c, float v) {
+            return v * c.getResources().getDisplayMetrics().density;
+        }
     }
 
     private View buildHeaderLoyaltyCard() {
         LinearLayout card = new LinearLayout(this);
         card.setOrientation(LinearLayout.HORIZONTAL);
         card.setGravity(Gravity.CENTER_VERTICAL);
-        card.setPadding(dp(10), dp(9), dp(10), dp(9));
+        card.setPadding(dp(9), dp(6), dp(9), dp(6));
         card.setBackground(Shape.roundStroke("#18FFFFFF", "#4FFFFFFF", dp(17), 1));
         card.setClickable(true);
         card.setFocusable(true);
 
         loyaltyTierBadge = TierBadgeUi.image(this, TierBadgeUi.getCachedActiveTier(this), 0);
-        LinearLayout.LayoutParams badgeLp = new LinearLayout.LayoutParams(dp(44), dp(44));
+        LinearLayout.LayoutParams badgeLp = new LinearLayout.LayoutParams(dp(36), dp(36));
         card.addView(loyaltyTierBadge, badgeLp);
 
         LinearLayout body = new LinearLayout(this);
         body.setOrientation(LinearLayout.VERTICAL);
         body.setGravity(Gravity.CENTER_VERTICAL);
         LinearLayout.LayoutParams bodyLp = new LinearLayout.LayoutParams(0, -2, 1f);
-        bodyLp.setMargins(dp(8), 0, 0, 0);
+        bodyLp.setMargins(dp(7), 0, 0, 0);
         card.addView(body, bodyLp);
 
         body.addView(text("Royalti", 9, "#D9EDFF", true));
-        loyaltyTierText = text("Bronze", 13, "#FFFFFF", true);
-        loyaltyPointsText = text("0 koin", 9, "#EAF4FF", false);
+        loyaltyTierText = text("Bronze", 12, "#FFFFFF", true);
+        loyaltyPointsText = text("0 koin", 8, "#EAF4FF", false);
         body.addView(loyaltyTierText);
         body.addView(loyaltyPointsText);
 
@@ -1858,14 +1917,16 @@ public class CustomerDashboardActivity extends Activity
         }
 
         FrameLayout iconHolder = new FrameLayout(this);
-        iconHolder.setBackground(Shape.roundStroke("#F6FAFF", "#DFEBF8", dp(18), 1));
+        iconHolder.setBackground(Shape.roundStroke("#F8FBFF", "#D9E8F7", dp(16), 1));
+        iconHolder.setPadding(dp(1), dp(1), dp(1), dp(1));
+        iconHolder.setClipToOutline(true);
         iconHolder.setElevation(dp(1));
         card.addView(iconHolder, new LinearLayout.LayoutParams(iconSize, iconSize));
 
         ImageView image = new ImageView(this);
         image.setImageResource(drawable(icon));
-        image.setScaleType(ImageView.ScaleType.CENTER_CROP);
-        int inset = Math.max(dp(1), iconSize / 28);
+        image.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        int inset = Math.max(dp(1), iconSize / 32);
         image.setPadding(inset, inset, inset, inset);
         FrameLayout.LayoutParams imageLp = new FrameLayout.LayoutParams(-1, -1);
         imageLp.gravity = Gravity.CENTER;
@@ -2199,9 +2260,7 @@ public class CustomerDashboardActivity extends Activity
         }
 
         currentBalance = state.balance;
-        balanceText.setText(
-                rupiah(state.balance)
-        );
+        renderBalance();
 
         String activeOrderText =
                 first(

@@ -293,19 +293,18 @@ public class CustomerDashboardActivity extends Activity
 
         buildHeader();
 
-        // Layanan utama ditempatkan paling atas seperti pola super-app modern (Grab/Gojek):
-        // customer dapat memilih layanan segera setelah header tanpa harus scroll panjang.
+        // Dashboard 4.0: urutan dibuat seperti super-app modern dan lebih fokus pada aksi utama.
+        // Header sudah memuat identitas, saldo dan royalti dalam satu card responsif.
         buildServiceSection();
+        buildOrderSection();
+        buildFeatureShortcuts();
 
         if (!isKOnlineDashboardCardDismissed()) {
             buildKOnlineTransitionCard();
         }
-        buildSmartRecommendation();
-        buildWalletCard();
-        buildGrowthCards();
-        buildFeatureShortcuts();
+
+        // Bagian terbawah khusus konten dinamis: promo lalu rekomendasi personal.
         buildPromoSection();
-        buildOrderSection();
         buildRecommendationSection();
 
         shell.addView(
@@ -402,6 +401,30 @@ public class CustomerDashboardActivity extends Activity
                 startActivity(new Intent(this, CustomerChatActivity.class)));
         actions.addView(chat, chatLp);
 
+        // Saldo + Royalti menyatu dengan card username agar ringkas, responsif, dan mudah dipindai.
+        LinearLayout financeRow = new LinearLayout(this);
+        financeRow.setOrientation(LinearLayout.HORIZONTAL);
+        financeRow.setGravity(Gravity.CENTER_VERTICAL);
+        LinearLayout.LayoutParams financeRowLp = new LinearLayout.LayoutParams(-1, -2);
+        financeRowLp.setMargins(0, dp(14), 0, 0);
+        header.addView(financeRow, financeRowLp);
+
+        View balanceMini = buildHeaderMetricCard(
+                "ic_service_pay_premium",
+                "Saldo",
+                "Memuat saldo...",
+                () -> openBalanceTransactions()
+        );
+        balanceText = (TextView) balanceMini.findViewWithTag("metric_value");
+        LinearLayout.LayoutParams balanceMiniLp = new LinearLayout.LayoutParams(0, dp(78), 1f);
+        balanceMiniLp.setMargins(0, 0, dp(6), 0);
+        financeRow.addView(balanceMini, balanceMiniLp);
+
+        View loyaltyMini = buildHeaderLoyaltyCard();
+        LinearLayout.LayoutParams loyaltyMiniLp = new LinearLayout.LayoutParams(0, dp(78), 1f);
+        loyaltyMiniLp.setMargins(dp(6), 0, 0, 0);
+        financeRow.addView(loyaltyMini, loyaltyMiniLp);
+
         View divider = new View(this);
         divider.setBackgroundColor(Color.parseColor("#3DFFFFFF"));
         LinearLayout.LayoutParams dividerLp = new LinearLayout.LayoutParams(-1, dp(1));
@@ -436,6 +459,69 @@ public class CustomerDashboardActivity extends Activity
         TextView change = text("Perbarui ›", 10, "#FFFFFF", true);
         locationCard.addView(change, new LinearLayout.LayoutParams(-2, -2));
         header.addView(locationCard, new LinearLayout.LayoutParams(-1, -2));
+    }
+
+    private View buildHeaderMetricCard(String iconName, String label, String value, Runnable action) {
+        LinearLayout card = new LinearLayout(this);
+        card.setOrientation(LinearLayout.HORIZONTAL);
+        card.setGravity(Gravity.CENTER_VERTICAL);
+        card.setPadding(dp(10), dp(9), dp(10), dp(9));
+        card.setBackground(Shape.roundStroke("#18FFFFFF", "#4FFFFFFF", dp(17), 1));
+        card.setClickable(true);
+        card.setFocusable(true);
+
+        ImageView icon = new ImageView(this);
+        icon.setImageResource(drawable(iconName));
+        icon.setScaleType(ImageView.ScaleType.CENTER_CROP);
+        icon.setBackground(Shape.round("#22FFFFFF", dp(14)));
+        icon.setPadding(dp(2), dp(2), dp(2), dp(2));
+        card.addView(icon, new LinearLayout.LayoutParams(dp(44), dp(44)));
+
+        LinearLayout body = new LinearLayout(this);
+        body.setOrientation(LinearLayout.VERTICAL);
+        body.setGravity(Gravity.CENTER_VERTICAL);
+        LinearLayout.LayoutParams bodyLp = new LinearLayout.LayoutParams(0, -2, 1f);
+        bodyLp.setMargins(dp(8), 0, 0, 0);
+        card.addView(body, bodyLp);
+
+        body.addView(text(label, 9, "#D9EDFF", true));
+        TextView valueText = text(value, 13, "#FFFFFF", true);
+        valueText.setSingleLine(true);
+        valueText.setTag("metric_value");
+        body.addView(valueText);
+
+        card.setOnClickListener(v -> action.run());
+        return card;
+    }
+
+    private View buildHeaderLoyaltyCard() {
+        LinearLayout card = new LinearLayout(this);
+        card.setOrientation(LinearLayout.HORIZONTAL);
+        card.setGravity(Gravity.CENTER_VERTICAL);
+        card.setPadding(dp(10), dp(9), dp(10), dp(9));
+        card.setBackground(Shape.roundStroke("#18FFFFFF", "#4FFFFFFF", dp(17), 1));
+        card.setClickable(true);
+        card.setFocusable(true);
+
+        loyaltyTierBadge = TierBadgeUi.image(this, TierBadgeUi.getCachedActiveTier(this), 0);
+        LinearLayout.LayoutParams badgeLp = new LinearLayout.LayoutParams(dp(44), dp(44));
+        card.addView(loyaltyTierBadge, badgeLp);
+
+        LinearLayout body = new LinearLayout(this);
+        body.setOrientation(LinearLayout.VERTICAL);
+        body.setGravity(Gravity.CENTER_VERTICAL);
+        LinearLayout.LayoutParams bodyLp = new LinearLayout.LayoutParams(0, -2, 1f);
+        bodyLp.setMargins(dp(8), 0, 0, 0);
+        card.addView(body, bodyLp);
+
+        body.addView(text("Royalti", 9, "#D9EDFF", true));
+        loyaltyTierText = text("Bronze", 13, "#FFFFFF", true);
+        loyaltyPointsText = text("0 koin", 9, "#EAF4FF", false);
+        body.addView(loyaltyTierText);
+        body.addView(loyaltyPointsText);
+
+        card.setOnClickListener(v -> startActivity(new Intent(this, CustomerLoyaltyActivity.class)));
+        return card;
     }
 
     private View headerAction(String symbol, String description, Runnable action) {
@@ -1105,33 +1191,61 @@ public class CustomerDashboardActivity extends Activity
     }
 
     private void buildFeatureShortcuts() {
-        TextView title = text("Fitur Pintar & Aman", 15, "#0B3A78", true);
-        LinearLayout.LayoutParams titleLp = new LinearLayout.LayoutParams(-1, -2);
-        titleLp.setMargins(0, 0, 0, dp(8));
-        content.addView(title, titleLp);
+        LinearLayout section = new LinearLayout(this);
+        section.setOrientation(LinearLayout.VERTICAL);
+        LinearLayout.LayoutParams sectionLp = new LinearLayout.LayoutParams(-1, -2);
+        sectionLp.setMargins(0, 0, 0, dp(16));
+        content.addView(section, sectionLp);
+
+        TextView title = text("Fitur Pintar & Aman", 16, "#0B3A78", true);
+        section.addView(title);
+        TextView hint = text("Akses cepat untuk keluarga, tempat favorit, dan keamanan perjalanan", 10, "#7B8DA3", false);
+        LinearLayout.LayoutParams hintLp = new LinearLayout.LayoutParams(-1, -2);
+        hintLp.setMargins(0, dp(2), 0, dp(9));
+        section.addView(hint, hintLp);
 
         LinearLayout row = new LinearLayout(this);
         row.setOrientation(LinearLayout.HORIZONTAL);
-        addFeatureShortcut(row, "👨‍👩‍👧", "Family", TransivaFamilyActivity.class, 0);
-        addFeatureShortcut(row, "⌂", "Favorit", FavoritePlacesActivity.class, 1);
-        addFeatureShortcut(row, "🛡️", "Safety", SafetyCenterActivity.class, 2);
-        LinearLayout.LayoutParams rowLp = new LinearLayout.LayoutParams(-1, dp(82));
-        rowLp.setMargins(0, 0, 0, dp(16));
-        content.addView(row, rowLp);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        section.addView(row, new LinearLayout.LayoutParams(-1, -2));
+
+        addFeatureShortcut(row, "ic_feature_family_premium", "Family", "Kelola keluarga", TransivaFamilyActivity.class, 0);
+        addFeatureShortcut(row, "ic_feature_favorite_premium", "Favorit", "Lokasi tersimpan", FavoritePlacesActivity.class, 1);
+        addFeatureShortcut(row, "ic_feature_safety_premium", "Safety", "Pusat keamanan", SafetyCenterActivity.class, 2);
     }
 
-    private void addFeatureShortcut(LinearLayout row, String icon, String label, Class<?> target, int index) {
+    private void addFeatureShortcut(LinearLayout row, String iconName, String label, String sub,
+                                    Class<?> target, int index) {
         LinearLayout card = new LinearLayout(this);
         card.setOrientation(LinearLayout.VERTICAL);
-        card.setGravity(Gravity.CENTER);
-        card.setPadding(dp(8), dp(8), dp(8), dp(8));
-        card.setBackground(Shape.roundStroke("#FFFFFF", "#D9E8F8", dp(17), dp(1)));
+        card.setGravity(Gravity.CENTER_HORIZONTAL);
+        card.setPadding(dp(8), dp(10), dp(8), dp(10));
+        card.setMinimumHeight(dp(112));
+        card.setBackground(Shape.roundStroke("#FFFFFF", "#D9E8F8", dp(18), 1));
         card.setElevation(dp(1));
-        card.addView(text(icon, 22, "#0B7CFF", true));
-        card.addView(text(label, 11, "#0B3A78", true));
+
+        ImageView icon = new ImageView(this);
+        icon.setImageResource(drawable(iconName));
+        icon.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
+        icon.setBackground(Shape.round("#F1F7FF", dp(17)));
+        icon.setPadding(dp(7), dp(7), dp(7), dp(7));
+        card.addView(icon, new LinearLayout.LayoutParams(dp(50), dp(50)));
+
+        TextView title = text(label, 11, "#0B3A78", true);
+        title.setGravity(Gravity.CENTER);
+        LinearLayout.LayoutParams titleLp = new LinearLayout.LayoutParams(-1, -2);
+        titleLp.setMargins(0, dp(5), 0, 0);
+        card.addView(title, titleLp);
+
+        TextView subtitle = text(sub, 8, "#7890AA", false);
+        subtitle.setGravity(Gravity.CENTER);
+        subtitle.setMaxLines(2);
+        card.addView(subtitle, new LinearLayout.LayoutParams(-1, -2));
+
         card.setOnClickListener(v -> startActivity(new Intent(this, target)));
-        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, -1, 1f);
-        if (index > 0) lp.setMargins(dp(8), 0, 0, 0);
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, -2, 1f);
+        if (index > 0) lp.leftMargin = dp(6);
+        if (index < 2) lp.rightMargin = dp(6);
         row.addView(card, lp);
     }
 
@@ -1666,7 +1780,7 @@ public class CustomerDashboardActivity extends Activity
 
         grid.addView(serviceRow(
                 service("TransShop", "ic_service_shop_premium", TransShopActivity.class),
-                service("TransMart", "ic_service_mart_premium", TransShopActivity.class),
+                serviceComingSoon("TransMart", "ic_service_mart_premium"),
                 service("TransPay", "ic_service_pay_premium", CustomerTopUpActivity.class),
                 service("Asisten", "ic_service_assistant_premium", TransAssistantActivity.class)
         ));
@@ -1693,6 +1807,27 @@ public class CustomerDashboardActivity extends Activity
 
     private View service(String title, String icon, Class<?> destination) {
         return serviceAction(title, icon, () -> startActivity(new Intent(this, destination)));
+    }
+
+    private View serviceComingSoon(String title, String icon) {
+        FrameLayout wrapper = new FrameLayout(this);
+        View base = serviceAction(title, icon, () -> Toast.makeText(
+                this,
+                "TransMart segera hadir. Nantikan pembaruannya!",
+                Toast.LENGTH_SHORT
+        ).show());
+        wrapper.addView(base, new FrameLayout.LayoutParams(-1, -2));
+
+        TextView badge = text("COMING SOON", 7, "#FFFFFF", true);
+        badge.setGravity(Gravity.CENTER);
+        badge.setPadding(dp(6), dp(3), dp(6), dp(3));
+        badge.setBackground(Shape.round("#FF8A00", dp(10)));
+        FrameLayout.LayoutParams badgeLp = new FrameLayout.LayoutParams(-2, -2);
+        badgeLp.gravity = Gravity.TOP | Gravity.END;
+        badgeLp.setMargins(0, dp(1), dp(1), 0);
+        wrapper.addView(badge, badgeLp);
+        wrapper.setContentDescription("TransMart segera hadir");
+        return wrapper;
     }
 
     private View serviceAction(String title, String icon, Runnable action) {
@@ -1802,9 +1937,10 @@ public class CustomerDashboardActivity extends Activity
         } else if ("TransSend".equalsIgnoreCase(serviceName)
                 || "Pickup".equalsIgnoreCase(serviceName)) {
             startActivity(new Intent(this, TransPickupActivity.class));
-        } else if ("TransShop".equalsIgnoreCase(serviceName)
-                || "TransMart".equalsIgnoreCase(serviceName)) {
+        } else if ("TransShop".equalsIgnoreCase(serviceName)) {
             startActivity(new Intent(this, TransShopActivity.class));
+        } else if ("TransMart".equalsIgnoreCase(serviceName)) {
+            Toast.makeText(this, "TransMart segera hadir. Nantikan pembaruannya!", Toast.LENGTH_SHORT).show();
         } else {
             startActivity(new Intent(this, TransRideActivity.class));
         }

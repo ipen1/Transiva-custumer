@@ -27,6 +27,14 @@ import android.widget.ProgressBar;
 import android.widget.ScrollView;
 import android.widget.TextView;
 
+import androidx.fragment.app.FragmentActivity;
+
+import com.google.android.gms.auth.api.signin.GoogleSignIn;
+import com.google.android.gms.auth.api.signin.GoogleSignInAccount;
+import com.google.android.gms.auth.api.signin.GoogleSignInClient;
+import com.google.android.gms.auth.api.signin.GoogleSignInOptions;
+import com.google.android.gms.common.api.ApiException;
+
 import com.google.firebase.messaging.FirebaseMessaging;
 
 import org.json.JSONObject;
@@ -41,7 +49,7 @@ import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.util.Locale;
 
-public class LoginActivity extends Activity {
+public class LoginActivity extends FragmentActivity {
 
     private static final String TAG = "TRANSIVA_LOGIN";
     private static final String BASE_URL = "https://transiva.my.id/";
@@ -51,6 +59,8 @@ public class LoginActivity extends Activity {
     private static final String PRIVACY_URL = BASE_URL + "privacy-policy.html";
     private static final String TERMS_URL = BASE_URL + "terms.html";
     private static final int TIMEOUT_MS = 25000;
+    private static final int RC_GOOGLE_SIGN_IN = 9101;
+    private static final String GOOGLE_LOGIN_URL = BASE_URL + "server/customer_google_login_native.php";
 
     private final Handler mainHandler =
             new Handler(Looper.getMainLooper());
@@ -61,6 +71,9 @@ public class LoginActivity extends Activity {
     private TextView messageText;
     private ProgressBar loadingView;
     private ImageButton eyeButton;
+    private Button googleButton;
+    private TextView biometricLoginButton;
+    private GoogleSignInClient googleSignInClient;
 
     private boolean loading;
     private boolean passwordVisible;
@@ -200,6 +213,29 @@ public class LoginActivity extends Activity {
         loginLp.setMargins(0, dp(8), 0, dp(14));
         card.addView(loginButton, loginLp);
 
+        TextView or = text("atau", 12, "#94A3B8", false);
+        or.setGravity(Gravity.CENTER);
+        LinearLayout.LayoutParams orLp = new LinearLayout.LayoutParams(-1, -2);
+        orLp.setMargins(0, dp(1), 0, dp(9));
+        card.addView(or, orLp);
+
+        googleButton = new Button(this);
+        googleButton.setText("G   Lanjutkan dengan Google");
+        googleButton.setAllCaps(false);
+        googleButton.setTextSize(15);
+        googleButton.setTextColor(Color.parseColor("#17324D"));
+        googleButton.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+        googleButton.setBackground(roundStroke("#FFFFFF", "#D7E2EF", dp(17), 1));
+        LinearLayout.LayoutParams googleLp = new LinearLayout.LayoutParams(-1, dp(52));
+        googleLp.setMargins(0, 0, 0, dp(8));
+        card.addView(googleButton, googleLp);
+
+        biometricLoginButton = text("◉  Masuk dengan sidik jari / biometrik", 13, "#1685F2", true);
+        biometricLoginButton.setGravity(Gravity.CENTER);
+        biometricLoginButton.setPadding(dp(8), dp(10), dp(8), dp(10));
+        biometricLoginButton.setVisibility(BiometricSecurityManager.isEnabled(this) ? View.VISIBLE : View.GONE);
+        card.addView(biometricLoginButton, new LinearLayout.LayoutParams(-1, -2));
+
         TextView register = text(
                 "Belum punya akun? Daftar",
                 14,
@@ -234,6 +270,8 @@ public class LoginActivity extends Activity {
         page.addView(loadingView, loadingLp);
 
         loginButton.setOnClickListener(v -> attemptLogin());
+        googleButton.setOnClickListener(v -> startGoogleLogin());
+        biometricLoginButton.setOnClickListener(v -> attemptBiometricLogin());
         eyeButton.setOnClickListener(v -> togglePassword());
         register.setOnClickListener(v -> openRegister());
         privacy.setOnClickListener(v -> openBrowser(PRIVACY_URL));
@@ -255,7 +293,80 @@ public class LoginActivity extends Activity {
                 }
         );
 
+        initGoogleSignIn();
         return page;
+    }
+
+    private void initGoogleSignIn() {
+        int id = getResources().getIdentifier("google_web_client_id", "string", getPackageName());
+        String clientId = id == 0 ? "" : getString(id).trim();
+        if (clientId.isEmpty() || clientId.startsWith("REPLACE_")) {
+            googleSignInClient = null;
+            return;
+        }
+        GoogleSignInOptions options = new GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
+                .requestEmail()
+                .requestIdToken(clientId)
+                .build();
+        googleSignInClient = GoogleSignIn.getClient(this, options);
+    }
+
+    private void startGoogleLogin() {
+        if (loading) return;
+        clearMessage();
+        if (googleSignInClient == null) {
+            showMessage("Google Login belum dikonfigurasi. Isi google_web_client_id dengan OAuth Web Client ID Transiva.", false);
+            return;
+        }
+        try {
+            googleSignInClient.signOut().addOnCompleteListener(task ->
+                    startActivityForResult(googleSignInClient.getSignInIntent(), RC_GOOGLE_SIGN_IN));
+        } catch (Exception e) {
+            showMessage("Tidak dapat membuka Google Login.", false);
+        }
+    }
+
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode != RC_GOOGLE_SIGN_IN) return;
+        try {
+            GoogleSignInAccount account = GoogleSignIn.getSignedInAccountFromIntent(data).getResult(ApiException.class);
+            String idToken = account == null ? "" : safe(account.getIdToken()).trim();
+            if (idToken.isEmpty()) {
+                showMessage("Google tidak mengirim token login. Periksa konfigurasi OAuth.", false);
+                return;
+            }
+            loginWithGoogleToken(idToken);
+        } catch (ApiException e) {
+            Log.w(TAG, "Google sign-in gagal code=" + e.getStatusCode(), e);
+            showMessage("Login Google dibatalkan atau gagal (" + e.getStatusCode() + ").", false);
+        }
+    }
+
+    private void loginWithGoogleToken(String idToken) {
+        if (loading) return;
+        setLoading(true);
+        TransivaNetworkExecutor.execute(() -> {
+            LoginResult result = doGoogleLogin(idToken);
+            mainHandler.post(() -> {
+                setLoading(false);
+                handleLoginResult(result);
+            });
+        });
+    }
+
+    private void attemptBiometricLogin() {
+        if (loading) return;
+        SessionManager saved = new SessionManager(this);
+        if (!saved.isLoggedIn() || safe(saved.getToken()).trim().isEmpty()) {
+            showMessage("Biometrik dapat digunakan setelah akun berhasil login dan fitur biometrik diaktifkan di Pengaturan.", false);
+            return;
+        }
+        BiometricSecurityManager.authenticate(this, "Masuk ke Transiva", "Verifikasi sidik jari / biometrik untuk melanjutkan.", new BiometricSecurityManager.Callback() {
+            @Override public void onSuccess() { openPinPage("customer"); }
+            @Override public void onUnavailable(String message) { showMessage(message, false); }
+        });
     }
 
     private void attemptLogin() {
@@ -283,104 +394,77 @@ public class LoginActivity extends Activity {
 
             mainHandler.post(() -> {
                 setLoading(false);
-
-                if (!result.success) {
-                    showMessage(result.message, false);
-                    return;
-                }
-
-                if (result.user == null) {
-                    showMessage(
-                            "Server tidak mengirim data pengguna.",
-                            false
-                    );
-                    return;
-                }
-
-                String apiToken =
-                        result.user.optString("token", "").trim();
-
-                if (apiToken.isEmpty()) {
-                    showMessage(
-                            "Login berhasil, tetapi token sesi kosong. "
-                                    + "Pastikan login.php sudah di-upgrade.",
-                            false
-                    );
-                    return;
-                }
-
-                String role = normalizeRole(
-                        result.user.optString(
-                                "role",
-                                result.role
-                        )
-                );
-
-                try {
-                    result.user.put("role", role);
-                } catch (Exception ignored) {}
-
-                SessionManager session =
-                        new SessionManager(LoginActivity.this);
-
-                boolean sessionSaved;
-
-                try {
-                    /*
-                     * Bersihkan session lama agar token/customer/driver
-                     * tidak tercampur.
-                     */
-                    session.forceLogout("replace_login_session");
-                    sessionSaved = session.saveUser(result.user);
-                } catch (Exception error) {
-                    Log.e(TAG, "Gagal menyimpan session", error);
-                    sessionSaved = false;
-                }
-
-                if (!sessionSaved
-                        || !session.isLoggedIn()
-                        || session.getUsername().trim().isEmpty()
-                        || session.getToken().trim().isEmpty()) {
-
-                    session.forceLogout("login_session_invalid");
-
-                    showMessage(
-                            "Login berhasil, tetapi sesi gagal disimpan.",
-                            false
-                    );
-                    return;
-                }
-
-                try {
-                    TransivaSession.saveUser(
-                            LoginActivity.this,
-                            result.user
-                    );
-                } catch (Exception error) {
-                    Log.w(TAG, "Legacy session gagal", error);
-                }
-
-                Log.d(
-                        TAG,
-                        "Session valid role=" + session.getRole()
-                                + ", user=" + session.getUsername()
-                                + ", tokenLength="
-                                + session.getToken().length()
-                );
-
-                saveFcmTokenAfterLogin(result.user);
-                CustomerFcmTokenSync.forceSync(LoginActivity.this);
-
-                showMessage("Login berhasil", true);
-
-                String finalRole = role;
-
-                mainHandler.postDelayed(
-                        () -> openPinPage(finalRole),
-                        500
-                );
+                handleLoginResult(result);
             });
         });
+    }
+
+    private void handleLoginResult(LoginResult result) {
+        if (!result.success) { showMessage(result.message, false); return; }
+        if (result.user == null) { showMessage("Server tidak mengirim data pengguna.", false); return; }
+        String apiToken = result.user.optString("token", "").trim();
+        if (apiToken.isEmpty()) { showMessage("Login berhasil, tetapi token sesi kosong.", false); return; }
+        String role = normalizeRole(result.user.optString("role", result.role));
+        try { result.user.put("role", role); } catch (Exception ignored) {}
+        SessionManager session = new SessionManager(this);
+        boolean saved;
+        try {
+            session.forceLogout("replace_login_session");
+            saved = session.saveUser(result.user);
+        } catch (Exception e) { Log.e(TAG, "Gagal menyimpan session", e); saved = false; }
+        if (!saved || !session.isLoggedIn() || session.getUsername().trim().isEmpty() || session.getToken().trim().isEmpty()) {
+            session.forceLogout("login_session_invalid");
+            showMessage("Login berhasil, tetapi sesi gagal disimpan.", false);
+            return;
+        }
+        try { TransivaSession.saveUser(this, result.user); } catch (Exception e) { Log.w(TAG, "Legacy session gagal", e); }
+        saveFcmTokenAfterLogin(result.user);
+        CustomerFcmTokenSync.forceSync(this);
+        showMessage("Login berhasil", true);
+        mainHandler.postDelayed(() -> openPinPage(role), 420);
+    }
+
+    private LoginResult doGoogleLogin(String idToken) {
+        HttpURLConnection connection = null;
+        try {
+            connection = (HttpURLConnection) CustomerApiClient.open(this, GOOGLE_LOGIN_URL);
+            connection.setRequestMethod("POST");
+            connection.setConnectTimeout(TIMEOUT_MS);
+            connection.setReadTimeout(TIMEOUT_MS);
+            connection.setUseCaches(false);
+            connection.setDoInput(true);
+            connection.setDoOutput(true);
+            connection.setRequestProperty("Content-Type", "application/json; charset=UTF-8");
+            connection.setRequestProperty("Accept", "application/json");
+            connection.setRequestProperty("X-Transiva-Client", "Android-Native-Google");
+            JSONObject payload = new JSONObject();
+            payload.put("id_token", idToken);
+            payload.put("device_name", Build.MANUFACTURER + " " + Build.MODEL);
+            payload.put("platform", "android_native");
+            payload.put("app_scope", "customer");
+            payload.put("installation_uuid", DeviceIdentityManager.getInstallationUuid(this));
+            payload.put("manufacturer", Build.MANUFACTURER);
+            payload.put("model", Build.MODEL);
+            payload.put("android_version", Build.VERSION.RELEASE);
+            try { payload.put("app_version", getPackageManager().getPackageInfo(getPackageName(), 0).versionName); } catch (Exception ignored) { payload.put("app_version", "unknown"); }
+            String fcm = getCachedFcmToken(); if (!fcm.isEmpty()) payload.put("fcm_token", fcm);
+            try (BufferedWriter writer = new BufferedWriter(new OutputStreamWriter(connection.getOutputStream(), StandardCharsets.UTF_8))) { writer.write(payload.toString()); }
+            int code = connection.getResponseCode();
+            InputStream stream = code >= 200 && code < 300 ? connection.getInputStream() : connection.getErrorStream();
+            String raw = readStream(stream).trim();
+            if (raw.startsWith("\uFEFF")) raw = raw.substring(1).trim();
+            int a=raw.indexOf('{'), b=raw.lastIndexOf('}'); if(a>0 && b>a) raw=raw.substring(a,b+1);
+            JSONObject response = new JSONObject(raw);
+            boolean success = response.optBoolean("success", false);
+            String message = response.optString("message", success ? "Login berhasil" : "Login Google gagal");
+            if (!success || code < 200 || code >= 300) return LoginResult.fail(message);
+            JSONObject user = response.optJSONObject("user");
+            if (user == null) return LoginResult.fail("Data pengguna Google tidak ditemukan.");
+            if (user.optString("token", "").trim().isEmpty()) user.put("token", response.optString("token", ""));
+            user.put("role", "customer");
+            return LoginResult.ok(message, "customer", user);
+        } catch (Exception e) { Log.e(TAG, "Google native login gagal", e); return LoginResult.fail("Login Google gagal: " + e.getClass().getSimpleName()); }
+        finally { if (connection != null) connection.disconnect(); }
     }
 
     private LoginResult doLogin(
@@ -1135,4 +1219,6 @@ public class LoginActivity extends Activity {
             );
         }
     }
+    private static String safe(String v) { return v == null ? "" : v; }
+
 }

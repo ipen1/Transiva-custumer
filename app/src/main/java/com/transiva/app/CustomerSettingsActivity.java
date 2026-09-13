@@ -48,6 +48,7 @@ public class CustomerSettingsActivity extends Activity {
         session = new SessionManager(this);
         setContentView(buildScreen());
         CustomerAppSettings.apply(this);
+        CustomerThemeTransition.playEnter(this);
         loadConnectedDevice();
     }
 
@@ -86,8 +87,7 @@ public class CustomerSettingsActivity extends Activity {
         preferenceCard.addView(toggleRow("Getar", "Aktifkan getaran untuk notifikasi dan aksi aplikasi", CustomerAppSettings.isVibrationEnabled(this), (button, checked) -> CustomerAppSettings.setVibrationEnabled(this, checked)));
         preferenceCard.addView(divider());
         preferenceCard.addView(toggleRow("Mode Gelap", "Terapkan tema gelap pada seluruh halaman customer", CustomerAppSettings.isDarkMode(this), (button, checked) -> {
-            CustomerAppSettings.setDarkMode(this, checked);
-            recreate();
+            CustomerThemeTransition.switchTheme(this, checked);
         }));
         root.addView(preferenceCard);
 

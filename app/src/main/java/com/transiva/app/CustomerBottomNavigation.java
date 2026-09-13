@@ -34,15 +34,15 @@ public final class CustomerBottomNavigation {
         nav.setElevation(dp(activity, 14));
         nav.setBackground(navBackground(activity, dark));
 
-        add(nav, item(activity, "Beranda", "ic_nav_home", CustomerDashboardActivity.class,
+        add(nav, item(activity, "Beranda", "ic_nav2_home", CustomerDashboardActivity.class,
                 CustomerPageTransition.HOME, activeIndex, false, dark));
-        add(nav, item(activity, "Aktivitas", "ic_nav_activity", CustomerHistoryActivity.class,
+        add(nav, item(activity, "Aktivitas", "ic_nav2_activity", CustomerHistoryActivity.class,
                 CustomerPageTransition.ACTIVITY, activeIndex, false, dark));
-        add(nav, item(activity, "Pesan", "ic_nav_chat", CustomerChatActivity.class,
+        add(nav, item(activity, "Pesan", "ic_nav2_chat", CustomerChatActivity.class,
                 CustomerPageTransition.CHAT, activeIndex, true, dark));
-        add(nav, item(activity, "Transaksi", "ic_nav_wallet", CustomerBalanceHistoryActivity.class,
+        add(nav, item(activity, "Transaksi", "ic_nav2_wallet", CustomerBalanceHistoryActivity.class,
                 CustomerPageTransition.WALLET, activeIndex, false, dark));
-        add(nav, item(activity, "Akun", "ic_nav_profile", ProfileActivity.class,
+        add(nav, item(activity, "Akun", "ic_nav2_profile", ProfileActivity.class,
                 CustomerPageTransition.PROFILE, activeIndex, false, dark));
 
         nav.setAlpha(0f);

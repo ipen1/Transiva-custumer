@@ -15,7 +15,7 @@ public final class BiometricSecurityManager {
     public interface Callback { void onSuccess(); void onUnavailable(String message); }
 
     public static boolean canUse(Context c) {
-        int r = BiometricManager.from(c).canAuthenticate(BiometricManager.Authenticators.BIOMETRIC_STRONG);
+        int r = BiometricManager.from(c).canAuthenticate(BiometricManager.Authenticators.BIOMETRIC_WEAK);
         return r == BiometricManager.BIOMETRIC_SUCCESS;
     }
     public static boolean isEnabled(Context c) {
@@ -31,7 +31,7 @@ public final class BiometricSecurityManager {
             @Override public void onAuthenticationError(int code, CharSequence msg) { super.onAuthenticationError(code, msg); if (code != BiometricPrompt.ERROR_NEGATIVE_BUTTON && code != BiometricPrompt.ERROR_USER_CANCELED) cb.onUnavailable(msg == null ? "Autentikasi biometrik gagal." : msg.toString()); }
         });
         BiometricPrompt.PromptInfo info = new BiometricPrompt.PromptInfo.Builder()
-                .setTitle(title).setSubtitle(subtitle).setAllowedAuthenticators(BiometricManager.Authenticators.BIOMETRIC_STRONG)
+                .setTitle(title).setSubtitle(subtitle).setAllowedAuthenticators(BiometricManager.Authenticators.BIOMETRIC_WEAK)
                 .setNegativeButtonText("Gunakan PIN").build();
         prompt.authenticate(info);
     }

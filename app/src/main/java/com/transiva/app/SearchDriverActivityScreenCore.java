@@ -1264,7 +1264,7 @@ class SearchDriverActivityScreenCore extends Activity {
                     sweep += 4;
                     if (sweep >= 360) sweep = 0;
                     invalidate();
-                    postDelayed(this, CustomerPerformanceManager.animationFrame(SearchDriverActivity.this));
+                    postDelayed(this, CustomerPerformanceManager.animationFrame(SearchDriverActivityScreenCore.this));
                 }
             }
         };

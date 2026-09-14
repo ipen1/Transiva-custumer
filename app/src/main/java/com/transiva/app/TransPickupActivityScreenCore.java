@@ -729,7 +729,7 @@ class TransPickupActivityScreenCore extends FragmentActivity {
         if ("balance".equals(paymentMethod) && BiometricSecurityManager.isEnabled(this)) {
             BiometricSecurityManager.authenticate(this, "Otorisasi Transiva Pay", "Konfirmasi biometrik sebelum membayar pengiriman ini.", new BiometricSecurityManager.Callback() {
                 @Override public void onSuccess() { createPickupOrderAuthorized(); }
-                @Override public void onUnavailable(String message) { Toast.makeText(TransPickupActivity.this, message, Toast.LENGTH_SHORT).show(); }
+                @Override public void onUnavailable(String message) { Toast.makeText(TransPickupActivityScreenCore.this, message, Toast.LENGTH_SHORT).show(); }
             });
             return;
         }

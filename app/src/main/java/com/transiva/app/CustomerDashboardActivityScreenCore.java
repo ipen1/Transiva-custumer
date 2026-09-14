@@ -2171,7 +2171,7 @@ class CustomerDashboardActivityScreenCore extends Activity
                 @Override public void onFailure(String message) {
                     if (locationText != null) locationText.setText("Lokasi belum ditemukan");
                     if (clusterText != null) clusterText.setText("Cluster: belum diketahui");
-                    new TransivaAlertDialogBuilder(CustomerDashboardActivity.this)
+                    new TransivaAlertDialogBuilder(CustomerDashboardActivityScreenCore.this)
                             .setTitle("Lokasi")
                             .setMessage(message)
                             .setNegativeButton("Tutup", null)
@@ -2236,7 +2236,7 @@ class CustomerDashboardActivityScreenCore extends Activity
                                 locationText.setText(finalResult);
                                 if (clusterText != null) clusterText.setText("Cluster: sinkronisasi...");
                                 networkScope.newThread(() -> {
-                                    RegionalClusterResolver.Result area = RegionalClusterResolver.resolve(CustomerDashboardActivity.this, location.getLatitude(), location.getLongitude());
+                                    RegionalClusterResolver.Result area = RegionalClusterResolver.resolve(CustomerDashboardActivityScreenCore.this, location.getLatitude(), location.getLongitude());
                                     networkScope.post(uiHandler, () -> {
                                         if (clusterText != null) {
                                             String prefix = area.regionalName == null || area.regionalName.isEmpty() ? "" : area.regionalName + " • ";

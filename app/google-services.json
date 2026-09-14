@@ -12,7 +12,12 @@
           "package_name": "com.transiva.app"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "450425290065-6iiug06ofldr107i5k7r7mrddq7ogb9c.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
       "api_key": [
         {
           "current_key": "AIzaSyA9OQ1QEzGlbrliogkdZeYQ_-FME26XdQ0"
@@ -20,7 +25,12 @@
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": []
+          "other_platform_oauth_client": [
+            {
+              "client_id": "450425290065-6iiug06ofldr107i5k7r7mrddq7ogb9c.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
         }
       }
     },
@@ -31,7 +41,20 @@
           "package_name": "com.transiva.customer"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "450425290065-7idm84b4his1gp7ueht7vritsgvs7kt9.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.transiva.customer",
+            "certificate_hash": "4c5274c80941199c3a066b50dd85a77f3a1ab284"
+          }
+        },
+        {
+          "client_id": "450425290065-6iiug06ofldr107i5k7r7mrddq7ogb9c.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
       "api_key": [
         {
           "current_key": "AIzaSyA9OQ1QEzGlbrliogkdZeYQ_-FME26XdQ0"
@@ -39,18 +62,28 @@
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": []
+          "other_platform_oauth_client": [
+            {
+              "client_id": "450425290065-6iiug06ofldr107i5k7r7mrddq7ogb9c.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
         }
       }
     },
     {
       "client_info": {
-        "mobilesdk_app_id": "1:450425290065:android:a7b6cda68f819d1d5c6770",
+        "mobilesdk_app_id": "1:450425290065:android:0dcd3522ec3b3a355c6770",
         "android_client_info": {
-          "package_name": "com.transiva.mobile"
+          "package_name": "com.transiva.driver"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "450425290065-6iiug06ofldr107i5k7r7mrddq7ogb9c.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
       "api_key": [
         {
           "current_key": "AIzaSyA9OQ1QEzGlbrliogkdZeYQ_-FME26XdQ0"
@@ -58,7 +91,41 @@
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": []
+          "other_platform_oauth_client": [
+            {
+              "client_id": "450425290065-6iiug06ofldr107i5k7r7mrddq7ogb9c.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:450425290065:android:07fbf4a1c038a61d5c6770",
+        "android_client_info": {
+          "package_name": "com.transiva.merchant"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "450425290065-6iiug06ofldr107i5k7r7mrddq7ogb9c.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyA9OQ1QEzGlbrliogkdZeYQ_-FME26XdQ0"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "450425290065-6iiug06ofldr107i5k7r7mrddq7ogb9c.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
         }
       }
     }

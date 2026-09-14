@@ -1,0 +1,10 @@
+package com.transiva.app;
+import android.app.Activity;import android.os.Bundle;import android.graphics.Color;import android.view.Gravity;import android.widget.*;import org.json.*;import java.io.*;import java.net.*;import java.nio.charset.StandardCharsets;
+public class FamilyLiveActivity extends Activity{
+ private LinearLayout list; private int memberId; private final android.os.Handler h=new android.os.Handler(android.os.Looper.getMainLooper());
+ private final Runnable poll=new Runnable(){public void run(){load();h.postDelayed(this,15000);}};
+ @Override public void onCreate(Bundle b){super.onCreate(b);memberId=getIntent().getIntExtra("family_member_id",0);LinearLayout r=new LinearLayout(this);r.setOrientation(LinearLayout.VERTICAL);r.setPadding(24,24,24,24);r.setBackgroundColor(Color.rgb(244,248,253));TextView t=new TextView(this);t.setText("Transiva Family 2.0\nPantauan perjalanan realtime");t.setTextSize(20);t.setTextColor(Color.rgb(11,58,120));t.setGravity(Gravity.CENTER);r.addView(t);list=new LinearLayout(this);list.setOrientation(LinearLayout.VERTICAL);r.addView(list,new LinearLayout.LayoutParams(-1,0,1));setContentView(r);h.post(poll);}
+ private void load(){TransivaNetworkExecutor.execute(()->{try{JSONObject q=RideSafetyApi.post(this,"customer_family_v2.php",new JSONObject().put("action","live").put("member_id",memberId));runOnUiThread(()->render(q));}catch(Exception ignored){}});}
+ private void render(JSONObject r){list.removeAllViews();JSONArray a=r.optJSONArray("trips");if(a==null||a.length()==0){TextView x=new TextView(this);x.setText("Tidak ada perjalanan aktif untuk anggota ini.");x.setPadding(0,24,0,0);list.addView(x);return;}for(int i=0;i<a.length();i++){JSONObject o=a.optJSONObject(i);TextView x=new TextView(this);x.setText("🚘 "+o.optString("service","Perjalanan")+"\n"+o.optString("status","-")+"\nDriver: "+o.optString("driver_name","Menunggu driver")+"\nETA: "+o.optString("eta","-"));x.setTextSize(15);x.setPadding(18,18,18,18);list.addView(x);}}
+ @Override protected void onDestroy(){h.removeCallbacksAndMessages(null);super.onDestroy();}
+}

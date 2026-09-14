@@ -1,0 +1,2872 @@
+package com.transiva.app;
+
+import android.Manifest;
+import android.app.Activity;
+import android.app.AlertDialog;
+import android.content.Intent;
+import android.content.pm.PackageManager;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
+import android.graphics.Color;
+import android.graphics.Typeface;
+import android.graphics.drawable.GradientDrawable;
+import android.graphics.drawable.Drawable;
+import android.location.Address;
+import android.location.Geocoder;
+import android.location.Location;
+import android.location.LocationListener;
+import android.location.LocationManager;
+import android.net.Uri;
+import android.os.Build;
+import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
+import android.provider.Settings;
+import android.text.Editable;
+import android.text.InputType;
+import android.text.TextUtils;
+import android.text.TextWatcher;
+import android.view.Gravity;
+import android.view.View;
+import android.view.ViewOutlineProvider;
+import android.view.inputmethod.EditorInfo;
+import android.widget.Button;
+import android.widget.EditText;
+import android.widget.FrameLayout;
+import android.widget.ImageView;
+import android.widget.LinearLayout;
+import android.widget.ProgressBar;
+import android.widget.ScrollView;
+import android.widget.TextView;
+import android.widget.Toast;
+
+import org.json.JSONObject;
+
+import java.io.BufferedReader;
+import java.io.ByteArrayOutputStream;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.io.OutputStream;
+import java.net.HttpURLConnection;
+import java.net.URL;
+import java.nio.charset.StandardCharsets;
+import java.util.Locale;
+import java.util.List;
+class ProfileActivityScreenCore extends Activity {
+
+
+
+    protected static final String BASE_URL =
+            "https://transiva.my.id/server/";
+
+    protected static final String PROFILE_URL =
+            BASE_URL + "get_customer_profile.php";
+
+    protected static final String UPDATE_URL =
+            BASE_URL + "update_customer_profile.php";
+
+    protected static final String DEVICE_URL =
+            BASE_URL + "customer_device_native.php";
+
+    protected static final String LOYALTY_URL =
+            BASE_URL + "customer_loyalty.php";
+
+    protected static final int REQUEST_GALLERY = 5101;
+    protected static final int REQUEST_LOCATION = 5102;
+    protected static final int TIMEOUT_MS = 30000;
+
+    protected final Handler mainHandler =
+            new Handler(Looper.getMainLooper());
+
+    protected final CustomerFeatureRuntimeController featureRuntime =
+            new CustomerFeatureRuntimeController(CustomerRealtimeCoordinator.Role.IDLE);
+
+    protected SessionManager session;
+
+    protected ImageView avatarView;
+    protected TextView nameView;
+    protected TextView usernameView;
+    protected TextView emailView;
+    protected TextView emailBadge;
+    protected TextView phoneView;
+    protected TextView roleView;
+    protected TextView loyaltyBadge;
+
+    protected EditText usernameInput;
+    protected EditText phoneInput;
+    protected EditText addressInput;
+    protected EditText passwordInput;
+
+    protected Button photoButton;
+    protected Button locationButton;
+    protected Button saveButton;
+    protected Button logoutButton;
+    protected Button deleteAccountButton;
+    protected Button disconnectDeviceButton;
+    protected TextView deviceNameView;
+    protected TextView deviceDetailView;
+    protected TextView deviceStatusView;
+    protected ProgressBar progress;
+
+    protected String userId = "";
+    protected String username = "";
+    protected String email = "";
+    protected String phone = "";
+    protected String address = "";
+    protected String photoUrl = "";
+    protected boolean emailVerified;
+    protected boolean loading;
+    protected boolean deviceLoading;
+    protected boolean loyaltyLoading;
+    protected boolean forceAddressSetup;
+
+    protected byte[] pendingPhotoWebp;
+    protected double deliveryLat;
+    protected double deliveryLng;
+
+    @Override
+    protected void onCreate(Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+
+        getWindow().setStatusBarColor(
+                Color.parseColor("#0B7CFF")
+        );
+
+        getWindow().setNavigationBarColor(
+                Color.parseColor("#071426")
+        );
+
+        session = new SessionManager(this);
+        forceAddressSetup = getIntent().getBooleanExtra("force_address_setup", false);
+
+        readSession();
+        setContentView(buildScreen());
+        CustomerResponsiveUi.apply(this);
+        CustomerAppSettings.apply(this);
+        loadProfile();
+        loadLoyalty();
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        featureRuntime.onResume();
+
+        if (
+                avatarView != null
+                        && !loading
+        ) {
+            CustomerAppSettings.apply(this);
+            loadProfile();
+        }
+    }
+
+    protected void readSession() {
+        try {
+            userId = first(
+                    session.getId(),
+                    session.getUserId()
+            );
+
+            username = first(
+                    session.getUsername(),
+                    session.getName(),
+                    "Customer"
+            );
+
+            JSONObject data =
+                    session.getSessionJson();
+
+            email = first(
+                    data.optString("email"),
+                    session.get("email")
+            );
+
+            phone = first(
+                    data.optString("phone"),
+                    data.optString("phone_number"),
+                    data.optString("no_hp"),
+                    session.get("phone"),
+                    session.get("phone_number")
+            );
+
+            address = first(
+                    data.optString(
+                            "delivery_address"
+                    ),
+                    session.get(
+                            "delivery_address"
+                    )
+            );
+
+            photoUrl = first(
+                    data.optString(
+                            "profile_photo"
+                    ),
+                    data.optString("photo"),
+                    session.get("profile_photo")
+            );
+
+            emailVerified =
+                    data.optInt(
+                            "email_verified",
+                            0
+                    ) == 1;
+
+        } catch (Exception ignored) {
+        }
+    }
+
+    protected View buildScreen() {
+        FrameLayout page =
+                new FrameLayout(this);
+
+        page.setBackgroundColor(
+                Color.parseColor("#F5F8FD")
+        );
+
+        LinearLayout shell =
+                new LinearLayout(this);
+
+        shell.setOrientation(
+                LinearLayout.VERTICAL
+        );
+
+        page.addView(
+                shell,
+                new FrameLayout.LayoutParams(
+                        -1,
+                        -1
+                )
+        );
+
+        ScrollView scroll =
+                new ScrollView(this);
+
+        scroll.setFillViewport(true);
+        scroll.setClipToPadding(false);
+
+        shell.addView(
+                scroll,
+                new LinearLayout.LayoutParams(
+                        -1,
+                        0,
+                        1
+                )
+        );
+
+        LinearLayout root =
+                new LinearLayout(this);
+
+        root.setOrientation(
+                LinearLayout.VERTICAL
+        );
+
+        root.setPadding(
+                dp(14),
+                dp(14),
+                dp(14),
+                dp(24)
+        );
+
+        scroll.addView(
+                root,
+                new ScrollView.LayoutParams(
+                        -1,
+                        -2
+                )
+        );
+
+        buildHeader(root);
+        buildIdentityCard(root);
+        buildFormCard(root);
+        buildSecurityCard(root);
+
+        shell.addView(
+                buildBottomNavigation(),
+                new LinearLayout.LayoutParams(
+                        -1,
+                        dp(66)
+                )
+        );
+
+        progress =
+                new ProgressBar(this);
+
+        progress.setVisibility(
+                View.GONE
+        );
+
+        FrameLayout.LayoutParams progressLp =
+                new FrameLayout.LayoutParams(
+                        dp(48),
+                        dp(48)
+                );
+
+        progressLp.gravity =
+                Gravity.CENTER;
+
+        page.addView(
+                progress,
+                progressLp
+        );
+
+        return page;
+    }
+
+    protected void buildHeader(
+            LinearLayout root
+    ) {
+        LinearLayout row =
+                new LinearLayout(this);
+
+        row.setGravity(
+                Gravity.CENTER_VERTICAL
+        );
+
+        LinearLayout title =
+                new LinearLayout(this);
+
+        title.setOrientation(
+                LinearLayout.VERTICAL
+        );
+
+        title.addView(
+                text(
+                        "Akun",
+                        24,
+                        "#0B3A78",
+                        true
+                )
+        );
+
+        title.addView(
+                text(
+                        "Kelola identitas dan keamanan akun",
+                        11,
+                        "#718096",
+                        false
+                )
+        );
+
+        row.addView(
+                title,
+                new LinearLayout.LayoutParams(
+                        0,
+                        -2,
+                        1
+                )
+        );
+
+        TextView refresh =
+                text(
+                        "↻",
+                        25,
+                        "#0B7CFF",
+                        true
+                );
+
+        refresh.setGravity(
+                Gravity.CENTER
+        );
+
+        refresh.setBackground(
+                roundStroke(
+                        "#FFFFFF",
+                        "#DCE8F6",
+                        16,
+                        1
+                )
+        );
+
+        refresh.setOnClickListener(
+                view -> loadProfile()
+        );
+
+        row.addView(
+                refresh,
+                new LinearLayout.LayoutParams(
+                        dp(44),
+                        dp(44)
+                )
+        );
+
+        root.addView(row);
+    }
+
+
+
+    protected void buildIdentityCard(
+            LinearLayout root
+    ) {
+        LinearLayout card =
+                new LinearLayout(this);
+
+        card.setOrientation(
+                LinearLayout.VERTICAL
+        );
+
+        card.setGravity(
+                Gravity.CENTER_HORIZONTAL
+        );
+
+        card.setPadding(
+                dp(18),
+                dp(22),
+                dp(18),
+                dp(18)
+        );
+
+        card.setBackground(
+                gradient(
+                        "#075EF4",
+                        "#25A7FF",
+                        22
+                )
+        );
+
+        card.setElevation(dp(3));
+
+        LinearLayout.LayoutParams cardLp =
+                new LinearLayout.LayoutParams(
+                        -1,
+                        -2
+                );
+
+        cardLp.setMargins(
+                0,
+                dp(14),
+                0,
+                dp(14)
+        );
+
+        root.addView(card, cardLp);
+
+        FrameLayout avatarFrame =
+                new FrameLayout(this);
+
+        GradientDrawable avatarBorder =
+                new GradientDrawable();
+
+        avatarBorder.setShape(
+                GradientDrawable.OVAL
+        );
+
+        avatarBorder.setColor(
+                Color.WHITE
+        );
+
+        avatarBorder.setStroke(
+                dp(3),
+                Color.parseColor("#FFFFFF")
+        );
+
+        avatarFrame.setBackground(
+                avatarBorder
+        );
+
+        avatarFrame.setElevation(
+                dp(5)
+        );
+
+        avatarView =
+                new ImageView(this);
+
+        avatarView.setScaleType(
+                ImageView.ScaleType.CENTER_CROP
+        );
+
+        avatarView.setImageResource(
+                android.R.drawable
+                        .sym_def_app_icon
+        );
+
+        GradientDrawable avatarMask =
+                new GradientDrawable();
+
+        avatarMask.setShape(
+                GradientDrawable.OVAL
+        );
+
+        avatarMask.setColor(
+                Color.parseColor("#EAF4FF")
+        );
+
+        avatarView.setBackground(
+                avatarMask
+        );
+
+        avatarView.setClipToOutline(true);
+
+        avatarView.setOutlineProvider(
+                ViewOutlineProvider.BACKGROUND
+        );
+
+        FrameLayout.LayoutParams avatarLp =
+                new FrameLayout.LayoutParams(
+                        dp(92),
+                        dp(92)
+                );
+
+        avatarLp.gravity =
+                Gravity.CENTER;
+
+        avatarFrame.addView(
+                avatarView,
+                avatarLp
+        );
+
+        card.addView(
+                avatarFrame,
+                new LinearLayout.LayoutParams(
+                        dp(100),
+                        dp(100)
+                )
+        );
+
+        TextView photoOverlay =
+                text(
+                        "✎",
+                        18,
+                        "#FFFFFF",
+                        true
+                );
+        photoOverlay.setGravity(Gravity.CENTER);
+        photoOverlay.setBackground(round("#0B7CFF", 18));
+        photoOverlay.setElevation(dp(8));
+
+        FrameLayout.LayoutParams overlayLp =
+                new FrameLayout.LayoutParams(
+                        dp(34),
+                        dp(34)
+                );
+        overlayLp.gravity = Gravity.END | Gravity.BOTTOM;
+        overlayLp.setMargins(0, 0, dp(2), dp(2));
+        avatarFrame.addView(photoOverlay, overlayLp);
+
+        avatarFrame.setClickable(true);
+        avatarFrame.setFocusable(true);
+        avatarFrame.setContentDescription("Ubah Foto Profil");
+        avatarFrame.setOnClickListener(view -> openGallery());
+        avatarView.setOnClickListener(view -> openGallery());
+        photoOverlay.setOnClickListener(view -> openGallery());
+
+        nameView =
+                text(
+                        username,
+                        20,
+                        "#FFFFFF",
+                        true
+                );
+
+        nameView.setGravity(
+                Gravity.CENTER
+        );
+
+        card.addView(nameView);
+
+        usernameView =
+                text(
+                        "@" + username,
+                        11,
+                        "#EAF5FF",
+                        false
+                );
+
+        usernameView.setGravity(
+                Gravity.CENTER
+        );
+
+        card.addView(usernameView);
+
+        LinearLayout badges =
+                new LinearLayout(this);
+
+        badges.setGravity(
+                Gravity.CENTER
+        );
+
+        LinearLayout.LayoutParams badgesLp =
+                new LinearLayout.LayoutParams(
+                        -1,
+                        -2
+                );
+
+        badgesLp.setMargins(
+                0,
+                dp(12),
+                0,
+                0
+        );
+
+        card.addView(
+                badges,
+                badgesLp
+        );
+
+        emailBadge =
+                badge(
+                        emailVerified
+                                ? "✓ Email Terverifikasi"
+                                : "Email Belum Terverifikasi",
+                        emailVerified
+                                ? "#E7FFF2"
+                                : "#FFF4E5",
+                        emailVerified
+                                ? "#0A8F4C"
+                                : "#C96A05"
+                );
+
+        badges.addView(emailBadge);
+
+        roleView =
+                badge(
+                        "Customer",
+                        "#FFE08A",
+                        "#5C3A00"
+                );
+
+        LinearLayout.LayoutParams roleLp =
+                new LinearLayout.LayoutParams(
+                        -2,
+                        -2
+                );
+
+        roleLp.setMargins(
+                dp(7),
+                0,
+                0,
+                0
+        );
+
+        badges.addView(
+                roleView,
+                roleLp
+        );
+
+        loyaltyBadge =
+                badge(
+                        "Premium Bronze • 0 Poin",
+                        "#FFF4D6",
+                        "#8A5A00"
+                );
+
+        LinearLayout.LayoutParams loyaltyLp =
+                new LinearLayout.LayoutParams(
+                        -2,
+                        -2
+                );
+        loyaltyLp.gravity = Gravity.CENTER_HORIZONTAL;
+        loyaltyLp.setMargins(0, dp(8), 0, 0);
+        card.addView(loyaltyBadge, loyaltyLp);
+    }
+
+    protected void buildFormCard(
+            LinearLayout root
+    ) {
+        LinearLayout card =
+                whiteCard();
+
+        card.setPadding(
+                dp(16),
+                dp(16),
+                dp(16),
+                dp(16)
+        );
+
+        card.addView(
+                sectionTitle(
+                        "Informasi Akun",
+                        "Data utama akun Transiva"
+                )
+        );
+
+        card.addView(
+                label("Username")
+        );
+
+        usernameInput =
+                input(
+                        "Username",
+                        InputType.TYPE_CLASS_TEXT
+                );
+
+        usernameInput.setText(username);
+
+        card.addView(
+                usernameInput,
+                fieldLp()
+        );
+
+        card.addView(
+                label("Email")
+        );
+
+        emailView =
+                readonlyField(
+                        first(
+                                email,
+                                "Email belum tersedia"
+                        )
+                );
+
+        card.addView(
+                emailView,
+                fieldLp()
+        );
+
+        card.addView(
+                label("Nomor HP")
+        );
+
+        LinearLayout phoneRow = new LinearLayout(this);
+        phoneRow.setOrientation(LinearLayout.HORIZONTAL);
+        phoneRow.setGravity(Gravity.CENTER_VERTICAL);
+
+        TextView prefix62 = text("62", 14, "#0F172A", true);
+        prefix62.setGravity(Gravity.CENTER);
+        prefix62.setBackground(roundStroke("#EEF5FF", "#D7E4F2", 14, 1));
+
+        LinearLayout.LayoutParams prefixLp =
+                new LinearLayout.LayoutParams(dp(58), dp(50));
+        prefixLp.setMargins(0, 0, dp(8), 0);
+        phoneRow.addView(prefix62, prefixLp);
+
+        phoneInput =
+                input(
+                        "8123XXX",
+                        InputType.TYPE_CLASS_PHONE
+                );
+        phoneInput.setSingleLine(true);
+        phoneInput.setText(localIndonesiaPhone(phone));
+        phoneInput.setSelection(phoneInput.getText().length());
+        phoneInput.addTextChangedListener(new TextWatcher() {
+            protected boolean changing;
+
+            @Override public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
+            @Override public void onTextChanged(CharSequence s, int start, int before, int count) {}
+
+            @Override
+            public void afterTextChanged(Editable editable) {
+                if (changing) return;
+                String digits = editable == null ? "" : editable.toString().replaceAll("[^0-9]", "");
+                while (digits.startsWith("0")) digits = digits.substring(1);
+                if (digits.startsWith("62")) digits = digits.substring(2);
+                if (digits.length() > 13) digits = digits.substring(0, 13);
+                String current = editable == null ? "" : editable.toString();
+                if (!digits.equals(current)) {
+                    changing = true;
+                    phoneInput.setText(digits);
+                    phoneInput.setSelection(phoneInput.getText().length());
+                    changing = false;
+                }
+            }
+        });
+
+        phoneRow.addView(
+                phoneInput,
+                new LinearLayout.LayoutParams(0, dp(50), 1f)
+        );
+
+        card.addView(phoneRow, fieldLp());
+        phoneView = phoneInput;
+
+        card.addView(
+                label("Alamat Delivery")
+        );
+
+        addressInput =
+                input(
+                        "Alamat lengkap untuk layanan Transiva",
+                        InputType.TYPE_CLASS_TEXT
+                                | InputType.TYPE_TEXT_FLAG_MULTI_LINE
+                );
+
+        addressInput.setSingleLine(false);
+        addressInput.setMinLines(3);
+        addressInput.setGravity(
+                Gravity.TOP | Gravity.START
+        );
+
+        addressInput.setText(address);
+
+        LinearLayout.LayoutParams addressLp =
+                new LinearLayout.LayoutParams(
+                        -1,
+                        dp(94)
+                );
+
+        addressLp.setMargins(
+                0,
+                0,
+                0,
+                dp(12)
+        );
+
+        card.addView(
+                addressInput,
+                addressLp
+        );
+
+        locationButton =
+                outlineButton(
+                        "📍 Dapatkan Lokasi Saya"
+                );
+
+        locationButton.setOnClickListener(
+                view -> requestCurrentLocation()
+        );
+
+        card.addView(
+                locationButton,
+                buttonLp()
+        );
+
+        saveButton =
+                primaryButton(
+                        "Simpan Perubahan"
+                );
+
+        saveButton.setOnClickListener(
+                view -> saveProfile()
+        );
+
+        card.addView(
+                saveButton,
+                buttonLp()
+        );
+
+        root.addView(
+                card,
+                sectionLp()
+        );
+    }
+
+
+
+    protected void buildDeviceCard(
+            LinearLayout root
+    ) {
+        LinearLayout card = whiteCard();
+        card.setPadding(dp(16), dp(16), dp(16), dp(16));
+
+        card.addView(
+                sectionTitle(
+                        "Perangkat Terhubung",
+                        "Kelola perangkat yang saat ini terhubung dengan akun Anda"
+                )
+        );
+
+        LinearLayout deviceBox = new LinearLayout(this);
+        deviceBox.setOrientation(LinearLayout.VERTICAL);
+        deviceBox.setPadding(dp(14), dp(13), dp(14), dp(13));
+        deviceBox.setBackground(
+                roundStroke(
+                        "#F4F9FF",
+                        "#D9E9FA",
+                        16,
+                        1
+                )
+        );
+
+        LinearLayout titleRow = new LinearLayout(this);
+        titleRow.setGravity(Gravity.CENTER_VERTICAL);
+
+        TextView icon = text("▣", 25, "#0B7CFF", true);
+        icon.setGravity(Gravity.CENTER);
+        titleRow.addView(icon, new LinearLayout.LayoutParams(dp(38), dp(38)));
+
+        LinearLayout identity = new LinearLayout(this);
+        identity.setOrientation(LinearLayout.VERTICAL);
+
+        deviceNameView = text("Memeriksa perangkat...", 15, "#0B3A78", true);
+        deviceDetailView = text("", 11, "#64748B", false);
+        deviceDetailView.setPadding(0, dp(2), 0, 0);
+
+        identity.addView(deviceNameView);
+        identity.addView(deviceDetailView);
+
+        LinearLayout.LayoutParams identityLp = new LinearLayout.LayoutParams(0, -2, 1);
+        identityLp.setMargins(dp(8), 0, 0, 0);
+        titleRow.addView(identity, identityLp);
+
+        deviceStatusView = badge("MEMERIKSA", "#EAF4FF", "#0B7CFF");
+        titleRow.addView(deviceStatusView);
+
+        deviceBox.addView(titleRow);
+        card.addView(deviceBox);
+
+        TextView hint = text(
+                "Putuskan perangkat jika Anda ingin memindahkan akun Transiva ke HP lain. Setelah diputuskan, Anda akan keluar dari akun ini dan dapat login di perangkat baru.",
+                11,
+                "#64748B",
+                false
+        );
+        hint.setLineSpacing(0, 1.12f);
+        LinearLayout.LayoutParams hintLp = new LinearLayout.LayoutParams(-1, -2);
+        hintLp.setMargins(0, dp(11), 0, 0);
+        card.addView(hint, hintLp);
+
+        disconnectDeviceButton = dangerButton("Putuskan Perangkat");
+        disconnectDeviceButton.setEnabled(false);
+        disconnectDeviceButton.setAlpha(0.55f);
+        disconnectDeviceButton.setOnClickListener(view -> confirmDisconnectDevice());
+        card.addView(disconnectDeviceButton, buttonLp());
+
+        root.addView(card, sectionLp());
+    }
+
+    protected void buildSecurityCard(
+            LinearLayout root
+    ) {
+        LinearLayout card =
+                whiteCard();
+
+        card.setPadding(
+                dp(16),
+                dp(16),
+                dp(16),
+                dp(16)
+        );
+
+        card.addView(
+                sectionTitle(
+                        "Keamanan",
+                        "Gunakan password yang kuat dan unik"
+                )
+        );
+
+        card.addView(
+                label("Password Baru")
+        );
+
+        passwordInput =
+                input(
+                        "Kosongkan jika tidak diganti",
+                        InputType.TYPE_CLASS_TEXT
+                                | InputType.TYPE_TEXT_VARIATION_PASSWORD
+                );
+
+        card.addView(
+                passwordInput,
+                fieldLp()
+        );
+
+        Button changePinButton =
+                outlineButton(
+                        "Ubah PIN"
+                );
+
+        changePinButton.setOnClickListener(
+                view -> startActivity(
+                        new Intent(
+                                ProfileActivityScreenCore.this,
+                                ChangePinActivity.class
+                        )
+                )
+        );
+
+        card.addView(
+                changePinButton,
+                buttonLp()
+        );
+
+        Button appSettings =
+                outlineButton(
+                        "Buka Pengaturan Aplikasi"
+                );
+
+        appSettings.setOnClickListener(
+                view -> {
+                    Intent intent =
+                            new Intent(
+                                    Settings
+                                            .ACTION_APPLICATION_DETAILS_SETTINGS
+                            );
+
+                    intent.setData(
+                            Uri.parse(
+                                    "package:"
+                                            + getPackageName()
+                            )
+                    );
+
+                    startActivity(intent);
+                }
+        );
+
+        card.addView(
+                appSettings,
+                buttonLp()
+        );
+
+        logoutButton =
+                dangerButton(
+                        "Keluar dari Akun"
+                );
+
+        logoutButton.setOnClickListener(
+                view -> confirmLogout()
+        );
+
+        card.addView(
+                logoutButton,
+                buttonLp()
+        );
+
+        deleteAccountButton =
+                dangerButton(
+                        "Hapus Akun Permanen"
+                );
+        deleteAccountButton.setOnClickListener(view ->
+                CustomerAccountDeletionController.show(
+                        this,
+                        new CustomerAccountDeletionController.Listener() {
+                            @Override public void onBusyChanged(boolean busy) { setLoading(busy); }
+                            @Override public void onError(String message) {
+                                new TransivaAlertDialogBuilder(ProfileActivityScreenCore.this)
+                                        .setTitle("Hapus Akun")
+                                        .setMessage(message)
+                                        .setPositiveButton("OK", null)
+                                        .show();
+                            }
+                        }
+                )
+        );
+        card.addView(deleteAccountButton, buttonLp());
+
+        root.addView(
+                card,
+                sectionLp()
+        );
+    }
+
+    protected void loadConnectedDevice() {
+        if (deviceLoading || session == null || !session.isLoggedIn()) {
+            return;
+        }
+
+        String token = first(session.getToken());
+        if (token.isEmpty()) {
+            applyDeviceUnavailable("Sesi tidak tersedia");
+            return;
+        }
+
+        deviceLoading = true;
+        updateDeviceButton(false, "Memeriksa...");
+
+        featureRuntime.execute(() -> {
+            HttpURLConnection connection = null;
+            try {
+                connection = CustomerApiClient.open(this, DEVICE_URL);
+                connection.setRequestMethod("GET");
+                connection.setConnectTimeout(TIMEOUT_MS);
+                connection.setReadTimeout(TIMEOUT_MS);
+                connection.setUseCaches(false);
+                connection.setRequestProperty("Accept", "application/json");
+                connection.setRequestProperty("Authorization", "Bearer " + token);
+                connection.setRequestProperty("X-Device-UUID", DeviceIdentityManager.getInstallationUuid(this));
+                connection.setRequestProperty("X-App-Scope", "customer");
+                connection.setRequestProperty(
+                        "X-Installation-UUID",
+                        DeviceIdentityManager.getInstallationUuid(this)
+                );
+
+                int code = connection.getResponseCode();
+                InputStream stream = code >= 200 && code < 300
+                        ? connection.getInputStream()
+                        : connection.getErrorStream();
+                String body = readStream(stream);
+                CustomerApiClient.handleSessionResponse(this, code, body);
+                JSONObject response = new JSONObject(body);
+
+                if (!response.optBoolean("success", false)) {
+                    throw new IllegalStateException(
+                            response.optString("message", "Data perangkat tidak dapat dimuat.")
+                    );
+                }
+
+                JSONObject device = response.optJSONObject("device");
+                mainHandler.post(() -> {
+                    deviceLoading = false;
+                    applyDeviceInfo(device);
+                });
+
+            } catch (Exception error) {
+                if (CustomerAsyncError.isCancellation(error) || featureRuntime.isDestroyed()) return;
+                mainHandler.post(() -> {
+                    deviceLoading = false;
+                    applyDeviceUnavailable(error.getMessage());
+                });
+            } finally {
+                if (connection != null) connection.disconnect();
+            }
+        });
+    }
+
+    protected void applyDeviceInfo(JSONObject device) {
+        if (deviceNameView == null) return;
+
+        if (device == null || device.optInt("id", 0) <= 0) {
+            deviceNameView.setText("Belum ada perangkat terhubung");
+            deviceDetailView.setText("Login kembali untuk menghubungkan perangkat ini.");
+            setDeviceStatus("TIDAK TERHUBUNG", "#F1F5F9", "#64748B");
+            updateDeviceButton(false, "Putuskan Perangkat");
+            return;
+        }
+
+        String manufacturer = first(device.optString("manufacturer"));
+        String model = first(device.optString("model"));
+        String deviceName = first(
+                (manufacturer + " " + model).trim(),
+                device.optString("device_name"),
+                "Perangkat Android"
+        );
+
+        String androidVersion = first(device.optString("android_version"), "-");
+        String lastSeen = first(device.optString("last_seen_at"), "-");
+        String status = first(device.optString("status"), "active").toLowerCase(Locale.US);
+
+        deviceNameView.setText(deviceName);
+        deviceDetailView.setText("Android " + androidVersion + "  •  Terakhir aktif " + lastSeen);
+
+        if ("active".equals(status)) {
+            setDeviceStatus("TERHUBUNG", "#E7FFF2", "#0A8F4C");
+            updateDeviceButton(true, "Putuskan Perangkat");
+        } else if ("banned".equals(status)) {
+            setDeviceStatus("DIBLOKIR", "#FEE2E2", "#B91C1C");
+            updateDeviceButton(false, "Perangkat Diblokir");
+        } else {
+            setDeviceStatus("TERPUTUS", "#F1F5F9", "#64748B");
+            updateDeviceButton(false, "Putuskan Perangkat");
+        }
+    }
+
+    protected void applyDeviceUnavailable(String message) {
+        if (deviceNameView == null) return;
+        deviceNameView.setText("Perangkat tidak dapat diperiksa");
+        deviceDetailView.setText(first(message, "Coba muat ulang halaman profil."));
+        setDeviceStatus("GAGAL", "#FFF4E5", "#C96A05");
+        updateDeviceButton(false, "Putuskan Perangkat");
+    }
+
+    protected void setDeviceStatus(String text, String background, String foreground) {
+        if (deviceStatusView == null) return;
+        deviceStatusView.setText(text);
+        deviceStatusView.setTextColor(Color.parseColor(foreground));
+        deviceStatusView.setBackground(roundStroke(background, background, 12, 1));
+    }
+
+    protected void updateDeviceButton(boolean enabled, String text) {
+        if (disconnectDeviceButton == null) return;
+        disconnectDeviceButton.setEnabled(enabled && !deviceLoading);
+        disconnectDeviceButton.setAlpha(disconnectDeviceButton.isEnabled() ? 1f : 0.55f);
+        disconnectDeviceButton.setText(text);
+    }
+
+    protected void confirmDisconnectDevice() {
+        new TransivaAlertDialogBuilder(this)
+                .setTitle("Putuskan perangkat?")
+                .setMessage(
+                        "Perangkat ini akan dilepas dari akun Transiva dan sesi Anda akan diakhiri. "
+                                + "Setelah itu akun dapat digunakan untuk login di perangkat lain."
+                )
+                .setNegativeButton("Batal", null)
+                .setPositiveButton("Putuskan", (dialog, which) -> disconnectConnectedDevice())
+                .show();
+    }
+
+    protected void disconnectConnectedDevice() {
+        if (deviceLoading) return;
+
+        String token = first(session.getToken());
+        if (token.isEmpty()) {
+            Toast.makeText(this, "Sesi tidak tersedia.", Toast.LENGTH_SHORT).show();
+            return;
+        }
+
+        deviceLoading = true;
+        updateDeviceButton(false, "Memutuskan...");
+
+        featureRuntime.execute(() -> {
+            HttpURLConnection connection = null;
+            try {
+                connection = CustomerApiClient.open(this, DEVICE_URL);
+                connection.setRequestMethod("POST");
+                connection.setConnectTimeout(TIMEOUT_MS);
+                connection.setReadTimeout(TIMEOUT_MS);
+                connection.setUseCaches(false);
+                connection.setDoOutput(true);
+                connection.setRequestProperty("Accept", "application/json");
+                connection.setRequestProperty("Content-Type", "application/json; charset=UTF-8");
+                connection.setRequestProperty("Authorization", "Bearer " + token);
+                connection.setRequestProperty("X-Device-UUID", DeviceIdentityManager.getInstallationUuid(this));
+                connection.setRequestProperty("X-App-Scope", "customer");
+                connection.setRequestProperty(
+                        "X-Installation-UUID",
+                        DeviceIdentityManager.getInstallationUuid(this)
+                );
+
+                JSONObject payload = new JSONObject();
+                payload.put("action", "disconnect_device");
+                payload.put("installation_uuid", DeviceIdentityManager.getInstallationUuid(this));
+
+                byte[] bytes = payload.toString().getBytes(StandardCharsets.UTF_8);
+                try (OutputStream output = connection.getOutputStream()) {
+                    output.write(bytes);
+                }
+
+                int code = connection.getResponseCode();
+                InputStream stream = code >= 200 && code < 300
+                        ? connection.getInputStream()
+                        : connection.getErrorStream();
+                String rawBody = readStream(stream);
+                CustomerApiClient.handleSessionResponse(this, code, rawBody);
+                JSONObject response = new JSONObject(rawBody);
+
+                if (!response.optBoolean("success", false)) {
+                    throw new IllegalStateException(
+                            response.optString("message", "Perangkat gagal diputuskan.")
+                    );
+                }
+
+                mainHandler.post(() -> {
+                    deviceLoading = false;
+                    Toast.makeText(
+                            this,
+                            "Perangkat berhasil diputuskan. Silakan login di perangkat lain.",
+                            Toast.LENGTH_LONG
+                    ).show();
+                    session.forceLogout("customer_device_disconnected");
+                    Intent intent = new Intent(this, LoginActivity.class);
+                    intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK
+                            | Intent.FLAG_ACTIVITY_CLEAR_TASK
+                            | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+                    startActivity(intent);
+                    finish();
+                });
+
+            } catch (Exception error) {
+                if (CustomerAsyncError.isCancellation(error) || featureRuntime.isDestroyed()) return;
+                mainHandler.post(() -> {
+                    deviceLoading = false;
+                    updateDeviceButton(true, "Putuskan Perangkat");
+                    Toast.makeText(
+                            this,
+                            CustomerAsyncError.userMessage(error, "Perangkat gagal diputuskan."),
+                            Toast.LENGTH_LONG
+                    ).show();
+                });
+            } finally {
+                if (connection != null) connection.disconnect();
+            }
+        });
+    }
+
+    protected void requestCurrentLocation() {
+        if (
+                Build.VERSION.SDK_INT >= Build.VERSION_CODES.M
+                        && checkSelfPermission(
+                        Manifest.permission.ACCESS_FINE_LOCATION
+                ) != PackageManager.PERMISSION_GRANTED
+        ) {
+            requestPermissions(
+                    new String[]{
+                            Manifest.permission.ACCESS_FINE_LOCATION,
+                            Manifest.permission.ACCESS_COARSE_LOCATION
+                    },
+                    REQUEST_LOCATION
+            );
+
+            return;
+        }
+
+        fetchCurrentLocation();
+    }
+
+    protected void fetchCurrentLocation() {
+        LocationManager manager = (LocationManager) getSystemService(LOCATION_SERVICE);
+        if (manager == null) { showInfo("Lokasi Tidak Tersedia", "Layanan lokasi tidak tersedia pada perangkat."); return; }
+        boolean gpsEnabled = manager.isProviderEnabled(LocationManager.GPS_PROVIDER);
+        boolean networkEnabled = manager.isProviderEnabled(LocationManager.NETWORK_PROVIDER);
+        if (!gpsEnabled && !networkEnabled) {
+            new TransivaAlertDialogBuilder(this).setTitle("Aktifkan Lokasi")
+                    .setMessage("Aktifkan GPS atau layanan lokasi untuk mengisi alamat otomatis.")
+                    .setNegativeButton("Batal", null)
+                    .setPositiveButton("Buka Pengaturan", (dialog, which) -> startActivity(new Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS))).show();
+            return;
+        }
+        setLoading(true);
+        try {
+            TransivaFreshLocation.request(this, new TransivaFreshLocation.Callback() {
+                @Override public void onLocation(Location location, boolean fresh) { resolveAddress(location); }
+                @Override public void onFailure(String message) { setLoading(false); showInfo("Lokasi Belum Ditemukan", message); }
+            });
+        } catch (SecurityException error) {
+            setLoading(false);
+            showInfo("Izin Lokasi Diperlukan", "Berikan izin lokasi agar alamat dapat diisi otomatis.");
+        }
+    }
+
+
+
+    protected void resolveAddress(
+            Location location
+    ) {
+        featureRuntime.execute(() -> {
+            String addressText = "";
+
+            try {
+                Geocoder geocoder =
+                        new Geocoder(
+                                this,
+                                new Locale(
+                                        "id",
+                                        "ID"
+                                )
+                        );
+
+                List<Address> results =
+                        geocoder.getFromLocation(
+                                location.getLatitude(),
+                                location.getLongitude(),
+                                1
+                        );
+
+                if (
+                        results != null
+                                && !results.isEmpty()
+                ) {
+                    Address result =
+                            results.get(0);
+
+                    addressText =
+                            first(
+                                    result.getAddressLine(0),
+                                    result.getFeatureName()
+                            );
+                }
+
+            } catch (Exception ignored) {
+            }
+
+            final String resolved =
+                    addressText.isEmpty()
+                            ? (
+                            String.format(
+                                    Locale.US,
+                                    "%.6f, %.6f",
+                                    location.getLatitude(),
+                                    location.getLongitude()
+                            )
+                    )
+                            : addressText;
+
+            mainHandler.post(() -> {
+                deliveryLat =
+                        location.getLatitude();
+
+                deliveryLng =
+                        location.getLongitude();
+
+                session.saveLastLocation(String.valueOf(deliveryLat), String.valueOf(deliveryLng));
+
+                addressInput.setText(
+                        resolved
+                );
+
+                addressInput.setSelection(
+                        resolved.length()
+                );
+
+                setLoading(false);
+
+                toast(
+                        "Alamat berhasil diisi dari lokasi"
+                );
+            });
+        });
+    }
+
+    @Override
+    public void onRequestPermissionsResult(
+            int requestCode,
+            String[] permissions,
+            int[] grantResults
+    ) {
+        super.onRequestPermissionsResult(
+                requestCode,
+                permissions,
+                grantResults
+        );
+
+        if (
+                requestCode == REQUEST_LOCATION
+                        && grantResults.length > 0
+                        && grantResults[0]
+                        == PackageManager.PERMISSION_GRANTED
+        ) {
+            fetchCurrentLocation();
+            return;
+        }
+
+        if (requestCode == REQUEST_LOCATION) {
+            showInfo(
+                    "Izin Lokasi Ditolak",
+                    "Izin lokasi diperlukan untuk mengisi alamat otomatis."
+            );
+        }
+    }
+
+    protected void openGallery() {
+        Intent intent =
+                new Intent(
+                        Intent.ACTION_OPEN_DOCUMENT
+                );
+
+        intent.addCategory(
+                Intent.CATEGORY_OPENABLE
+        );
+
+        intent.setType(
+                "image/*"
+        );
+
+        startActivityForResult(
+                intent,
+                REQUEST_GALLERY
+        );
+    }
+
+    @Override
+    protected void onActivityResult(
+            int requestCode,
+            int resultCode,
+            Intent data
+    ) {
+        super.onActivityResult(
+                requestCode,
+                resultCode,
+                data
+        );
+
+        if (
+                requestCode != REQUEST_GALLERY
+                        || resultCode != RESULT_OK
+                        || data == null
+                        || data.getData() == null
+        ) {
+            return;
+        }
+
+        Uri uri = data.getData();
+
+        setLoading(true);
+
+        featureRuntime.execute(() -> {
+            try {
+                byte[] image =
+                        ProfileImageProcessor.createSquareWebp(getContentResolver(), uri);
+
+                Bitmap preview =
+                        BitmapFactory
+                                .decodeByteArray(
+                                        image,
+                                        0,
+                                        image.length
+                                );
+
+                mainHandler.post(() -> {
+                    pendingPhotoWebp = image;
+                    avatarView.setImageBitmap(
+                            preview
+                    );
+
+                    setLoading(false);
+                    toast(
+                            "Foto siap disimpan"
+                    );
+                });
+
+            } catch (Exception error) {
+                if (CustomerAsyncError.isCancellation(error) || featureRuntime.isDestroyed()) return;
+                mainHandler.post(() -> {
+                    setLoading(false);
+
+                    showInfo(
+                            "Foto Gagal",
+                            CustomerAsyncError.userMessage(error, "Foto tidak dapat diproses.")
+                    );
+                });
+            }
+        });
+    }
+
+
+
+    protected void loadProfile() {
+        if (
+                loading
+                        || userId.isEmpty()
+        ) {
+            return;
+        }
+
+        setLoading(true);
+
+        featureRuntime.execute(() -> {
+            HttpURLConnection connection = null;
+
+            try {
+                URL url =
+                        new URL(
+                                PROFILE_URL
+                                        + "?id="
+                                        + Uri.encode(
+                                        userId
+                                )
+                                        + "&_="
+                                        + System
+                                        .currentTimeMillis()
+                        );
+
+                connection =
+                        CustomerApiClient.open(this, url.toString());
+
+                connection.setConnectTimeout(
+                        TIMEOUT_MS
+                );
+
+                connection.setReadTimeout(
+                        TIMEOUT_MS
+                );
+
+                connection.setRequestProperty(
+                        "Accept",
+                        "application/json"
+                );
+
+                String body =
+                        readStream(
+                                connection
+                                        .getInputStream()
+                        );
+
+                JSONObject response =
+                        new JSONObject(body);
+
+                if (
+                        !response.optBoolean(
+                                "success",
+                                false
+                        )
+                ) {
+                    throw new IllegalStateException(
+                            response.optString(
+                                    "message",
+                                    "Profil tidak dapat dimuat."
+                            )
+                    );
+                }
+
+                JSONObject user =
+                        response.optJSONObject(
+                                "user"
+                        );
+
+                if (user == null) {
+                    throw new IllegalStateException(
+                            "Data profil kosong"
+                    );
+                }
+
+                mainHandler.post(() -> {
+                    applyUser(user);
+                    setLoading(false);
+                });
+
+            } catch (Exception error) {
+                if (CustomerAsyncError.isCancellation(error) || featureRuntime.isDestroyed()) return;
+                mainHandler.post(() -> {
+                    setLoading(false);
+
+                    toast(
+                            CustomerAsyncError.userMessage(error, "Gagal memuat profil")
+                    );
+                });
+
+            } finally {
+                if (connection != null) {
+                    connection.disconnect();
+                }
+            }
+        });
+    }
+
+    protected void applyUser(
+            JSONObject user
+    ) {
+        username = first(
+                user.optString("username"),
+                username
+        );
+
+        email = first(
+                user.optString("email"),
+                email
+        );
+
+        phone = first(
+                user.optString("phone"),
+                user.optString(
+                        "phone_number"
+                ),
+                user.optString("no_hp"),
+                phone
+        );
+
+        address = first(
+                user.optString(
+                        "delivery_address"
+                ),
+                address
+        );
+
+        photoUrl = first(
+                user.optString(
+                        "profile_photo"
+                ),
+                user.optString("photo"),
+                photoUrl
+        );
+
+        deliveryLat =
+                user.optDouble(
+                        "delivery_lat",
+                        deliveryLat
+                );
+
+        deliveryLng =
+                user.optDouble(
+                        "delivery_lng",
+                        deliveryLng
+                );
+
+        emailVerified =
+                user.optInt(
+                        "email_verified",
+                        0
+                ) == 1;
+
+        nameView.setText(username);
+        usernameView.setText(
+                "@" + username
+        );
+
+        usernameInput.setText(username);
+        emailView.setText(
+                first(
+                        email,
+                        "Email belum tersedia"
+                )
+        );
+
+        phoneInput.setText(localIndonesiaPhone(phone));
+        phoneInput.setSelection(phoneInput.getText().length());
+        addressInput.setText(address);
+
+        emailBadge.setText(
+                emailVerified
+                        ? "✓ Email Terverifikasi"
+                        : "Email Belum Terverifikasi"
+        );
+
+        emailBadge.setTextColor(
+                Color.parseColor(
+                        emailVerified
+                                ? "#0A8F4C"
+                                : "#C96A05"
+                )
+        );
+
+        emailBadge.setBackground(
+                round(
+                        emailVerified
+                                ? "#E7FFF2"
+                                : "#FFF4E5",
+                        14
+                )
+        );
+
+        if (!photoUrl.isEmpty()) {
+            loadRemoteImage(photoUrl);
+        }
+
+        try {
+            session.saveUser(user);
+        } catch (Exception ignored) {
+        }
+    }
+
+    protected void loadRemoteImage(
+            String rawUrl
+    ) {
+        String fixed =
+                absoluteUrl(rawUrl);
+
+        featureRuntime.execute(() -> {
+            HttpURLConnection connection = null;
+
+            try {
+                connection =
+                        CustomerApiClient.open(this, fixed);
+
+                connection.setConnectTimeout(
+                        20000
+                );
+
+                connection.setReadTimeout(
+                        25000
+                );
+
+                Bitmap bitmap =
+                        BitmapFactory.decodeStream(
+                                connection
+                                        .getInputStream()
+                        );
+
+                if (bitmap != null) {
+                    mainHandler.post(
+                            () -> avatarView
+                                    .setImageBitmap(
+                                            bitmap
+                                    )
+                    );
+                }
+
+            } catch (Exception ignored) {
+            } finally {
+                if (connection != null) {
+                    connection.disconnect();
+                }
+            }
+        });
+    }
+
+
+
+    protected void loadLoyalty() {
+        if (loyaltyLoading || loyaltyBadge == null) return;
+
+        String token = first(session.getToken());
+        if (token.isEmpty()) return;
+
+        loyaltyLoading = true;
+        featureRuntime.execute(() -> {
+            HttpURLConnection connection = null;
+            try {
+                connection = CustomerApiClient.open(this, LOYALTY_URL + "?_=" + System.currentTimeMillis());
+                connection.setRequestMethod("GET");
+                connection.setConnectTimeout(TIMEOUT_MS);
+                connection.setReadTimeout(TIMEOUT_MS);
+                connection.setUseCaches(false);
+                connection.setRequestProperty("Accept", "application/json");
+                connection.setRequestProperty("Authorization", "Bearer " + token);
+                connection.setRequestProperty(
+                        "X-Device-UUID",
+                        DeviceIdentityManager.getInstallationUuid(this)
+                );
+                connection.setRequestProperty(
+                        "X-Installation-UUID",
+                        DeviceIdentityManager.getInstallationUuid(this)
+                );
+                connection.setRequestProperty("X-App-Scope", "customer");
+
+                int code = connection.getResponseCode();
+                InputStream stream = code >= 200 && code < 400
+                        ? connection.getInputStream()
+                        : connection.getErrorStream();
+                String rawBody = readStream(stream);
+                CustomerApiClient.handleSessionResponse(this, code, rawBody);
+                JSONObject response = new JSONObject(rawBody);
+                if (!response.optBoolean("success", false)) {
+                    throw new IllegalStateException(response.optString("message", "Royalty tidak dapat dimuat."));
+                }
+
+                JSONObject data = response.optJSONObject("data");
+                if (data == null) data = new JSONObject();
+                final int points = data.optInt("points", 0);
+                final String tier = first(data.optString("tier"), "BRONZE").toUpperCase(Locale.US);
+
+                mainHandler.post(() -> {
+                    loyaltyLoading = false;
+                    applyLoyaltyBadge(tier, points);
+                });
+            } catch (Exception ignored) {
+                mainHandler.post(() -> loyaltyLoading = false);
+            } finally {
+                if (connection != null) connection.disconnect();
+            }
+        });
+    }
+
+    protected void applyLoyaltyBadge(String tier, int points) {
+        if (loyaltyBadge == null) return;
+
+        String memberName; String background; String foreground; String glow; int iconRes;
+        switch (tier) {
+            case "PLATINUM":
+                memberName="Platinum"; background="#E9F3FF"; foreground="#315A78"; glow="#8BD3FF"; iconRes=R.drawable.tier_platinum; break;
+            case "DIAMOND":
+                memberName="Diamond"; background="#E7F8FF"; foreground="#0B6A88"; glow="#66E0FF"; iconRes=R.drawable.tier_diamond; break;
+            case "GOLD":
+                memberName="Gold"; background="#FFF2B8"; foreground="#7A5200"; glow="#FFD54A"; iconRes=R.drawable.tier_gold; break;
+            case "SILVER":
+                memberName="Silver"; background="#EEF2F7"; foreground="#475569"; glow="#CBD5E1"; iconRes=R.drawable.tier_silver; break;
+            default:
+                memberName="Bronze"; background="#FBE6D5"; foreground="#8A4B20"; glow="#E8A36F"; iconRes=R.drawable.tier_bronze; break;
+        }
+
+        loyaltyBadge.setText("Premium " + memberName + " • " + points + " Poin");
+        loyaltyBadge.setTextColor(Color.parseColor(foreground));
+        loyaltyBadge.setBackground(round(background, 16));
+        loyaltyBadge.setElevation(dp(5));
+        loyaltyBadge.setShadowLayer(dp(7), 0f, 0f, Color.parseColor(glow));
+        try {
+            Drawable icon=getResources().getDrawable(iconRes);
+            int size=dp(25); icon.setBounds(0,0,size,size);
+            loyaltyBadge.setCompoundDrawables(icon,null,null,null);
+            loyaltyBadge.setCompoundDrawablePadding(dp(7));
+        } catch(Exception ignored) {}
+    }
+
+    protected void saveProfile() {
+        if (loading) {
+            return;
+        }
+
+        String newUsername =
+                usernameInput.getText()
+                        .toString()
+                        .trim();
+
+        String localPhone =
+                phoneInput.getText().toString().trim();
+        String newPhone =
+                normalizeIndonesiaPhone("62" + localPhone);
+
+        String newAddress =
+                addressInput.getText()
+                        .toString()
+                        .trim();
+
+        String newPassword =
+                passwordInput.getText()
+                        .toString()
+                        .trim();
+
+        if (newUsername.length() < 3) {
+            usernameInput.setError(
+                    "Minimal 3 karakter"
+            );
+            return;
+        }
+
+        if (
+                localPhone.length() < 8
+                        || newPhone.length() < 10
+        ) {
+            phoneInput.setError(
+                    "Nomor HP tidak valid"
+            );
+            return;
+        }
+
+        if (newAddress.isEmpty()) {
+            addressInput.setError(
+                    "Alamat wajib diisi"
+            );
+            return;
+        }
+
+        if (!isValidDeliveryCoordinate(deliveryLat, deliveryLng)) {
+            showInfo(
+                    "Tetapkan Lokasi",
+                    "Tekan tombol Gunakan Lokasi Saat Ini agar alamat dan koordinat delivery tersimpan dengan benar."
+            );
+            return;
+        }
+
+        if (
+                !newPassword.isEmpty()
+                        && newPassword.length() < 8
+        ) {
+            passwordInput.setError(
+                    "Password minimal 8 karakter"
+            );
+            return;
+        }
+
+        String authToken = first(session.getToken());
+        if (authToken.isEmpty()) {
+            toast("Sesi login tidak ditemukan. Silakan login kembali.");
+            return;
+        }
+
+        setLoading(true);
+
+        featureRuntime.execute(() -> {
+            HttpURLConnection connection = null;
+
+            try {
+                String boundary =
+                        "----TransivaProfile"
+                                + System
+                                .currentTimeMillis();
+
+                connection =
+                        CustomerApiClient.open(this, UPDATE_URL);
+
+                connection.setRequestMethod(
+                        "POST"
+                );
+
+                connection.setConnectTimeout(
+                        TIMEOUT_MS
+                );
+
+                connection.setReadTimeout(
+                        TIMEOUT_MS
+                );
+
+                connection.setDoOutput(true);
+
+                connection.setRequestProperty(
+                        "Content-Type",
+                        "multipart/form-data; boundary="
+                                + boundary
+                );
+
+                connection.setRequestProperty(
+                        "Accept",
+                        "application/json"
+                );
+                connection.setRequestProperty(
+                        "Authorization",
+                        "Bearer " + authToken
+                );
+                connection.setRequestProperty(
+                        "X-Device-UUID",
+                        DeviceIdentityManager.getInstallationUuid(this)
+                );
+                connection.setRequestProperty(
+                        "X-Installation-UUID",
+                        DeviceIdentityManager.getInstallationUuid(this)
+                );
+                connection.setRequestProperty(
+                        "X-App-Scope",
+                        "customer"
+                );
+
+                try (
+                        OutputStream output =
+                                connection
+                                        .getOutputStream()
+                ) {
+                    writeField(
+                            output,
+                            boundary,
+                            "id",
+                            userId
+                    );
+
+                    writeField(
+                            output,
+                            boundary,
+                            "username",
+                            newUsername
+                    );
+
+                    writeField(
+                            output,
+                            boundary,
+                            "phone",
+                            newPhone
+                    );
+
+                    writeField(
+                            output,
+                            boundary,
+                            "delivery_address",
+                            newAddress
+                    );
+
+                    writeField(
+                            output,
+                            boundary,
+                            "delivery_lat",
+                            String.valueOf(
+                                    deliveryLat
+                            )
+                    );
+
+                    writeField(
+                            output,
+                            boundary,
+                            "delivery_lng",
+                            String.valueOf(
+                                    deliveryLng
+                            )
+                    );
+
+                    writeField(
+                            output,
+                            boundary,
+                            "password",
+                            newPassword
+                    );
+
+                    if (
+                            pendingPhotoWebp != null
+                                    && pendingPhotoWebp.length > 0
+                    ) {
+                        writeFile(
+                                output,
+                                boundary,
+                                "profile_photo",
+                                "profile.webp",
+                                "image/webp",
+                                pendingPhotoWebp
+                        );
+                    }
+
+                    output.write(
+                            (
+                                    "--"
+                                            + boundary
+                                            + "--\r\n"
+                            ).getBytes(
+                                    StandardCharsets.UTF_8
+                            )
+                    );
+                }
+
+                int code =
+                        connection
+                                .getResponseCode();
+
+                InputStream stream =
+                        code >= 200
+                                && code < 400
+                                ? connection
+                                .getInputStream()
+                                : connection
+                                .getErrorStream();
+
+                String body =
+                        readStream(stream);
+
+                JSONObject response =
+                        new JSONObject(body);
+
+                if (
+                        !response.optBoolean(
+                                "success",
+                                false
+                        )
+                ) {
+                    throw new IllegalStateException(
+                            response.optString(
+                                    "message",
+                                    "Profil gagal disimpan."
+                            )
+                    );
+                }
+
+                JSONObject user =
+                        response.optJSONObject(
+                                "user"
+                        );
+
+                mainHandler.post(() -> {
+                    pendingPhotoWebp = null;
+
+                    if (user != null) {
+                        applyUser(user);
+                    }
+
+                    passwordInput.setText("");
+                    setLoading(false);
+
+                    if (forceAddressSetup && isValidDeliveryCoordinate(deliveryLat, deliveryLng)
+                            && !first(address).trim().isEmpty()) {
+                        forceAddressSetup = false;
+                        Intent intent = new Intent(ProfileActivityScreenCore.this, CustomerDashboardActivity.class);
+                        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK
+                                | Intent.FLAG_ACTIVITY_CLEAR_TASK
+                                | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+                        startActivity(intent);
+                        finish();
+                    } else {
+                        showInfo(
+                                "Profil Disimpan",
+                                "Informasi akun berhasil diperbarui."
+                        );
+                    }
+                });
+
+            } catch (Exception error) {
+                if (CustomerAsyncError.isCancellation(error) || featureRuntime.isDestroyed()) return;
+                mainHandler.post(() -> {
+                    setLoading(false);
+
+                    showInfo(
+                            "Gagal Menyimpan",
+                            CustomerAsyncError.userMessage(error, "Periksa koneksi internet.")
+                    );
+                });
+
+            } finally {
+                if (connection != null) {
+                    connection.disconnect();
+                }
+            }
+        });
+    }
+
+    protected boolean isValidDeliveryCoordinate(double lat, double lng) {
+        return !Double.isNaN(lat)
+                && !Double.isNaN(lng)
+                && !Double.isInfinite(lat)
+                && !Double.isInfinite(lng)
+                && lat >= -90.0 && lat <= 90.0
+                && lng >= -180.0 && lng <= 180.0
+                && !(Math.abs(lat) < 0.000001 && Math.abs(lng) < 0.000001);
+    }
+
+    @Override
+    public void onBackPressed() {
+        if (forceAddressSetup) {
+            showInfo(
+                    "Lokasi Wajib Ditetapkan",
+                    "Tetapkan alamat dan lokasi delivery terlebih dahulu sebelum masuk ke Transiva."
+            );
+            return;
+        }
+        super.onBackPressed();
+    }
+
+    protected void writeField(
+            OutputStream output,
+            String boundary,
+            String name,
+            String value
+    ) throws Exception {
+        String block =
+                "--"
+                        + boundary
+                        + "\r\n"
+                        + "Content-Disposition: form-data; name=\""
+                        + name
+                        + "\"\r\n\r\n"
+                        + (
+                        value == null
+                                ? ""
+                                : value
+                )
+                        + "\r\n";
+
+        output.write(
+                block.getBytes(
+                        StandardCharsets.UTF_8
+                )
+        );
+    }
+
+    protected void writeFile(
+            OutputStream output,
+            String boundary,
+            String name,
+            String filename,
+            String mime,
+            byte[] data
+    ) throws Exception {
+        String header =
+                "--"
+                        + boundary
+                        + "\r\n"
+                        + "Content-Disposition: form-data; name=\""
+                        + name
+                        + "\"; filename=\""
+                        + filename
+                        + "\"\r\n"
+                        + "Content-Type: "
+                        + mime
+                        + "\r\n\r\n";
+
+        output.write(
+                header.getBytes(
+                        StandardCharsets.UTF_8
+                )
+        );
+
+        output.write(data);
+        output.write(
+                "\r\n".getBytes(
+                        StandardCharsets.UTF_8
+                )
+        );
+    }
+
+    protected View buildBottomNavigation() {
+        return CustomerBottomNavigation.build(this, CustomerPageTransition.PROFILE);
+    }
+
+    protected void confirmLogout() {
+        new TransivaAlertDialogBuilder(this)
+                .setTitle("Keluar Akun")
+                .setMessage(
+                        "Yakin ingin keluar dari akun Transiva?"
+                )
+                .setNegativeButton(
+                        "Batal",
+                        null
+                )
+                .setPositiveButton(
+                        "Keluar",
+                        (dialog, which) ->
+                                logout()
+                )
+                .show();
+    }
+
+
+
+    protected void logout() {
+        if (loading) {
+            return;
+        }
+
+        setLoading(true);
+
+        NativeLogoutClient
+                .logoutAndDeleteToken(
+                        this,
+                        (success, response) -> {
+                            try {
+                                session.logout();
+                            } catch (Exception ignored) {
+                            }
+
+                            Intent intent =
+                                    new Intent(
+                                            this,
+                                            LoginActivity.class
+                                    );
+
+                            intent.addFlags(
+                                    Intent.FLAG_ACTIVITY_CLEAR_TOP
+                                            | Intent.FLAG_ACTIVITY_NEW_TASK
+                                            | Intent.FLAG_ACTIVITY_CLEAR_TASK
+                            );
+
+                            startActivity(intent);
+                            finish();
+                        }
+                );
+    }
+
+    protected void setLoading(
+            boolean value
+    ) {
+        loading = value;
+
+        if (progress != null) {
+            progress.setVisibility(
+                    value
+                            ? View.VISIBLE
+                            : View.GONE
+            );
+        }
+
+        if (usernameInput != null) {
+            usernameInput.setEnabled(!value);
+        }
+
+        if (phoneInput != null) {
+            phoneInput.setEnabled(!value);
+        }
+
+        if (addressInput != null) {
+            addressInput.setEnabled(!value);
+        }
+
+        if (passwordInput != null) {
+            passwordInput.setEnabled(!value);
+        }
+
+        if (photoButton != null) {
+            photoButton.setEnabled(!value);
+        }
+
+        if (locationButton != null) {
+            locationButton.setEnabled(!value);
+        }
+
+        if (saveButton != null) {
+            saveButton.setEnabled(!value);
+        }
+
+        if (logoutButton != null) {
+            logoutButton.setEnabled(!value);
+        }
+        if (deleteAccountButton != null) {
+            deleteAccountButton.setEnabled(!value);
+        }
+    }
+
+    protected LinearLayout whiteCard() {
+        LinearLayout card =
+                new LinearLayout(this);
+
+        card.setOrientation(
+                LinearLayout.VERTICAL
+        );
+
+        card.setBackground(
+                roundStroke(
+                        "#FFFFFF",
+                        "#E0EAF5",
+                        20,
+                        1
+                )
+        );
+
+        card.setElevation(dp(1));
+
+        return card;
+    }
+
+    protected View sectionTitle(
+            String title,
+            String subtitle
+    ) {
+        LinearLayout box =
+                new LinearLayout(this);
+
+        box.setOrientation(
+                LinearLayout.VERTICAL
+        );
+
+        box.addView(
+                text(
+                        title,
+                        16,
+                        "#0B3A78",
+                        true
+                )
+        );
+
+        box.addView(
+                text(
+                        subtitle,
+                        10,
+                        "#718096",
+                        false
+                )
+        );
+
+        LinearLayout.LayoutParams lp =
+                new LinearLayout.LayoutParams(
+                        -1,
+                        -2
+                );
+
+        lp.setMargins(
+                0,
+                0,
+                0,
+                dp(12)
+        );
+
+        box.setLayoutParams(lp);
+
+        return box;
+    }
+
+    protected TextView label(
+            String value
+    ) {
+        TextView label =
+                text(
+                        value,
+                        11,
+                        "#334E6F",
+                        true
+                );
+
+        label.setPadding(
+                dp(2),
+                0,
+                0,
+                dp(6)
+        );
+
+        return label;
+    }
+
+    protected EditText input(
+            String hint,
+            int type
+    ) {
+        EditText field =
+                new EditText(this);
+
+        field.setHint(hint);
+        field.setTextSize(14);
+
+        field.setTextColor(
+                Color.parseColor("#0F172A")
+        );
+
+        field.setHintTextColor(
+                Color.parseColor("#94A3B8")
+        );
+
+        field.setInputType(type);
+
+        field.setPadding(
+                dp(14),
+                0,
+                dp(14),
+                0
+        );
+
+        field.setBackground(
+                roundStroke(
+                        "#F9FBFE",
+                        "#D7E4F2",
+                        14,
+                        1
+                )
+        );
+
+        field.setImeOptions(
+                EditorInfo.IME_ACTION_NEXT
+        );
+
+        return field;
+    }
+
+    protected TextView readonlyField(
+            String value
+    ) {
+        TextView field =
+                text(
+                        value,
+                        14,
+                        "#52667F",
+                        false
+                );
+
+        field.setGravity(
+                Gravity.CENTER_VERTICAL
+        );
+
+        field.setPadding(
+                dp(14),
+                0,
+                dp(14),
+                0
+        );
+
+        field.setSingleLine(true);
+
+        field.setEllipsize(
+                TextUtils.TruncateAt.END
+        );
+
+        field.setBackground(
+                roundStroke(
+                        "#F1F5F9",
+                        "#D9E3EE",
+                        14,
+                        1
+                )
+        );
+
+        return field;
+    }
+
+    protected TextView badge(
+            String value,
+            String background,
+            String color
+    ) {
+        TextView badge =
+                text(
+                        value,
+                        9,
+                        color,
+                        true
+                );
+
+        badge.setGravity(
+                Gravity.CENTER
+        );
+
+        badge.setPadding(
+                dp(9),
+                dp(5),
+                dp(9),
+                dp(5)
+        );
+
+        badge.setBackground(
+                round(
+                        background,
+                        14
+                )
+        );
+
+        return badge;
+    }
+
+    protected Button primaryButton(
+            String value
+    ) {
+        Button button =
+                new Button(this);
+
+        button.setText(value);
+        button.setAllCaps(false);
+        button.setTextSize(13);
+
+        button.setTypeface(
+                Typeface.DEFAULT,
+                Typeface.BOLD
+        );
+
+        button.setTextColor(
+                Color.WHITE
+        );
+
+        button.setBackground(
+                gradient(
+                        "#086BFF",
+                        "#2EA2FF",
+                        15
+                )
+        );
+
+        return button;
+    }
+
+    protected Button outlineButton(
+            String value
+    ) {
+        Button button =
+                primaryButton(value);
+
+        button.setTextColor(
+                Color.parseColor("#0B7CFF")
+        );
+
+        button.setBackground(
+                roundStroke(
+                        "#FFFFFF",
+                        "#A8D1FF",
+                        15,
+                        1
+                )
+        );
+
+        return button;
+    }
+
+    protected Button premiumLightButton(
+            String value
+    ) {
+        Button button =
+                primaryButton(value);
+
+        button.setTextSize(11);
+
+        button.setTextColor(
+                Color.parseColor("#0B3A78")
+        );
+
+        button.setBackground(
+                roundStroke(
+                        "#FFFFFF",
+                        "#D8EBFF",
+                        14,
+                        1
+                )
+        );
+
+        return button;
+    }
+
+    protected Button outlineLightButton(
+            String value
+    ) {
+        Button button =
+                primaryButton(value);
+
+        button.setTextSize(11);
+
+        button.setBackground(
+                roundStroke(
+                        "#FFFFFF22",
+                        "#FFFFFF99",
+                        14,
+                        1
+                )
+        );
+
+        return button;
+    }
+
+    protected Button dangerButton(
+            String value
+    ) {
+        Button button =
+                primaryButton(value);
+
+        button.setBackground(
+                gradient(
+                        "#EF4444",
+                        "#DC2626",
+                        15
+                )
+        );
+
+        return button;
+    }
+
+    protected LinearLayout.LayoutParams sectionLp() {
+        LinearLayout.LayoutParams lp =
+                new LinearLayout.LayoutParams(
+                        -1,
+                        -2
+                );
+
+        lp.setMargins(
+                0,
+                0,
+                0,
+                dp(14)
+        );
+
+        return lp;
+    }
+
+    protected LinearLayout.LayoutParams fieldLp() {
+        LinearLayout.LayoutParams lp =
+                new LinearLayout.LayoutParams(
+                        -1,
+                        dp(50)
+                );
+
+        lp.setMargins(
+                0,
+                0,
+                0,
+                dp(12)
+        );
+
+        return lp;
+    }
+
+    protected LinearLayout.LayoutParams buttonLp() {
+        LinearLayout.LayoutParams lp =
+                new LinearLayout.LayoutParams(
+                        -1,
+                        dp(50)
+                );
+
+        lp.setMargins(
+                0,
+                0,
+                0,
+                dp(10)
+        );
+
+        return lp;
+    }
+
+    protected GradientDrawable round(
+            String color,
+            int radius
+    ) {
+        GradientDrawable drawable =
+                new GradientDrawable();
+
+        drawable.setColor(
+                Color.parseColor(color)
+        );
+
+        drawable.setCornerRadius(
+                dp(radius)
+        );
+
+        return drawable;
+    }
+
+
+
+    private GradientDrawable roundStroke(
+            String fill,
+            String stroke,
+            int radius,
+            int width
+    ) {
+        GradientDrawable drawable =
+                round(fill, radius);
+
+        drawable.setStroke(
+                dp(width),
+                Color.parseColor(stroke)
+        );
+
+        return drawable;
+    }
+
+    private GradientDrawable gradient(
+            String start,
+            String end,
+            int radius
+    ) {
+        GradientDrawable drawable =
+                new GradientDrawable(
+                        GradientDrawable
+                                .Orientation
+                                .LEFT_RIGHT,
+                        new int[]{
+                                Color.parseColor(start),
+                                Color.parseColor(end)
+                        }
+                );
+
+        drawable.setCornerRadius(
+                dp(radius)
+        );
+
+        return drawable;
+    }
+
+    private TextView text(
+            String value,
+            int size,
+            String color,
+            boolean bold
+    ) {
+        TextView view =
+                new TextView(this);
+
+        view.setText(
+                value == null
+                        ? ""
+                        : value
+        );
+
+        view.setTextSize(size);
+
+        view.setTextColor(
+                Color.parseColor(color)
+        );
+
+        view.setIncludeFontPadding(false);
+
+        if (bold) {
+            view.setTypeface(
+                    Typeface.DEFAULT,
+                    Typeface.BOLD
+            );
+        }
+
+        return view;
+    }
+
+    private int drawable(
+            String name
+    ) {
+        return getResources()
+                .getIdentifier(
+                        name,
+                        "drawable",
+                        getPackageName()
+                );
+    }
+
+    private String absoluteUrl(
+            String value
+    ) {
+        return ProfileSupport.absoluteUrl(value);
+    }
+
+    private String readStream(
+            InputStream stream
+    ) throws Exception {
+        return CustomerIo.readUtf8(stream);
+    }
+
+    private String localIndonesiaPhone(String raw) {
+        return ProfileSupport.localIndonesiaPhone(raw);
+    }
+
+    private String normalizeIndonesiaPhone(String raw) {
+        return ProfileSupport.normalizeIndonesiaPhone(raw);
+    }
+
+    private String first(
+            String... values
+    ) {
+        return CustomerCommonFormatters.first(values);
+    }
+
+    private int dp(
+            int value
+    ) {
+        return CustomerUiPrimitives.dp(this, value);
+    }
+
+    private void showInfo(
+            String title,
+            String message
+    ) {
+        new TransivaAlertDialogBuilder(this)
+                .setTitle(title)
+                .setMessage(message)
+                .setPositiveButton(
+                        "OK",
+                        null
+                )
+                .show();
+    }
+
+    private void toast(
+            String message
+    ) {
+        Toast.makeText(
+                this,
+                message,
+                Toast.LENGTH_SHORT
+        ).show();
+    }
+
+    @Override
+    protected void onPause() {
+        featureRuntime.onPause();
+        super.onPause();
+    }
+
+    @Override
+    protected void onDestroy() {
+        featureRuntime.destroy();
+        mainHandler.removeCallbacksAndMessages(null);
+        super.onDestroy();
+    }
+
+}

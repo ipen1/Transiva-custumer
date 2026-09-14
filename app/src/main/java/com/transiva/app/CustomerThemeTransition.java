@@ -1,57 +1,110 @@
 package com.transiva.app;
 
 import android.app.Activity;
-import android.graphics.Color;
+import android.os.Build;
 import android.view.View;
-import android.view.ViewAnimationUtils;
-import android.view.ViewGroup;
 import android.view.animation.DecelerateInterpolator;
-import android.widget.FrameLayout;
 
-/** Premium circular theme transition without changing existing page routing. */
+import java.util.WeakHashMap;
+
+/**
+ * Smooth theme hand-off for the programmatic Customer UI.
+ *
+ * The previous circular reveal painted a full-screen target-colour layer and then recreated
+ * the Activity. On some devices this produced a visible flash / double transition while the
+ * view tree was also being recoloured by CustomerAppSettings. This implementation performs
+ * one short fade-out, recreates once, then lets playEnter() fade the newly themed content in.
+ */
 public final class CustomerThemeTransition {
+    private static final long EXIT_MS = 135L;
+    private static final long ENTER_MS = 210L;
+    private static final WeakHashMap<Activity, Boolean> SWITCHING = new WeakHashMap<>();
+
     private CustomerThemeTransition() {}
 
     public static void switchTheme(Activity activity, boolean dark) {
         if (activity == null || activity.isFinishing()) return;
-        ViewGroup decor = (ViewGroup) activity.getWindow().getDecorView();
-        final View overlay = new View(activity);
-        overlay.setBackgroundColor(Color.parseColor(dark ? "#07111F" : "#F5F8FD"));
-        overlay.setClickable(true);
-        decor.addView(overlay, new FrameLayout.LayoutParams(-1, -1));
-        overlay.post(() -> {
-            int cx = Math.max(1, overlay.getWidth() - dp(activity, 42));
-            int cy = dp(activity, 88);
-            float end = (float) Math.hypot(Math.max(cx, overlay.getWidth() - cx),
-                    Math.max(cy, overlay.getHeight() - cy));
-            try {
-                android.animation.Animator reveal = ViewAnimationUtils.createCircularReveal(overlay, cx, cy, 0f, end);
-                reveal.setDuration(420L);
-                reveal.setInterpolator(new DecelerateInterpolator(1.8f));
-                reveal.addListener(new android.animation.AnimatorListenerAdapter() {
-                    @Override public void onAnimationEnd(android.animation.Animator animation) {
-                        CustomerAppSettings.setDarkMode(activity, dark);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.JELLY_BEAN_MR1 && activity.isDestroyed()) return;
+        if (CustomerAppSettings.isDarkMode(activity) == dark) return;
+
+        synchronized (SWITCHING) {
+            if (Boolean.TRUE.equals(SWITCHING.get(activity))) return;
+            SWITCHING.put(activity, true);
+        }
+
+        final View content = activity.findViewById(android.R.id.content);
+        if (content == null) {
+            commitAndRecreate(activity, dark);
+            return;
+        }
+
+        content.animate().cancel();
+        content.setLayerType(View.LAYER_TYPE_HARDWARE, null);
+        content.animate()
+                .alpha(0.78f)
+                .translationY(dp(activity, 2))
+                .setDuration(EXIT_MS)
+                .setInterpolator(new DecelerateInterpolator(1.7f))
+                .withEndAction(() -> {
+                    content.setLayerType(View.LAYER_TYPE_NONE, null);
+                    commitAndRecreate(activity, dark);
+                })
+                .start();
+    }
+
+    private static void commitAndRecreate(Activity activity, boolean dark) {
+        if (activity == null || activity.isFinishing()) return;
+        CustomerAppSettings.setDarkMode(activity, dark);
+        try {
+            activity.recreate();
+            // Keep the system window hand-off subtle. The content itself is animated by playEnter().
+            activity.overridePendingTransition(android.R.anim.fade_in, android.R.anim.fade_out);
+        } catch (Throwable ignored) {
+            synchronized (SWITCHING) { SWITCHING.remove(activity); }
+        }
+    }
+
+
+    /** Smoothly refresh an Activity that was already in the back stack when theme changed. */
+    public static void refreshAppliedTheme(Activity activity) {
+        if (activity == null || activity.isFinishing()) return;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.JELLY_BEAN_MR1 && activity.isDestroyed()) return;
+        final View content = activity.findViewById(android.R.id.content);
+        if (content == null) {
+            activity.recreate();
+            return;
+        }
+        content.animate().cancel();
+        content.setLayerType(View.LAYER_TYPE_HARDWARE, null);
+        content.animate().alpha(0.82f).setDuration(95L)
+                .setInterpolator(new DecelerateInterpolator(1.6f))
+                .withEndAction(() -> {
+                    content.setLayerType(View.LAYER_TYPE_NONE, null);
+                    if (!activity.isFinishing()) {
                         activity.recreate();
+                        activity.overridePendingTransition(android.R.anim.fade_in, android.R.anim.fade_out);
                     }
-                });
-                reveal.start();
-            } catch (Throwable ignored) {
-                CustomerAppSettings.setDarkMode(activity, dark);
-                activity.recreate();
-            }
-        });
+                }).start();
     }
 
     public static void playEnter(Activity activity) {
-        if (activity == null) return;
-        View content = activity.findViewById(android.R.id.content);
+        if (activity == null || activity.isFinishing()) return;
+        final View content = activity.findViewById(android.R.id.content);
         if (content == null) return;
-        content.setAlpha(0f);
-        content.setScaleX(0.992f);
-        content.setScaleY(0.992f);
-        content.animate().alpha(1f).scaleX(1f).scaleY(1f)
-                .setDuration(260L)
-                .setInterpolator(new DecelerateInterpolator(1.6f))
+
+        content.animate().cancel();
+        content.setAlpha(0.80f);
+        content.setTranslationY(dp(activity, 2));
+        content.setLayerType(View.LAYER_TYPE_HARDWARE, null);
+        content.animate()
+                .alpha(1f)
+                .translationY(0f)
+                .setDuration(ENTER_MS)
+                .setInterpolator(new DecelerateInterpolator(1.8f))
+                .withEndAction(() -> {
+                    content.setLayerType(View.LAYER_TYPE_NONE, null);
+                    synchronized (SWITCHING) { SWITCHING.remove(activity); }
+                })
                 .start();
     }
 

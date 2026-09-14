@@ -310,7 +310,7 @@ public class CustomerSettingsActivity extends Activity {
                 JSONObject device = response.optJSONObject("device");
                 main.post(() -> { deviceLoading = false; showLoading(false); applyDevice(device); });
             } catch (Exception e) {
-                main.post(() -> { deviceLoading = false; showLoading(false); deviceName.setText("Perangkat tidak dapat diperiksa"); deviceDetail.setText(first(e.getMessage(), "Coba lagi.")); updateButton(false); });
+                main.post(() -> { deviceLoading = false; showLoading(false); deviceName.setText("Perangkat tidak dapat diperiksa"); deviceDetail.setText(CustomerAsyncError.userMessage(e, "Coba lagi.")); updateButton(false); });
             } finally { if (c != null) c.disconnect(); }
         });
     }
@@ -344,7 +344,7 @@ public class CustomerSettingsActivity extends Activity {
                 try (OutputStream out = c.getOutputStream()) { out.write(body.toString().getBytes(StandardCharsets.UTF_8)); }
                 JSONObject response = new JSONObject(readAndGuard(c)); if (!response.optBoolean("success", false)) throw new IllegalStateException(response.optString("message", "Perangkat gagal diputuskan."));
                 main.post(() -> { Toast.makeText(this, "Perangkat berhasil diputuskan.", Toast.LENGTH_LONG).show(); session.forceLogout("customer_device_disconnected"); Intent i = new Intent(this, LoginActivity.class); i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP); startActivity(i); finish(); });
-            } catch (Exception e) { main.post(() -> { deviceLoading = false; showLoading(false); updateButton(true); Toast.makeText(this, first(e.getMessage(), "Perangkat gagal diputuskan."), Toast.LENGTH_LONG).show(); }); }
+            } catch (Exception e) { main.post(() -> { deviceLoading = false; showLoading(false); updateButton(true); if (!CustomerAsyncError.isCancellation(e)) Toast.makeText(this, CustomerAsyncError.userMessage(e, "Perangkat gagal diputuskan."), Toast.LENGTH_LONG).show(); }); }
             finally { if (c != null) c.disconnect(); }
         });
     }

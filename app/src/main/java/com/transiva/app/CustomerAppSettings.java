@@ -80,7 +80,7 @@ public final class CustomerAppSettings {
             Boolean previouslyApplied = APPLIED_ACTIVITY_THEMES.get(activity);
             if (previouslyApplied != null && previouslyApplied != dark) {
                 APPLIED_ACTIVITY_THEMES.put(activity, dark);
-                activity.getWindow().getDecorView().post(activity::recreate);
+                activity.getWindow().getDecorView().post(() -> CustomerThemeTransition.refreshAppliedTheme(activity));
                 return;
             }
             APPLIED_ACTIVITY_THEMES.put(activity, dark);

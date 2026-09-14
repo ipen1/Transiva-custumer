@@ -51,7 +51,9 @@ public final class TransivaNetworkExecutor {
             try {
                 task.run();
             } catch (Throwable error) {
-                TransivaCrashReporter.record(error, "network_worker", "worker_task");
+                if (!CustomerAsyncError.isCancellation(error)) {
+                    TransivaCrashReporter.record(error, "network_worker", "worker_task");
+                }
                 throw error;
             }
         });
@@ -63,7 +65,9 @@ public final class TransivaNetworkExecutor {
             try {
                 return task.call();
             } catch (Throwable error) {
-                TransivaCrashReporter.record(error, "network_worker", "callable_task");
+                if (!CustomerAsyncError.isCancellation(error)) {
+                    TransivaCrashReporter.record(error, "network_worker", "callable_task");
+                }
                 if (error instanceof Exception) throw (Exception) error;
                 throw new RuntimeException(error);
             }

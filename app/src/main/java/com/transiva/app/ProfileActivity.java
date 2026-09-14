@@ -1088,6 +1088,7 @@ public class ProfileActivity extends Activity {
                 });
 
             } catch (Exception error) {
+                if (CustomerAsyncError.isCancellation(error) || featureRuntime.isDestroyed()) return;
                 mainHandler.post(() -> {
                     deviceLoading = false;
                     applyDeviceUnavailable(error.getMessage());
@@ -1241,12 +1242,13 @@ public class ProfileActivity extends Activity {
                 });
 
             } catch (Exception error) {
+                if (CustomerAsyncError.isCancellation(error) || featureRuntime.isDestroyed()) return;
                 mainHandler.post(() -> {
                     deviceLoading = false;
                     updateDeviceButton(true, "Putuskan Perangkat");
                     Toast.makeText(
                             this,
-                            first(error.getMessage(), "Perangkat gagal diputuskan."),
+                            CustomerAsyncError.userMessage(error, "Perangkat gagal diputuskan."),
                             Toast.LENGTH_LONG
                     ).show();
                 });
@@ -1480,15 +1482,13 @@ public class ProfileActivity extends Activity {
                 });
 
             } catch (Exception error) {
+                if (CustomerAsyncError.isCancellation(error) || featureRuntime.isDestroyed()) return;
                 mainHandler.post(() -> {
                     setLoading(false);
 
                     showInfo(
                             "Foto Gagal",
-                            first(
-                                    error.getMessage(),
-                                    "Foto tidak dapat diproses."
-                            )
+                            CustomerAsyncError.userMessage(error, "Foto tidak dapat diproses.")
                     );
                 });
             }
@@ -1579,14 +1579,12 @@ public class ProfileActivity extends Activity {
                 });
 
             } catch (Exception error) {
+                if (CustomerAsyncError.isCancellation(error) || featureRuntime.isDestroyed()) return;
                 mainHandler.post(() -> {
                     setLoading(false);
 
                     toast(
-                            first(
-                                    error.getMessage(),
-                                    "Gagal memuat profil"
-                            )
+                            CustomerAsyncError.userMessage(error, "Gagal memuat profil")
                     );
                 });
 
@@ -2109,15 +2107,13 @@ public class ProfileActivity extends Activity {
                 });
 
             } catch (Exception error) {
+                if (CustomerAsyncError.isCancellation(error) || featureRuntime.isDestroyed()) return;
                 mainHandler.post(() -> {
                     setLoading(false);
 
                     showInfo(
                             "Gagal Menyimpan",
-                            first(
-                                    error.getMessage(),
-                                    "Periksa koneksi internet."
-                            )
+                            CustomerAsyncError.userMessage(error, "Periksa koneksi internet.")
                     );
                 });
 

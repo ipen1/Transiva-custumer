@@ -30,6 +30,7 @@ import com.google.android.gms.maps.model.Polyline;
 import com.google.android.gms.maps.model.PolylineOptions;
 
 import org.json.JSONArray;
+import org.json.JSONObject;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -62,6 +63,7 @@ public final class TransivaGoogleMapView extends FrameLayout implements OnMapRea
     private final Mode mode;
     private final List<Marker> placeMarkers = new ArrayList<>();
     private final List<Marker> driverMarkers = new ArrayList<>();
+    private final List<Marker> waypointMarkers = new ArrayList<>();
     private final ImageView centerPin;
     private final TextView centerAction;
     private final android.view.View focusShade;
@@ -228,6 +230,23 @@ public final class TransivaGoogleMapView extends FrameLayout implements OnMapRea
         }
     }
 
+    /** Mode pemilihan waypoint Multi Destination. */
+    public void setWaypointSelectionMode(int sequence) {
+        selectionMode = "waypoint";
+        updateCenterActionPosition(false);
+        setOrderFocus(false);
+        if (centerPin != null) {
+            centerPin.setImageResource(R.drawable.map_destination_pin);
+            centerPin.setVisibility(VISIBLE);
+        }
+        if (centerAction != null) {
+            int n = Math.max(1, Math.min(2, sequence));
+            centerAction.setText("TAMBAH STOP " + n);
+            centerAction.setBackground(actionBackground("#F59E0B"));
+            centerAction.setVisibility(VISIBLE);
+        }
+    }
+
     /** Menampilkan pin pemilih hanya saat pengguna sedang memilih titik. */
     public void showCenterPin(boolean show) {
         if (centerPin != null) {
@@ -352,6 +371,34 @@ public final class TransivaGoogleMapView extends FrameLayout implements OnMapRea
         if (deliveryMarker != null) deliveryMarker.setSnippet(label == null ? "" : label);
     }
 
+    public void clearWaypoints() {
+        for (Marker marker : waypointMarkers) {
+            try { marker.remove(); } catch (Exception ignored) {}
+        }
+        waypointMarkers.clear();
+    }
+
+    public void setWaypoints(JSONArray waypoints) {
+        clearWaypoints();
+        if (!isReady() || waypoints == null) return;
+        for (int i = 0; i < waypoints.length() && i < 2; i++) {
+            JSONObject wp = waypoints.optJSONObject(i);
+            if (wp == null) continue;
+            double lat = wp.optDouble("latitude", Double.NaN);
+            double lng = wp.optDouble("longitude", Double.NaN);
+            if (!valid(lat, lng)) continue;
+            int seq = wp.optInt("sequence", i + 1);
+            String address = wp.optString("address", "Pemberhentian " + seq);
+            Marker marker = googleMap.addMarker(new MarkerOptions()
+                    .position(new LatLng(lat, lng))
+                    .anchor(0.5f, 1f)
+                    .icon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_ORANGE))
+                    .title("Stop " + seq)
+                    .snippet(address));
+            if (marker != null) waypointMarkers.add(marker);
+        }
+    }
+
     public void clearPlaces() {
         for (Marker m : placeMarkers) try { m.remove(); } catch (Exception ignored) {}
         placeMarkers.clear();
@@ -445,7 +492,7 @@ public final class TransivaGoogleMapView extends FrameLayout implements OnMapRea
 
     public void drawRideRoute(JSONArray latLngPoints) {
         drawOsrmRoute(latLngPoints, "driver_accepted");
-        fitPickupDelivery();
+        fitAll();
     }
 
     public void fitAll() {
@@ -454,6 +501,9 @@ public final class TransivaGoogleMapView extends FrameLayout implements OnMapRea
         int n = 0;
         if (pickupMarker != null) { b.include(pickupMarker.getPosition()); n++; }
         if (deliveryMarker != null) { b.include(deliveryMarker.getPosition()); n++; }
+        for (Marker marker : waypointMarkers) {
+            if (marker != null) { b.include(marker.getPosition()); n++; }
+        }
         if (tripDriverMarker != null) { b.include(tripDriverMarker.getPosition()); n++; }
         if (n == 0) return;
         if (n == 1) {

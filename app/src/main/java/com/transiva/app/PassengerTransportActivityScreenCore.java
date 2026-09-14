@@ -122,6 +122,7 @@ class PassengerTransportActivityScreenCore extends Activity {
     protected int familyMemberId = 0;
     protected final RideEcosystemFeatures ecosystemFeatures = new RideEcosystemFeatures();
     protected Button waypointBtn, groupRideBtn, safetyRideBtn;
+    protected boolean selectingWaypoint = false;
     protected String familyMemberName = "";
     protected boolean smartFavoriteIntent = false;
     protected int userId = 0;
@@ -324,6 +325,10 @@ class PassengerTransportActivityScreenCore extends Activity {
             }
         });
         mapView.setCenterActionListener(() -> {
+            if (selectingWaypoint) {
+                addWaypointFromCenter();
+                return;
+            }
             if (validCoord(pickupLat, pickupLng) && validCoord(deliveryLat, deliveryLng)) createOrder();
             else setPointFromCenter();
         });
@@ -551,21 +556,92 @@ class PassengerTransportActivityScreenCore extends Activity {
     }
 
     protected void showWaypointDialog() {
-        String current = "Pemberhentian: " + ecosystemFeatures.waypoints.length() + "/2\n\nGeser peta ke titik pemberhentian lalu pilih Tambah titik. Maksimal dua stop sebelum tujuan akhir.";
-        new TransivaAlertDialogBuilder(this).setTitle("Multi Destination")
-                .setMessage(current).setNegativeButton("Hapus semua", (d,w)->{ecosystemFeatures.clearWaypoints(); updateWaypointButton(); requestPaymentQuote();})
-                .setNeutralButton("Batal", null).setPositiveButton("Tambah titik", (d,w)->addWaypointFromCenter()).show();
+        int count = ecosystemFeatures.waypoints.length();
+        if (count >= 2) {
+            new TransivaAlertDialogBuilder(this)
+                    .setTitle("Multi Destination")
+                    .setMessage("Sudah ada 2 pemberhentian. Hapus semua stop jika ingin memilih ulang.")
+                    .setNegativeButton("Hapus semua", (d,w) -> {
+                        ecosystemFeatures.clearWaypoints();
+                        selectingWaypoint = false;
+                        if (mapView != null) {
+                            mapView.clearWaypoints();
+                            updateModeUI();
+                        }
+                        updateWaypointButton();
+                        requestPaymentQuote();
+                        requestVisibleOsrmRoute();
+                    })
+                    .setPositiveButton("Tutup", null)
+                    .show();
+            return;
+        }
+
+        selectingWaypoint = true;
+        if (mapView != null) {
+            mapView.setWaypointSelectionMode(count + 1);
+            mapView.showCenterPin(true);
+        }
+        if (modeText != null) {
+            modeText.setText("Geser peta ke Stop " + (count + 1) + ", lalu tekan TAMBAH STOP " + (count + 1));
+        }
+        android.widget.Toast.makeText(this, "Geser peta ke lokasi stop lalu tekan TAMBAH STOP " + (count + 1), android.widget.Toast.LENGTH_LONG).show();
     }
 
     protected void addWaypointFromCenter() {
-        double lat = validCoord(pickLat,pickLng) ? pickLat : centerLat;
-        double lng = validCoord(pickLat,pickLng) ? pickLng : centerLng;
+        double lat = centerLat;
+        double lng = centerLng;
+        if (mapView != null && mapView.isReady()) {
+            com.google.android.gms.maps.model.LatLng c = mapView.getCenter();
+            if (c != null && validCoord(c.latitude, c.longitude)) {
+                lat = c.latitude;
+                lng = c.longitude;
+                centerLat = lat;
+                centerLng = lng;
+                pickLat = lat;
+                pickLng = lng;
+            }
+        }
         if (!validCoord(lat,lng)) { toastDialog("Posisi peta belum tersedia."); return; }
-        if (!ecosystemFeatures.addWaypoint(lat,lng,"Stop " + (ecosystemFeatures.waypoints.length()+1))) { toastDialog("Maksimal 2 pemberhentian."); return; }
-        updateWaypointButton(); requestPaymentQuote();
+
+        final int sequence = ecosystemFeatures.waypoints.length() + 1;
+        if (!ecosystemFeatures.addWaypoint(lat,lng,"Stop " + sequence)) {
+            toastDialog("Maksimal 2 pemberhentian.");
+            selectingWaypoint = false;
+            updateModeUI();
+            return;
+        }
+
+        selectingWaypoint = false;
+        if (mapView != null) mapView.setWaypoints(ecosystemFeatures.waypoints);
+        updateWaypointButton();
+        requestPaymentQuote();
+        requestVisibleOsrmRoute();
+
+        final double stopLat = lat, stopLng = lng;
+        featureRuntime.newThread(() -> {
+            String address = buildSmartAddress(stopLat, stopLng);
+            featureRuntime.post(mainHandler, () -> {
+                if (destroyed) return;
+                try {
+                    JSONObject wp = ecosystemFeatures.waypoints.optJSONObject(sequence - 1);
+                    if (wp != null && address != null && !address.trim().isEmpty()) wp.put("address", address);
+                } catch (Exception ignored) {}
+                if (mapView != null) mapView.setWaypoints(ecosystemFeatures.waypoints);
+                requestPaymentQuote();
+            });
+        }, "transiva-waypoint-geocode").start();
+
+        updateModeUI();
+        android.widget.Toast.makeText(this, "Stop " + sequence + " berhasil ditambahkan", android.widget.Toast.LENGTH_SHORT).show();
     }
 
-    protected void updateWaypointButton(){ if(waypointBtn!=null) waypointBtn.setText("➕ Stop "+ecosystemFeatures.waypoints.length()+"/2"); }
+    protected void updateWaypointButton(){
+        if(waypointBtn!=null) {
+            int count = ecosystemFeatures.waypoints.length();
+            waypointBtn.setText(count >= 2 ? "✓ Stop 2/2" : "➕ Stop " + count + "/2");
+        }
+    }
 
     protected void showGroupRideDialog() {
         final String[] options={"Sendiri (tanpa split)","2 orang • bagi rata","3 orang • bagi rata","4 orang • bagi rata","Family/Admin membayar"};
@@ -1623,13 +1699,43 @@ class PassengerTransportActivityScreenCore extends Activity {
 
     private void requestVisibleOsrmRoute() {
         if (!mapReady || mapView == null || !validCoord(pickupLat, pickupLng) || !validCoord(deliveryLat, deliveryLng)) return;
-        final double aLat = pickupLat, aLng = pickupLng, bLat = deliveryLat, bLng = deliveryLng;
+        final JSONArray routeStops = new JSONArray();
+        try {
+            routeStops.put(new JSONArray().put(pickupLat).put(pickupLng));
+            for (int i = 0; i < ecosystemFeatures.waypoints.length(); i++) {
+                JSONObject wp = ecosystemFeatures.waypoints.optJSONObject(i);
+                if (wp == null) continue;
+                double lat = wp.optDouble("latitude", Double.NaN);
+                double lng = wp.optDouble("longitude", Double.NaN);
+                if (validCoord(lat, lng)) routeStops.put(new JSONArray().put(lat).put(lng));
+            }
+            routeStops.put(new JSONArray().put(deliveryLat).put(deliveryLng));
+        } catch (Exception ignored) {}
+
         featureRuntime.newThread(() -> {
             try {
-                StableRouteEngine.Result route = StableRouteEngine.fetch(aLat, aLng, bLat, bLng);
-                featureRuntime.post(mainHandler, () -> { if (!destroyed && mapView != null) mapView.drawRideRoute(route.latLngPoints); });
+                JSONArray merged = new JSONArray();
+                for (int i = 0; i < routeStops.length() - 1; i++) {
+                    JSONArray a = routeStops.optJSONArray(i);
+                    JSONArray b = routeStops.optJSONArray(i + 1);
+                    if (a == null || b == null) continue;
+                    StableRouteEngine.Result segment = StableRouteEngine.fetch(
+                            a.optDouble(0), a.optDouble(1), b.optDouble(0), b.optDouble(1));
+                    JSONArray pts = segment.latLngPoints;
+                    for (int j = 0; pts != null && j < pts.length(); j++) {
+                        if (i > 0 && j == 0) continue;
+                        JSONArray pt = pts.optJSONArray(j);
+                        if (pt != null) merged.put(pt);
+                    }
+                }
+                featureRuntime.post(mainHandler, () -> {
+                    if (!destroyed && mapView != null) {
+                        mapView.setWaypoints(ecosystemFeatures.waypoints);
+                        mapView.drawRideRoute(merged);
+                    }
+                });
             } catch (Exception ignored) {}
-        }, "transiva-google-osrm-preview").start();
+        }, "transiva-google-osrm-multistop-preview").start();
     }
     private boolean validCoord(double lat, double lng) {
         return CustomerGeoMath.valid(lat, lng);

@@ -4,5 +4,5 @@
     <string name="base_url">https://transiva.my.id/</string>
     <!-- Replace with a Google Maps SDK for Android API key restricted to com.transiva.customer + release SHA-1. -->
     <string name="google_maps_key" translatable="false">AIzaSyDVYsFIkrthm5g7zvpLxZS9mX1sThmOXqo</string>
-    <string name="google_web_client_id" translatable="false">REPLACE_WITH_GOOGLE_WEB_CLIENT_ID.apps.googleusercontent.com</string>
+    <string name="google_web_client_id" translatable="false">971951481425-pnsosko73c9itpnggnlrtor22l3tl700.apps.googleusercontent.com</string>
 </resources>

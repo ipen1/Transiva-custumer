@@ -51,6 +51,14 @@
           }
         },
         {
+          "client_id": "450425290065-nbs0qu6hn38iuhsh2mf076uomje02d2r.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.transiva.customer",
+            "certificate_hash": "030589ff8628d164abdcb0100d0bbaaf953f53d7"
+          }
+        },
+        {
           "client_id": "450425290065-6iiug06ofldr107i5k7r7mrddq7ogb9c.apps.googleusercontent.com",
           "client_type": 3
         }

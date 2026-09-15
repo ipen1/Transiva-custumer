@@ -633,7 +633,32 @@ class PassengerTransportActivityScreenCore extends Activity {
         }, "transiva-waypoint-geocode").start();
 
         updateModeUI();
-        android.widget.Toast.makeText(this, "Stop " + sequence + " berhasil ditambahkan", android.widget.Toast.LENGTH_SHORT).show();
+        showWaypointNotePopup(sequence);
+    }
+
+    protected void showWaypointNotePopup(final int sequence) {
+        final EditText input = new EditText(this);
+        input.setHint("Contoh: Singgah di ATM / ambil barang / tunggu di depan");
+        input.setSingleLine(false);
+        input.setMinLines(2);
+        input.setMaxLines(4);
+        input.setPadding(dp(14), dp(10), dp(14), dp(10));
+        new TransivaAlertDialogBuilder(this)
+                .setTitle("Catatan Stop " + sequence)
+                .setMessage("Tambahkan catatan agar driver tahu apa yang perlu dilakukan di titik ini.")
+                .setView(input)
+                .setNegativeButton("Lewati", (d,w) -> { requestPaymentQuote(); requestVisibleOsrmRoute(); })
+                .setPositiveButton("Simpan", (d,w) -> {
+                    String note = input.getText().toString().trim();
+                    try {
+                        JSONObject wp = ecosystemFeatures.waypoints.optJSONObject(sequence - 1);
+                        if (wp != null) wp.put("note", note);
+                    } catch (Exception ignored) {}
+                    if (mapView != null) mapView.setWaypoints(ecosystemFeatures.waypoints);
+                    requestPaymentQuote();
+                    requestVisibleOsrmRoute();
+                    android.widget.Toast.makeText(this, "Stop " + sequence + " berhasil ditambahkan", android.widget.Toast.LENGTH_SHORT).show();
+                }).show();
     }
 
     protected void updateWaypointButton(){

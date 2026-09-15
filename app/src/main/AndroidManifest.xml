@@ -383,6 +383,7 @@
             android:showWhenLocked="true"
             android:turnScreenOn="true"
             android:theme="@style/AppTheme" />
-    </application>
+            <activity android:name=".SplitBillInviteActivity" android:exported="false" />
+</application>
 
 </manifest>

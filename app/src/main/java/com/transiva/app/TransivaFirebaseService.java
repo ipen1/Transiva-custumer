@@ -681,13 +681,6 @@ public class TransivaFirebaseService extends FirebaseMessagingService {
             return CH_CALL;
         }
 
-        if ("split_bill_invite".equals(type) || "split_bill".equalsIgnoreCase(screen)) {
-            Intent intent = new Intent(this, SplitBillInviteActivity.class);
-            intent.putExtra("session_key", data != null ? first(data.get("session_key"), "") : "");
-            intent.putExtra("from_fcm", true);
-            return intent;
-        }
-
         if (isChat(type)) {
             return CH_CHAT;
         }
@@ -736,13 +729,6 @@ public class TransivaFirebaseService extends FirebaseMessagingService {
 
         if ("webrtc_call".equals(type)) {
             return NotificationCompat.CATEGORY_CALL;
-        }
-
-        if ("split_bill_invite".equals(type) || "split_bill".equalsIgnoreCase(screen)) {
-            Intent intent = new Intent(this, SplitBillInviteActivity.class);
-            intent.putExtra("session_key", data != null ? first(data.get("session_key"), "") : "");
-            intent.putExtra("from_fcm", true);
-            return intent;
         }
 
         if (isChat(type)) {

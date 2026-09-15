@@ -77,11 +77,14 @@ class TransFoodActivityScreenCore extends Activity {
     protected int coinValueRupiah = 1;
     protected int coinMinOrderAfterDiscount = 1000;
     protected String hematTier = "BRONZE";
+    protected SplitBillManager splitBillManager;
+    protected int lastFoodQuote = 0;
     protected final Runnable realtimeFoodRefresh = new Runnable() { @Override public void run() { if (!isFinishing()) { if (activeRestaurant == null) loadRestaurants(false); else loadMenus(activeRestaurant.optInt("id",0), false); mainHandler.postDelayed(this, CustomerPerformanceManager.pollingBackground(TransFoodActivityScreenCore.this, 30000L)); } } };
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        splitBillManager = new SplitBillManager(this, (key,size,ready) -> { if(currentScreen==2) renderCheckout(); });
         try {
             getWindow().setStatusBarColor(Color.WHITE);
             getWindow().setNavigationBarColor(Color.WHITE);
@@ -1009,6 +1012,11 @@ class TransFoodActivityScreenCore extends Activity {
         LinearLayout.LayoutParams blp = new LinearLayout.LayoutParams(0, dp(52), 1); blp.setMargins(dp(10),0,0,0);
         prow.addView(balance, blp);
         pay.addView(prow);
+        if ("balance".equals(paymentMethod)) {
+            Button split = choiceButton(splitBillManager != null && splitBillManager.groupSize()>1 ? (splitBillManager.ready()?"✅ Split Bill "+splitBillManager.groupSize():"⏳ Split Bill "+splitBillManager.groupSize()) : "👥 Split Bill", splitBillManager != null && splitBillManager.groupSize()>1);
+            split.setOnClickListener(v -> showFoodSplitDialog());
+            LinearLayout.LayoutParams slp=new LinearLayout.LayoutParams(-1,dp(50));slp.setMargins(0,dp(10),0,0);pay.addView(split,slp);
+        } else if (splitBillManager != null && splitBillManager.groupSize()>1) splitBillManager.clear();
         addWithMargin(pay, 0, 0, 0, dp(14));
 
         LinearLayout total = card();
@@ -1021,6 +1029,7 @@ class TransFoodActivityScreenCore extends Activity {
         total.addView(summaryLine("Total makanan", foodTotal()));
         total.addView(summaryLine("Ongkir", standardFee));
         if (coinDiscount > 0) total.addView(summaryLine("Potongan Transiva Coin", -coinDiscount));
+        lastFoodQuote = (int)Math.round(Math.max(0, grossTotal - coinDiscount));
         total.addView(summaryLine("Total bayar", Math.max(0, grossTotal - coinDiscount)));
         boolean acceptingNow = activeRestaurant != null && activeRestaurant.optInt("is_open", 1) == 1;
         Button order = primaryButton(acceptingNow ? "Buat Pesanan" : "Merchant Tidak Menerima Pesanan");
@@ -1030,6 +1039,12 @@ class TransFoodActivityScreenCore extends Activity {
         total.addView(order, olp);
         order.setOnClickListener(v -> createFoodOrder());
         addWithMargin(total, 0, 0, 0, dp(20));
+    }
+
+    protected void showFoodSplitDialog() {
+        if (!"balance".equals(paymentMethod)) { showInfo("Split Bill","Pilih Transiva Pay terlebih dahulu."); return; }
+        final String[] opts={"Sendiri","2 orang","3 orang","4 orang"};
+        new TransivaAlertDialogBuilder(this).setTitle("Split Bill TransFood").setSingleChoiceItems(opts,Math.max(0,Math.min(3,splitBillManager.groupSize()-1)),(d,w)->{d.dismiss();if(w==0){splitBillManager.clear();renderCheckout();}else splitBillManager.start(w+1,lastFoodQuote,"food");}).setNegativeButton("Batal",null).show();
     }
 
     protected LinearLayout summaryLine(String label, double value) {
@@ -1191,6 +1206,7 @@ class TransFoodActivityScreenCore extends Activity {
             return;
         }
         if (cart.isEmpty()) { showInfo("Keranjang kosong", "Tambahkan menu terlebih dahulu."); return; }
+        if ("balance".equals(paymentMethod) && splitBillManager != null && splitBillManager.groupSize()>1 && !splitBillManager.ready()) { showInfo("Split Bill","Tunggu semua peserta menerima undangan."); splitBillManager.showStatus(); return; }
         setLoading(true);
         featureRuntime.execute(() -> {
             try {
@@ -1200,6 +1216,7 @@ class TransFoodActivityScreenCore extends Activity {
                 payload.put("delivery_mode", deliveryMode);
                 payload.put("payment_method", paymentMethod);
                 payload.put("voucher_code", voucherCode);
+                if (splitBillManager != null && !splitBillManager.sessionKey().isEmpty()) payload.put("split_session_key", splitBillManager.sessionKey());
                 JSONArray items = new JSONArray();
                 for (CartItem c : cart) {
                     JSONObject o = new JSONObject();

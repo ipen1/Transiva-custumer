@@ -121,7 +121,10 @@ class PassengerTransportActivityScreenCore extends Activity {
     protected String priceMode = "standard";
     protected int familyMemberId = 0;
     protected final RideEcosystemFeatures ecosystemFeatures = new RideEcosystemFeatures();
-    protected Button waypointBtn, groupRideBtn, safetyRideBtn;
+    protected Button waypointBtn, groupRideBtn, safetyRideBtn, familyBtn;
+    protected LinearLayout ecosystemRow;
+    protected SplitBillManager splitBillManager;
+    protected int lastQuotedFare = 0;
     protected boolean selectingWaypoint = false;
     protected String familyMemberName = "";
     protected boolean smartFavoriteIntent = false;
@@ -140,6 +143,7 @@ class PassengerTransportActivityScreenCore extends Activity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         geocodingRepository = new CustomerGeocodingRepository(this);
+        splitBillManager = new SplitBillManager(this, (key,size,ready) -> { ecosystemFeatures.groupSize=size; ecosystemFeatures.splitFareMode=size>1?"custom":"none"; if(groupRideBtn!=null) groupRideBtn.setText(size>1 ? (ready?"✅ Split "+size:"⏳ Split "+size) : "👥 Group"); });
         try {
             getWindow().setStatusBarColor(Color.parseColor("#071426"));
             getWindow().setNavigationBarColor(Color.parseColor("#071426"));
@@ -395,7 +399,7 @@ class PassengerTransportActivityScreenCore extends Activity {
         hematBtn.setMinWidth(0);
         hematBtn.setMinimumWidth(0);
         TierBadgeUi.applyToButton(hematBtn, TierBadgeUi.getCachedActiveTier(this), dp(20), dp(2));
-        Button familyBtn = smallButton(familyMemberId > 0 ? "👨‍👩‍👧 " + firstNonEmpty(familyMemberName,"Family") : "👨‍👩‍👧 Family", "#FFFFFF", "#0B3A78", "#C8D9EC");
+        familyBtn = smallButton(familyMemberId > 0 ? "👨‍👩‍👧 " + firstNonEmpty(familyMemberName,"Family") : "👨‍👩‍👧 Family", "#FFFFFF", "#0B3A78", "#C8D9EC");
         smartRow.addView(scheduleBtn, new LinearLayout.LayoutParams(0,-1,1));
         LinearLayout.LayoutParams hLp=new LinearLayout.LayoutParams(0,-1,1); hLp.setMargins(dp(5),0,dp(5),0); smartRow.addView(hematBtn,hLp);
         smartRow.addView(familyBtn, new LinearLayout.LayoutParams(0,-1,1));
@@ -411,7 +415,7 @@ class PassengerTransportActivityScreenCore extends Activity {
         });
         familyBtn.setOnClickListener(v -> startActivity(new Intent(this, TransivaFamilyActivity.class)));
 
-        LinearLayout ecosystemRow = new LinearLayout(this);
+        ecosystemRow = new LinearLayout(this);
         ecosystemRow.setOrientation(LinearLayout.HORIZONTAL);
         ecosystemRow.setGravity(Gravity.CENTER_VERTICAL);
         LinearLayout.LayoutParams ecosystemLp = new LinearLayout.LayoutParams(-1, dp(42));
@@ -430,6 +434,7 @@ class PassengerTransportActivityScreenCore extends Activity {
         voucherChoiceBtn.setOnClickListener(v -> showVoucherDialog());
         noteChoiceBtn.setOnClickListener(v -> showNoteDialog());
         paymentChoiceBtn.setOnClickListener(v -> showPaymentDialog());
+        updateTransPayOnlyFeatures();
 
         LinearLayout estimateRow = new LinearLayout(this);
         estimateRow.setOrientation(LinearLayout.HORIZONTAL);
@@ -637,6 +642,13 @@ class PassengerTransportActivityScreenCore extends Activity {
     }
 
     protected void showWaypointNotePopup(final int sequence) {
+        String existingGlobalNote = noteInput == null ? "" : noteInput.getText().toString().trim();
+        if (!existingGlobalNote.isEmpty()) {
+            try { JSONObject wp = ecosystemFeatures.waypoints.optJSONObject(sequence - 1); if (wp != null && wp.optString("note","").trim().isEmpty()) wp.put("note", existingGlobalNote); } catch (Exception ignored) {}
+            if (mapView != null) mapView.setWaypoints(ecosystemFeatures.waypoints);
+            requestPaymentQuote(); requestVisibleOsrmRoute();
+            return;
+        }
         final EditText input = new EditText(this);
         input.setHint("Contoh: Singgah di ATM / ambil barang / tunggu di depan");
         input.setSingleLine(false);
@@ -669,13 +681,26 @@ class PassengerTransportActivityScreenCore extends Activity {
     }
 
     protected void showGroupRideDialog() {
-        final String[] options={"Sendiri (tanpa split)","2 orang • bagi rata","3 orang • bagi rata","4 orang • bagi rata","Family/Admin membayar"};
-        new TransivaAlertDialogBuilder(this).setTitle("Group Ride / Split Fare").setSingleChoiceItems(options, Math.max(0, ecosystemFeatures.groupSize-1), (d,which)->{
-            if(which==0){ecosystemFeatures.groupSize=1;ecosystemFeatures.splitFareMode="none";}
-            else if(which>=1&&which<=3){ecosystemFeatures.groupSize=which+1;ecosystemFeatures.splitFareMode="equal";}
-            else {ecosystemFeatures.groupSize=2;ecosystemFeatures.splitFareMode="organizer";}
-            if(groupRideBtn!=null)groupRideBtn.setText(ecosystemFeatures.groupSize>1?"👥 "+ecosystemFeatures.groupSize+" • Split":"👥 Group"); d.dismiss();
+        if (!"balance".equals(paymentMethod)) { toastDialog("Split Bill hanya tersedia jika pembayaran Transiva Pay dipilih."); return; }
+        final String[] options={"Sendiri (tanpa split)","2 orang","3 orang","4 orang"};
+        new TransivaAlertDialogBuilder(this).setTitle("Group / Split Bill").setSingleChoiceItems(options, Math.max(0, Math.min(3, ecosystemFeatures.groupSize-1)), (d,which)->{
+            d.dismiss();
+            if(which==0){ ecosystemFeatures.groupSize=1; ecosystemFeatures.splitFareMode="none"; if(splitBillManager!=null)splitBillManager.clear(); if(groupRideBtn!=null)groupRideBtn.setText("👥 Group"); return; }
+            int size=which+1; ecosystemFeatures.groupSize=size; ecosystemFeatures.splitFareMode="custom";
+            if(splitBillManager!=null) splitBillManager.start(size,lastQuotedFare,"ride");
         }).setNegativeButton("Batal",null).show();
+    }
+
+    protected void updateTransPayOnlyFeatures() {
+        boolean show="balance".equals(paymentMethod);
+        if(familyBtn!=null) familyBtn.setVisibility(show?View.VISIBLE:View.GONE);
+        if(waypointBtn!=null) waypointBtn.setVisibility(show?View.VISIBLE:View.GONE);
+        if(groupRideBtn!=null) groupRideBtn.setVisibility(show?View.VISIBLE:View.GONE);
+        if(!show){
+            familyMemberId=0; familyMemberName="";
+            if(ecosystemFeatures.waypoints.length()>0){ ecosystemFeatures.clearWaypoints(); if(mapView!=null)mapView.clearWaypoints(); updateWaypointButton(); }
+            ecosystemFeatures.groupSize=1; ecosystemFeatures.splitFareMode="none";
+        }
     }
 
     protected void showSafetyOptionsDialog() {
@@ -753,6 +778,8 @@ class PassengerTransportActivityScreenCore extends Activity {
                 .setSingleChoiceItems(methods, checked, (dialog, which) -> {
                     paymentMethod = which == 1 ? "balance" : "cash";
                     paymentChoiceBtn.setText(which == 1 ? "💳 Transiva Pay" : "💵 Tunai");
+                    updateTransPayOnlyFeatures();
+                    if (!"balance".equals(paymentMethod) && splitBillManager != null) splitBillManager.clear();
                     dialog.dismiss();
                     requestPaymentQuote();
                 })
@@ -852,7 +879,13 @@ class PassengerTransportActivityScreenCore extends Activity {
                 } else {
                     if (mapView != null) mapView.moveTo(centerLat, centerLng, 17f);
                     // Order biasa tetap memakai perilaku lama: user memilih marker Jemput.
-                    if (!validCoord(pickupLat, pickupLng)) {
+                    if ("balance".equals(paymentMethod) && ecosystemFeatures.groupSize > 1 && (splitBillManager == null || !splitBillManager.ready())) {
+            toastDialog("Tunggu semua peserta Split Bill menerima undangan terlebih dahulu.");
+            if (splitBillManager != null) splitBillManager.showStatus();
+            return;
+        }
+
+        if (!validCoord(pickupLat, pickupLng)) {
                         mode = "pickup";
                         updateModeUI();
                     }
@@ -1389,6 +1422,7 @@ class PassengerTransportActivityScreenCore extends Activity {
                 payload.put("audio_protect", ecosystemFeatures.audioProtect);
                 payload.put("group_size", ecosystemFeatures.groupSize);
                 payload.put("split_fare_mode", ecosystemFeatures.splitFareMode);
+                if (splitBillManager != null && !splitBillManager.sessionKey().isEmpty()) payload.put("split_session_key", splitBillManager.sessionKey());
 
                 JSONObject res = postJson(CREATE_ORDER_URL, payload);
                 featureRuntime.post(mainHandler, () -> handleOrderResult(res));
@@ -1617,6 +1651,7 @@ class PassengerTransportActivityScreenCore extends Activity {
                         return;
                     }
 
+                    lastQuotedFare = total;
                     finalPriceText.setText("Rp " + formatMoney(total));
 
                     if (discount > 0 && original > total) {

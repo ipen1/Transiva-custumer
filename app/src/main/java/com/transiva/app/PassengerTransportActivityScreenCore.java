@@ -143,7 +143,7 @@ class PassengerTransportActivityScreenCore extends Activity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         geocodingRepository = new CustomerGeocodingRepository(this);
-        splitBillManager = new SplitBillManager(this, (key,size,ready) -> { ecosystemFeatures.groupSize=size; ecosystemFeatures.splitFareMode=size>1?"custom":"none"; if(groupRideBtn!=null) groupRideBtn.setText(size>1 ? (ready?"✅ Split "+size:"⏳ Split "+size) : "👥 Group"); });
+        splitBillManager = new SplitBillManager(this, (key,size,ready) -> { ecosystemFeatures.groupSize=size; ecosystemFeatures.splitFareMode=size>1?"custom":"none"; if(groupRideBtn!=null) groupRideBtn.setText(size>1 ? (ready?"✅ Split "+size:"⏳ Split "+size) : "💳 Split Pay"); });
         try {
             getWindow().setStatusBarColor(Color.parseColor("#071426"));
             getWindow().setNavigationBarColor(Color.parseColor("#071426"));
@@ -422,7 +422,7 @@ class PassengerTransportActivityScreenCore extends Activity {
         ecosystemLp.setMargins(0, dp(5), 0, 0);
         bottomCard.addView(ecosystemRow, ecosystemLp);
         waypointBtn = smallButton("➕ Stop 0/2", "#FFFFFF", "#0B3A78", "#C8D9EC");
-        groupRideBtn = smallButton("👥 Group", "#FFFFFF", "#0B3A78", "#C8D9EC");
+        groupRideBtn = smallButton("💳 Split Pay", "#FFFFFF", "#0B3A78", "#C8D9EC");
         safetyRideBtn = smallButton("🛡 Guardian", "#EAF4FF", "#0B7CFF", "#9DCAFF");
         ecosystemRow.addView(waypointBtn,new LinearLayout.LayoutParams(0,-1,1));
         LinearLayout.LayoutParams grpLp=new LinearLayout.LayoutParams(0,-1,1);grpLp.setMargins(dp(5),0,dp(5),0);ecosystemRow.addView(groupRideBtn,grpLp);
@@ -681,11 +681,11 @@ class PassengerTransportActivityScreenCore extends Activity {
     }
 
     protected void showGroupRideDialog() {
-        if (!"balance".equals(paymentMethod)) { toastDialog("Split Bill hanya tersedia jika pembayaran Transiva Pay dipilih."); return; }
+        if (!"balance".equals(paymentMethod)) { toastDialog("Split Pay hanya tersedia jika pembayaran Transiva Pay dipilih."); return; }
         final String[] options={"Sendiri (tanpa split)","2 orang","3 orang","4 orang"};
-        new TransivaAlertDialogBuilder(this).setTitle("Group / Split Bill").setSingleChoiceItems(options, Math.max(0, Math.min(3, ecosystemFeatures.groupSize-1)), (d,which)->{
+        new TransivaAlertDialogBuilder(this).setTitle("Split Pay").setSingleChoiceItems(options, Math.max(0, Math.min(3, ecosystemFeatures.groupSize-1)), (d,which)->{
             d.dismiss();
-            if(which==0){ ecosystemFeatures.groupSize=1; ecosystemFeatures.splitFareMode="none"; if(splitBillManager!=null)splitBillManager.clear(); if(groupRideBtn!=null)groupRideBtn.setText("👥 Group"); return; }
+            if(which==0){ ecosystemFeatures.groupSize=1; ecosystemFeatures.splitFareMode="none"; if(splitBillManager!=null)splitBillManager.clear(); if(groupRideBtn!=null)groupRideBtn.setText("💳 Split Pay"); return; }
             int size=which+1; ecosystemFeatures.groupSize=size; ecosystemFeatures.splitFareMode="custom";
             if(splitBillManager!=null) splitBillManager.start(size,lastQuotedFare,"ride");
         }).setNegativeButton("Batal",null).show();
@@ -880,7 +880,7 @@ class PassengerTransportActivityScreenCore extends Activity {
                     if (mapView != null) mapView.moveTo(centerLat, centerLng, 17f);
                     // Order biasa tetap memakai perilaku lama: user memilih marker Jemput.
                     if ("balance".equals(paymentMethod) && ecosystemFeatures.groupSize > 1 && (splitBillManager == null || !splitBillManager.ready())) {
-            toastDialog("Tunggu semua peserta Split Bill menerima undangan terlebih dahulu.");
+            toastDialog("Tunggu semua peserta Split Pay menerima undangan terlebih dahulu.");
             if (splitBillManager != null) splitBillManager.showStatus();
             return;
         }

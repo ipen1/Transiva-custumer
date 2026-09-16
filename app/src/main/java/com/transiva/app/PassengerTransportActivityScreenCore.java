@@ -1423,6 +1423,7 @@ class PassengerTransportActivityScreenCore extends Activity {
                 payload.put("group_size", ecosystemFeatures.groupSize);
                 payload.put("split_fare_mode", ecosystemFeatures.splitFareMode);
                 if (splitBillManager != null && !splitBillManager.sessionKey().isEmpty()) payload.put("split_session_key", splitBillManager.sessionKey());
+                if (splitBillManager != null && splitBillManager.groupSize() > 1) payload.put("split_bill_required", true);
 
                 JSONObject res = postJson(CREATE_ORDER_URL, payload);
                 featureRuntime.post(mainHandler, () -> handleOrderResult(res));

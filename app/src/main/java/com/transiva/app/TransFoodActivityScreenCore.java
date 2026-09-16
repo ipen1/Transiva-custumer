@@ -1217,6 +1217,7 @@ class TransFoodActivityScreenCore extends Activity {
                 payload.put("payment_method", paymentMethod);
                 payload.put("voucher_code", voucherCode);
                 if (splitBillManager != null && !splitBillManager.sessionKey().isEmpty()) payload.put("split_session_key", splitBillManager.sessionKey());
+                if (splitBillManager != null && splitBillManager.groupSize() > 1) payload.put("split_bill_required", true);
                 JSONArray items = new JSONArray();
                 for (CartItem c : cart) {
                     JSONObject o = new JSONObject();

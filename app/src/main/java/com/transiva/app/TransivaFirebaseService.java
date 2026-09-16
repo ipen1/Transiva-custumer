@@ -113,6 +113,14 @@ public class TransivaFirebaseService extends FirebaseMessagingService {
                 "general"
         ).toLowerCase();
 
+        if ("split_bill_update".equals(type) || "split_bill_invite".equals(type)) {
+            Intent rt = new Intent("com.transiva.app.SPLIT_BILL_REALTIME");
+            rt.setPackage(getPackageName());
+            rt.putExtra("session_key", first(data.get("session_key"), ""));
+            rt.putExtra("event", first(data.get("event"), type));
+            sendBroadcast(rt);
+        }
+
         if ("webrtc_call".equals(type)) {
             final String event = first(data.get("event"), "").toLowerCase();
             final String callId = first(data.get("call_id"), "");

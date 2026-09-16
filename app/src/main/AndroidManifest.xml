@@ -384,6 +384,7 @@
             android:turnScreenOn="true"
             android:theme="@style/AppTheme" />
             <activity android:name=".SplitBillInviteActivity" android:exported="false" />
+            <activity android:name=".SplitBillSessionActivity" android:exported="false" />
 </application>
 
 </manifest>

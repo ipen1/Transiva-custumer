@@ -61,9 +61,11 @@ public final class CustomerDashboardRepositoryImpl
         List<Promo> promos = safeGet(promoTask, new ArrayList<>());
         String order = formatActiveOrder(activeOrder);
 
-        return new DashboardState(
+        DashboardState state = new DashboardState(
                 balance, order, activeOrder, loyalty, referral, bestOffer, promos
         );
+        DashboardStateCache.put(context, state);
+        return state;
     }
 
     private double loadBalance(String username)

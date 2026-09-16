@@ -189,7 +189,7 @@ class PinActivityScreenCore extends FragmentActivity {
         biometricButton.setOnClickListener(v -> tryBiometric());
         card.addView(biometricButton, new LinearLayout.LayoutParams(-1, -2));
 
-        progressBar = new ProgressBar(this);
+        progressBar = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
         progressBar.setVisibility(View.VISIBLE);
         FrameLayout.LayoutParams progressLp =
                 new FrameLayout.LayoutParams(dp(48), dp(48), Gravity.CENTER);

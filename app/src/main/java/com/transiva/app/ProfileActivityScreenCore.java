@@ -291,7 +291,7 @@ class ProfileActivityScreenCore extends Activity {
         );
 
         progress =
-                new ProgressBar(this);
+                new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
 
         progress.setVisibility(
                 View.GONE

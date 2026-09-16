@@ -200,7 +200,7 @@ public class CustomerSettingsActivity extends Activity {
         disconnectButton.setEnabled(false); disconnectButton.setAlpha(.55f);
         disconnectButton.setOnClickListener(v -> confirmDisconnect());
         deviceCard.addView(disconnectButton, new LinearLayout.LayoutParams(-1, dp(48)));
-        progress = new ProgressBar(this); progress.setVisibility(ProgressBar.GONE);
+        progress = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal); progress.setVisibility(ProgressBar.GONE);
         deviceCard.addView(progress, new LinearLayout.LayoutParams(-1, dp(38)));
         root.addView(deviceCard);
         return shell;

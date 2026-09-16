@@ -180,7 +180,7 @@ public class UpdateDownloadActivity extends Activity {
         versionView.setPadding(0, dp(5), 0, dp(15));
         cardView.addView(versionView);
 
-        checkingBar = new ProgressBar(this);
+        checkingBar = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
         cardView.addView(checkingBar, new LinearLayout.LayoutParams(dp(44), dp(44)));
 
         progressBar = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);

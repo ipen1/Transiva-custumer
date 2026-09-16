@@ -309,7 +309,7 @@ class RepeatFoodOrderActivityScreenCore extends FragmentActivity {
         openLp.setMargins(0, dp(8), 0, 0);
         root.addView(openRestaurant, openLp);
 
-        loading = new ProgressBar(this);
+        loading = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
 
         LinearLayout.LayoutParams loadingLp =
                 new LinearLayout.LayoutParams(dp(42), dp(42));

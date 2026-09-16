@@ -135,7 +135,7 @@ class TransFoodActivityScreenCore extends Activity {
         root.setOrientation(LinearLayout.VERTICAL);
         root.setPadding(dp(16), dp(18), dp(16), dp(28));
         scroll.addView(root, new ScrollView.LayoutParams(-1, -2));
-        progressBar = new ProgressBar(this);
+        progressBar = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
         progressBar.setVisibility(View.GONE);
         FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(dp(52), dp(52));
         lp.gravity = Gravity.CENTER;

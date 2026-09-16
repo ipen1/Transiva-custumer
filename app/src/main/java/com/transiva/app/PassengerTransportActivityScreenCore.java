@@ -481,7 +481,7 @@ class PassengerTransportActivityScreenCore extends Activity {
         orderBtn = smallButton("PESAN SEKARANG", "#0B7CFF", "#FFFFFF", "#0B7CFF");
         orderBtn.setVisibility(View.GONE);
 
-        progressBar = new ProgressBar(this);
+        progressBar = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
         progressBar.setVisibility(View.GONE);
         FrameLayout.LayoutParams progressLp = new FrameLayout.LayoutParams(dp(50), dp(50));
         progressLp.gravity = Gravity.CENTER;

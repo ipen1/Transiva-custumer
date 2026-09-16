@@ -198,7 +198,7 @@ class CustomerLiveDriverActivityScreenCore extends Activity {
         note.setPadding(0, dp(10), 0, 0);
         bottom.addView(note);
 
-        loading = new ProgressBar(this);
+        loading = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
         FrameLayout.LayoutParams loadingLp = new FrameLayout.LayoutParams(dp(42), dp(42));
         loadingLp.gravity = Gravity.CENTER;
         page.addView(loading, loadingLp);

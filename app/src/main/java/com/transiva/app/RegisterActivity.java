@@ -222,7 +222,7 @@ public class RegisterActivity extends Activity {
         legal.addView(sep);
         legal.addView(terms);
 
-        progressBar = new ProgressBar(this);
+        progressBar = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
         progressBar.setVisibility(View.GONE);
         FrameLayout.LayoutParams progressLp = new FrameLayout.LayoutParams(dp(52), dp(52));
         progressLp.gravity = Gravity.CENTER;

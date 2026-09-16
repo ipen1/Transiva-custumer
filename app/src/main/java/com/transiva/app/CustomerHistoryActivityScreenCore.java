@@ -253,7 +253,7 @@ class CustomerHistoryActivityScreenCore extends Activity {
                 new LinearLayout.LayoutParams(-1, dp(66))
         );
 
-        progressBar = new ProgressBar(this);
+        progressBar = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
         progressBar.setVisibility(View.GONE);
 
         FrameLayout.LayoutParams progressLp =

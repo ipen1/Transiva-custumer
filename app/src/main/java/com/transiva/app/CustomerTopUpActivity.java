@@ -119,7 +119,7 @@ public class CustomerTopUpActivity extends Activity {
         root.setPadding(dp(16), dp(18), dp(16), dp(30));
         scroll.addView(root, new ScrollView.LayoutParams(-1, -2));
 
-        progressBar = new ProgressBar(this);
+        progressBar = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
         progressBar.setVisibility(View.GONE);
         FrameLayout.LayoutParams pLp = new FrameLayout.LayoutParams(dp(52), dp(52));
         pLp.gravity = Gravity.CENTER;

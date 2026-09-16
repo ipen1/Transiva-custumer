@@ -301,7 +301,7 @@ class SearchDriverActivityScreenCore extends Activity {
         mapLp.setMargins(0, dp(16), 0, 0);
         driverCard.addView(miniMap, mapLp);
 
-        progressBar = new ProgressBar(this);
+        progressBar = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
         progressBar.setVisibility(View.GONE);
         FrameLayout.LayoutParams pLp = new FrameLayout.LayoutParams(dp(48), dp(48));
         pLp.gravity = Gravity.CENTER;

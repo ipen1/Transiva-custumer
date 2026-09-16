@@ -619,7 +619,7 @@ class CustomerChatRoomActivityScreenCore extends Activity {
                 )
         );
 
-        progress = new ProgressBar(this);
+        progress = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
         progress.setVisibility(View.GONE);
 
         FrameLayout.LayoutParams progressLp =
@@ -1119,7 +1119,7 @@ class CustomerChatRoomActivityScreenCore extends Activity {
         );
 
         ProgressBar spinner =
-                new ProgressBar(this);
+                new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
 
         spinner.setIndeterminate(true);
 
@@ -1895,7 +1895,7 @@ class CustomerChatRoomActivityScreenCore extends Activity {
         );
 
         ProgressBar loadingHd =
-                new ProgressBar(this);
+                new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
 
         FrameLayout.LayoutParams loadingLp =
                 new FrameLayout.LayoutParams(

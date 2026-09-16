@@ -138,7 +138,7 @@ public class ChangePinActivity extends Activity {
         saveButton.setOnClickListener(v -> submit());
         card.addView(saveButton, new LinearLayout.LayoutParams(-1, dp(54)));
 
-        progressBar = new ProgressBar(this);
+        progressBar = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
         progressBar.setVisibility(View.GONE);
         LinearLayout.LayoutParams progressLp = new LinearLayout.LayoutParams(dp(42), dp(42));
         progressLp.gravity = Gravity.CENTER_HORIZONTAL;

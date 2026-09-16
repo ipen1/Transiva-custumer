@@ -174,6 +174,11 @@ class CustomerDashboardActivityScreenCore extends Activity
         CustomerResponsiveUi.apply(this);
         CustomerAppSettings.apply(this);
 
+        // Zero Spinner / stale-while-revalidate: render the last safe read snapshot
+        // immediately, then refresh it silently from the network.
+        com.transiva.app.customer.domain.DashboardState cached =
+                com.transiva.app.customer.data.DashboardStateCache.get(this);
+        if (cached != null) showDashboard(cached);
         presenter.load(username, userId);
         loadLocation();
     }
@@ -317,16 +322,18 @@ class CustomerDashboardActivityScreenCore extends Activity
                 new LinearLayout.LayoutParams(-1, dp(64))
         );
 
-        loading = new ProgressBar(this);
+        loading = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
         loading.setVisibility(View.GONE);
 
+        // Zero Spinner: a thin, non-blocking activity line replaces the old
+        // centered circular spinner. Existing dashboard content stays usable.
+        loading.setIndeterminate(true);
         FrameLayout.LayoutParams loadingLp =
                 new FrameLayout.LayoutParams(
-                        dp(42),
-                        dp(42)
+                        FrameLayout.LayoutParams.MATCH_PARENT,
+                        dp(2)
                 );
-
-        loadingLp.gravity = Gravity.CENTER;
+        loadingLp.gravity = Gravity.TOP;
         page.addView(loading, loadingLp);
 
         return page;

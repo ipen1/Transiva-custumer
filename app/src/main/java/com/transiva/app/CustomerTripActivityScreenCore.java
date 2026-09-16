@@ -339,7 +339,7 @@ class CustomerTripActivityScreenCore extends Activity {
         card.addView(backBtn, new LinearLayout.LayoutParams(-1, dp(48)));
         backBtn.setOnClickListener(v -> goToHome());
 
-        progressBar = new ProgressBar(this);
+        progressBar = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
         progressBar.setVisibility(View.GONE);
         FrameLayout.LayoutParams plp = new FrameLayout.LayoutParams(dp(54), dp(54));
         plp.gravity = Gravity.CENTER;

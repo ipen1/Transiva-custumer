@@ -250,7 +250,7 @@ public class RepeatRideOrderActivity extends Activity {
         editLp.setMargins(0, dp(8), 0, 0);
         card.addView(editMap, editLp);
 
-        loading = new ProgressBar(this);
+        loading = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
         loading.setVisibility(ProgressBar.GONE);
 
         LinearLayout.LayoutParams loadingLp =

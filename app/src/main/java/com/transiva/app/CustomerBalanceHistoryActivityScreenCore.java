@@ -225,7 +225,7 @@ class CustomerBalanceHistoryActivityScreenCore extends Activity {
         );
 
         loading =
-                new ProgressBar(this);
+                new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
 
         loading.setVisibility(
                 View.GONE

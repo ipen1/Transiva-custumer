@@ -262,7 +262,7 @@ class LoginActivityScreenCore extends FragmentActivity {
         legal.addView(terms);
         card.addView(legal);
 
-        loadingView = new ProgressBar(this);
+        loadingView = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
         loadingView.setVisibility(View.GONE);
 
         FrameLayout.LayoutParams loadingLp =

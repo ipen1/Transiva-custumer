@@ -154,7 +154,7 @@ class TransPickupActivityScreenCore extends FragmentActivity {
         buildMapHeader();
         buildBottomSheet();
 
-        progressBar = new ProgressBar(this);
+        progressBar = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
         progressBar.setVisibility(View.GONE);
         FrameLayout.LayoutParams p = new FrameLayout.LayoutParams(dp(52), dp(52));
         p.gravity = Gravity.CENTER;

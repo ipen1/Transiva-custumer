@@ -85,7 +85,7 @@ public class GlobalSearchActivity extends Activity {
         HorizontalScrollView hsc=new HorizontalScrollView(this); hsc.setHorizontalScrollBarEnabled(false); chips=new LinearLayout(this); chips.setOrientation(LinearLayout.HORIZONTAL); hsc.addView(chips); body.addView(hsc,new LinearLayout.LayoutParams(-1,dp(45)));
 
         LinearLayout row=new LinearLayout(this); row.setGravity(Gravity.CENTER_VERTICAL); TextView resultTitle=tx("Hasil pencarian",15,"#0B3A78",true); countText=tx("",11,"#7890AA",false); row.addView(resultTitle,new LinearLayout.LayoutParams(0,-2,1)); row.addView(countText); LinearLayout.LayoutParams rlp=new LinearLayout.LayoutParams(-1,-2); rlp.setMargins(0,dp(17),0,dp(8)); body.addView(row,rlp);
-        loading=new ProgressBar(this); loading.setVisibility(View.GONE); body.addView(loading,new LinearLayout.LayoutParams(dp(32),dp(32)));
+        loading=new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal); loading.setVisibility(View.GONE); body.addView(loading,new LinearLayout.LayoutParams(dp(32),dp(32)));
         results=new LinearLayout(this); results.setOrientation(LinearLayout.VERTICAL); body.addView(results);
         root.addView(scroll,new LinearLayout.LayoutParams(-1,0,1)); setContentView(root); CustomerAppSettings.apply(this);
 

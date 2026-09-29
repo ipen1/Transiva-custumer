@@ -1843,7 +1843,7 @@ class CustomerDashboardActivityScreenCore extends Activity
         seeAll.setGravity(Gravity.CENTER);
         seeAll.setPadding(dp(10), dp(8), dp(8), dp(8));
         seeAll.setBackground(Shape.round("#EEF6FF", dp(14)));
-        seeAll.setOnClickListener(v -> showAllServicesDialog());
+        seeAll.setOnClickListener(v -> startActivity(new Intent(this, AllServicesActivity.class)));
         titleRow.addView(seeAll, new LinearLayout.LayoutParams(-2, -2));
 
         LinearLayout grid = new LinearLayout(this);

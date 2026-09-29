@@ -1104,7 +1104,7 @@ class TransShopActivityScreenCore extends Activity {
             } catch (Exception e) {
                 mainHandler.post(() -> {
                     resetOrderButton();
-                    toastDialog("Gagal membuat order TransShop. " + cleanError(e.getMessage()));
+                    toastDialog(TransivaUserMessage.network());
                 });
             }
         }).start();

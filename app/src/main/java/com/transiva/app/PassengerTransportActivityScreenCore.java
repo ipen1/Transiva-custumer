@@ -77,7 +77,7 @@ class PassengerTransportActivityScreenCore extends Activity {
 
     protected TransivaGoogleMapView mapView;
     protected TextView pickupText, deliveryText, modeText, fareText, paymentSummaryText, driverAvailabilityText;
-    protected TextView distanceInfoText, durationInfoText, originalPriceText, finalPriceText, discountInfoText;
+    protected TextView distanceInfoText, durationInfoText, originalPriceText, finalPriceText, discountInfoText, wizardStepText;
     protected Button voucherChoiceBtn, noteChoiceBtn, paymentChoiceBtn;
     protected EditText googleMapInput, noteInput, voucherInput;
     protected Button pickupBtn, deliveryBtn, gpsBtn, orderBtn, backBtn, useLinkBtn;
@@ -249,6 +249,10 @@ class PassengerTransportActivityScreenCore extends Activity {
         TextView title = text(serviceTitle(), 17, "#0B3A78", true);
         titleRow.addView(title, new LinearLayout.LayoutParams(0, -1, 1));
 
+        wizardStepText = text("1/5  Mau ke mana?", 10, "#0B7CFF", true);
+        wizardStepText.setPadding(0, dp(2), 0, dp(3));
+        topCard.addView(wizardStepText, new LinearLayout.LayoutParams(-1, -2));
+
         modeText = text("Geser peta, lalu pilih titik", 10, "#64748B", false);
         modeText.setGravity(Gravity.END | Gravity.CENTER_VERTICAL);
         titleRow.addView(modeText, new LinearLayout.LayoutParams(0, -1, 1.25f));
@@ -266,8 +270,8 @@ class PassengerTransportActivityScreenCore extends Activity {
         pointRowLp.setMargins(0, dp(4), 0, 0);
         topCard.addView(pointRow, pointRowLp);
 
-        pickupBtn = compactPointButton("●  Jemput", "Belum dipilih", "#16A34A");
-        deliveryBtn = compactPointButton("●  Tujuan", "Belum dipilih", "#EF4444");
+        pickupBtn = compactPointButton("●  Lokasi Jemput", "Belum dipilih", "#16A34A");
+        deliveryBtn = compactPointButton("●  Mau ke mana?", "Belum dipilih", "#EF4444");
 
         pointRow.addView(pickupBtn, new LinearLayout.LayoutParams(0, -1, 1));
         LinearLayout.LayoutParams deliveryLp = new LinearLayout.LayoutParams(0, -1, 1);
@@ -333,7 +337,7 @@ class PassengerTransportActivityScreenCore extends Activity {
                 addWaypointFromCenter();
                 return;
             }
-            if (validCoord(pickupLat, pickupLng) && validCoord(deliveryLat, deliveryLng)) createOrder();
+            if (validCoord(pickupLat, pickupLng) && validCoord(deliveryLat, deliveryLng)) handleWizardPrimaryAction();
             else setPointFromCenter();
         });
 
@@ -377,7 +381,7 @@ class PassengerTransportActivityScreenCore extends Activity {
 
         voucherChoiceBtn = smallButton("🏷 Voucher", "#0B7CFF", "#FFFFFF", "#0B7CFF");
         noteChoiceBtn = smallButton("📝 Note", "#F59E0B", "#FFFFFF", "#F59E0B");
-        paymentChoiceBtn = smallButton("💵 Tunai", "#FFFFFF", "#0B3A78", "#C8D9EC");
+        paymentChoiceBtn = smallButton("💵 Cara Bayar: Tunai", "#FFFFFF", "#0B3A78", "#C8D9EC");
         voucherChoiceBtn.setTextSize(10);
         noteChoiceBtn.setTextSize(10);
         paymentChoiceBtn.setTextSize(10);
@@ -477,9 +481,12 @@ class PassengerTransportActivityScreenCore extends Activity {
         paymentSummaryText = text("", 8, "#64748B", false);
         paymentSummaryText.setVisibility(View.GONE);
 
-        // Tombol order lama di bawah dipertahankan sebagai pengendali internal, tetapi tidak ditampilkan.
-        orderBtn = smallButton("PESAN SEKARANG", "#0B7CFF", "#FFFFFF", "#0B7CFF");
-        orderBtn.setVisibility(View.GONE);
+        // CTA wizard selalu berada di posisi yang sama pada bagian bawah kartu.
+        orderBtn = smallButton("LANJUT — PILIH TUJUAN", "#0B7CFF", "#FFFFFF", "#0B7CFF");
+        orderBtn.setTextSize(14);
+        LinearLayout.LayoutParams orderLp = new LinearLayout.LayoutParams(-1, dp(50));
+        orderLp.setMargins(0, dp(7), 0, 0);
+        bottomCard.addView(orderBtn, orderLp);
 
         progressBar = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
         progressBar.setVisibility(View.GONE);
@@ -764,7 +771,7 @@ class PassengerTransportActivityScreenCore extends Activity {
                             .show();
                 });
             } catch (Exception e) {
-                featureRuntime.post(mainHandler, () -> { hematBtn.setEnabled(true); TierBadgeUi.restoreHematButton(hematBtn, TierBadgeUi.getCachedActiveTier(this), dp(20), dp(2)); toastDialog("Gagal memeriksa Transiva Coin: " + e.getMessage()); });
+                featureRuntime.post(mainHandler, () -> { hematBtn.setEnabled(true); TierBadgeUi.restoreHematButton(hematBtn, TierBadgeUi.getCachedActiveTier(this), dp(20), dp(2)); toastDialog(TransivaUserMessage.network()); });
             }
         }).start();
     }
@@ -777,7 +784,7 @@ class PassengerTransportActivityScreenCore extends Activity {
                 .setTitle("Pilih metode pembayaran")
                 .setSingleChoiceItems(methods, checked, (dialog, which) -> {
                     paymentMethod = which == 1 ? "balance" : "cash";
-                    paymentChoiceBtn.setText(which == 1 ? "💳 Transiva Pay" : "💵 Tunai");
+                    paymentChoiceBtn.setText(which == 1 ? "💳 Cara Bayar: Transiva Pay" : "💵 Cara Bayar: Tunai");
                     updateTransPayOnlyFeatures();
                     if (!"balance".equals(paymentMethod) && splitBillManager != null) splitBillManager.clear();
                     dialog.dismiss();
@@ -792,7 +799,7 @@ class PassengerTransportActivityScreenCore extends Activity {
         deliveryBtn.setOnClickListener(v -> handlePointButtonClick("delivery"));
         gpsBtn.setOnClickListener(v -> goToMyLocation());
         backBtn.setOnClickListener(v -> finish());
-        orderBtn.setOnClickListener(v -> createOrder());
+        orderBtn.setOnClickListener(v -> handleWizardPrimaryAction());
         useLinkBtn.setOnClickListener(v -> useGoogleMapLink());
     }
 
@@ -1430,7 +1437,7 @@ class PassengerTransportActivityScreenCore extends Activity {
             } catch (Exception e) {
                 featureRuntime.post(mainHandler, () -> {
                     resetOrderButton();
-                    toastDialog("Gagal membuat order " + serviceName() + ". " + cleanError(e.getMessage()));
+                    toastDialog(TransivaUserMessage.network());
                 });
             }
         }).start();
@@ -1443,7 +1450,7 @@ class PassengerTransportActivityScreenCore extends Activity {
             String msg = res != null
                     ? res.optString("message", "Gagal membuat order " + orderNoun() + ".")
                     : "Gagal membuat order " + orderNoun() + ".";
-            toastDialog(msg);
+            toastDialog(TransivaUserMessage.fromServer(msg));
             return;
         }
 
@@ -1598,7 +1605,7 @@ class PassengerTransportActivityScreenCore extends Activity {
                                 res.optString("message", ""),
                                 "Tarif belum dapat dihitung"
                         );
-                        paymentSummaryText.setText(message);
+                        paymentSummaryText.setText(TransivaUserMessage.fromServer(message));
                         finalPriceText.setText("Rp -");
                         finalPriceText.setTextColor(Color.parseColor("#0B3A78"));
                         return;
@@ -1654,6 +1661,7 @@ class PassengerTransportActivityScreenCore extends Activity {
 
                     lastQuotedFare = total;
                     finalPriceText.setText("Rp " + formatMoney(total));
+                    updateWizardState();
 
                     if (discount > 0 && original > total) {
                         originalPriceText.setVisibility(View.VISIBLE);
@@ -1750,12 +1758,12 @@ class PassengerTransportActivityScreenCore extends Activity {
         deliveryBtn.setAlpha(pickupMode ? .80f : 1f);
         if (mapView != null) {
             if (routeComplete) {
-                mapView.showOrderAction(true, "PESAN SEKARANG");
+                mapView.showOrderAction(true, "LIHAT HARGA / PESAN");
             } else {
                 mapView.setSelectionMode(pickupMode ? "pickup" : "delivery");
                 mapView.showCenterPin(true);
             }
-        }
+        }        updateWizardState();
     }
 
     private void requestVisibleOsrmRoute() {
@@ -1812,7 +1820,45 @@ class PassengerTransportActivityScreenCore extends Activity {
                 || "in_progress".equals(value) || "driver_accepted".equals(value);
     }
 
-    private void resetOrderButton() { ordering = false; setLoading(false); orderBtn.setEnabled(true); orderBtn.setText(orderButtonText()); }
+    private void handleWizardPrimaryAction() {
+        if (!validCoord(deliveryLat, deliveryLng)) {
+            mode = "delivery";
+            updateModeUI();
+            toastDialog("Tentukan tujuan perjalanan terlebih dahulu.");
+            return;
+        }
+        if (!validCoord(pickupLat, pickupLng)) {
+            mode = "pickup";
+            updateModeUI();
+            toastDialog("Periksa dan tentukan lokasi jemput.");
+            return;
+        }
+        if (finalPriceText == null || finalPriceText.getText().toString().contains("-")) {
+            requestPaymentQuote();
+            toastDialog("Sedang menghitung harga perjalanan. Coba lagi sebentar.");
+            return;
+        }
+        createOrder();
+    }
+
+    private void updateWizardState() {
+        if (orderBtn == null) return;
+        if (!validCoord(deliveryLat, deliveryLng)) {
+            if (wizardStepText != null) wizardStepText.setText("1/5  Mau ke mana?");
+            orderBtn.setText("LANJUT — PILIH TUJUAN");
+        } else if (!validCoord(pickupLat, pickupLng)) {
+            if (wizardStepText != null) wizardStepText.setText("2/5  Cek lokasi jemput");
+            orderBtn.setText("LANJUT — CEK LOKASI JEMPUT");
+        } else if (finalPriceText == null || finalPriceText.getText().toString().contains("-")) {
+            if (wizardStepText != null) wizardStepText.setText("3/5  Pilih layanan & cara bayar");
+            orderBtn.setText("LIHAT HARGA");
+        } else {
+            if (wizardStepText != null) wizardStepText.setText("4/5  Lihat harga  •  5/5 Pesan");
+            orderBtn.setText("PESAN SEKARANG");
+        }
+    }
+
+    private void resetOrderButton() { ordering = false; setLoading(false); orderBtn.setEnabled(true); updateWizardState(); }
     private void setLoading(boolean b) { if (progressBar != null) progressBar.setVisibility(b ? View.VISIBLE : View.GONE); }
     private int checkSelfPermissionCompat(String p) { return android.os.Build.VERSION.SDK_INT >= 23 ? checkSelfPermission(p) : PackageManager.PERMISSION_GRANTED; }
     private void requestLocationIfNeeded() { if (checkSelfPermissionCompat(Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED && android.os.Build.VERSION.SDK_INT >= 23) requestPermissions(new String[]{Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION}, REQ_LOCATION); }

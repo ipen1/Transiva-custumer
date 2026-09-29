@@ -236,11 +236,11 @@ class PassengerTransportActivityScreenCore extends Activity {
 
     protected void buildLayout() {
         FrameLayout page = new FrameLayout(this);
-        page.setBackgroundColor(Color.parseColor("#071426"));
+        page.setBackgroundColor(Color.parseColor("#F4F8FD"));
 
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
-        root.setPadding(dp(7), dp(7), dp(7), dp(7));
+        root.setPadding(dp(10), dp(10), dp(10), dp(10));
         page.addView(root, new FrameLayout.LayoutParams(-1, -1));
 
         /* =========================
@@ -248,18 +248,18 @@ class PassengerTransportActivityScreenCore extends Activity {
          * ========================= */
         LinearLayout topCard = new LinearLayout(this);
         topCard.setOrientation(LinearLayout.VERTICAL);
-        topCard.setPadding(dp(9), dp(7), dp(9), dp(7));
-        topCard.setBackground(roundStroke("#F8FBFF", "#D7E6F8", dp(14), 1));
+        topCard.setPadding(dp(14), dp(12), dp(14), dp(12));
+        topCard.setBackground(roundStroke("#FFFFFF", "#D7E6F8", dp(22), 1));
         root.addView(topCard, new LinearLayout.LayoutParams(-1, -2));
 
         LinearLayout titleRow = new LinearLayout(this);
         titleRow.setGravity(Gravity.CENTER_VERTICAL);
         topCard.addView(titleRow, new LinearLayout.LayoutParams(-1, dp(30)));
 
-        TextView title = text(serviceTitle(), 17, "#0B3A78", true);
+        TextView title = text(serviceTitle(), 20, "#0B3A78", true);
         titleRow.addView(title, new LinearLayout.LayoutParams(0, -1, 1));
 
-        wizardStepText = text("1/5  Mau ke mana?", 10, "#0B7CFF", true);
+        wizardStepText = text("Mau ke mana hari ini?", 11, "#0B7CFF", true);
         wizardStepText.setPadding(0, dp(2), 0, dp(3));
         topCard.addView(wizardStepText, new LinearLayout.LayoutParams(-1, -2));
 
@@ -296,22 +296,22 @@ class PassengerTransportActivityScreenCore extends Activity {
         LinearLayout linkRow = new LinearLayout(this);
         linkRow.setOrientation(LinearLayout.HORIZONTAL);
         linkRow.setGravity(Gravity.CENTER_VERTICAL);
-        LinearLayout.LayoutParams linkLp = new LinearLayout.LayoutParams(-1, dp(36));
+        LinearLayout.LayoutParams linkLp = new LinearLayout.LayoutParams(-1, dp(54));
         linkLp.setMargins(0, dp(5), 0, 0);
         topCard.addView(linkRow, linkLp);
 
         googleMapInput = new EditText(this);
         googleMapInput.setSingleLine(true);
-        googleMapInput.setTextSize(10);
-        googleMapInput.setHint("Mau ke mana?  Contoh: SPBU, Alfamidi");
+        googleMapInput.setTextSize(14);
+        googleMapInput.setHint("🔎 Mau ke mana?  SPBU, Alfamidi, rumah sakit...");
         googleMapInput.setFocusable(false);
         googleMapInput.setClickable(true);
-        googleMapInput.setBackground(roundStroke("#FFFFFF", "#D7E6F8", dp(11), 1));
-        googleMapInput.setPadding(dp(9), 0, dp(9), 0);
+        googleMapInput.setBackground(roundStroke("#FFFFFF", "#9DCAFF", dp(18), 1));
+        googleMapInput.setPadding(dp(14), 0, dp(14), 0);
         linkRow.addView(googleMapInput, new LinearLayout.LayoutParams(0, -1, 1));
 
-        useLinkBtn = smallButton("Cari", "#EAF4FF", "#0B7CFF", "#9DCAFF");
-        LinearLayout.LayoutParams useLinkLp = new LinearLayout.LayoutParams(dp(62), -1);
+        useLinkBtn = smallButton("Peta", "#0B7CFF", "#FFFFFF", "#0B7CFF");
+        LinearLayout.LayoutParams useLinkLp = new LinearLayout.LayoutParams(dp(72), -1);
         useLinkLp.setMargins(dp(5), 0, 0, 0);
         linkRow.addView(useLinkBtn, useLinkLp);
 
@@ -367,7 +367,7 @@ class PassengerTransportActivityScreenCore extends Activity {
         LinearLayout bottomCard = new LinearLayout(this);
         bottomCard.setOrientation(LinearLayout.VERTICAL);
         bottomCard.setPadding(dp(10), dp(9), dp(10), dp(10));
-        bottomCard.setBackground(roundStroke("#F8FBFF", "#D7E6F8", dp(14), 1));
+        bottomCard.setBackground(roundStroke("#FFFFFF", "#D7E6F8", dp(22), 1));
         LinearLayout.LayoutParams bottomLp = new LinearLayout.LayoutParams(-1, -2);
         bottomLp.setMargins(0, dp(6), 0, 0);
         root.addView(bottomCard, bottomLp);
@@ -825,7 +825,7 @@ class PassengerTransportActivityScreenCore extends Activity {
             if (Places.isInitialized()) return;
             String apiKey = getString(R.string.google_maps_key);
             if (apiKey != null && !apiKey.trim().isEmpty()) {
-                Places.initialize(getApplicationContext(), apiKey.trim(), Locale.forLanguageTag("id-ID"));
+                Places.initializeWithNewPlacesApiEnabled(getApplicationContext(), apiKey.trim());
             }
         } catch (Exception ignored) {
             // Map picker remains available as a safe fallback.
@@ -846,9 +846,7 @@ class PassengerTransportActivityScreenCore extends Activity {
                     .build(this);
             startActivityForResult(intent, REQ_PLACE_AUTOCOMPLETE);
         } catch (Exception e) {
-            toastDialog("Pencarian tempat belum tersedia. Kamu tetap bisa memilih tujuan langsung dari peta.");
-            mode = "delivery";
-            updateModeUI();
+            showPlacesErrorDialog();
         }
     }
 
@@ -890,14 +888,33 @@ class PassengerTransportActivityScreenCore extends Activity {
                 Status status = Autocomplete.getStatusFromIntent(data);
                 String message = status == null ? "" : firstNonEmpty(status.getStatusMessage(), "");
                 if (!message.toLowerCase(Locale.ROOT).contains("cancel")) {
-                    toastDialog("Koneksi sedang bermasalah. Coba lagi atau pilih tujuan dari peta.");
+                    showPlacesErrorDialog();
                 }
             } catch (Exception ignored) {
-                toastDialog("Koneksi sedang bermasalah. Coba lagi.");
+                showPlacesErrorDialog();
             }
         }
     }
 
+
+    /** Pesan ramah pengguna saat layanan pencarian tempat belum dapat dipakai. */
+    protected void showPlacesErrorDialog() {
+        try {
+            new TransivaAlertDialogBuilder(this)
+                    .setTitle("Cari tujuan")
+                    .setMessage("Pencarian tempat belum dapat digunakan. Coba lagi, atau pilih titik tujuan langsung dari peta.")
+                    .setNegativeButton("Pilih di Peta", (d, w) -> {
+                        mode = "delivery";
+                        updateModeUI();
+                        if (mapView != null && validCoord(centerLat, centerLng)) mapView.moveTo(centerLat, centerLng, 16f);
+                    })
+                    .setPositiveButton("Coba Lagi", (d, w) -> openDestinationAutocomplete())
+                    .show();
+        } catch (Exception ignored) {
+            mode = "delivery";
+            updateModeUI();
+        }
+    }
 
     /** Tombol ringkasan di atas mengaktifkan pemilihan ulang titik terkait. */
     protected void handlePointButtonClick(String requestedMode) {

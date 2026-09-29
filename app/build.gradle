@@ -24,6 +24,11 @@ android {
     }
     compileSdk 36
 
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
+    }
+
     defaultConfig {
         applicationId 'com.transiva.customer'
         minSdk 23
@@ -84,6 +89,8 @@ dependencies {
 
     // Google Maps native renderer. OSRM remains the routing engine.
     implementation 'com.google.android.gms:play-services-maps:20.0.0'
+    // Smart destination search for TransRide/TransCar. 4.4.1 keeps minSdk 23 compatibility.
+    implementation 'com.google.android.libraries.places:places:4.4.1'
     implementation 'com.google.android.gms:play-services-auth:21.2.0'
 
     implementation platform('com.google.firebase:firebase-bom:33.7.0')

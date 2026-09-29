@@ -2,21 +2,9 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
-    <!--
-      Google Play distribution manifest.
+    <!-- Google Play distribution hardening. Keep direct APK behavior unchanged. -->
 
-      IMPORTANT:
-      Keep customer runtime permissions/features aligned with the direct APK.
-      In particular, SYSTEM_ALERT_WINDOW and USE_FULL_SCREEN_INTENT are
-      intentionally inherited from src/main so Trans Asisten/call flows behave
-      the same in the Play AAB as they do in the direct release APK.
-
-      Only distribution-specific permissions are removed here:
-      - advertising identifiers / AdServices: Transiva does not use ads
-      - REQUEST_INSTALL_PACKAGES: Play builds must not self-update by sideloading APKs
-    -->
-
-    <!-- No advertising identifier / AdServices attribution in the Play build. -->
+    <!-- Transiva Customer does not use advertising identifiers. -->
     <uses-permission
         android:name="com.google.android.gms.permission.AD_ID"
         tools:node="remove" />
@@ -27,21 +15,37 @@
         android:name="android.permission.ACCESS_ADSERVICES_ATTRIBUTION"
         tools:node="remove" />
 
-    <!-- Direct APK updater only; keep removed for Google Play AAB. -->
+    <!-- Direct-channel APK self updater must never be present in Play AAB. -->
     <uses-permission
         android:name="android.permission.REQUEST_INSTALL_PACKAGES"
         tools:node="remove" />
 
     <!--
-      DO NOT remove the following permissions here. They are declared in
-      src/main/AndroidManifest.xml and are needed by the same customer features
-      in both distributions:
-        android.permission.SYSTEM_ALERT_WINDOW
-        android.permission.USE_FULL_SCREEN_INTENT
-        android.permission.READ_MEDIA_IMAGES
-        android.permission.READ_MEDIA_VIDEO
-        android.permission.READ_EXTERNAL_STORAGE (legacy <= 32)
-        android.permission.WRITE_EXTERNAL_STORAGE (legacy <= 28)
+      Play policy: broad photo/video library access is not required.
+      Customer image/file flows already use Android's document picker
+      (ACTION_OPEN_DOCUMENT / ACTION_GET_CONTENT) and camera-owned URIs.
+      Removing these permissions does NOT remove the picker/camera features.
+    -->
+    <uses-permission
+        android:name="android.permission.READ_MEDIA_IMAGES"
+        tools:node="remove" />
+    <uses-permission
+        android:name="android.permission.READ_MEDIA_VIDEO"
+        tools:node="remove" />
+    <uses-permission
+        android:name="android.permission.READ_EXTERNAL_STORAGE"
+        tools:node="remove" />
+    <uses-permission
+        android:name="android.permission.WRITE_EXTERNAL_STORAGE"
+        tools:node="remove" />
+
+    <!--
+      Intentionally inherited from main:
+      - USE_FULL_SCREEN_INTENT: incoming customer WebRTC call only.
+      - SYSTEM_ALERT_WINDOW: optional Trans Asisten/call overlay flow.
+      - FOREGROUND_SERVICE_DATA_SYNC: active trip/redispatch protection.
+      - FOREGROUND_SERVICE_MICROPHONE: user-initiated Audio Protect.
+      These must match the corresponding Play Console declarations/use cases.
     -->
 
 </manifest>

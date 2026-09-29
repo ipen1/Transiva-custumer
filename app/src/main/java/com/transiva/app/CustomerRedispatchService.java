@@ -90,7 +90,7 @@ public final class CustomerRedispatchService extends Service {
             return START_NOT_STICKY;
         }
         orderId = incoming;
-        startForeground(NOTIFICATION_ID, buildNotification("Mencari driver • redispatch aktif"));
+        startForeground(NOTIFICATION_ID, buildNotification("Mencari driver lain…"));
         main.removeCallbacks(heartbeat);
         main.post(heartbeat);
         return START_STICKY;
@@ -173,7 +173,7 @@ public final class CustomerRedispatchService extends Service {
         NotificationManager nm = getSystemService(NotificationManager.class);
         if (nm == null) return;
         NotificationChannel ch = new NotificationChannel(CHANNEL_ID, "Pencarian Driver", NotificationManager.IMPORTANCE_LOW);
-        ch.setDescription("Menjaga redispatch order tetap berjalan saat aplikasi di latar belakang.");
+        ch.setDescription("Membantu pencarian driver lain tetap berjalan saat aplikasi di latar belakang.");
         ch.setShowBadge(false);
         nm.createNotificationChannel(ch);
     }

@@ -307,7 +307,7 @@ class CustomerDashboardActivityScreenCore extends Activity
         // Header sudah memuat identitas, saldo dan royalti dalam satu card responsif.
         buildServiceSection();
         buildOrderSection();
-        buildFeatureShortcuts();
+        // Fitur lanjutan dipindahkan ke "Lihat Semua" agar Dashboard tetap sederhana.
 
         if (!isKOnlineDashboardCardDismissed()) {
             buildKOnlineTransitionCard();
@@ -1833,12 +1833,18 @@ class CustomerDashboardActivityScreenCore extends Activity
         LinearLayout titleBox = new LinearLayout(this);
         titleBox.setOrientation(LinearLayout.VERTICAL);
         titleRow.addView(titleBox, new LinearLayout.LayoutParams(0, -2, 1f));
-
-        titleBox.addView(text("Layanan Utama", 16, "#0B3A78", true));
-        TextView hint = text("Pilih layanan Transiva", 10, "#7B8DA3", false);
+        titleBox.addView(text("Mau pakai layanan apa?", 16, "#0B3A78", true));
+        TextView hint = text("Pilih salah satu untuk mulai", 10, "#7B8DA3", false);
         LinearLayout.LayoutParams hintLp = new LinearLayout.LayoutParams(-1, -2);
         hintLp.setMargins(0, dp(2), 0, 0);
         titleBox.addView(hint, hintLp);
+
+        TextView seeAll = text("Lihat Semua  ›", 11, "#0878F9", true);
+        seeAll.setGravity(Gravity.CENTER);
+        seeAll.setPadding(dp(10), dp(8), dp(8), dp(8));
+        seeAll.setBackground(Shape.round("#EEF6FF", dp(14)));
+        seeAll.setOnClickListener(v -> showAllServicesDialog());
+        titleRow.addView(seeAll, new LinearLayout.LayoutParams(-2, -2));
 
         LinearLayout grid = new LinearLayout(this);
         grid.setOrientation(LinearLayout.VERTICAL);
@@ -1846,19 +1852,71 @@ class CustomerDashboardActivityScreenCore extends Activity
         gridLp.setMargins(0, dp(10), 0, 0);
         section.addView(grid, gridLp);
 
+        // Smart Dashboard: hanya empat kebutuhan yang paling mudah dipahami pengguna baru.
         grid.addView(serviceRow(
                 service("TransRide", "ic_service_ride_premium", TransRideActivity.class),
-                service("TransCar", "ic_service_car_premium", PassengerCarActivity.class),
-                service("TransSend", "ic_service_send_premium", TransPickupActivity.class),
-                service("TransFood", "ic_service_food_premium", TransFoodActivity.class)
-        ));
-
-        grid.addView(serviceRow(
+                service("TransFood", "ic_service_food_premium", TransFoodActivity.class),
                 service("TransShop", "ic_service_shop_premium", TransShopActivity.class),
-                serviceComingSoon("TransMart", "ic_service_mart_premium"),
-                service("TransPay", "ic_service_pay_premium", CustomerTopUpActivity.class),
-                service("Asisten", "ic_service_assistant_premium", TransAssistantActivity.class)
+                service("Pickup", "ic_service_send_premium", TransPickupActivity.class)
         ));
+    }
+
+    /**
+     * Semua fitur sekunder tetap tersedia, tetapi tidak memenuhi Dashboard utama.
+     * Nama yang tampil sengaja memakai bahasa pengguna, bukan istilah internal sistem.
+     */
+    protected void showAllServicesDialog() {
+        final String[] labels = {
+                "TransCar — Pesan mobil",
+                "Split Pay — Patungan pembayaran",
+                "Family — Kelola keluarga",
+                "Royalti — Poin & hadiah",
+                "Referral — Ajak teman",
+                "Tempat Favorit",
+                "Pusat Keamanan",
+                "Transiva Pay — Isi saldo",
+                "Asisten Transiva",
+                "TransMart — Segera hadir"
+        };
+        new AlertDialog.Builder(this)
+                .setTitle("Semua Fitur")
+                .setItems(labels, (dialog, which) -> {
+                    switch (which) {
+                        case 0:
+                            startActivity(new Intent(this, PassengerCarActivity.class));
+                            break;
+                        case 1:
+                            Toast.makeText(this, "Pilih Transiva Pay saat memesan, lalu pilih Split Pay untuk patungan.", Toast.LENGTH_LONG).show();
+                            startActivity(new Intent(this, TransRideActivity.class));
+                            break;
+                        case 2:
+                            startActivity(new Intent(this, TransivaFamilyActivity.class));
+                            break;
+                        case 3:
+                            startActivity(new Intent(this, CustomerLoyaltyActivity.class));
+                            break;
+                        case 4:
+                            startActivity(new Intent(this, CustomerReferralActivity.class));
+                            break;
+                        case 5:
+                            startActivity(new Intent(this, FavoritePlacesActivity.class));
+                            break;
+                        case 6:
+                            startActivity(new Intent(this, SafetyCenterActivity.class));
+                            break;
+                        case 7:
+                            startActivity(new Intent(this, CustomerTopUpActivity.class));
+                            break;
+                        case 8:
+                            startActivity(new Intent(this, TransAssistantActivity.class));
+                            break;
+                        default:
+                            Toast.makeText(this, "TransMart segera hadir.", Toast.LENGTH_SHORT).show();
+                            break;
+                    }
+                })
+                .setNegativeButton("Tutup", null)
+                .show();
     }
 
     protected View serviceRow(View... items) {

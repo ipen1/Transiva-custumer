@@ -564,7 +564,7 @@ class PassengerTransportActivityScreenCore extends Activity {
         int count = ecosystemFeatures.waypoints.length();
         if (count >= 2) {
             new TransivaAlertDialogBuilder(this)
-                    .setTitle("Multi Destination")
+                    .setTitle("Tambah Tujuan")
                     .setMessage("Sudah ada 2 pemberhentian. Hapus semua stop jika ingin memilih ulang.")
                     .setNegativeButton("Hapus semua", (d,w) -> {
                         ecosystemFeatures.clearWaypoints();

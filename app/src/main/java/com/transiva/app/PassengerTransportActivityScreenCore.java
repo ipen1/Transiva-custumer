@@ -30,6 +30,14 @@ import android.widget.LinearLayout;
 import android.widget.ProgressBar;
 import android.widget.TextView;
 
+import com.google.android.gms.common.api.Status;
+import com.google.android.gms.maps.model.LatLng;
+import com.google.android.libraries.places.api.Places;
+import com.google.android.libraries.places.api.model.Place;
+import com.google.android.libraries.places.widget.Autocomplete;
+import com.google.android.libraries.places.widget.AutocompleteActivity;
+import com.google.android.libraries.places.widget.model.AutocompleteActivityMode;
+
 import org.json.JSONObject;
 import org.json.JSONArray;
 
@@ -71,6 +79,7 @@ class PassengerTransportActivityScreenCore extends Activity {
     protected static final String GET_LAUNDRIES_URL = BASE_URL + "server/admin_get_laundries.php";
     protected static final String GET_ONLINE_DRIVERS_URL = BASE_URL + "server/get_map_drivers.php";
     protected static final int REQ_LOCATION = 44;
+    protected static final int REQ_PLACE_AUTOCOMPLETE = 45;
     protected static final int TIMEOUT_MS = 25000;
 
     protected final Handler mainHandler = new Handler(Looper.getMainLooper());
@@ -143,6 +152,7 @@ class PassengerTransportActivityScreenCore extends Activity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         geocodingRepository = new CustomerGeocodingRepository(this);
+        initializePlacesAutocomplete();
         splitBillManager = new SplitBillManager(this, (key,size,ready) -> { ecosystemFeatures.groupSize=size; ecosystemFeatures.splitFareMode=size>1?"custom":"none"; if(groupRideBtn!=null) groupRideBtn.setText(size>1 ? (ready?"✅ Split "+size:"⏳ Split "+size) : "💳 Split Pay"); });
         try {
             getWindow().setStatusBarColor(Color.parseColor("#071426"));
@@ -293,12 +303,14 @@ class PassengerTransportActivityScreenCore extends Activity {
         googleMapInput = new EditText(this);
         googleMapInput.setSingleLine(true);
         googleMapInput.setTextSize(10);
-        googleMapInput.setHint("Link Google Maps pengantaran (opsional)");
+        googleMapInput.setHint("Mau ke mana?  Contoh: SPBU, Alfamidi");
+        googleMapInput.setFocusable(false);
+        googleMapInput.setClickable(true);
         googleMapInput.setBackground(roundStroke("#FFFFFF", "#D7E6F8", dp(11), 1));
         googleMapInput.setPadding(dp(9), 0, dp(9), 0);
         linkRow.addView(googleMapInput, new LinearLayout.LayoutParams(0, -1, 1));
 
-        useLinkBtn = smallButton("Pakai", "#EAF4FF", "#0B7CFF", "#9DCAFF");
+        useLinkBtn = smallButton("Cari", "#EAF4FF", "#0B7CFF", "#9DCAFF");
         LinearLayout.LayoutParams useLinkLp = new LinearLayout.LayoutParams(dp(62), -1);
         useLinkLp.setMargins(dp(5), 0, 0, 0);
         linkRow.addView(useLinkBtn, useLinkLp);
@@ -800,8 +812,92 @@ class PassengerTransportActivityScreenCore extends Activity {
         gpsBtn.setOnClickListener(v -> goToMyLocation());
         backBtn.setOnClickListener(v -> finish());
         orderBtn.setOnClickListener(v -> handleWizardPrimaryAction());
-        useLinkBtn.setOnClickListener(v -> useGoogleMapLink());
+        googleMapInput.setOnClickListener(v -> openDestinationAutocomplete());
+        useLinkBtn.setOnClickListener(v -> openDestinationAutocomplete());
     }
+
+    /**
+     * Smart destination search for TransRide + TransCar.
+     * Places only selects a destination; Transiva's existing order, route and fare flow stays unchanged.
+     */
+    protected void initializePlacesAutocomplete() {
+        try {
+            if (Places.isInitialized()) return;
+            String apiKey = getString(R.string.google_maps_key);
+            if (apiKey != null && !apiKey.trim().isEmpty()) {
+                Places.initialize(getApplicationContext(), apiKey.trim(), Locale.forLanguageTag("id-ID"));
+            }
+        } catch (Exception ignored) {
+            // Map picker remains available as a safe fallback.
+        }
+    }
+
+    protected void openDestinationAutocomplete() {
+        try {
+            initializePlacesAutocomplete();
+            java.util.List<Place.Field> fields = java.util.Arrays.asList(
+                    Place.Field.ID,
+                    Place.Field.NAME,
+                    Place.Field.ADDRESS,
+                    Place.Field.LAT_LNG
+            );
+            Intent intent = new Autocomplete.IntentBuilder(AutocompleteActivityMode.OVERLAY, fields)
+                    .setCountry("ID")
+                    .build(this);
+            startActivityForResult(intent, REQ_PLACE_AUTOCOMPLETE);
+        } catch (Exception e) {
+            toastDialog("Pencarian tempat belum tersedia. Kamu tetap bisa memilih tujuan langsung dari peta.");
+            mode = "delivery";
+            updateModeUI();
+        }
+    }
+
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode != REQ_PLACE_AUTOCOMPLETE) return;
+
+        if (resultCode == RESULT_OK && data != null) {
+            try {
+                Place place = Autocomplete.getPlaceFromIntent(data);
+                LatLng point = place.getLatLng();
+                if (point == null || !validCoord(point.latitude, point.longitude)) {
+                    toastDialog("Lokasi tempat belum tersedia. Coba pilih tempat lain atau gunakan peta.");
+                    return;
+                }
+
+                deliveryLat = point.latitude;
+                deliveryLng = point.longitude;
+                deliveryAddress = firstNonEmpty(place.getName(), place.getAddress(), "Tujuan dipilih");
+                googleMapInput.setText(deliveryAddress);
+                deliveryText.setText("Pengantaran: " + deliveryAddress);
+                deliveryBtn.setText("●  Tujuan\n" + shortAddress(deliveryAddress));
+                mode = "delivery";
+
+                if (mapView != null) {
+                    mapView.setDelivery(deliveryLat, deliveryLng, deliveryAddress);
+                    mapView.moveTo(deliveryLat, deliveryLng, 17f);
+                }
+
+                hideKeyboard();
+                updateModeUI();
+                requestPaymentQuote();
+            } catch (Exception e) {
+                toastDialog("Tempat tidak dapat dibuka. Coba lagi atau pilih langsung dari peta.");
+            }
+        } else if (resultCode == AutocompleteActivity.RESULT_ERROR && data != null) {
+            try {
+                Status status = Autocomplete.getStatusFromIntent(data);
+                String message = status == null ? "" : firstNonEmpty(status.getStatusMessage(), "");
+                if (!message.toLowerCase(Locale.ROOT).contains("cancel")) {
+                    toastDialog("Koneksi sedang bermasalah. Coba lagi atau pilih tujuan dari peta.");
+                }
+            } catch (Exception ignored) {
+                toastDialog("Koneksi sedang bermasalah. Coba lagi.");
+            }
+        }
+    }
+
 
     /** Tombol ringkasan di atas mengaktifkan pemilihan ulang titik terkait. */
     protected void handlePointButtonClick(String requestedMode) {
@@ -1868,7 +1964,7 @@ class PassengerTransportActivityScreenCore extends Activity {
         if (requestCode == REQ_LOCATION && grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) goToMyLocation();
     }
 
-    private void hideKeyboard() { try { ((InputMethodManager)getSystemService(Context.INPUT_METHOD_SERVICE)).hideSoftInputFromWindow(googleMapInput.getWindowToken(), 0); } catch (Exception ignored) {} }
+    private void hideKeyboard() { try { ((InputMethodManager)getSystemService(Context.INPUT_METHOD_SERVICE)).hideSoftInputFromWindow(googleMapInput == null ? null : googleMapInput.getWindowToken(), 0); } catch (Exception ignored) {} }
     private void toastDialog(String msg) { try { new TransivaAlertDialogBuilder(this).setTitle("Transiva").setMessage(msg).setPositiveButton("OK", null).show(); } catch (Exception ignored) {} }
     private String firstNonEmpty(String... v) {
         return CustomerCommonFormatters.firstBasic(v);

@@ -1,35 +1,44 @@
-TRANSIVA CUSTOMER - FIX API 36 + REGRESSION TEST + OVERLAY UX
-=============================================================
+TRANSIVA CUSTOMER - MINIMAL PLAY STORE FIX
+=========================================
 
-Cara pakai:
-1. Backup project Anda.
-2. Ekstrak ZIP ini di root project Transiva Customer.
-3. Izinkan replace file dengan path yang sama.
-4. Pastikan Android SDK Platform 36 terpasang pada environment build.
-5. Build seperti biasa melalui workflow GitHub build-aab.yml.
+Replace ONLY:
+  app/src/play/AndroidManifest.xml
 
-Perubahan:
-- compileSdk 35 -> 36
-- targetSdk 35 -> 36
-- Android Gradle Plugin 8.6.1 -> 8.10.1
-- Gradle CI 8.9 -> 8.11.1
-- Java tetap 17
-- minSdk tetap 23
-- Menambahkan JUnit 4.13.2 dan regression test untuk state order/chat customer.
-- CI menjalankan testDebugUnitTest sebelum membuat APK/AAB release.
-- Splash tidak lagi meminta SYSTEM_ALERT_WINDOW / overlay.
-- Permission overlay tetap dipertahankan untuk kompatibilitas incoming WebRTC call.
-- Pengguna dapat mengaktifkan overlay secara opsional melalui Pengaturan Aplikasi > Panggilan Masuk.
-- Tanpa overlay, mekanisme full-screen call notification yang sudah ada tetap dipertahankan.
+Do NOT replace src/main and do NOT change the direct APK flavor.
 
-File yang di-replace/ditambahkan:
-- build.gradle
-- app/build.gradle
-- .github/workflows/build-aab.yml
-- app/src/main/java/com/transiva/app/SplashActivity.java
-- app/src/main/java/com/transiva/app/CustomerSettingsActivity.java
-- app/src/test/java/com/transiva/app/CustomerMessageStatusTest.java (file baru)
+What this patch does for the Google Play flavor only:
+- removes AD_ID / AdServices identifiers;
+- removes REQUEST_INSTALL_PACKAGES;
+- removes READ_MEDIA_IMAGES / READ_MEDIA_VIDEO;
+- removes legacy READ/WRITE_EXTERNAL_STORAGE.
 
-Catatan:
-- Tidak ada endpoint API, applicationId, signing config, minSdk, struktur order, FCM service,
-  WebRTC signaling, database, atau layout fitur utama yang diubah.
+Why photo/file features remain functional:
+The audited Customer source already uses ACTION_OPEN_DOCUMENT / ACTION_GET_CONTENT
+for gallery/file selection and app-owned camera URIs. No Java runtime request for the
+removed media/storage permissions was found.
+
+Intentionally NOT changed:
+- order lifecycle/API/backend;
+- Split Pay/wallet;
+- Google login;
+- Maps/navigation;
+- FCM notifications;
+- WebRTC incoming calls and USE_FULL_SCREEN_INTENT;
+- Trans Asisten overlay;
+- TripGuardian/Redispatch/AudioProtect foreground services;
+- direct APK self-update behavior.
+
+Before Production:
+1. Build the `playRelease` AAB, not `directRelease`.
+2. Inspect the merged Play manifest and confirm the removed permissions are absent.
+3. Run existing regression/unit tests.
+4. Test photo picker, profile image, chat attachment, top-up proof, camera, incoming call,
+   active trip/redispatch, and Audio Protect on the release build.
+5. Complete Play Console declarations for foreground services/full-screen intent where requested.
+6. Restrict the Google Maps key to package com.transiva.customer + the Play signing certificate.
+
+NOTE:
+The submitted project ZIP does not contain gradlew / gradle/wrapper, so a clean command-line
+release build cannot be reproduced from that ZIP alone. Restore the project's normal Gradle
+Wrapper from the canonical repository before CI/release validation; it is intentionally not
+fabricated by this patch.

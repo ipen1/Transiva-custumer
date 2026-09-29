@@ -29,11 +29,21 @@ import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.ProgressBar;
 import android.widget.TextView;
+import android.widget.ScrollView;
+import android.text.Editable;
+import android.text.TextWatcher;
+import android.content.ClipboardManager;
+import android.content.ClipData;
 
 import com.google.android.gms.common.api.Status;
 import com.google.android.gms.maps.model.LatLng;
 import com.google.android.libraries.places.api.Places;
 import com.google.android.libraries.places.api.model.Place;
+import com.google.android.libraries.places.api.model.AutocompletePrediction;
+import com.google.android.libraries.places.api.net.PlacesClient;
+import com.google.android.libraries.places.api.net.FindAutocompletePredictionsRequest;
+import com.google.android.libraries.places.api.net.FetchPlaceRequest;
+import com.google.android.libraries.places.api.model.AutocompleteSessionToken;
 import com.google.android.libraries.places.widget.Autocomplete;
 import com.google.android.libraries.places.widget.AutocompleteActivity;
 import com.google.android.libraries.places.widget.model.AutocompleteActivityMode;
@@ -88,6 +98,7 @@ class PassengerTransportActivityScreenCore extends Activity {
     protected TextView pickupText, deliveryText, modeText, fareText, paymentSummaryText, driverAvailabilityText;
     protected TextView distanceInfoText, durationInfoText, originalPriceText, finalPriceText, discountInfoText, wizardStepText;
     protected Button voucherChoiceBtn, noteChoiceBtn, paymentChoiceBtn;
+    protected LinearLayout bookingDetailsCard;
     protected EditText googleMapInput, noteInput, voucherInput;
     protected Button pickupBtn, deliveryBtn, gpsBtn, orderBtn, backBtn, useLinkBtn;
     protected ProgressBar progressBar;
@@ -365,12 +376,14 @@ class PassengerTransportActivityScreenCore extends Activity {
          * DRAIV-STYLE BOTTOM CARD
          * ========================= */
         LinearLayout bottomCard = new LinearLayout(this);
+        bookingDetailsCard = bottomCard;
         bottomCard.setOrientation(LinearLayout.VERTICAL);
         bottomCard.setPadding(dp(10), dp(9), dp(10), dp(10));
         bottomCard.setBackground(roundStroke("#FFFFFF", "#D7E6F8", dp(22), 1));
         LinearLayout.LayoutParams bottomLp = new LinearLayout.LayoutParams(-1, -2);
         bottomLp.setMargins(0, dp(6), 0, 0);
         root.addView(bottomCard, bottomLp);
+        bottomCard.setVisibility(View.GONE);
 
         driverAvailabilityText = text("Tidak ada driver " + serviceName() + " yang online", 10, "#B91C1C", true);
         driverAvailabilityText.setGravity(Gravity.CENTER);
@@ -808,7 +821,7 @@ class PassengerTransportActivityScreenCore extends Activity {
 
     protected void bindActions() {
         pickupBtn.setOnClickListener(v -> handlePointButtonClick("pickup"));
-        deliveryBtn.setOnClickListener(v -> handlePointButtonClick("delivery"));
+        deliveryBtn.setOnClickListener(v -> openDestinationAutocomplete());
         gpsBtn.setOnClickListener(v -> goToMyLocation());
         backBtn.setOnClickListener(v -> finish());
         orderBtn.setOnClickListener(v -> handleWizardPrimaryAction());
@@ -833,21 +846,110 @@ class PassengerTransportActivityScreenCore extends Activity {
     }
 
     protected void openDestinationAutocomplete() {
-        try {
-            initializePlacesAutocomplete();
-            java.util.List<Place.Field> fields = java.util.Arrays.asList(
-                    Place.Field.ID,
-                    Place.Field.NAME,
-                    Place.Field.ADDRESS,
-                    Place.Field.LAT_LNG
-            );
-            Intent intent = new Autocomplete.IntentBuilder(AutocompleteActivityMode.OVERLAY, fields)
-                    .setCountry("ID")
-                    .build(this);
-            startActivityForResult(intent, REQ_PLACE_AUTOCOMPLETE);
-        } catch (Exception e) {
-            showPlacesErrorDialog();
-        }
+        showSmartDestinationSearch();
+    }
+
+    /**
+     * Full-screen Transiva destination finder: friendly blue/white UX, nearby Places
+     * autocomplete, distance from pickup/current map center, map fallback and Maps-link paste.
+     */
+    protected void showSmartDestinationSearch() {
+        initializePlacesAutocomplete();
+        final FrameLayout overlay = new FrameLayout(this);
+        overlay.setBackgroundColor(Color.parseColor("#F7FAFF"));
+        addContentView(overlay, new android.view.ViewGroup.LayoutParams(-1, -1));
+
+        LinearLayout shell = new LinearLayout(this);
+        shell.setOrientation(LinearLayout.VERTICAL);
+        shell.setPadding(dp(18), dp(18), dp(18), dp(16));
+        overlay.addView(shell, new FrameLayout.LayoutParams(-1, -1));
+
+        LinearLayout head = new LinearLayout(this);
+        head.setGravity(Gravity.CENTER_VERTICAL);
+        Button back = smallButton("‹", "#EAF4FF", "#0B3A78", "#C8D9EC");
+        back.setTextSize(28);
+        head.addView(back, new LinearLayout.LayoutParams(dp(52), dp(52)));
+        TextView heading = text("Mau ke mana?", 22, "#0B3A78", true);
+        LinearLayout.LayoutParams hlp = new LinearLayout.LayoutParams(0, -2, 1); hlp.setMargins(dp(12),0,0,0);
+        head.addView(heading, hlp);
+        Button map = smallButton("Peta", "#EAF4FF", "#0B7CFF", "#9DCAFF");
+        head.addView(map, new LinearLayout.LayoutParams(dp(78), dp(48)));
+        shell.addView(head, new LinearLayout.LayoutParams(-1, -2));
+
+        TextView pickup = text("●  Lokasi Jemput\n" + shortAddress(firstNonEmpty(pickupAddress, "Lokasi saat ini")), 13, "#0F5132", true);
+        pickup.setPadding(dp(16), dp(12), dp(16), dp(12));
+        pickup.setBackground(roundStroke("#F0FDF4", "#86EFAC", dp(16), 1));
+        LinearLayout.LayoutParams plp=new LinearLayout.LayoutParams(-1,-2); plp.setMargins(0,dp(16),0,dp(10)); shell.addView(pickup,plp);
+
+        EditText search = new EditText(this);
+        search.setSingleLine(true); search.setTextSize(17); search.setHint("Cari Alfamidi, SPBU, rumah sakit, alamat...");
+        search.setPadding(dp(16),0,dp(16),0); search.setBackground(roundStroke("#FFFFFF", "#0B7CFF", dp(18), 2));
+        shell.addView(search, new LinearLayout.LayoutParams(-1, dp(58)));
+
+        LinearLayout tools = new LinearLayout(this); tools.setGravity(Gravity.CENTER_VERTICAL);
+        Button paste = smallButton("Tempel link Google Maps", "#FFFFFF", "#0B3A78", "#C8D9EC");
+        LinearLayout.LayoutParams tlp=new LinearLayout.LayoutParams(0,dp(44),1); tlp.setMargins(0,dp(10),dp(6),0); tools.addView(paste,tlp);
+        Button chooseMap = smallButton("Pilih di peta", "#0B7CFF", "#FFFFFF", "#0B7CFF");
+        LinearLayout.LayoutParams mlp=new LinearLayout.LayoutParams(0,dp(44),1); mlp.setMargins(dp(6),dp(10),0,0); tools.addView(chooseMap,mlp);
+        shell.addView(tools, new LinearLayout.LayoutParams(-1,-2));
+
+        TextView label=text("Hasil terdekat",16,"#0B3A78",true); LinearLayout.LayoutParams llp=new LinearLayout.LayoutParams(-1,-2); llp.setMargins(0,dp(18),0,dp(8)); shell.addView(label,llp);
+        ScrollView scroll=new ScrollView(this); LinearLayout results=new LinearLayout(this); results.setOrientation(LinearLayout.VERTICAL); scroll.addView(results,new ScrollView.LayoutParams(-1,-2)); shell.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));
+        TextView hint=text("Ketik nama tempat atau alamat. Hasil terdekat dari lokasimu akan muncul di sini.",13,"#64748B",false); hint.setPadding(dp(12),dp(18),dp(12),dp(18)); results.addView(hint);
+
+        back.setOnClickListener(v -> ((android.view.ViewGroup)overlay.getParent()).removeView(overlay));
+        View.OnClickListener mapAction=v->{ ((android.view.ViewGroup)overlay.getParent()).removeView(overlay); mode="delivery"; updateModeUI(); };
+        map.setOnClickListener(mapAction); chooseMap.setOnClickListener(mapAction);
+        paste.setOnClickListener(v -> {
+            try {
+                ClipboardManager cm=(ClipboardManager)getSystemService(CLIPBOARD_SERVICE);
+                if(cm!=null && cm.hasPrimaryClip() && cm.getPrimaryClip().getItemCount()>0){
+                    String link=String.valueOf(cm.getPrimaryClip().getItemAt(0).coerceToText(this)).trim();
+                    if(link.contains("google.com/maps")||link.contains("maps.app.goo.gl")||link.contains("goo.gl/maps")){
+                        ((android.view.ViewGroup)overlay.getParent()).removeView(overlay); googleMapInput.setText(link); useGoogleMapLink();
+                    } else toastDialog("Tautan yang ditempel bukan link Google Maps.");
+                } else toastDialog("Belum ada link di clipboard.");
+            } catch(Exception e){ toastDialog("Link belum bisa ditempel. Coba salin lagi dari Google Maps."); }
+        });
+
+        final Handler debounce=new Handler(Looper.getMainLooper()); final Runnable[] pending=new Runnable[1];
+        final AutocompleteSessionToken token=AutocompleteSessionToken.newInstance();
+        search.addTextChangedListener(new TextWatcher(){ public void beforeTextChanged(CharSequence c,int st,int count,int after){} public void onTextChanged(CharSequence c,int st,int before,int count){
+            if(pending[0]!=null) debounce.removeCallbacks(pending[0]); final String q=c.toString().trim();
+            pending[0]=()->{ if(q.length()<2){results.removeAllViews(); results.addView(hint); return;} loadSmartPredictions(q, token, results, overlay); }; debounce.postDelayed(pending[0],450);
+        } public void afterTextChanged(Editable e){} });
+        search.requestFocus(); ((InputMethodManager)getSystemService(INPUT_METHOD_SERVICE)).showSoftInput(search, InputMethodManager.SHOW_IMPLICIT);
+    }
+
+    protected void loadSmartPredictions(String query, AutocompleteSessionToken token, LinearLayout results, FrameLayout overlay){
+        try{
+            PlacesClient client=Places.createClient(this);
+            FindAutocompletePredictionsRequest.Builder b=FindAutocompletePredictionsRequest.builder().setQuery(query).setCountries(java.util.Arrays.asList("ID")).setSessionToken(token);
+            double olat=validCoord(pickupLat,pickupLng)?pickupLat:centerLat, olng=validCoord(pickupLat,pickupLng)?pickupLng:centerLng;
+            if(validCoord(olat,olng)) b.setOrigin(new LatLng(olat,olng));
+            client.findAutocompletePredictions(b.build()).addOnSuccessListener(r->{
+                results.removeAllViews(); int n=Math.min(7,r.getAutocompletePredictions().size());
+                if(n==0){ TextView empty=text("Tempat tidak ditemukan. Coba nama atau alamat lain.",14,"#64748B",false); empty.setPadding(dp(12),dp(20),dp(12),dp(20)); results.addView(empty); return;}
+                for(int i=0;i<n;i++){ AutocompletePrediction ap=r.getAutocompletePredictions().get(i);
+                    LinearLayout row=new LinearLayout(this); row.setOrientation(LinearLayout.VERTICAL); row.setPadding(dp(14),dp(12),dp(14),dp(12)); row.setBackground(roundStroke("#FFFFFF","#E2E8F0",dp(14),1));
+                    String km=ap.getDistanceMeters()==null?"":String.format(new Locale("id","ID")," • %.1f km",ap.getDistanceMeters()/1000.0);
+                    TextView a=text("📍  "+ap.getPrimaryText(null)+km,15,"#172033",true); TextView d=text(ap.getSecondaryText(null).toString(),12,"#64748B",false); d.setPadding(dp(28),dp(3),0,0); row.addView(a); row.addView(d);
+                    LinearLayout.LayoutParams rp=new LinearLayout.LayoutParams(-1,-2); rp.setMargins(0,0,0,dp(8)); results.addView(row,rp);
+                    row.setOnClickListener(v->selectSmartPrediction(client,ap,token,overlay));
+                }
+            }).addOnFailureListener(e->{results.removeAllViews(); TextView er=text("Koneksi sedang bermasalah. Coba lagi.",14,"#B91C1C",true); er.setPadding(dp(12),dp(20),dp(12),dp(20)); results.addView(er);});
+        }catch(Exception e){ toastDialog("Koneksi sedang bermasalah. Coba lagi."); }
+    }
+
+    protected void selectSmartPrediction(PlacesClient client, AutocompletePrediction ap, AutocompleteSessionToken token, FrameLayout overlay){
+        java.util.List<Place.Field> fields=java.util.Arrays.asList(Place.Field.ID,Place.Field.NAME,Place.Field.ADDRESS,Place.Field.LAT_LNG);
+        client.fetchPlace(FetchPlaceRequest.builder(ap.getPlaceId(),fields).setSessionToken(token).build()).addOnSuccessListener(r->{
+            Place p=r.getPlace(); LatLng pt=p.getLatLng(); if(pt==null){toastDialog("Lokasi tempat belum tersedia. Pilih tempat lain.");return;}
+            deliveryLat=pt.latitude; deliveryLng=pt.longitude; deliveryAddress=firstNonEmpty(p.getName(),p.getAddress(),ap.getPrimaryText(null).toString());
+            googleMapInput.setText(deliveryAddress); deliveryText.setText("Pengantaran: "+deliveryAddress); deliveryBtn.setText("●  Tujuan\n"+shortAddress(deliveryAddress)); mode="delivery";
+            if(mapView!=null){mapView.setDelivery(deliveryLat,deliveryLng,deliveryAddress);mapView.moveTo(deliveryLat,deliveryLng,16f);}
+            try{((android.view.ViewGroup)overlay.getParent()).removeView(overlay);}catch(Exception ignored){} hideKeyboard(); updateModeUI(); requestPaymentQuote();
+        }).addOnFailureListener(e->toastDialog("Koneksi sedang bermasalah. Coba lagi."));
     }
 
     @Override
@@ -1861,6 +1963,7 @@ class PassengerTransportActivityScreenCore extends Activity {
         boolean pickupMode = "pickup".equals(mode);
 
         boolean routeComplete = validCoord(pickupLat, pickupLng) && validCoord(deliveryLat, deliveryLng);
+        if (bookingDetailsCard != null) bookingDetailsCard.setVisibility(routeComplete ? View.VISIBLE : View.GONE);
         modeText.setText(
                 routeComplete
                         ? "Rute siap, tekan Pesan Sekarang"

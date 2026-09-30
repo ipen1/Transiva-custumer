@@ -910,66 +910,129 @@ class PassengerTransportActivityLegacyCore extends Activity {
     }
 
     protected void loadSmartPredictions(String query, AutocompleteSessionToken token, LinearLayout results, FrameLayout overlay){
-        try{
-            PlacesClient client=Places.createClient(this);
-            FindAutocompletePredictionsRequest.Builder b=FindAutocompletePredictionsRequest.builder().setQuery(query).setCountries(java.util.Arrays.asList("ID")).setSessionToken(token);
-            // setOrigin() hanya menghitung jarak; ia TIDAK memprioritaskan hasil di sekitar user.
-            // Karena itu kita juga memberi locationBias di sekitar titik jemput / posisi perangkat.
-            double olat=validCoord(pickupLat,pickupLng)?pickupLat:centerLat, olng=validCoord(pickupLat,pickupLng)?pickupLng:centerLng;
-            if(!validCoord(olat,olng)){
-                try{
-                    if(checkSelfPermissionCompat(Manifest.permission.ACCESS_FINE_LOCATION)==PackageManager.PERMISSION_GRANTED ||
-                       checkSelfPermissionCompat(Manifest.permission.ACCESS_COARSE_LOCATION)==PackageManager.PERMISSION_GRANTED){
+        try {
+            final PlacesClient client = Places.createClient(this);
+
+            // Origin pencarian mengikuti titik yang paling relevan dan paling baru.
+            // Untuk mencari tujuan: pickup -> marker/pusat peta terbaru -> delivery lama.
+            // Untuk mencari pickup: marker/pusat peta terbaru -> delivery yang sudah dipilih.
+            double olat = 0d, olng = 0d;
+            if ("delivery".equals(mode) && validCoord(pickupLat, pickupLng)) {
+                olat = pickupLat; olng = pickupLng;
+            } else if (validCoord(pickLat, pickLng)) {
+                olat = pickLat; olng = pickLng;
+            } else if (validCoord(centerLat, centerLng)) {
+                olat = centerLat; olng = centerLng;
+            } else if (validCoord(deliveryLat, deliveryLng)) {
+                olat = deliveryLat; olng = deliveryLng;
+            }
+
+            // Fallback ke lokasi perangkat bila titik aplikasi belum valid.
+            if (!validCoord(olat, olng)) {
+                try {
+                    if (checkSelfPermissionCompat(Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED ||
+                            checkSelfPermissionCompat(Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
                         android.location.LocationManager lm=(android.location.LocationManager)getSystemService(LOCATION_SERVICE);
                         Location best=null;
                         for(String provider:lm.getProviders(true)){
-                            try{ Location l=lm.getLastKnownLocation(provider); if(l!=null && (best==null || l.getAccuracy()<best.getAccuracy())) best=l; }catch(Exception ignored){}
+                            try {
+                                Location l=lm.getLastKnownLocation(provider);
+                                if(l!=null && (best==null || l.getTime()>best.getTime() || l.getAccuracy()<best.getAccuracy())) best=l;
+                            } catch(Exception ignored) {}
                         }
-                        if(best!=null){ olat=best.getLatitude(); olng=best.getLongitude(); centerLat=olat; centerLng=olng; }
+                        if(best!=null){ olat=best.getLatitude(); olng=best.getLongitude(); }
                     }
-                }catch(Exception ignored){}
+                } catch(Exception ignored) {}
             }
-            if(validCoord(olat,olng)){
-                b.setOrigin(new LatLng(olat,olng));
-                // Jangan gunakan locationRestriction untuk autocomplete di sini. Pada beberapa query/nama bisnis
-                // restriction keras dapat membuat Google mengembalikan 0 prediction walaupun POI ada di dekat titik.
-                // Gunakan bias 25 km agar kandidat lokal masuk, lalu enforce radius 25 km di sisi aplikasi.
-                double latDelta=25.0d/111.32d;
+
+            final double originLat=olat, originLng=olng;
+            final java.util.LinkedHashMap<String,AutocompletePrediction> found=new java.util.LinkedHashMap<>();
+            // Strategi seperti aplikasi ride-hailing: mulai sangat lokal supaya bisnis/POI kecil ikut naik,
+            // lalu perluas otomatis bila hasil lokal belum cukup. 50 km adalah jangkauan tampilan maksimum.
+            final double[] radiiKm = new double[]{5d, 15d, 30d, 50d, 0d}; // 0 = fallback Indonesia tanpa bias
+            findPredictionsProgressively(client, query, token, originLat, originLng, radiiKm, 0, found, results, overlay);
+        } catch(Exception e){ toastDialog(placesErrorDetail("AUTOCOMPLETE_SETUP", e)); }
+    }
+
+    protected void findPredictionsProgressively(PlacesClient client, String query, AutocompleteSessionToken token,
+                                                  double olat, double olng, double[] radiiKm, int step,
+                                                  java.util.LinkedHashMap<String,AutocompletePrediction> found,
+                                                  LinearLayout results, FrameLayout overlay) {
+        if (step >= radiiKm.length) {
+            renderSmartPredictions(client, found, token, olat, olng, results, overlay);
+            return;
+        }
+        FindAutocompletePredictionsRequest.Builder b = FindAutocompletePredictionsRequest.builder()
+                .setQuery(query).setCountries(java.util.Arrays.asList("ID")).setSessionToken(token);
+        if (validCoord(olat,olng)) {
+            b.setOrigin(new LatLng(olat,olng));
+            double radiusKm=radiiKm[step];
+            if(radiusKm>0d){
+                double latDelta=radiusKm/111.32d;
                 double cos=Math.cos(Math.toRadians(olat));
                 double lngDelta=latDelta/Math.max(0.25d,Math.abs(cos));
                 b.setLocationBias(RectangularBounds.newInstance(
                         new LatLng(Math.max(-90d,olat-latDelta),Math.max(-180d,olng-lngDelta)),
                         new LatLng(Math.min(90d,olat+latDelta),Math.min(180d,olng+lngDelta))));
             }
-            client.findAutocompletePredictions(b.build()).addOnSuccessListener(r->{
+        }
+        client.findAutocompletePredictions(b.build()).addOnSuccessListener(r -> {
+            for(AutocompletePrediction ap:r.getAutocompletePredictions()){
+                String id=ap.getPlaceId();
+                if(id!=null && !found.containsKey(id)) found.put(id,ap);
+            }
+            // Autocomplete mengembalikan maksimal sedikit prediction per request. Jika hasil lokal sudah cukup,
+            // tampilkan segera; bila belum, perluas area otomatis tanpa membuat user mengetik ulang.
+            if(found.size()>=5 || step==radiiKm.length-1) {
+                renderSmartPredictions(client, found, token, olat, olng, results, overlay);
+            } else {
+                findPredictionsProgressively(client, query, token, olat, olng, radiiKm, step+1, found, results, overlay);
+            }
+        }).addOnFailureListener(e -> {
+            if(step < radiiKm.length-1) {
+                findPredictionsProgressively(client, query, token, olat, olng, radiiKm, step+1, found, results, overlay);
+            } else {
                 results.removeAllViews();
-                java.util.List<AutocompletePrediction> predictions=new java.util.ArrayList<>();
-                for (AutocompletePrediction candidate : r.getAutocompletePredictions()) {
-                    Integer dm = candidate.getDistanceMeters();
-                    if (dm == null || dm <= 25000) predictions.add(candidate);
-                }
-                // Prioritas mutlak: hasil dengan jarak terdekat dari origin terbaru.
-                java.util.Collections.sort(predictions,(x,y)->{
-                    Integer dx=x.getDistanceMeters(), dy=y.getDistanceMeters();
-                    if(dx==null && dy==null)return 0; if(dx==null)return 1; if(dy==null)return -1; return Integer.compare(dx,dy);
-                });
-                int n=Math.min(7,predictions.size());
-                if(n==0){ TextView empty=text("Tidak ada tempat yang cocok dalam radius maksimal 25 km. Coba nama atau alamat lain.",14,"#64748B",false); empty.setPadding(dp(12),dp(20),dp(12),dp(20)); results.addView(empty); return;}
-                for(int i=0;i<n;i++){ AutocompletePrediction ap=predictions.get(i);
-                    LinearLayout row=new LinearLayout(this); row.setOrientation(LinearLayout.VERTICAL); row.setPadding(dp(14),dp(12),dp(14),dp(12)); row.setBackground(roundStroke("#FFFFFF","#E2E8F0",dp(14),1));
-                    String km=ap.getDistanceMeters()==null?"":String.format(new Locale("id","ID")," • %.1f km",ap.getDistanceMeters()/1000.0);
-                    TextView a=text("📍  "+ap.getPrimaryText(null)+km,15,"#172033",true); TextView d=text(ap.getSecondaryText(null).toString(),12,"#64748B",false); d.setPadding(dp(28),dp(3),0,0); row.addView(a); row.addView(d);
-                    LinearLayout.LayoutParams rp=new LinearLayout.LayoutParams(-1,-2); rp.setMargins(0,0,0,dp(8)); results.addView(row,rp);
-                    row.setOnClickListener(v->selectSmartPrediction(client,ap,token,overlay));
-                }
-            }).addOnFailureListener(e->{
-                results.removeAllViews();
-                String detail = placesErrorDetail("AUTOCOMPLETE", e);
-                TextView er=text(detail,13,"#B91C1C",true);
-                er.setPadding(dp(12),dp(20),dp(12),dp(20));
-                results.addView(er);
-            });
-        }catch(Exception e){ toastDialog(placesErrorDetail("AUTOCOMPLETE_SETUP", e)); }
+                TextView er=text(placesErrorDetail("AUTOCOMPLETE", e),13,"#B91C1C",true);
+                er.setPadding(dp(12),dp(20),dp(12),dp(20)); results.addView(er);
+            }
+        });
+    }
+
+    protected void renderSmartPredictions(PlacesClient client,
+                                           java.util.LinkedHashMap<String,AutocompletePrediction> found,
+                                           AutocompleteSessionToken token, double olat, double olng,
+                                           LinearLayout results, FrameLayout overlay) {
+        results.removeAllViews();
+        java.util.List<AutocompletePrediction> predictions=new java.util.ArrayList<>(found.values());
+        java.util.Collections.sort(predictions,(x,y)->{
+            Integer dx=x.getDistanceMeters(),dy=y.getDistanceMeters();
+            if(dx==null&&dy==null)return 0; if(dx==null)return 1; if(dy==null)return -1; return Integer.compare(dx,dy);
+        });
+
+        // Jangan membuang prediction hanya karena distanceMeters kosong. Google mendokumentasikan bahwa field
+        // ini memang dapat tidak hadir. Bila jarak tersedia, batasi hasil jauh di atas 50 km.
+        java.util.List<AutocompletePrediction> visible=new java.util.ArrayList<>();
+        for(AutocompletePrediction ap:predictions){
+            Integer dm=ap.getDistanceMeters();
+            if(dm==null || dm<=50000) visible.add(ap);
+        }
+        if(visible.isEmpty()){
+            TextView empty=text("Belum menemukan tempat di sekitar lokasi ini. Geser peta ke lokasi terbaru atau ketik nama tempat lebih lengkap.",14,"#64748B",false);
+            empty.setPadding(dp(12),dp(20),dp(12),dp(20)); results.addView(empty); return;
+        }
+        int n=Math.min(10,visible.size());
+        for(int i=0;i<n;i++){
+            AutocompletePrediction ap=visible.get(i);
+            LinearLayout row=new LinearLayout(this); row.setOrientation(LinearLayout.VERTICAL);
+            row.setPadding(dp(14),dp(12),dp(14),dp(12)); row.setBackground(roundStroke("#FFFFFF","#E2E8F0",dp(14),1));
+            String km=ap.getDistanceMeters()==null?"":String.format(new Locale("id","ID")," • %.2f km",ap.getDistanceMeters()/1000.0);
+            TextView a=text("📍  "+ap.getPrimaryText(null)+km,15,"#172033",true);
+            TextView d=text(ap.getSecondaryText(null).toString(),12,"#64748B",false); d.setPadding(dp(28),dp(3),0,0);
+            row.addView(a); row.addView(d);
+            LinearLayout.LayoutParams rp=new LinearLayout.LayoutParams(-1,-2); rp.setMargins(0,0,0,dp(8)); results.addView(row,rp);
+            row.setOnClickListener(v->selectSmartPrediction(client,ap,token,overlay));
+        }
     }
 
     protected void selectSmartPrediction(PlacesClient client, AutocompletePrediction ap, AutocompleteSessionToken token, FrameLayout overlay){

@@ -80,6 +80,8 @@ class TransFoodActivityScreenCore extends Activity {
     protected String hematTier = "BRONZE";
     protected SplitBillManager splitBillManager;
     protected int lastFoodQuote = 0;
+    protected boolean menusLoadFinished = false;
+
     protected final Runnable realtimeFoodRefresh = new Runnable() { @Override public void run() { if (!isFinishing()) { if (activeRestaurant == null) loadRestaurants(false); else loadMenus(activeRestaurant.optInt("id",0), false); mainHandler.postDelayed(this, CustomerPerformanceManager.pollingBackground(TransFoodActivityScreenCore.this, 30000L)); } } };
 
     @Override
@@ -528,7 +530,7 @@ class TransFoodActivityScreenCore extends Activity {
         currentScreen = 1;
         root.removeAllViews();
         buildTopBar("Detail Merchant", firstNonEmpty(activeRestaurant != null ? activeRestaurant.optString("name") : "", "Menu makanan"), true);
-        if (menus.isEmpty()) addStatus("Memuat menu...");
+        if (menus.isEmpty()) addStatus(menusLoadFinished ? "Belum ada menu makanan yang tersedia dari merchant ini." : "Memuat menu...");
         else renderMenus();
     }
 
@@ -1127,6 +1129,7 @@ class TransFoodActivityScreenCore extends Activity {
     protected void loadMenus(int restaurantId) { loadMenus(restaurantId, true); }
     protected void loadMenus(int restaurantId, boolean showLoading) {
         if (showLoading) setLoading(true);
+        menusLoadFinished = false;
         featureRuntime.execute(() -> {
             try {
                 JSONObject res = getJson(BASE_URL + "server/get_food_menus.php?restaurant_id=" + restaurantId + "&v=" + System.currentTimeMillis());
@@ -1165,10 +1168,12 @@ class TransFoodActivityScreenCore extends Activity {
                 JSONArray arr = res.optJSONArray("menus");
                 if (res.optBoolean("success", false) && arr != null) {
                     for (int i = 0; i < arr.length(); i++) menus.add(arr.getJSONObject(i));
+                    menusLoadFinished = true;
                     try { mergeFoodSocial(getJson(BASE_URL + "server/customer_food_social.php?restaurant_id=" + restaurantId)); } catch (Exception ignored) {}
                     featureRuntime.post(mainHandler, () -> { if (showLoading) setLoading(false); showMenuPage(); });
                 } else throw new Exception(firstNonEmpty(res.optString("message"), "Gagal memuat menu"));
             } catch (Exception e) {
+                menusLoadFinished = true;
                 featureRuntime.post(mainHandler, () -> { if (showLoading) { setLoading(false); showMenuPage(); addStatus("Gagal memuat menu"); showInfo("Gagal", e.getMessage()); } });
             }
         });

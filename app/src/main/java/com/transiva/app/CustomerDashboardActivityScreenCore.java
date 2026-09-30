@@ -44,6 +44,7 @@ import java.io.BufferedReader;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.net.HttpURLConnection;
+import java.net.URL;
 import java.nio.charset.StandardCharsets;
 
 import java.text.NumberFormat;
@@ -109,6 +110,12 @@ class CustomerDashboardActivityScreenCore extends Activity
     protected RecommendationSectionController recommendationController;
     protected DashboardSmartRecommendationController smartRecommendationController;
     protected LinearLayout locationPopularFallback;
+    protected TextView fallbackWeatherText;
+    protected TextView fallbackAlfamidiDistance;
+    protected TextView fallbackSpbuDistance;
+    protected TextView fallbackPasarDistance;
+    protected double fallbackLat = Double.NaN;
+    protected double fallbackLng = Double.NaN;
 
     protected int promoCount;
     protected int activePromoIndex;
@@ -2300,7 +2307,7 @@ class CustomerDashboardActivityScreenCore extends Activity
         recommendationController.setVisibilityChangedListener(this::updateLocationPopularFallback);
     }
 
-    /** Dashboard 5.3 fallback: mengisi area kosong hanya ketika promo DAN rekomendasi kosong. */
+    /** Dashboard 5.4 fallback: lokasi + cuaca aktual + jarak tempat populer. */
     private void buildLocationPopularFallback() {
         locationPopularFallback = new LinearLayout(this);
         locationPopularFallback.setOrientation(LinearLayout.VERTICAL);
@@ -2309,26 +2316,28 @@ class CustomerDashboardActivityScreenCore extends Activity
         LinearLayout header = new LinearLayout(this);
         header.setGravity(Gravity.CENTER_VERTICAL);
         header.addView(text("Info lokasi & tempat populer", 15, "#0B3A78", true), new LinearLayout.LayoutParams(0, -2, 1));
-        TextView hint = text("Di sekitar Anda", 9, "#0B6DD9", true);
-        header.addView(hint);
+        header.addView(text("Di sekitar Anda", 9, "#0B6DD9", true));
         locationPopularFallback.addView(header);
 
         LinearLayout row = new LinearLayout(this);
         row.setGravity(Gravity.CENTER_VERTICAL);
-        LinearLayout.LayoutParams rowLp = new LinearLayout.LayoutParams(-1, dp(104));
+        LinearLayout.LayoutParams rowLp = new LinearLayout.LayoutParams(-1, dp(118));
         rowLp.setMargins(0, dp(7), 0, dp(10));
         locationPopularFallback.addView(row, rowLp);
 
         LinearLayout loc = new LinearLayout(this);
         loc.setOrientation(LinearLayout.VERTICAL);
         loc.setGravity(Gravity.CENTER_VERTICAL);
-        loc.setPadding(dp(13), dp(10), dp(13), dp(10));
+        loc.setPadding(dp(13), dp(9), dp(13), dp(9));
         loc.setBackground(Shape.round("#0878F9", dp(16)));
         TextView locTitle = text(currentLocation, 14, "#FFFFFF", true);
         locTitle.setTag("fallback_location_title");
         loc.addView(locTitle);
-        TextView locSub = text("Lokasi aktif • ketuk untuk perbarui", 9, "#E8F4FF", false);
-        loc.addView(locSub);
+        fallbackWeatherText = text("Memuat cuaca…", 12, "#FFFFFF", true);
+        LinearLayout.LayoutParams weatherLp = new LinearLayout.LayoutParams(-1, -2);
+        weatherLp.setMargins(0, dp(5), 0, dp(2));
+        loc.addView(fallbackWeatherText, weatherLp);
+        loc.addView(text("Lokasi aktif • ketuk untuk perbarui", 8, "#E8F4FF", false));
         loc.setOnClickListener(v -> loadLocation());
         row.addView(loc, new LinearLayout.LayoutParams(0, -1, 0.43f));
 
@@ -2337,23 +2346,26 @@ class CustomerDashboardActivityScreenCore extends Activity
 
         LinearLayout popular = new LinearLayout(this);
         popular.setOrientation(LinearLayout.VERTICAL);
-        popular.setPadding(dp(11), dp(8), dp(11), dp(8));
+        popular.setPadding(dp(11), dp(7), dp(11), dp(7));
         popular.setBackground(Shape.roundStroke("#FFFFFF", "#E1EAF4", dp(16), 1));
-        popular.addView(text("Cari tempat populer", 11, "#0B3A78", true));
-        addPopularPlace(popular, "Alfamidi", "Minimarket");
-        addPopularPlace(popular, "SPBU", "Bahan bakar");
-        addPopularPlace(popular, "Pasar", "Belanja lokal");
+        popular.addView(text("Jarak ke lokasi populer", 10, "#0B3A78", true));
+        fallbackAlfamidiDistance = addPopularPlace(popular, "Alfamidi");
+        fallbackSpbuDistance = addPopularPlace(popular, "SPBU");
+        fallbackPasarDistance = addPopularPlace(popular, "Pasar");
         row.addView(popular, new LinearLayout.LayoutParams(0, -1, 0.57f));
 
         content.addView(locationPopularFallback, new LinearLayout.LayoutParams(-1, -2));
     }
 
-    private void addPopularPlace(LinearLayout parent, String name, String meta) {
+    private TextView addPopularPlace(LinearLayout parent, String name) {
         LinearLayout item = new LinearLayout(this);
         item.setGravity(Gravity.CENTER_VERTICAL);
         item.setPadding(0, dp(3), 0, dp(2));
-        TextView label = text(name, 10, "#123A68", true);
-        item.addView(label, new LinearLayout.LayoutParams(0, -2, 1));
+        item.addView(text(name, 10, "#123A68", true), new LinearLayout.LayoutParams(0, -2, 1));
+        TextView distance = text("— km", 8, "#718096", false);
+        LinearLayout.LayoutParams distanceLp = new LinearLayout.LayoutParams(-2, -2);
+        distanceLp.setMargins(dp(4), 0, dp(5), 0);
+        item.addView(distance, distanceLp);
         item.addView(text("›", 16, "#0B6DD9", true));
         item.setOnClickListener(v -> {
             Intent i = new Intent(this, TransRideActivity.class);
@@ -2362,15 +2374,96 @@ class CustomerDashboardActivityScreenCore extends Activity
             startActivity(i);
         });
         parent.addView(item, new LinearLayout.LayoutParams(-1, 0, 1));
+        return distance;
     }
 
     private void updateLocationPopularFallback() {
         if (locationPopularFallback == null) return;
         boolean promoAvailable = promoCount > 0;
         boolean recommendationAvailable = recommendationController != null && recommendationController.hasContent();
-        locationPopularFallback.setVisibility(!promoAvailable && !recommendationAvailable ? View.VISIBLE : View.GONE);
+        boolean show = !promoAvailable && !recommendationAvailable;
+        locationPopularFallback.setVisibility(show ? View.VISIBLE : View.GONE);
         View title = locationPopularFallback.findViewWithTag("fallback_location_title");
         if (title instanceof TextView) ((TextView) title).setText(currentLocation == null || currentLocation.trim().isEmpty() ? "Lokasi Anda" : currentLocation);
+        if (show && !Double.isNaN(fallbackLat)) refreshLocationPopularData(fallbackLat, fallbackLng);
+    }
+
+    private void refreshLocationPopularData(double lat, double lng) {
+        fallbackLat = lat;
+        fallbackLng = lng;
+        if (fallbackWeatherText != null) fallbackWeatherText.setText("Memuat cuaca…");
+        if (fallbackAlfamidiDistance != null) fallbackAlfamidiDistance.setText("…");
+        if (fallbackSpbuDistance != null) fallbackSpbuDistance.setText("…");
+        if (fallbackPasarDistance != null) fallbackPasarDistance.setText("…");
+        networkScope.newThread(() -> {
+            String weather = loadCompactWeather(lat, lng);
+            String d1 = resolvePopularDistance("Alfamidi", lat, lng);
+            String d2 = resolvePopularDistance("SPBU", lat, lng);
+            String d3 = resolvePopularDistance("Pasar", lat, lng);
+            networkScope.post(uiHandler, () -> {
+                if (fallbackWeatherText != null) fallbackWeatherText.setText(weather);
+                if (fallbackAlfamidiDistance != null) fallbackAlfamidiDistance.setText(d1);
+                if (fallbackSpbuDistance != null) fallbackSpbuDistance.setText(d2);
+                if (fallbackPasarDistance != null) fallbackPasarDistance.setText(d3);
+            });
+        }).start();
+    }
+
+    private String loadCompactWeather(double lat, double lng) {
+        HttpURLConnection conn = null;
+        try {
+            String u = String.format(Locale.US,
+                    "https://api.open-meteo.com/v1/forecast?latitude=%.5f&longitude=%.5f&current=temperature_2m,weather_code,is_day&timezone=auto", lat, lng);
+            conn = (HttpURLConnection) new URL(u).openConnection();
+            conn.setConnectTimeout(5000); conn.setReadTimeout(5000); conn.setRequestMethod("GET");
+            BufferedReader br = new BufferedReader(new InputStreamReader(conn.getInputStream(), StandardCharsets.UTF_8));
+            StringBuilder out = new StringBuilder(); String line;
+            while ((line = br.readLine()) != null) out.append(line);
+            JSONObject cur = new JSONObject(out.toString()).optJSONObject("current");
+            if (cur != null) {
+                int temp = (int) Math.round(cur.optDouble("temperature_2m", Double.NaN));
+                int code = cur.optInt("weather_code", -1);
+                boolean day = cur.optInt("is_day", isLocalDaytime() ? 1 : 0) == 1;
+                String icon = day ? "☀" : "☾";
+                if (code >= 1 && code <= 3) icon = day ? "☀" : "☾";
+                else if (code >= 45 && code <= 48) icon = "☁";
+                else if (code >= 51 && code <= 67) icon = "☂";
+                else if (code >= 71 && code <= 77) icon = "❄";
+                else if (code >= 80 && code <= 82) icon = "☂";
+                else if (code >= 95) icon = "⚡";
+                if (!Double.isNaN(cur.optDouble("temperature_2m", Double.NaN))) return icon + "  " + temp + "°C";
+            }
+        } catch (Exception ignored) {
+        } finally { if (conn != null) conn.disconnect(); }
+        return (isLocalDaytime() ? "☀" : "☾") + "  Cuaca lokal";
+    }
+
+    private boolean isLocalDaytime() {
+        int hour = Calendar.getInstance().get(Calendar.HOUR_OF_DAY);
+        return hour >= 6 && hour < 18;
+    }
+
+    private String resolvePopularDistance(String query, double lat, double lng) {
+        try {
+            Geocoder geocoder = new Geocoder(this, new Locale("id", "ID"));
+            String q = query + " dekat " + (currentLocation == null ? "" : currentLocation);
+            List<Address> found = geocoder.getFromLocationName(q, 5, lat - 0.35, lng - 0.35, lat + 0.35, lng + 0.35);
+            if (found == null || found.isEmpty()) found = geocoder.getFromLocationName(query, 5, lat - 0.35, lng - 0.35, lat + 0.35, lng + 0.35);
+            if (found != null && !found.isEmpty()) {
+                float best = Float.MAX_VALUE;
+                float[] result = new float[1];
+                for (Address a : found) {
+                    if (!a.hasLatitude() || !a.hasLongitude()) continue;
+                    Location.distanceBetween(lat, lng, a.getLatitude(), a.getLongitude(), result);
+                    if (result[0] < best) best = result[0];
+                }
+                if (best < Float.MAX_VALUE) {
+                    if (best < 1000f) return Math.max(1, Math.round(best)) + " m";
+                    return String.format(Locale.US, "%.1f km", best / 1000f);
+                }
+            }
+        } catch (Exception ignored) {}
+        return "— km";
     }
 
     private View buildBottomNavigation() {
@@ -2456,7 +2549,10 @@ class CustomerDashboardActivityScreenCore extends Activity
                             () -> {
                                 currentLocation = finalResult;
                                 locationText.setText(finalResult);
+                                fallbackLat = location.getLatitude();
+                                fallbackLng = location.getLongitude();
                                 updateLocationPopularFallback();
+                                refreshLocationPopularData(fallbackLat, fallbackLng);
                                 if (clusterText != null) clusterText.setText("Cluster: sinkronisasi...");
                                 networkScope.newThread(() -> {
                                     RegionalClusterResolver.Result area = RegionalClusterResolver.resolve(CustomerDashboardActivityScreenCore.this, location.getLatitude(), location.getLongitude());

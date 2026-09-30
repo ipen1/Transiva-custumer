@@ -278,7 +278,7 @@ class PassengerTransportActivityLegacyCore extends Activity {
         TextView title = text(serviceTitle(), compactScreen ? 18 : 19, "#0B3A78", true);
         titleRow.addView(title, new LinearLayout.LayoutParams(0, -1, 1));
 
-        wizardStepText = text("1 Tujuan  ›  2 Jemput  ›  3 Opsi  ›  4 Harga  ›  5 Pesan", compactScreen ? 8 : 9, "#0B7CFF", true);
+        wizardStepText = text("● Tujuan   ›   2 Harga   ›   3 Pesan", compactScreen ? 9 : 10, "#0B7CFF", true);
         wizardStepText.setPadding(0, dp(2), 0, dp(2));
         topCard.addView(wizardStepText, new LinearLayout.LayoutParams(-1, -2));
 
@@ -348,6 +348,26 @@ class PassengerTransportActivityLegacyCore extends Activity {
                 centerLat = lat; centerLng = lng; pickLat = lat; pickLng = lng;
             }
         });
+        mapView.setGestureListener(new TransivaGoogleMapView.GestureListener() {
+            @Override public void onGestureStart() {
+                if (mapView != null) mapView.setCenterLocationPreview("Mencari lokasi…", "", true);
+            }
+            @Override public void onGestureEnd() {
+                final double lat = pickLat, lng = pickLng;
+                if (!validCoord(lat, lng)) return;
+                featureRuntime.newThread(() -> {
+                    final String road = reverseAddress(lat, lng);
+                    featureRuntime.post(mainHandler, () -> resolveNearestGooglePlace(lat, lng, googleName -> {
+                        if (destroyed || mapView == null) return;
+                        String landmark = firstNonEmpty(googleName, findNearestPlaceName(lat, lng), "Lokasi dipilih");
+                        String title = landmark.startsWith("Dekat ") ? landmark : "Dekat " + landmark;
+                        String subtitle = compactDisplayName(road);
+                        mapView.setCenterLocationPreview(title, subtitle, false);
+                    }));
+                }).start();
+            }
+        });
+
         mapView.setCenterActionListener(() -> {
             if (selectingWaypoint) {
                 addWaypointFromCenter();
@@ -854,36 +874,36 @@ class PassengerTransportActivityLegacyCore extends Activity {
 
         LinearLayout shell = new LinearLayout(this);
         shell.setOrientation(LinearLayout.VERTICAL);
-        shell.setPadding(dp(18), dp(18), dp(18), dp(16));
+        shell.setPadding(dp(14), dp(12), dp(14), dp(12));
         overlay.addView(shell, new FrameLayout.LayoutParams(-1, -1));
 
         LinearLayout head = new LinearLayout(this);
         head.setGravity(Gravity.CENTER_VERTICAL);
         Button back = smallButton("‹", "#EAF4FF", "#0B3A78", "#C8D9EC");
         back.setTextSize(28);
-        head.addView(back, new LinearLayout.LayoutParams(dp(52), dp(52)));
-        TextView heading = text("pickup".equals(mode) ? "Lokasi jemput" : "Mau ke mana?", 22, "#0B3A78", true);
+        head.addView(back, new LinearLayout.LayoutParams(dp(46), dp(46)));
+        TextView heading = text("pickup".equals(mode) ? "Lokasi jemput" : "Mau ke mana?", 20, "#0B3A78", true);
         LinearLayout.LayoutParams hlp = new LinearLayout.LayoutParams(0, -2, 1); hlp.setMargins(dp(12),0,0,0);
         head.addView(heading, hlp);
         Button map = smallButton("Peta", "#EAF4FF", "#0B7CFF", "#9DCAFF");
-        head.addView(map, new LinearLayout.LayoutParams(dp(78), dp(48)));
+        head.addView(map, new LinearLayout.LayoutParams(dp(72), dp(44)));
         shell.addView(head, new LinearLayout.LayoutParams(-1, -2));
 
         TextView pickup = text("●  Lokasi Jemput\n" + shortAddress(firstNonEmpty(pickupAddress, "Lokasi saat ini")), 13, "#0F5132", true);
         pickup.setPadding(dp(16), dp(12), dp(16), dp(12));
         pickup.setBackground(roundStroke("#F0FDF4", "#86EFAC", dp(16), 1));
-        LinearLayout.LayoutParams plp=new LinearLayout.LayoutParams(-1,-2); plp.setMargins(0,dp(16),0,dp(10)); shell.addView(pickup,plp);
+        LinearLayout.LayoutParams plp=new LinearLayout.LayoutParams(-1,-2); plp.setMargins(0,dp(10),0,dp(8)); shell.addView(pickup,plp);
 
         EditText search = new EditText(this);
-        search.setSingleLine(true); search.setTextSize(17); search.setHint("pickup".equals(mode) ? "Ketik lokasi jemput, gedung, jalan..." : "Cari Alfamidi, SPBU, rumah sakit, alamat...");
+        search.setSingleLine(true); search.setTextSize(16); search.setHint("pickup".equals(mode) ? "Ketik lokasi jemput…" : "Cari Alfamidi…");
         search.setPadding(dp(16),0,dp(16),0); search.setBackground(roundStroke("#FFFFFF", "#0B7CFF", dp(18), 2));
-        shell.addView(search, new LinearLayout.LayoutParams(-1, dp(58)));
+        shell.addView(search, new LinearLayout.LayoutParams(-1, dp(52)));
 
         LinearLayout tools = new LinearLayout(this); tools.setGravity(Gravity.CENTER_VERTICAL);
-        Button paste = smallButton("Tempel link Google Maps", "#FFFFFF", "#0B3A78", "#C8D9EC");
-        LinearLayout.LayoutParams tlp=new LinearLayout.LayoutParams(0,dp(44),1); tlp.setMargins(0,dp(10),dp(6),0); tools.addView(paste,tlp);
+        Button paste = smallButton("Tempel link Maps", "#FFFFFF", "#0B3A78", "#C8D9EC");
+        LinearLayout.LayoutParams tlp=new LinearLayout.LayoutParams(0,dp(40),1); tlp.setMargins(0,dp(10),dp(6),0); tools.addView(paste,tlp);
         Button chooseMap = smallButton("Pilih di peta", "#0B7CFF", "#FFFFFF", "#0B7CFF");
-        LinearLayout.LayoutParams mlp=new LinearLayout.LayoutParams(0,dp(44),1); mlp.setMargins(dp(6),dp(10),0,0); tools.addView(chooseMap,mlp);
+        LinearLayout.LayoutParams mlp=new LinearLayout.LayoutParams(0,dp(40),1); mlp.setMargins(dp(6),dp(10),0,0); tools.addView(chooseMap,mlp);
         shell.addView(tools, new LinearLayout.LayoutParams(-1,-2));
 
         TextView label=text("Hasil terdekat",16,"#0B3A78",true); LinearLayout.LayoutParams llp=new LinearLayout.LayoutParams(-1,-2); llp.setMargins(0,dp(18),0,dp(8)); shell.addView(label,llp);
@@ -911,6 +931,26 @@ class PassengerTransportActivityLegacyCore extends Activity {
             if(pending[0]!=null) debounce.removeCallbacks(pending[0]); final String q=c.toString().trim();
             pending[0]=()->{ if(q.length()<2){results.removeAllViews(); results.addView(hint); return;} loadSmartPredictions(q, token, results, overlay); }; debounce.postDelayed(pending[0],450);
         } public void afterTextChanged(Editable e){} });
+        // Animated contextual search hint, Grab-style: changes only while the field is empty.
+        final String[] smartHints = "pickup".equals(mode)
+                ? new String[]{"Cari lokasi jemput…", "Cari nama jalan…", "Cari gedung terdekat…"}
+                : new String[]{"Cari Alfamidi…", "Cari SPBU…", "Cari rumah sakit…", "Cari alamat tujuan…"};
+        final Handler hintHandler = new Handler(Looper.getMainLooper());
+        final int[] hintIndex = {0};
+        final Runnable hintTicker = new Runnable() {
+            @Override public void run() {
+                if (overlay.getParent() == null) return;
+                if (search.getText().length() == 0) {
+                    search.animate().alpha(0.45f).setDuration(110L).withEndAction(() -> {
+                        hintIndex[0] = (hintIndex[0] + 1) % smartHints.length;
+                        search.setHint(smartHints[hintIndex[0]]);
+                        search.animate().alpha(1f).setDuration(150L).start();
+                    }).start();
+                }
+                hintHandler.postDelayed(this, 1900L);
+            }
+        };
+        hintHandler.postDelayed(hintTicker, 1900L);
         search.requestFocus(); ((InputMethodManager)getSystemService(INPUT_METHOD_SERVICE)).showSoftInput(search, InputMethodManager.SHOW_IMPLICIT);
     }
 
@@ -2244,19 +2284,30 @@ class PassengerTransportActivityLegacyCore extends Activity {
         createOrder();
     }
 
+    private void setWizardProgress(int stage) {
+        if (wizardStepText == null) return;
+        String green = "#16A34A", blue = "#0B7CFF", gray = "#94A3B8";
+        String a = stage > 0 ? "<font color='"+green+"'><b>✓ Tujuan</b></font>" : "<font color='"+blue+"'><b>● Tujuan</b></font>";
+        String b = stage > 1 ? "<font color='"+green+"'><b>✓ Harga</b></font>" : (stage == 1 ? "<font color='"+blue+"'><b>● Harga</b></font>" : "<font color='"+gray+"'>2 Harga</font>");
+        String c = stage >= 2 ? "<font color='"+blue+"'><b>● Pesan</b></font>" : "<font color='"+gray+"'>3 Pesan</font>";
+        wizardStepText.setText(android.text.Html.fromHtml(a + " &nbsp;›&nbsp; " + b + " &nbsp;›&nbsp; " + c));
+        wizardStepText.setAlpha(0.55f);
+        wizardStepText.animate().alpha(1f).setDuration(220L).start();
+    }
+
     private void updateWizardState() {
         if (orderBtn == null) return;
         if (!validCoord(deliveryLat, deliveryLng)) {
-            if (wizardStepText != null) wizardStepText.setText("● Tujuan  ›  2 Jemput  ›  3 Opsi  ›  4 Harga  ›  5 Pesan");
+            if (wizardStepText != null) setWizardProgress(0);
             orderBtn.setText("PILIH TUJUAN");
         } else if (!validCoord(pickupLat, pickupLng)) {
-            if (wizardStepText != null) wizardStepText.setText("✓ Tujuan  ›  ● Jemput  ›  3 Opsi  ›  4 Harga  ›  5 Pesan");
+            if (wizardStepText != null) setWizardProgress(1);
             orderBtn.setText("KONFIRMASI JEMPUT");
         } else if (finalPriceText == null || finalPriceText.getText().toString().contains("-")) {
-            if (wizardStepText != null) wizardStepText.setText("✓ Tujuan  ›  ✓ Jemput  ›  ● Opsi  ›  4 Harga  ›  5 Pesan");
+            if (wizardStepText != null) setWizardProgress(1);
             orderBtn.setText("LIHAT HARGA");
         } else {
-            if (wizardStepText != null) wizardStepText.setText("✓ Tujuan  ›  ✓ Jemput  ›  ✓ Opsi  ›  ✓ Harga  ›  ● Pesan");
+            if (wizardStepText != null) setWizardProgress(2);
             orderBtn.setText("PESAN SEKARANG");
         }
     }

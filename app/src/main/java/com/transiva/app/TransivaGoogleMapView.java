@@ -66,6 +66,7 @@ public final class TransivaGoogleMapView extends FrameLayout implements OnMapRea
     private final List<Marker> waypointMarkers = new ArrayList<>();
     private final ImageView centerPin;
     private final TextView centerAction;
+    private final TextView centerLocationCard;
     private final android.view.View focusShade;
     private final TextView networkBadge;
     private final TransivaNetworkMonitor.Listener networkListener;
@@ -89,6 +90,13 @@ public final class TransivaGoogleMapView extends FrameLayout implements OnMapRea
         super(context);
         this.mode = mode;
         setClipToOutline(true);
+        // Clip Google Maps itself to the same rounded container. This prevents
+        // map tiles from bleeding through the rounded border on some GPUs.
+        setOutlineProvider(new android.view.ViewOutlineProvider() {
+            @Override public void getOutline(android.view.View view, android.graphics.Outline outline) {
+                outline.setRoundRect(0, 0, Math.max(0, view.getWidth()), Math.max(0, view.getHeight()), dp(14));
+            }
+        });
 
         try { MapsInitializer.initialize(context.getApplicationContext()); } catch (Exception ignored) {}
 
@@ -128,6 +136,20 @@ public final class TransivaGoogleMapView extends FrameLayout implements OnMapRea
             lp.bottomMargin = h / 2;
             addView(centerPin, lp);
 
+            centerLocationCard = new TextView(context);
+            centerLocationCard.setText("Mencari lokasi…");
+            centerLocationCard.setTextColor(Color.parseColor("#0B3A78"));
+            centerLocationCard.setTextSize(12);
+            centerLocationCard.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+            centerLocationCard.setGravity(Gravity.START | Gravity.CENTER_VERTICAL);
+            centerLocationCard.setPadding(dp(12), dp(8), dp(12), dp(8));
+            centerLocationCard.setBackground(actionBackground("#FFFFFF"));
+            centerLocationCard.setElevation(dp(5));
+            LayoutParams infoLp = new LayoutParams(Math.min(dp(290), getResources().getDisplayMetrics().widthPixels - dp(48)), LayoutParams.WRAP_CONTENT);
+            infoLp.gravity = Gravity.CENTER;
+            infoLp.topMargin = dp(112);
+            addView(centerLocationCard, infoLp);
+
             centerAction = new TextView(context);
             centerAction.setText("Jemput di lokasi ini");
             centerAction.setTextColor(Color.WHITE);
@@ -150,8 +172,24 @@ public final class TransivaGoogleMapView extends FrameLayout implements OnMapRea
         } else {
             centerPin = null;
             centerAction = null;
+            centerLocationCard = null;
             focusShade = null;
         }
+    }
+
+    public void setCenterLocationPreview(String title, String subtitle, boolean loading) {
+        if (centerLocationCard == null) return;
+        if (loading) {
+            centerLocationCard.setText("Mencari lokasi…");
+        } else {
+            String a = title == null ? "Lokasi dipilih" : title.trim();
+            String b = subtitle == null ? "" : subtitle.trim();
+            centerLocationCard.setText(b.isEmpty() ? a : a + "\n" + b);
+        }
+        centerLocationCard.setVisibility(VISIBLE);
+        centerLocationCard.animate().cancel();
+        centerLocationCard.setAlpha(0.75f);
+        centerLocationCard.animate().alpha(1f).setDuration(180L).start();
     }
 
     public void setGestureListener(GestureListener listener) {
@@ -256,6 +294,7 @@ public final class TransivaGoogleMapView extends FrameLayout implements OnMapRea
         if (centerAction != null && !"order".equals(selectionMode)) {
             centerAction.setVisibility(show ? VISIBLE : GONE);
         }
+        if (centerLocationCard != null) centerLocationCard.setVisibility(show ? VISIBLE : GONE);
     }
 
     public void showOrderAction(boolean show, String text) {
@@ -263,6 +302,7 @@ public final class TransivaGoogleMapView extends FrameLayout implements OnMapRea
         updateCenterActionPosition(show);
         setOrderFocus(show);
         if (centerPin != null) centerPin.setVisibility(GONE);
+        if (centerLocationCard != null) centerLocationCard.setVisibility(GONE);
         if (centerAction != null) {
             centerAction.setText(text == null || text.trim().isEmpty() ? "PESAN SEKARANG" : text);
             centerAction.setBackground(actionBackground("#0B7CFF"));

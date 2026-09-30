@@ -31,6 +31,16 @@ import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import com.google.android.gms.maps.model.LatLng;
+import com.google.android.libraries.places.api.Places;
+import com.google.android.libraries.places.api.model.AutocompletePrediction;
+import com.google.android.libraries.places.api.model.AutocompleteSessionToken;
+import com.google.android.libraries.places.api.model.Place;
+import com.google.android.libraries.places.api.model.RectangularBounds;
+import com.google.android.libraries.places.api.net.FetchPlaceRequest;
+import com.google.android.libraries.places.api.net.FindAutocompletePredictionsRequest;
+import com.google.android.libraries.places.api.net.PlacesClient;
+
 import com.transiva.app.customer.data.CustomerDashboardRepositoryImpl;
 import com.transiva.app.customer.domain.DashboardState;
 import com.transiva.app.customer.domain.Promo;
@@ -2186,6 +2196,7 @@ class CustomerDashboardActivityScreenCore extends Activity
         );
 
         card.setElevation(dp(1));
+        card.setMinimumHeight(dp(72));
 
         LinearLayout.LayoutParams cardLp =
                 new LinearLayout.LayoutParams(
@@ -2197,7 +2208,7 @@ class CustomerDashboardActivityScreenCore extends Activity
                 0,
                 0,
                 0,
-                dp(10)
+                dp(6)
         );
 
         content.addView(card, cardLp);
@@ -2321,14 +2332,22 @@ class CustomerDashboardActivityScreenCore extends Activity
 
         LinearLayout row = new LinearLayout(this);
         row.setGravity(Gravity.CENTER_VERTICAL);
-        LinearLayout.LayoutParams rowLp = new LinearLayout.LayoutParams(-1, dp(118));
-        rowLp.setMargins(0, dp(7), 0, dp(10));
+        int fallbackHeightDp;
+        switch (CustomerResponsiveUi.profile(this)) {
+            case COMPACT: fallbackHeightDp = 86; break;
+            case SMALL: fallbackHeightDp = 90; break;
+            case LARGE: fallbackHeightDp = 100; break;
+            case TABLET: fallbackHeightDp = 104; break;
+            default: fallbackHeightDp = 94;
+        }
+        LinearLayout.LayoutParams rowLp = new LinearLayout.LayoutParams(-1, dp(fallbackHeightDp));
+        rowLp.setMargins(0, dp(5), 0, dp(6));
         locationPopularFallback.addView(row, rowLp);
 
         LinearLayout loc = new LinearLayout(this);
         loc.setOrientation(LinearLayout.VERTICAL);
         loc.setGravity(Gravity.CENTER_VERTICAL);
-        loc.setPadding(dp(13), dp(9), dp(13), dp(9));
+        loc.setPadding(dp(11), dp(6), dp(11), dp(6));
         loc.setBackground(Shape.round("#0878F9", dp(16)));
         TextView locTitle = text(currentLocation, 14, "#FFFFFF", true);
         locTitle.setTag("fallback_location_title");
@@ -2346,7 +2365,7 @@ class CustomerDashboardActivityScreenCore extends Activity
 
         LinearLayout popular = new LinearLayout(this);
         popular.setOrientation(LinearLayout.VERTICAL);
-        popular.setPadding(dp(11), dp(7), dp(11), dp(7));
+        popular.setPadding(dp(10), dp(5), dp(10), dp(5));
         popular.setBackground(Shape.roundStroke("#FFFFFF", "#E1EAF4", dp(16), 1));
         popular.addView(text("Jarak ke lokasi populer", 10, "#0B3A78", true));
         fallbackAlfamidiDistance = addPopularPlace(popular, "Alfamidi");
@@ -2360,7 +2379,7 @@ class CustomerDashboardActivityScreenCore extends Activity
     private TextView addPopularPlace(LinearLayout parent, String name) {
         LinearLayout item = new LinearLayout(this);
         item.setGravity(Gravity.CENTER_VERTICAL);
-        item.setPadding(0, dp(3), 0, dp(2));
+        item.setPadding(0, dp(1), 0, dp(1));
         item.addView(text(name, 10, "#123A68", true), new LinearLayout.LayoutParams(0, -2, 1));
         TextView distance = text("— km", 8, "#718096", false);
         LinearLayout.LayoutParams distanceLp = new LinearLayout.LayoutParams(-2, -2);
@@ -2395,17 +2414,84 @@ class CustomerDashboardActivityScreenCore extends Activity
         if (fallbackAlfamidiDistance != null) fallbackAlfamidiDistance.setText("…");
         if (fallbackSpbuDistance != null) fallbackSpbuDistance.setText("…");
         if (fallbackPasarDistance != null) fallbackPasarDistance.setText("…");
+
+        // Cuaca tidak menghambat pencarian tempat. Places berjalan paralel di main thread SDK.
         networkScope.newThread(() -> {
             String weather = loadCompactWeather(lat, lng);
-            String d1 = resolvePopularDistance("Alfamidi", lat, lng);
-            String d2 = resolvePopularDistance("SPBU", lat, lng);
-            String d3 = resolvePopularDistance("Pasar", lat, lng);
             networkScope.post(uiHandler, () -> {
                 if (fallbackWeatherText != null) fallbackWeatherText.setText(weather);
-                if (fallbackAlfamidiDistance != null) fallbackAlfamidiDistance.setText(d1);
-                if (fallbackSpbuDistance != null) fallbackSpbuDistance.setText(d2);
-                if (fallbackPasarDistance != null) fallbackPasarDistance.setText(d3);
             });
+        }).start();
+
+        ensurePlacesReady();
+        resolvePopularDistanceRealtime("Alfamidi", lat, lng, fallbackAlfamidiDistance);
+        resolvePopularDistanceRealtime("SPBU", lat, lng, fallbackSpbuDistance);
+        resolvePopularDistanceRealtime("Pasar", lat, lng, fallbackPasarDistance);
+    }
+
+    private void ensurePlacesReady() {
+        try {
+            if (!Places.isInitialized()) {
+                String key = getString(R.string.google_maps_key);
+                if (key != null && !key.trim().isEmpty())
+                    Places.initializeWithNewPlacesApiEnabled(getApplicationContext(), key.trim());
+            }
+        } catch (Exception ignored) {}
+    }
+
+    /**
+     * 5.5: gunakan Google Places yang sama dengan pencarian TransRide/TransCar.
+     * Origin + bias 12 km membuat hasil benar-benar berpusat pada GPS customer, bukan hasil
+     * Geocoder generik yang sebelumnya dapat mengembalikan koordinat sama untuk 3 kategori.
+     */
+    private void resolvePopularDistanceRealtime(String query, double lat, double lng, TextView target) {
+        if (target == null) return;
+        try {
+            if (!Places.isInitialized()) { resolvePopularDistanceGeocoderFallback(query, lat, lng, target); return; }
+            PlacesClient client = Places.createClient(this);
+            double radiusKm = 12d;
+            double latDelta = radiusKm / 111.32d;
+            double cos = Math.cos(Math.toRadians(lat));
+            double lngDelta = latDelta / Math.max(0.25d, Math.abs(cos));
+            AutocompleteSessionToken token = AutocompleteSessionToken.newInstance();
+            FindAutocompletePredictionsRequest req = FindAutocompletePredictionsRequest.builder()
+                    .setQuery(query)
+                    .setCountries(java.util.Arrays.asList("ID"))
+                    .setOrigin(new LatLng(lat, lng))
+                    .setLocationBias(RectangularBounds.newInstance(
+                            new LatLng(lat-latDelta, lng-lngDelta),
+                            new LatLng(lat+latDelta, lng+lngDelta)))
+                    .setSessionToken(token).build();
+            client.findAutocompletePredictions(req).addOnSuccessListener(r -> {
+                if (r.getAutocompletePredictions().isEmpty()) {
+                    resolvePopularDistanceGeocoderFallback(query, lat, lng, target); return;
+                }
+                // Prediction pertama sudah diurutkan dengan origin; fetch koordinat asli Place.
+                AutocompletePrediction ap = r.getAutocompletePredictions().get(0);
+                FetchPlaceRequest fp = FetchPlaceRequest.builder(ap.getPlaceId(),
+                        java.util.Arrays.asList(Place.Field.ID, Place.Field.NAME, Place.Field.LAT_LNG)).build();
+                client.fetchPlace(fp).addOnSuccessListener(fr -> {
+                    LatLng point = fr.getPlace().getLatLng();
+                    if (point == null) { resolvePopularDistanceGeocoderFallback(query, lat, lng, target); return; }
+                    float[] d = new float[1];
+                    Location.distanceBetween(lat, lng, point.latitude, point.longitude, d);
+                    target.setText(formatPopularDistance(d[0]));
+                }).addOnFailureListener(e -> resolvePopularDistanceGeocoderFallback(query, lat, lng, target));
+            }).addOnFailureListener(e -> resolvePopularDistanceGeocoderFallback(query, lat, lng, target));
+        } catch (Exception e) {
+            resolvePopularDistanceGeocoderFallback(query, lat, lng, target);
+        }
+    }
+
+    private String formatPopularDistance(float meters) {
+        if (meters < 1000f) return Math.max(1, Math.round(meters)) + " m";
+        return String.format(Locale.US, "%.1f km", meters / 1000f);
+    }
+
+    private void resolvePopularDistanceGeocoderFallback(String query, double lat, double lng, TextView target) {
+        networkScope.newThread(() -> {
+            String value = resolvePopularDistance(query, lat, lng);
+            networkScope.post(uiHandler, () -> { if (target != null) target.setText(value); });
         }).start();
     }
 
@@ -2447,8 +2533,8 @@ class CustomerDashboardActivityScreenCore extends Activity
         try {
             Geocoder geocoder = new Geocoder(this, new Locale("id", "ID"));
             String q = query + " dekat " + (currentLocation == null ? "" : currentLocation);
-            List<Address> found = geocoder.getFromLocationName(q, 5, lat - 0.35, lng - 0.35, lat + 0.35, lng + 0.35);
-            if (found == null || found.isEmpty()) found = geocoder.getFromLocationName(query, 5, lat - 0.35, lng - 0.35, lat + 0.35, lng + 0.35);
+            List<Address> found = geocoder.getFromLocationName(q, 5, lat - 0.12, lng - 0.12, lat + 0.12, lng + 0.12);
+            if (found == null || found.isEmpty()) found = geocoder.getFromLocationName(query, 5, lat - 0.12, lng - 0.12, lat + 0.12, lng + 0.12);
             if (found != null && !found.isEmpty()) {
                 float best = Float.MAX_VALUE;
                 float[] result = new float[1];

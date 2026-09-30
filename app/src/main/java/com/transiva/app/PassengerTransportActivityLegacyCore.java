@@ -823,7 +823,7 @@ class PassengerTransportActivityLegacyCore extends Activity {
             if (Places.isInitialized()) return;
             String apiKey = getString(R.string.google_maps_key);
             if (apiKey != null && !apiKey.trim().isEmpty()) {
-                Places.initialize(getApplicationContext(), apiKey.trim());
+                Places.initializeWithNewPlacesApiEnabled(getApplicationContext(), apiKey.trim());
             }
         } catch (Exception ignored) {
             // Map picker remains available as a safe fallback.

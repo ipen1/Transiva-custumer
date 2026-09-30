@@ -39,6 +39,7 @@ public final class RecommendationSectionController {
 
         root = new LinearLayout(activity);
         root.setOrientation(LinearLayout.VERTICAL);
+        root.setVisibility(View.GONE);
 
         TextView title = text("Rekomendasi untukmu", 16, "#0B3A78", true);
         root.addView(title);
@@ -88,7 +89,7 @@ public final class RecommendationSectionController {
     public void refresh() {
         if (loading) return;
         loading = true;
-        progress.setVisibility(View.VISIBLE);
+        progress.setVisibility(View.GONE);
 
         TransivaNetworkExecutor.execute(() -> {
             JSONArray items = new JSONArray();
@@ -115,12 +116,14 @@ public final class RecommendationSectionController {
         row.removeAllViews();
 
         if (items == null || items.length() == 0) {
-            empty.setVisibility(View.VISIBLE);
+            empty.setVisibility(View.GONE);
             ((View) row.getParent()).setVisibility(View.GONE);
+            root.setVisibility(View.GONE);
             return;
         }
 
         empty.setVisibility(View.GONE);
+        root.setVisibility(View.VISIBLE);
         ((View) row.getParent()).setVisibility(View.VISIBLE);
 
         int count = Math.min(items.length(), 6);

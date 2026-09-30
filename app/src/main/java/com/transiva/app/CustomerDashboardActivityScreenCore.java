@@ -345,7 +345,7 @@ class CustomerDashboardActivityScreenCore extends Activity
     protected void buildHeader() {
         LinearLayout header = new LinearLayout(this);
         header.setOrientation(LinearLayout.VERTICAL);
-        header.setPadding(dp(14), dp(11), dp(14), dp(10));
+        header.setPadding(dp(14), dp(8), dp(14), dp(8));
         header.setBackground(
                 Shape.gradient("#075EF4", "#22A4FF", dp(24))
         );
@@ -370,7 +370,7 @@ class CustomerDashboardActivityScreenCore extends Activity
 
         TextView name = text(CustomerDashboardFormatters.displayName(username) + " 👋", 20, "#FFFFFF", true);
         LinearLayout.LayoutParams nameLp = new LinearLayout.LayoutParams(-1, -2);
-        nameLp.setMargins(0, dp(1), 0, dp(4));
+        nameLp.setMargins(0, 0, 0, dp(2));
         identity.addView(name, nameLp);
 
         boolean verified = isVerifiedUser();
@@ -421,29 +421,29 @@ class CustomerDashboardActivityScreenCore extends Activity
         financeRow.setOrientation(LinearLayout.HORIZONTAL);
         financeRow.setGravity(Gravity.CENTER_VERTICAL);
         LinearLayout.LayoutParams financeRowLp = new LinearLayout.LayoutParams(-1, -2);
-        financeRowLp.setMargins(0, dp(10), 0, 0);
+        financeRowLp.setMargins(0, dp(7), 0, 0);
         header.addView(financeRow, financeRowLp);
 
         View balanceMini = buildHeaderBalanceCard();
-        LinearLayout.LayoutParams balanceMiniLp = new LinearLayout.LayoutParams(0, dp(56), 1.12f);
+        LinearLayout.LayoutParams balanceMiniLp = new LinearLayout.LayoutParams(0, dp(52), 1.12f);
         balanceMiniLp.setMargins(0, 0, dp(5), 0);
         financeRow.addView(balanceMini, balanceMiniLp);
 
         View loyaltyMini = buildHeaderLoyaltyCard();
-        LinearLayout.LayoutParams loyaltyMiniLp = new LinearLayout.LayoutParams(0, dp(56), 0.88f);
+        LinearLayout.LayoutParams loyaltyMiniLp = new LinearLayout.LayoutParams(0, dp(52), 0.88f);
         loyaltyMiniLp.setMargins(dp(5), 0, 0, 0);
         financeRow.addView(loyaltyMini, loyaltyMiniLp);
 
         View divider = new View(this);
         divider.setBackgroundColor(Color.parseColor("#3DFFFFFF"));
         LinearLayout.LayoutParams dividerLp = new LinearLayout.LayoutParams(-1, dp(1));
-        dividerLp.setMargins(0, dp(10), 0, dp(8));
+        dividerLp.setMargins(0, dp(7), 0, dp(6));
         header.addView(divider, dividerLp);
 
         LinearLayout locationCard = new LinearLayout(this);
         locationCard.setOrientation(LinearLayout.HORIZONTAL);
         locationCard.setGravity(Gravity.CENTER_VERTICAL);
-        locationCard.setPadding(dp(9), dp(6), dp(9), dp(6));
+        locationCard.setPadding(dp(9), dp(4), dp(9), dp(4));
         locationCard.setBackground(Shape.round("#20FFFFFF", dp(16)));
         locationCard.setOnClickListener(view -> loadLocation());
 
@@ -1816,11 +1816,11 @@ class CustomerDashboardActivityScreenCore extends Activity
     protected void buildSmartDestinationSection() {
         LinearLayout card = new LinearLayout(this);
         card.setOrientation(LinearLayout.VERTICAL);
-        card.setPadding(dp(10), dp(9), dp(10), dp(9));
+        card.setPadding(dp(9), dp(7), dp(9), dp(7));
         card.setBackground(Shape.roundStroke("#FFFFFF", "#D8E8F8", dp(18), 1));
         card.setElevation(dp(2));
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, -2);
-        lp.setMargins(0, 0, 0, dp(9));
+        lp.setMargins(0, 0, 0, dp(7));
         content.addView(card, lp);
 
         LinearLayout search = new LinearLayout(this);
@@ -1831,7 +1831,7 @@ class CustomerDashboardActivityScreenCore extends Activity
         pin.setImageResource(drawable("ic_smart_search"));
         pin.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
         pin.setPadding(dp(6), dp(6), dp(6), dp(6));
-        search.addView(pin, new LinearLayout.LayoutParams(dp(34), dp(44)));
+        search.addView(pin, new LinearLayout.LayoutParams(dp(32), dp(40)));
         LinearLayout copy = new LinearLayout(this);
         copy.setOrientation(LinearLayout.VERTICAL);
         copy.setGravity(Gravity.CENTER_VERTICAL);
@@ -1839,27 +1839,27 @@ class CustomerDashboardActivityScreenCore extends Activity
         TextView sub = text("Cari tempat, alamat, atau tempel link Google Maps", 9, "#7B8DA3", false);
         sub.setSingleLine(true);
         copy.addView(sub);
-        search.addView(copy, new LinearLayout.LayoutParams(0, dp(44), 1));
+        search.addView(copy, new LinearLayout.LayoutParams(0, dp(40), 1));
         TextView arrow = text("›", 23, "#0878F9", true);
         search.addView(arrow);
         search.setOnClickListener(v -> {
             recordServiceUsage("TransRide");
             startActivity(new Intent(this, TransRideActivity.class).putExtra("focus_destination_search", true));
         });
-        card.addView(search, new LinearLayout.LayoutParams(-1, dp(44)));
+        card.addView(search, new LinearLayout.LayoutParams(-1, dp(40)));
 
         LinearLayout quick = new LinearLayout(this);
         quick.setGravity(Gravity.CENTER_VERTICAL);
-        LinearLayout.LayoutParams qlp = new LinearLayout.LayoutParams(-1, dp(34));
+        LinearLayout.LayoutParams qlp = new LinearLayout.LayoutParams(-1, dp(32));
         qlp.setMargins(0, dp(6), 0, 0);
         card.addView(quick, qlp);
-        quick.addView(smartQuickAction("ic_smart_my_location", "Lokasi", () -> loadLocation()), new LinearLayout.LayoutParams(0, dp(32), 1));
+        quick.addView(smartQuickAction("ic_smart_my_location", "Lokasi", () -> loadLocation()), new LinearLayout.LayoutParams(0, dp(30), 1));
         addQuickGap(quick);
-        quick.addView(smartQuickAction("ic_smart_home", "Rumah", () -> startActivity(new Intent(this, FavoritePlacesActivity.class))), new LinearLayout.LayoutParams(0, dp(32), 1));
+        quick.addView(smartQuickAction("ic_smart_home", "Rumah", () -> startActivity(new Intent(this, FavoritePlacesActivity.class))), new LinearLayout.LayoutParams(0, dp(30), 1));
         addQuickGap(quick);
-        quick.addView(smartQuickAction("ic_smart_work", "Kantor", () -> startActivity(new Intent(this, FavoritePlacesActivity.class))), new LinearLayout.LayoutParams(0, dp(32), 1));
+        quick.addView(smartQuickAction("ic_smart_work", "Kantor", () -> startActivity(new Intent(this, FavoritePlacesActivity.class))), new LinearLayout.LayoutParams(0, dp(30), 1));
         addQuickGap(quick);
-        quick.addView(smartQuickAction("ic_smart_map", "Peta", () -> startActivity(new Intent(this, TransRideActivity.class).putExtra("open_map_picker", true))), new LinearLayout.LayoutParams(0, dp(32), 1));
+        quick.addView(smartQuickAction("ic_smart_map", "Peta", () -> startActivity(new Intent(this, TransRideActivity.class).putExtra("open_map_picker", true))), new LinearLayout.LayoutParams(0, dp(30), 1));
     }
 
     protected void addQuickGap(LinearLayout row) {
@@ -1915,9 +1915,9 @@ class CustomerDashboardActivityScreenCore extends Activity
         hintLp.setMargins(0, dp(2), 0, 0);
         titleBox.addView(hint, hintLp);
 
-        TextView seeAll = text("Lihat Semua  ›", 11, "#0878F9", true);
+        TextView seeAll = text("Lihat Semua  ›", 10, "#0878F9", true);
         seeAll.setGravity(Gravity.CENTER);
-        seeAll.setPadding(dp(10), dp(8), dp(8), dp(8));
+        seeAll.setPadding(dp(8), dp(6), dp(7), dp(6));
         seeAll.setBackground(Shape.round("#EEF6FF", dp(14)));
         seeAll.setOnClickListener(v -> startActivity(new Intent(this, AllServicesActivity.class)));
         titleRow.addView(seeAll, new LinearLayout.LayoutParams(-2, -2));
@@ -2204,7 +2204,7 @@ class CustomerDashboardActivityScreenCore extends Activity
 
         FrameLayout.LayoutParams artLp =
                 new FrameLayout.LayoutParams(
-                        dp(82),
+                        dp(58),
                         -1
                 );
 
@@ -2216,9 +2216,9 @@ class CustomerDashboardActivityScreenCore extends Activity
 
         box.setPadding(
                 dp(12),
-                dp(9),
-                dp(86),
-                dp(8)
+                dp(7),
+                dp(62),
+                dp(7)
         );
 
         card.addView(
@@ -2229,15 +2229,15 @@ class CustomerDashboardActivityScreenCore extends Activity
         box.addView(
                 text(
                         "Status Pesanan",
-                        15,
+                        13,
                         "#0B3A78",
                         true
                 )
         );
 
         orderText = text(
-                "Belum ada pesanan aktif",
-                11,
+                "Belum ada pesanan aktif · Mulai pesan ›",
+                10,
                 "#718096",
                 false
         );
@@ -2247,7 +2247,7 @@ class CustomerDashboardActivityScreenCore extends Activity
 
         orderLp.setMargins(
                 0,
-                dp(5),
+                dp(3),
                 0,
                 0
         );
@@ -2255,11 +2255,12 @@ class CustomerDashboardActivityScreenCore extends Activity
         box.addView(orderText, orderLp);
 
         orderHint = text(
-                "Yuk, pesan layanan Transiva sekarang!",
-                9,
+                "",
+                1,
                 "#8AA0B8",
                 false
         );
+        orderHint.setVisibility(View.GONE);
 
         LinearLayout.LayoutParams hintLp =
                 new LinearLayout.LayoutParams(-1, -2);
@@ -2424,7 +2425,10 @@ class CustomerDashboardActivityScreenCore extends Activity
 
         currentOrderText = activeOrderText;
         activeOrderJson = state.activeOrder;
-        orderText.setText(activeOrderText);
+        boolean hasActiveOrder = isActiveOrderText(activeOrderText);
+        orderText.setText(hasActiveOrder
+                ? activeOrderText
+                : "Belum ada pesanan aktif · Mulai pesan ›");
 
         if (orderCard != null) {
             orderCard.setBackground(Shape.roundStroke(
@@ -2434,15 +2438,9 @@ class CustomerDashboardActivityScreenCore extends Activity
 
         renderGrowthState(state);
 
-        boolean hasActiveOrder =
-                isActiveOrderText(activeOrderText);
-
         if (orderHint != null) {
-            orderHint.setVisibility(
-                    hasActiveOrder
-                            ? View.GONE
-                            : View.VISIBLE
-            );
+            // 5.2: empty state stays one-line compact; active order owns the card.
+            orderHint.setVisibility(View.GONE);
         }
 
         renderPromos(state.promos);

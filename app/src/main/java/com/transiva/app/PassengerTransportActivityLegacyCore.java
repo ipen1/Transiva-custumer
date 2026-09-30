@@ -966,14 +966,43 @@ class PassengerTransportActivityLegacyCore extends Activity {
             statusCode = ae.getStatusCode();
             statusName = placesStatusName(statusCode);
         }
+        String runtimeKey = "";
+        try { runtimeKey = getString(R.string.google_maps_key).trim(); } catch (Exception ignored) {}
+        String keyTail = runtimeKey.length() <= 7 ? runtimeKey : runtimeKey.substring(runtimeKey.length() - 7);
+        String sha1 = runtimeSigningSha1();
+        String expectedTail = "ThmOXqo";
+        String keyMatch = expectedTail.equals(keyTail) ? "COCOK" : "TIDAK COCOK";
         String diag = "Places gagal [" + stage + "]" +
                 "\nStatus: " + statusName + " (" + statusCode + ")" +
                 "\nException: " + type +
                 "\nMessage: " + msg + cause +
                 "\nSDK mode: Places API (New)" +
-                "\nPackage: " + getPackageName();
+                "\nPackage: " + getPackageName() +
+                "\nAPI key runtime: ..." + keyTail +
+                "\nKey Cloud (...ThmOXqo): " + keyMatch +
+                "\nSHA-1 runtime: " + sha1 +
+                "\nJika status 9011 + key/SHA cocok: cek Billing dan restriction Places API (New) pada project key ini.";
         Log.e("TransivaPlaces", diag, e);
         return diag;
+    }
+
+    @SuppressWarnings("deprecation")
+    protected String runtimeSigningSha1() {
+        try {
+            android.content.pm.PackageInfo pi = getPackageManager().getPackageInfo(getPackageName(), PackageManager.GET_SIGNATURES);
+            if (pi.signatures == null || pi.signatures.length == 0) return "TIDAK TERBACA";
+            java.security.MessageDigest md = java.security.MessageDigest.getInstance("SHA-1");
+            byte[] digest = md.digest(pi.signatures[0].toByteArray());
+            StringBuilder out = new StringBuilder();
+            for (byte b : digest) {
+                if (out.length() > 0) out.append(':');
+                out.append(String.format(java.util.Locale.US, "%02X", b & 0xFF));
+            }
+            return out.toString();
+        } catch (Exception e) {
+            Log.e("TransivaPlaces", "Gagal membaca SHA-1 runtime", e);
+            return "ERROR: " + e.getClass().getSimpleName();
+        }
     }
 
     protected String placesStatusName(int code) {

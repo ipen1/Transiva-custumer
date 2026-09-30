@@ -307,6 +307,7 @@ class CustomerDashboardActivityScreenCore extends Activity
 
         // Dashboard 4.0: urutan dibuat seperti super-app modern dan lebih fokus pada aksi utama.
         // Header sudah memuat identitas, saldo dan royalti dalam satu card responsif.
+        buildSmartDestinationSection();
         buildServiceSection();
         buildOrderSection();
         // Fitur lanjutan dipindahkan ke "Lihat Semua" agar Dashboard tetap sederhana.
@@ -1561,9 +1562,9 @@ class CustomerDashboardActivityScreenCore extends Activity
         if (promoCount == 0) {
             activePromoIndex = 0;
 
-            promoEmptyText.setVisibility(
-                    View.VISIBLE
-            );
+            promoEmptyText.setVisibility(View.GONE);
+            if (promoHeader != null) promoHeader.setVisibility(View.GONE);
+            if (promoSection != null) promoSection.setVisibility(View.GONE);
 
             promoScroll.setVisibility(
                     View.GONE
@@ -1580,6 +1581,8 @@ class CustomerDashboardActivityScreenCore extends Activity
             return;
         }
 
+        if (promoSection != null) promoSection.setVisibility(View.VISIBLE);
+        if (promoHeader != null) promoHeader.setVisibility(View.VISIBLE);
         promoEmptyText.setVisibility(View.GONE);
         promoScroll.setVisibility(View.VISIBLE);
 
@@ -1809,6 +1812,49 @@ class CustomerDashboardActivityScreenCore extends Activity
         );
     }
 
+    /** Smart Dashboard 5.0: destination-first entry point. */
+    protected void buildSmartDestinationSection() {
+        LinearLayout card = new LinearLayout(this);
+        card.setOrientation(LinearLayout.VERTICAL);
+        card.setPadding(dp(14), dp(12), dp(14), dp(12));
+        card.setBackground(Shape.roundStroke("#FFFFFF", "#D8E8F8", dp(20), 1));
+        card.setElevation(dp(2));
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, -2);
+        lp.setMargins(0, 0, 0, dp(12));
+        content.addView(card, lp);
+
+        LinearLayout search = new LinearLayout(this);
+        search.setGravity(Gravity.CENTER_VERTICAL);
+        search.setPadding(dp(12), 0, dp(12), 0);
+        search.setBackground(Shape.round("#F2F7FD", dp(16)));
+        TextView pin = text("⌕", 21, "#0878F9", true);
+        pin.setGravity(Gravity.CENTER);
+        search.addView(pin, new LinearLayout.LayoutParams(dp(34), dp(48)));
+        LinearLayout copy = new LinearLayout(this); copy.setOrientation(LinearLayout.VERTICAL);
+        copy.addView(text("Mau ke mana?", 15, "#0B3A78", true));
+        copy.addView(text("Cari tujuan, tempat, atau tempel link Google Maps", 10, "#7B8DA3", false));
+        search.addView(copy, new LinearLayout.LayoutParams(0, dp(48), 1));
+        TextView arrow = text("›", 25, "#0878F9", true); search.addView(arrow);
+        search.setOnClickListener(v -> {
+            recordServiceUsage("TransRide");
+            startActivity(new Intent(this, TransRideActivity.class).putExtra("focus_destination_search", true));
+        });
+        card.addView(search, new LinearLayout.LayoutParams(-1, dp(48)));
+
+        LinearLayout quick = new LinearLayout(this); quick.setGravity(Gravity.CENTER_VERTICAL);
+        LinearLayout.LayoutParams qlp = new LinearLayout.LayoutParams(-1, dp(36)); qlp.setMargins(0, dp(8), 0, 0); card.addView(quick, qlp);
+        String[] labels = {"⌖ Lokasi saya", "⌂ Rumah", "▣ Kantor", "⌁ Peta"};
+        for (int i=0;i<labels.length;i++) {
+            final int action=i; TextView q=text(labels[i], 10, "#0B6DD9", true); q.setGravity(Gravity.CENTER); q.setBackground(Shape.round("#EEF6FF", dp(13)));
+            q.setOnClickListener(v -> {
+                if (action==0) loadLocation();
+                else if (action==3) startActivity(new Intent(this, TransRideActivity.class).putExtra("open_map_picker", true));
+                else startActivity(new Intent(this, FavoritePlacesActivity.class));
+            });
+            LinearLayout.LayoutParams x=new LinearLayout.LayoutParams(0, dp(34), 1); if(i>0)x.setMargins(dp(5),0,0,0); quick.addView(q,x);
+        }
+    }
+
     /**
      * Dashboard service launcher 3.0
      *
@@ -1857,10 +1903,16 @@ class CustomerDashboardActivityScreenCore extends Activity
         // Smart Dashboard: hanya empat kebutuhan yang paling mudah dipahami pengguna baru.
         grid.addView(serviceRow(
                 service("TransRide", "ic_service_ride_premium", TransRideActivity.class),
-                service("TransFood", "ic_service_food_premium", TransFoodActivity.class),
-                service("TransShop", "ic_service_shop_premium", TransShopActivity.class),
-                service("Pickup", "ic_service_send_premium", TransPickupActivity.class)
+                service("TransCar", "ic_service_car_premium", PassengerCarActivity.class),
+                service("TransFood", "ic_service_food_premium", TransFoodActivity.class)
         ));
+        LinearLayout.LayoutParams secondLp = new LinearLayout.LayoutParams(-1, -2);
+        secondLp.setMargins(0, dp(8), 0, 0);
+        View secondRow = serviceRow(
+                service("TransShop", "ic_service_shop_premium", TransShopActivity.class),
+                service("TransSend", "ic_service_send_premium", TransPickupActivity.class)
+        );
+        grid.addView(secondRow, secondLp);
     }
 
     /**

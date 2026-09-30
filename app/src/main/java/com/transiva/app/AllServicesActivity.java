@@ -27,6 +27,7 @@ public class AllServicesActivity extends Activity {
         TextView back=tx("‹   Semua Layanan",24,"#0B3A78",true); back.setOnClickListener(v->finish()); root.addView(back);
         TextView sub=tx("Pilih fitur yang kamu butuhkan",13,"#64748B",false); LinearLayout.LayoutParams slp=lp(0,16); root.addView(sub,slp);
         add(root,"🚘","TransCar","Pesan mobil untuk perjalanan", PassengerCarActivity.class);
+        add(root,"📦","TransSend","Kirim paket dan barang dengan driver", TransPickupActivity.class);
         add(root,"👥","Split Pay","Patungan pembayaran perjalanan", TransRideActivity.class);
         add(root,"👨‍👩‍👧","Family","Kelola anggota keluarga", TransivaFamilyActivity.class);
         add(root,"🎁","Royalti","Lihat poin dan hadiah", CustomerLoyaltyActivity.class);

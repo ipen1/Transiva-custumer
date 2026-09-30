@@ -69,14 +69,14 @@ public final class TransAssistantEngine {
         if("ORDER_FOOD".equals(previous)&&(cheap||near||q.equals("yang itu")||q.equals("lanjut"))){String extra=cheap&&near?"yang dekat dan lebih hemat":cheap?"yang lebih hemat":"yang dekat";return r("Baik. Untuk mencari makanan "+extra+", buka TransFood lalu bandingkan merchant/menu dan total pembayaran yang tersedia.","OPEN_FOOD","Cari di TransFood","ORDER_FOOD",.92,false);}
         if("ORDER_RIDE".equals(previous)&&(cheap||q.equals("lanjut")||hasAny(q,"yang motor","motor saja")))return r("Baik. Lanjutkan melalui TransRide dan periksa estimasi perjalanan sebelum membuat pesanan.","OPEN_RIDE","Buka TransRide","ORDER_RIDE",.92,false);
         if("ORDER_SHOP".equals(previous)&&(cheap||near))return r("Baik. Buka TransShop untuk membandingkan toko/barang yang tersedia sesuai kebutuhan Anda.","OPEN_SHOP","Buka TransShop","ORDER_SHOP",.90,false);
-        if("PICKUP".equals(previous)&&hasAny(q,"lanjut","ambil sekarang","kirim sekarang"))return r("Siap. Buka TransPickup, isi lokasi pengambilan, tujuan dan detail barang, lalu buat pesanan.","OPEN_PICKUP","Buka TransPickup","PICKUP",.93,false);
+        if("PICKUP".equals(previous)&&hasAny(q,"lanjut","ambil sekarang","kirim sekarang"))return r("Siap. Buka TransSend, isi lokasi pengambilan, tujuan dan detail barang, lalu buat pesanan.","OPEN_PICKUP","Buka TransSend","PICKUP",.93,false);
         return null;
     }
 
     private Reply lifestyleIntent(String q){
         if(hasAny(q,"lapar","mau makan","ingin makan","cari makanan"))return r("Sepertinya Anda ingin makanan. Buka TransFood untuk memilih merchant dan menu yang tersedia.","OPEN_FOOD","Cari makanan","ORDER_FOOD",.90,false);
         if(hasAny(q,"pulang kantor","mau pulang","ke kantor","berangkat kerja","butuh kendaraan","pesan ojek"))return r("Untuk perjalanan motor, gunakan TransRide. Tentukan titik jemput dan tujuan, lalu cek estimasi sebelum memesan.","OPEN_RIDE","Buka TransRide","ORDER_RIDE",.90,false);
-        if(hasAny(q,"kirim barang","antar paket","kirim paket","ambil barang"))return r("Gunakan TransPickup untuk mengambil atau mengirim barang. Isi lokasi pengambilan, tujuan, dan detail barang.","OPEN_PICKUP","Kirim barang","PICKUP",.90,false);
+        if(hasAny(q,"kirim barang","antar paket","kirim paket","ambil barang"))return r("Gunakan TransSend untuk mengambil atau mengirim barang. Isi lokasi pengambilan, tujuan, dan detail barang.","OPEN_PICKUP","Kirim barang","PICKUP",.90,false);
         if(hasAny(q,"pesan barang","belanja barang","titip belanja","beli obat","pesan obat","butuh obat","apotek"))return r("Untuk membeli kebutuhan atau obat dari toko/apotek yang tersedia, gunakan TransShop. Pilih barang atau toko, isi tujuan, lalu konfirmasi pesanan.","OPEN_SHOP","Buka TransShop","ORDER_SHOP",.90,false);
         return null;
     }

@@ -145,7 +145,7 @@ public class TransAssistantTourActivity extends Activity {
         addService("ic_service_ride", "TransRide", "Pesan motor atau mobil dengan mudah");
         addService("ic_service_food", "TransFood", "Pesan makanan favorit di sekitarmu");
         addService("ic_service_shop_premium", "TransShop", "Belanja kebutuhan dari toko terdekat");
-        addService("ic_service_pickup", "TransPickup", "Kirim dan ambil barang dengan praktis");
+        addService("ic_service_pickup", "TransSend", "Kirim dan ambil barang dengan praktis");
         primary.setText("Lanjut  →");
         secondary.setText("Lewati");
     }

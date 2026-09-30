@@ -36,6 +36,8 @@ import android.content.ClipboardManager;
 import android.content.ClipData;
 
 import com.google.android.gms.common.api.Status;
+import com.google.android.gms.common.api.ApiException;
+import android.util.Log;
 import com.google.android.gms.maps.model.LatLng;
 import com.google.android.libraries.places.api.Places;
 import com.google.android.libraries.places.api.model.Place;
@@ -922,8 +924,14 @@ class PassengerTransportActivityLegacyCore extends Activity {
                     LinearLayout.LayoutParams rp=new LinearLayout.LayoutParams(-1,-2); rp.setMargins(0,0,0,dp(8)); results.addView(row,rp);
                     row.setOnClickListener(v->selectSmartPrediction(client,ap,token,overlay));
                 }
-            }).addOnFailureListener(e->{results.removeAllViews(); TextView er=text("Pencarian lokasi belum tersedia. Periksa layanan Places atau coba pilih di peta.",14,"#B91C1C",true); er.setPadding(dp(12),dp(20),dp(12),dp(20)); results.addView(er);});
-        }catch(Exception e){ toastDialog("Pencarian lokasi belum tersedia. Periksa layanan Places atau coba pilih di peta."); }
+            }).addOnFailureListener(e->{
+                results.removeAllViews();
+                String detail = placesErrorDetail("AUTOCOMPLETE", e);
+                TextView er=text(detail,13,"#B91C1C",true);
+                er.setPadding(dp(12),dp(20),dp(12),dp(20));
+                results.addView(er);
+            });
+        }catch(Exception e){ toastDialog(placesErrorDetail("AUTOCOMPLETE_SETUP", e)); }
     }
 
     protected void selectSmartPrediction(PlacesClient client, AutocompletePrediction ap, AutocompleteSessionToken token, FrameLayout overlay){
@@ -941,7 +949,46 @@ class PassengerTransportActivityLegacyCore extends Activity {
                 if(mapView!=null){mapView.setDelivery(deliveryLat,deliveryLng,deliveryAddress);mapView.moveTo(deliveryLat,deliveryLng,16f);}
             }
             try{((android.view.ViewGroup)overlay.getParent()).removeView(overlay);}catch(Exception ignored){} hideKeyboard(); updateModeUI(); requestPaymentQuote();
-        }).addOnFailureListener(e->toastDialog("Pencarian lokasi belum tersedia. Periksa layanan Places atau coba pilih di peta."));
+        }).addOnFailureListener(e->toastDialog(placesErrorDetail("FETCH_PLACE", e)));
+    }
+
+    protected String placesErrorDetail(String stage, Exception e) {
+        String type = e == null ? "null" : e.getClass().getName();
+        String msg = (e == null || e.getMessage() == null || e.getMessage().trim().isEmpty()) ? "(tanpa pesan)" : e.getMessage().trim();
+        String cause = "";
+        if (e != null && e.getCause() != null) {
+            cause = "\nCause: " + e.getCause().getClass().getSimpleName() + ": " + String.valueOf(e.getCause().getMessage());
+        }
+        int statusCode = -1;
+        String statusName = "NON_API_EXCEPTION";
+        if (e instanceof ApiException) {
+            ApiException ae = (ApiException)e;
+            statusCode = ae.getStatusCode();
+            statusName = placesStatusName(statusCode);
+        }
+        String diag = "Places gagal [" + stage + "]" +
+                "\nStatus: " + statusName + " (" + statusCode + ")" +
+                "\nException: " + type +
+                "\nMessage: " + msg + cause +
+                "\nSDK mode: Places API (New)" +
+                "\nPackage: " + getPackageName();
+        Log.e("TransivaPlaces", diag, e);
+        return diag;
+    }
+
+    protected String placesStatusName(int code) {
+        switch (code) {
+            case 0: return "SUCCESS";
+            case 7: return "NETWORK_ERROR";
+            case 8: return "INTERNAL_ERROR";
+            case 10: return "DEVELOPER_ERROR";
+            case 13: return "ERROR";
+            case 14: return "INTERRUPTED";
+            case 15: return "TIMEOUT";
+            case 16: return "CANCELED";
+            case 17: return "API_NOT_CONNECTED";
+            default: return "STATUS_" + code;
+        }
     }
 
     @Override

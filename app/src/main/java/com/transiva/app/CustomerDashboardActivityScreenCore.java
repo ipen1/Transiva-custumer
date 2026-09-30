@@ -108,6 +108,7 @@ class CustomerDashboardActivityScreenCore extends Activity
     protected ProgressBar loading;
     protected RecommendationSectionController recommendationController;
     protected DashboardSmartRecommendationController smartRecommendationController;
+    protected LinearLayout locationPopularFallback;
 
     protected int promoCount;
     protected int activePromoIndex;
@@ -319,6 +320,8 @@ class CustomerDashboardActivityScreenCore extends Activity
         // Bagian terbawah khusus konten dinamis: promo lalu rekomendasi personal.
         buildPromoSection();
         buildRecommendationSection();
+        buildLocationPopularFallback();
+        updateLocationPopularFallback();
 
         shell.addView(
                 buildBottomNavigation(),
@@ -1576,12 +1579,13 @@ class CustomerDashboardActivityScreenCore extends Activity
 
             promoScroll.scrollTo(0, 0);
 
-            // Tidak ada fixed-height banner,
-            // sehingga Layanan Transiva langsung naik.
+            // Tidak ada fixed-height banner. Fallback lokasi boleh tampil jika rekomendasi juga kosong.
+            updateLocationPopularFallback();
             return;
         }
 
         if (promoSection != null) promoSection.setVisibility(View.VISIBLE);
+        updateLocationPopularFallback();
         if (promoHeader != null) promoHeader.setVisibility(View.VISIBLE);
         promoEmptyText.setVisibility(View.GONE);
         promoScroll.setVisibility(View.VISIBLE);
@@ -2293,6 +2297,80 @@ class CustomerDashboardActivityScreenCore extends Activity
                 recommendationController.buildView(),
                 new LinearLayout.LayoutParams(-1, -2)
         );
+        recommendationController.setVisibilityChangedListener(this::updateLocationPopularFallback);
+    }
+
+    /** Dashboard 5.3 fallback: mengisi area kosong hanya ketika promo DAN rekomendasi kosong. */
+    private void buildLocationPopularFallback() {
+        locationPopularFallback = new LinearLayout(this);
+        locationPopularFallback.setOrientation(LinearLayout.VERTICAL);
+        locationPopularFallback.setVisibility(View.GONE);
+
+        LinearLayout header = new LinearLayout(this);
+        header.setGravity(Gravity.CENTER_VERTICAL);
+        header.addView(text("Info lokasi & tempat populer", 15, "#0B3A78", true), new LinearLayout.LayoutParams(0, -2, 1));
+        TextView hint = text("Di sekitar Anda", 9, "#0B6DD9", true);
+        header.addView(hint);
+        locationPopularFallback.addView(header);
+
+        LinearLayout row = new LinearLayout(this);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        LinearLayout.LayoutParams rowLp = new LinearLayout.LayoutParams(-1, dp(104));
+        rowLp.setMargins(0, dp(7), 0, dp(10));
+        locationPopularFallback.addView(row, rowLp);
+
+        LinearLayout loc = new LinearLayout(this);
+        loc.setOrientation(LinearLayout.VERTICAL);
+        loc.setGravity(Gravity.CENTER_VERTICAL);
+        loc.setPadding(dp(13), dp(10), dp(13), dp(10));
+        loc.setBackground(Shape.round("#0878F9", dp(16)));
+        TextView locTitle = text(currentLocation, 14, "#FFFFFF", true);
+        locTitle.setTag("fallback_location_title");
+        loc.addView(locTitle);
+        TextView locSub = text("Lokasi aktif • ketuk untuk perbarui", 9, "#E8F4FF", false);
+        loc.addView(locSub);
+        loc.setOnClickListener(v -> loadLocation());
+        row.addView(loc, new LinearLayout.LayoutParams(0, -1, 0.43f));
+
+        View gap = new View(this);
+        row.addView(gap, new LinearLayout.LayoutParams(dp(7), 1));
+
+        LinearLayout popular = new LinearLayout(this);
+        popular.setOrientation(LinearLayout.VERTICAL);
+        popular.setPadding(dp(11), dp(8), dp(11), dp(8));
+        popular.setBackground(Shape.roundStroke("#FFFFFF", "#E1EAF4", dp(16), 1));
+        popular.addView(text("Cari tempat populer", 11, "#0B3A78", true));
+        addPopularPlace(popular, "Alfamidi", "Minimarket");
+        addPopularPlace(popular, "SPBU", "Bahan bakar");
+        addPopularPlace(popular, "Pasar", "Belanja lokal");
+        row.addView(popular, new LinearLayout.LayoutParams(0, -1, 0.57f));
+
+        content.addView(locationPopularFallback, new LinearLayout.LayoutParams(-1, -2));
+    }
+
+    private void addPopularPlace(LinearLayout parent, String name, String meta) {
+        LinearLayout item = new LinearLayout(this);
+        item.setGravity(Gravity.CENTER_VERTICAL);
+        item.setPadding(0, dp(3), 0, dp(2));
+        TextView label = text(name, 10, "#123A68", true);
+        item.addView(label, new LinearLayout.LayoutParams(0, -2, 1));
+        item.addView(text("›", 16, "#0B6DD9", true));
+        item.setOnClickListener(v -> {
+            Intent i = new Intent(this, TransRideActivity.class);
+            i.putExtra("focus_destination_search", true);
+            i.putExtra("destination_query", name);
+            startActivity(i);
+        });
+        parent.addView(item, new LinearLayout.LayoutParams(-1, 0, 1));
+    }
+
+    private void updateLocationPopularFallback() {
+        if (locationPopularFallback == null) return;
+        boolean promoAvailable = promoCount > 0;
+        boolean recommendationAvailable = recommendationController != null && recommendationController.hasContent();
+        locationPopularFallback.setVisibility(!promoAvailable && !recommendationAvailable ? View.VISIBLE : View.GONE);
+        View title = locationPopularFallback.findViewWithTag("fallback_location_title");
+        if (title instanceof TextView) ((TextView) title).setText(currentLocation == null || currentLocation.trim().isEmpty() ? "Lokasi Anda" : currentLocation);
     }
 
     private View buildBottomNavigation() {
@@ -2378,6 +2456,7 @@ class CustomerDashboardActivityScreenCore extends Activity
                             () -> {
                                 currentLocation = finalResult;
                                 locationText.setText(finalResult);
+                                updateLocationPopularFallback();
                                 if (clusterText != null) clusterText.setText("Cluster: sinkronisasi...");
                                 networkScope.newThread(() -> {
                                     RegionalClusterResolver.Result area = RegionalClusterResolver.resolve(CustomerDashboardActivityScreenCore.this, location.getLatitude(), location.getLongitude());

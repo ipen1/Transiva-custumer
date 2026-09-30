@@ -33,6 +33,8 @@ public final class RecommendationSectionController {
     private final TextView empty;
     private final ProgressBar progress;
     private boolean loading;
+    private Runnable visibilityChanged;
+    private boolean hasContent;
 
     public RecommendationSectionController(Activity activity) {
         this.activity = activity;
@@ -86,6 +88,12 @@ public final class RecommendationSectionController {
         return root;
     }
 
+    public void setVisibilityChangedListener(Runnable listener) {
+        this.visibilityChanged = listener;
+    }
+
+    public boolean hasContent() { return hasContent; }
+
     public void refresh() {
         if (loading) return;
         loading = true;
@@ -116,15 +124,19 @@ public final class RecommendationSectionController {
         row.removeAllViews();
 
         if (items == null || items.length() == 0) {
+            hasContent = false;
             empty.setVisibility(View.GONE);
             ((View) row.getParent()).setVisibility(View.GONE);
             root.setVisibility(View.GONE);
+            if (visibilityChanged != null) visibilityChanged.run();
             return;
         }
 
+        hasContent = true;
         empty.setVisibility(View.GONE);
         root.setVisibility(View.VISIBLE);
         ((View) row.getParent()).setVisibility(View.VISIBLE);
+        if (visibilityChanged != null) visibilityChanged.run();
 
         int count = Math.min(items.length(), 6);
         for (int i = 0; i < count; i++) {

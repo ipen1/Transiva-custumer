@@ -47,6 +47,8 @@ import com.google.android.libraries.places.api.net.FindAutocompletePredictionsRe
 import com.google.android.libraries.places.api.net.FetchPlaceRequest;
 import com.google.android.libraries.places.api.model.AutocompleteSessionToken;
 import com.google.android.libraries.places.api.model.RectangularBounds;
+import com.google.android.libraries.places.api.model.CircularBounds;
+import com.google.android.libraries.places.api.net.SearchNearbyRequest;
 import com.google.android.libraries.places.widget.Autocomplete;
 import com.google.android.libraries.places.widget.AutocompleteActivity;
 import com.google.android.libraries.places.widget.model.AutocompleteActivityMode;
@@ -1246,49 +1248,29 @@ class PassengerTransportActivityLegacyCore extends Activity {
         try {
             android.location.LocationManager lm = (android.location.LocationManager) getSystemService(LOCATION_SERVICE);
             Location best = null;
-            for (String p : lm.getProviders(true)) {
+            for (String provider : lm.getProviders(true)) {
                 try {
-                    Location l = lm.getLastKnownLocation(p);
-                    if (l != null && (best == null || l.getAccuracy() < best.getAccuracy())) best = l;
+                    Location candidate = lm.getLastKnownLocation(provider);
+                    if (candidate != null && (best == null || candidate.getTime() > best.getTime() || candidate.getAccuracy() < best.getAccuracy())) best = candidate;
                 } catch (Exception ignored) {}
             }
-            if (best != null) {
-                centerLat = best.getLatitude(); centerLng = best.getLongitude(); pickLat = centerLat; pickLng = centerLng;
-                if (smartFavoriteIntent && validCoord(deliveryLat, deliveryLng)) {
-                    pickupLat = centerLat; pickupLng = centerLng;
-                    pickupAddress = "Mencari alamat jemput...";
-                    if (pickupText != null) pickupText.setText("Penjemputan: " + pickupAddress);
-                    if (pickupBtn != null) pickupBtn.setText("●  Jemput\nLokasi Anda");
-                    if (mapView != null) {
-                        mapView.setPickup(pickupLat, pickupLng, pickupAddress);
-                        mapView.setDelivery(deliveryLat, deliveryLng, deliveryAddress);
-                        mapView.moveTo(centerLat, centerLng, 17f);
-                    }
-                    resolveAddressAsync(true, pickupLat, pickupLng);
-                    mode = "delivery";
-                    updateModeUI();
-                } else {
-                    if (mapView != null) mapView.moveTo(centerLat, centerLng, 17f);
-                    // Order biasa tetap memakai perilaku lama: user memilih marker Jemput.
-                    if ("balance".equals(paymentMethod) && ecosystemFeatures.groupSize > 1 && (splitBillManager == null || !splitBillManager.ready())) {
-            toastDialog("Tunggu semua peserta Split Pay menerima undangan terlebih dahulu.");
-            if (splitBillManager != null) splitBillManager.showStatus();
-            return;
-        }
-
-        if (!validCoord(pickupLat, pickupLng)) {
-                        mode = "pickup";
-                        updateModeUI();
-                    }
-                }
-            } else {
-                toastDialog("GPS belum mendapatkan lokasi. Aktifkan lokasi lalu tekan GPS lagi.");
+            if (best == null) { toastDialog("GPS belum mendapatkan lokasi. Aktifkan lokasi lalu tekan GPS lagi."); return; }
+            centerLat = best.getLatitude(); centerLng = best.getLongitude(); pickLat = centerLat; pickLng = centerLng;
+            pickupLat = centerLat; pickupLng = centerLng;
+            pickupAddress = "Mencari lokasi jemput terdekat...";
+            if (pickupText != null) pickupText.setText("Penjemputan: " + pickupAddress);
+            if (pickupBtn != null) pickupBtn.setText("●  Jemput\nLokasi Anda");
+            if (mapView != null) {
+                mapView.setPickup(pickupLat, pickupLng, pickupAddress);
+                if (validCoord(deliveryLat, deliveryLng)) mapView.setDelivery(deliveryLat, deliveryLng, deliveryAddress);
+                mapView.moveTo(centerLat, centerLng, 17f);
             }
+            resolveAddressAsync(true, pickupLat, pickupLng);
+            mode = "delivery";
+            updateModeUI();
         } catch (Exception e) {
             toastDialog("GPS tidak tersedia di perangkat ini.");
-        } finally {
-            setLoading(false);
-        }
+        } finally { setLoading(false); }
     }
 
 
@@ -1462,30 +1444,58 @@ class PassengerTransportActivityLegacyCore extends Activity {
 
     protected void resolveAddressAsync(boolean isPickup, double lat, double lng) {
         featureRuntime.newThread(() -> {
-            String address = buildSmartAddress(lat, lng);
-
-            featureRuntime.post(mainHandler, () -> {
+            String road = reverseAddress(lat, lng);
+            String localMerchant = findNearestPlaceName(lat, lng);
+            featureRuntime.post(mainHandler, () -> resolveNearestGooglePlace(lat, lng, (googleName) -> {
                 if (destroyed) return;
-
-                if (isPickup) {
-                    pickupAddress = address;
-                    pickupText.setText("Penjemputan: " + address);
-                    pickupBtn.setText("●  Jemput\n" + shortAddress(address));
-                    if (mapView != null) mapView.setPickup(pickupLat, pickupLng, address);
-                } else {
-                    deliveryAddress = address;
-                    deliveryText.setText("Pengantaran: " + address);
-                    deliveryBtn.setText("●  Tujuan\n" + shortAddress(address));
-                    if (mapView != null) mapView.setDelivery(deliveryLat, deliveryLng, address);
-                }
-
-                // Quote harus dipanggil setelah koordinat kedua titik sudah tersimpan.
-                if (validCoordinate(pickupLat, pickupLng)
-                        && validCoordinate(deliveryLat, deliveryLng)) {
-                    requestPaymentQuote();
-                }
-            });
+                String nearName = firstNonEmpty(googleName, localMerchant, "");
+                String address;
+                if (!nearName.isEmpty() && !road.isEmpty()) address = "Dekat " + nearName + ", " + road;
+                else if (!nearName.isEmpty()) address = "Dekat " + nearName;
+                else if (!road.isEmpty()) address = road;
+                else address = String.format(Locale.US, "%.6f, %.6f", lat, lng);
+                applyResolvedAddress(isPickup, address);
+            }));
         }).start();
+    }
+
+    protected interface NearbyPlaceCallback { void onResult(String name); }
+
+    /** Cari landmark Google terdekat agar titik hasil geser peta mudah dipahami driver. */
+    protected void resolveNearestGooglePlace(double lat, double lng, NearbyPlaceCallback callback) {
+        try {
+            if (!Places.isInitialized()) { callback.onResult(""); return; }
+            PlacesClient client = Places.createClient(this);
+            java.util.List<Place.Field> fields = java.util.Arrays.asList(Place.Field.ID, Place.Field.NAME, Place.Field.LAT_LNG);
+            SearchNearbyRequest request = SearchNearbyRequest.builder(CircularBounds.newInstance(new LatLng(lat, lng), 250.0), fields)
+                    .setMaxResultCount(10).build();
+            client.searchNearby(request).addOnSuccessListener(response -> {
+                String bestName = ""; double best = 251.0;
+                for (Place place : response.getPlaces()) {
+                    LatLng point = place.getLatLng(); String name = place.getName();
+                    if (point == null || name == null || name.trim().isEmpty()) continue;
+                    double d = distanceMeter(lat, lng, point.latitude, point.longitude);
+                    if (d < best) { best = d; bestName = name.trim(); }
+                }
+                callback.onResult(bestName);
+            }).addOnFailureListener(error -> callback.onResult(""));
+        } catch (Exception ignored) { callback.onResult(""); }
+    }
+
+    protected void applyResolvedAddress(boolean isPickup, String address) {
+        if (destroyed) return;
+        if (isPickup) {
+            pickupAddress = address;
+            pickupText.setText("Penjemputan: " + address);
+            pickupBtn.setText("●  Jemput\n" + shortAddress(address));
+            if (mapView != null) mapView.setPickup(pickupLat, pickupLng, address);
+        } else {
+            deliveryAddress = address;
+            deliveryText.setText("Pengantaran: " + address);
+            deliveryBtn.setText("●  Tujuan\n" + shortAddress(address));
+            if (mapView != null) mapView.setDelivery(deliveryLat, deliveryLng, address);
+        }
+        if (validCoordinate(pickupLat, pickupLng) && validCoordinate(deliveryLat, deliveryLng)) requestPaymentQuote();
     }
 
 

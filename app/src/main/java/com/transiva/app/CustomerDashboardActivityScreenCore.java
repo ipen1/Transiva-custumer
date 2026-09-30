@@ -181,6 +181,8 @@ class CustomerDashboardActivityScreenCore extends Activity
         if (cached != null) showDashboard(cached);
         presenter.load(username, userId);
         loadLocation();
+        // Update berjalan setelah Dashboard tampil sehingga startup tidak tertahan jaringan.
+        DashboardUpdateCoordinator.check(this);
     }
 
     @Override

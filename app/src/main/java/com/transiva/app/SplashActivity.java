@@ -12,11 +12,10 @@ import android.widget.FrameLayout;
 import android.widget.ImageView;
 import android.widget.TextView;
 
-/** Splash Customer: security check + update gate + pemulihan order aktif. */
+/** Splash Customer: security check ringan + pemulihan order aktif. Update dicek dari Dashboard. */
 public class SplashActivity extends Activity {
     private boolean routed;
     private boolean securityCheckStarted;
-    private boolean updateChecking;
     private static final int SPLASH_DELAY = 80;
     private TextView statusText;
 
@@ -53,12 +52,12 @@ public class SplashActivity extends Activity {
     }
 
     private void startSecurityCheck() {
-        if (routed || securityCheckStarted || updateChecking || isFinishing()) return;
+        if (routed || securityCheckStarted || isFinishing()) return;
         securityCheckStarted = true;
         statusText.setText("Memeriksa keamanan perangkat...");
         CustomerStartupSecurityGate.check(this, () -> {
             securityCheckStarted = false;
-            checkAppUpdate();
+            routeNext();
         });
     }
 
@@ -66,81 +65,9 @@ public class SplashActivity extends Activity {
     protected void onResume() {
         super.onResume();
         // Saat kembali dari pengaturan/installer, jalankan pemeriksaan segar.
-        if (!routed && !securityCheckStarted && !updateChecking) {
+        if (!routed && !securityCheckStarted) {
             new Handler(Looper.getMainLooper()).postDelayed(this::startSecurityCheck, 300L);
         }
-    }
-
-    private void checkAppUpdate() {
-        CustomerResourceUpdateManager.checkInBackground(this);
-        if (!BuildConfig.SELF_UPDATE_APK) {
-            statusText.setText("Aplikasi siap digunakan");
-            routeNext();
-            return;
-        }
-        if (routed || updateChecking || isFinishing()) return;
-        updateChecking = true;
-        statusText.setText("Memeriksa versi Transiva Customer...");
-
-        AppUpdateInfo cached = AppUpdateStore.cachedInfo(this);
-        int current = currentVersion();
-        if (cached != null && cached.isForceRequired(current)) {
-            updateChecking = false;
-            openForcedUpdate();
-            return;
-        }
-
-        AppUpdateClient.check(this, new AppUpdateClient.Callback() {
-            @Override public void onResult(AppUpdateInfo info, boolean available) {
-                runOnUiThread(() -> {
-                    updateChecking = false;
-                    if (isFinishing() || routed) return;
-                    int installed = currentVersion();
-                    if (info.isForceRequired(installed)) {
-                        openForcedUpdate();
-                        return;
-                    }
-                    if (available) {
-                        try { AppUpdateDownloadManager.ensureDownload(SplashActivity.this, info); }
-                        catch (Exception ignored) { }
-                    }
-                    statusText.setText("Aplikasi siap digunakan");
-                    routeNext();
-                });
-            }
-
-            @Override public void onError(String message) {
-                runOnUiThread(() -> {
-                    updateChecking = false;
-                    if (isFinishing() || routed) return;
-                    AppUpdateInfo old = AppUpdateStore.cachedInfo(SplashActivity.this);
-                    if (old != null && old.isForceRequired(currentVersion())) {
-                        openForcedUpdate();
-                    } else {
-                        // Fail-open hanya jika tidak ada force-update yang sudah tercache.
-                        statusText.setText("Membuka aplikasi...");
-                        routeNext();
-                    }
-                });
-            }
-        });
-    }
-
-    private void openForcedUpdate() {
-        if (routed) return;
-        routed = true;
-        Intent i = new Intent(this, UpdateDownloadActivity.class);
-        i.putExtra(UpdateDownloadActivity.EXTRA_ROLE, "customer");
-        i.putExtra(UpdateDownloadActivity.EXTRA_FORCE, true);
-        i.putExtra(UpdateDownloadActivity.EXTRA_AUTO_START, true);
-        i.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
-        startActivity(i);
-        finish();
-    }
-
-    private int currentVersion() {
-        try { return AppUpdateClient.installedVersionCode(this); }
-        catch (Exception ignored) { return 0; }
     }
 
     private void routeNext() {

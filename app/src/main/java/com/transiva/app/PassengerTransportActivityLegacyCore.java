@@ -931,25 +931,29 @@ class PassengerTransportActivityLegacyCore extends Activity {
             }
             if(validCoord(olat,olng)){
                 b.setOrigin(new LatLng(olat,olng));
-                // ~100 km kotak pencarian sebagai bias, bukan restriction keras.
-                // Tempat sekitar user diprioritaskan, tetapi pencarian tujuan jauh tetap memungkinkan.
-                double latDelta=0.90d;
+                // Maksimum pencarian 25 km dari titik referensi terbaru.
+                // Rectangular restriction membatasi kandidat Places; filter distance di bawah menjadi pengaman kedua.
+                double latDelta=25.0d/111.32d;
                 double cos=Math.cos(Math.toRadians(olat));
-                double lngDelta=0.90d/Math.max(0.25d,Math.abs(cos));
-                b.setLocationBias(RectangularBounds.newInstance(
+                double lngDelta=latDelta/Math.max(0.25d,Math.abs(cos));
+                b.setLocationRestriction(RectangularBounds.newInstance(
                         new LatLng(Math.max(-90d,olat-latDelta),Math.max(-180d,olng-lngDelta)),
                         new LatLng(Math.min(90d,olat+latDelta),Math.min(180d,olng+lngDelta))));
             }
             client.findAutocompletePredictions(b.build()).addOnSuccessListener(r->{
                 results.removeAllViews();
-                java.util.List<AutocompletePrediction> predictions=new java.util.ArrayList<>(r.getAutocompletePredictions());
-                // Jika Google memberi distanceMeters, tampilkan yang terdekat lebih dahulu.
+                java.util.List<AutocompletePrediction> predictions=new java.util.ArrayList<>();
+                for (AutocompletePrediction candidate : r.getAutocompletePredictions()) {
+                    Integer dm = candidate.getDistanceMeters();
+                    if (dm == null || dm <= 25000) predictions.add(candidate);
+                }
+                // Prioritas mutlak: hasil dengan jarak terdekat dari origin terbaru.
                 java.util.Collections.sort(predictions,(x,y)->{
                     Integer dx=x.getDistanceMeters(), dy=y.getDistanceMeters();
                     if(dx==null && dy==null)return 0; if(dx==null)return 1; if(dy==null)return -1; return Integer.compare(dx,dy);
                 });
                 int n=Math.min(7,predictions.size());
-                if(n==0){ TextView empty=text("Tempat tidak ditemukan. Coba nama atau alamat lain.",14,"#64748B",false); empty.setPadding(dp(12),dp(20),dp(12),dp(20)); results.addView(empty); return;}
+                if(n==0){ TextView empty=text("Tidak ada tempat yang cocok dalam radius maksimal 25 km. Coba nama atau alamat lain.",14,"#64748B",false); empty.setPadding(dp(12),dp(20),dp(12),dp(20)); results.addView(empty); return;}
                 for(int i=0;i<n;i++){ AutocompletePrediction ap=predictions.get(i);
                     LinearLayout row=new LinearLayout(this); row.setOrientation(LinearLayout.VERTICAL); row.setPadding(dp(14),dp(12),dp(14),dp(12)); row.setBackground(roundStroke("#FFFFFF","#E2E8F0",dp(14),1));
                     String km=ap.getDistanceMeters()==null?"":String.format(new Locale("id","ID")," • %.1f km",ap.getDistanceMeters()/1000.0);

@@ -62,6 +62,7 @@ class TransFoodActivityScreenCore extends Activity {
     protected Runnable homeSearchRunnable;
     protected int currentScreen = 0; // 0=home, 1=detail menu, 2=checkout
     protected String homeMode = "nearby";
+    protected volatile boolean restaurantsLoadFinished = false;
 
     protected int userId = 0;
     protected String username = "User";
@@ -270,7 +271,9 @@ class TransFoodActivityScreenCore extends Activity {
         homeResultsBox.removeAllViews();
 
         if (restaurants.isEmpty()) {
-            addStatusTo(homeResultsBox, "Memuat merchant...");
+            addStatusTo(homeResultsBox, restaurantsLoadFinished
+                    ? "Belum ada makanan atau merchant yang tersedia di area kamu saat ini."
+                    : "Memuat merchant...");
             return;
         }
 
@@ -1058,7 +1061,7 @@ class TransFoodActivityScreenCore extends Activity {
 
     protected void loadRestaurants() { loadRestaurants(true); }
     protected void loadRestaurants(boolean showLoading) {
-        if (showLoading) setLoading(true);
+        if (showLoading) { restaurantsLoadFinished = false; setLoading(true); }
         featureRuntime.execute(() -> {
             try {
                 JSONObject res = getJson(BASE_URL + "server/get_food_restaurants.php?user_id=" + Uri.encode(String.valueOf(userId)) + "&v=" + System.currentTimeMillis());
@@ -1066,9 +1069,11 @@ class TransFoodActivityScreenCore extends Activity {
                 JSONArray arr = res.optJSONArray("restaurants");
                 if (res.optBoolean("success", false) && arr != null) {
                     for (int i = 0; i < arr.length(); i++) restaurants.add(arr.getJSONObject(i));
+                    restaurantsLoadFinished = true;
                     featureRuntime.post(mainHandler, () -> { if (showLoading) setLoading(false); if (activeRestaurant == null) showRestaurantList(); loadAllMenuIndex(); });
                 } else throw new Exception(firstNonEmpty(res.optString("message"), "Gagal memuat merchant"));
             } catch (Exception e) {
+                restaurantsLoadFinished = true;
                 featureRuntime.post(mainHandler, () -> { if (showLoading) { setLoading(false); root.removeAllViews(); buildTopBar("Trans Food", "", true); addStatus("Koneksi gagal memuat merchant"); showInfo("Gagal", e.getMessage()); } });
             }
         });

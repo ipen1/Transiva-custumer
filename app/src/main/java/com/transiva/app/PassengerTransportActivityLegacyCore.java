@@ -931,12 +931,13 @@ class PassengerTransportActivityLegacyCore extends Activity {
             }
             if(validCoord(olat,olng)){
                 b.setOrigin(new LatLng(olat,olng));
-                // Maksimum pencarian 25 km dari titik referensi terbaru.
-                // Rectangular restriction membatasi kandidat Places; filter distance di bawah menjadi pengaman kedua.
+                // Jangan gunakan locationRestriction untuk autocomplete di sini. Pada beberapa query/nama bisnis
+                // restriction keras dapat membuat Google mengembalikan 0 prediction walaupun POI ada di dekat titik.
+                // Gunakan bias 25 km agar kandidat lokal masuk, lalu enforce radius 25 km di sisi aplikasi.
                 double latDelta=25.0d/111.32d;
                 double cos=Math.cos(Math.toRadians(olat));
                 double lngDelta=latDelta/Math.max(0.25d,Math.abs(cos));
-                b.setLocationRestriction(RectangularBounds.newInstance(
+                b.setLocationBias(RectangularBounds.newInstance(
                         new LatLng(Math.max(-90d,olat-latDelta),Math.max(-180d,olng-lngDelta)),
                         new LatLng(Math.min(90d,olat+latDelta),Math.min(180d,olng+lngDelta))));
             }

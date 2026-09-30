@@ -256,7 +256,10 @@ class PassengerTransportActivityLegacyCore extends Activity {
 
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
-        root.setPadding(dp(10), dp(10), dp(10), dp(10));
+        final int screenHeightDp = (int) (getResources().getDisplayMetrics().heightPixels / getResources().getDisplayMetrics().density);
+        final boolean compactScreen = screenHeightDp < 700;
+        final boolean shortScreen = screenHeightDp < 780;
+        root.setPadding(dp(10), dp(compactScreen ? 6 : 8), dp(10), dp(compactScreen ? 6 : 8));
         page.addView(root, new FrameLayout.LayoutParams(-1, -1));
 
         /* =========================
@@ -264,28 +267,28 @@ class PassengerTransportActivityLegacyCore extends Activity {
          * ========================= */
         LinearLayout topCard = new LinearLayout(this);
         topCard.setOrientation(LinearLayout.VERTICAL);
-        topCard.setPadding(dp(14), dp(12), dp(14), dp(12));
+        topCard.setPadding(dp(14), dp(compactScreen ? 8 : 10), dp(14), dp(compactScreen ? 8 : 10));
         topCard.setBackground(roundStroke("#FFFFFF", "#D7E6F8", dp(22), 1));
         root.addView(topCard, new LinearLayout.LayoutParams(-1, -2));
 
         LinearLayout titleRow = new LinearLayout(this);
         titleRow.setGravity(Gravity.CENTER_VERTICAL);
-        topCard.addView(titleRow, new LinearLayout.LayoutParams(-1, dp(30)));
+        topCard.addView(titleRow, new LinearLayout.LayoutParams(-1, dp(compactScreen ? 26 : 28)));
 
-        TextView title = text(serviceTitle(), 20, "#0B3A78", true);
+        TextView title = text(serviceTitle(), compactScreen ? 18 : 19, "#0B3A78", true);
         titleRow.addView(title, new LinearLayout.LayoutParams(0, -1, 1));
 
-        wizardStepText = text("Mau ke mana hari ini?", 11, "#0B7CFF", true);
-        wizardStepText.setPadding(0, dp(2), 0, dp(3));
+        wizardStepText = text("1 Tujuan  ›  2 Jemput  ›  3 Opsi  ›  4 Harga  ›  5 Pesan", compactScreen ? 8 : 9, "#0B7CFF", true);
+        wizardStepText.setPadding(0, dp(2), 0, dp(2));
         topCard.addView(wizardStepText, new LinearLayout.LayoutParams(-1, -2));
 
-        modeText = text("Geser peta, lalu pilih titik", 10, "#64748B", false);
+        modeText = text("Pilih tujuan", compactScreen ? 9 : 10, "#64748B", false);
         modeText.setGravity(Gravity.END | Gravity.CENTER_VERTICAL);
         titleRow.addView(modeText, new LinearLayout.LayoutParams(0, -1, 1.25f));
 
         Button close = smallButton("×", "#FEE2E2", "#DC2626", "#FECACA");
         LinearLayout.LayoutParams closeLp = new LinearLayout.LayoutParams(dp(30), dp(30));
-        closeLp.setMargins(dp(5), 0, 0, 0);
+        closeLp.setMargins(dp(4), 0, 0, 0);
         titleRow.addView(close, closeLp);
         backBtn = close;
         close.setOnClickListener(v -> finish());
@@ -293,14 +296,14 @@ class PassengerTransportActivityLegacyCore extends Activity {
         LinearLayout pointRow = new LinearLayout(this);
         pointRow.setOrientation(LinearLayout.VERTICAL);
         LinearLayout.LayoutParams pointRowLp = new LinearLayout.LayoutParams(-1, -2);
-        pointRowLp.setMargins(0, dp(6), 0, 0);
+        pointRowLp.setMargins(0, dp(compactScreen ? 4 : 5), 0, 0);
         topCard.addView(pointRow, pointRowLp);
 
-        pickupBtn = compactPointButton("●  Lokasi Jemput", "Ketuk lalu ketik lokasi", "#16A34A");
-        deliveryBtn = compactPointButton("●  Mau ke mana?", "Ketuk lalu ketik tujuan / tempel link Maps", "#EF4444");
-        pointRow.addView(pickupBtn, new LinearLayout.LayoutParams(-1, dp(56)));
-        LinearLayout.LayoutParams deliveryLp = new LinearLayout.LayoutParams(-1, dp(56));
-        deliveryLp.setMargins(0, dp(6), 0, 0);
+        pickupBtn = compactPointButton("●  Jemput", "Lokasi Anda • ketuk untuk ubah   ›", "#16A34A");
+        deliveryBtn = compactPointButton("●  Mau ke mana?", "Cari tujuan / tempel link Maps   ›", "#EF4444");
+        pointRow.addView(pickupBtn, new LinearLayout.LayoutParams(-1, dp(compactScreen ? 46 : 50)));
+        LinearLayout.LayoutParams deliveryLp = new LinearLayout.LayoutParams(-1, dp(compactScreen ? 46 : 50));
+        deliveryLp.setMargins(0, dp(4), 0, 0);
         pointRow.addView(deliveryBtn, deliveryLp);
 
         pickupText = text("Penjemputan: belum dipilih", 9, "#334155", false);
@@ -322,7 +325,7 @@ class PassengerTransportActivityLegacyCore extends Activity {
         FrameLayout mapBox = new FrameLayout(this);
         mapBox.setBackground(roundStroke("#EAF4FF", "#AFCFF2", dp(14), 1));
         LinearLayout.LayoutParams mapLp = new LinearLayout.LayoutParams(-1, 0, 1);
-        mapLp.setMargins(0, dp(6), 0, dp(6));
+        mapLp.setMargins(0, dp(compactScreen ? 4 : 5), 0, dp(compactScreen ? 4 : 5));
         root.addView(mapBox, mapLp);
 
         mapView = new TransivaGoogleMapView(this, TransivaGoogleMapView.Mode.PICKER);
@@ -2150,8 +2153,8 @@ class PassengerTransportActivityLegacyCore extends Activity {
         if (bookingDetailsCard != null) bookingDetailsCard.setVisibility(routeComplete ? View.VISIBLE : View.GONE);
         modeText.setText(
                 routeComplete
-                        ? "Rute siap, tekan Pesan Sekarang"
-                        : (pickupMode ? "Geser peta lalu klik marka Jemput" : "Geser peta lalu klik marka Pengantaran")
+                        ? "Rute siap"
+                        : (pickupMode ? "Cek titik jemput" : "Cari atau pilih tujuan")
         );
 
         pickupBtn.setAlpha(pickupMode ? 1f : .80f);
@@ -2244,16 +2247,16 @@ class PassengerTransportActivityLegacyCore extends Activity {
     private void updateWizardState() {
         if (orderBtn == null) return;
         if (!validCoord(deliveryLat, deliveryLng)) {
-            if (wizardStepText != null) wizardStepText.setText("1/5  Mau ke mana?");
-            orderBtn.setText("LANJUT — PILIH TUJUAN");
+            if (wizardStepText != null) wizardStepText.setText("● Tujuan  ›  2 Jemput  ›  3 Opsi  ›  4 Harga  ›  5 Pesan");
+            orderBtn.setText("PILIH TUJUAN");
         } else if (!validCoord(pickupLat, pickupLng)) {
-            if (wizardStepText != null) wizardStepText.setText("2/5  Cek lokasi jemput");
-            orderBtn.setText("LANJUT — CEK LOKASI JEMPUT");
+            if (wizardStepText != null) wizardStepText.setText("✓ Tujuan  ›  ● Jemput  ›  3 Opsi  ›  4 Harga  ›  5 Pesan");
+            orderBtn.setText("KONFIRMASI JEMPUT");
         } else if (finalPriceText == null || finalPriceText.getText().toString().contains("-")) {
-            if (wizardStepText != null) wizardStepText.setText("3/5  Pilih layanan & cara bayar");
+            if (wizardStepText != null) wizardStepText.setText("✓ Tujuan  ›  ✓ Jemput  ›  ● Opsi  ›  4 Harga  ›  5 Pesan");
             orderBtn.setText("LIHAT HARGA");
         } else {
-            if (wizardStepText != null) wizardStepText.setText("4/5  Lihat harga  •  5/5 Pesan");
+            if (wizardStepText != null) wizardStepText.setText("✓ Tujuan  ›  ✓ Jemput  ›  ✓ Opsi  ›  ✓ Harga  ›  ● Pesan");
             orderBtn.setText("PESAN SEKARANG");
         }
     }
@@ -2278,9 +2281,9 @@ class PassengerTransportActivityLegacyCore extends Activity {
         Button b = new Button(this);
         b.setText(title + "\n" + sub);
         b.setAllCaps(false);
-        b.setTextSize(11);
+        b.setTextSize(10.5f);
         b.setGravity(Gravity.CENTER_VERTICAL);
-        b.setPadding(dp(10), 0, dp(8), 0);
+        b.setPadding(dp(10), dp(2), dp(8), dp(2));
         b.setTypeface(Typeface.DEFAULT_BOLD);
         b.setTextColor(Color.parseColor(color));
         b.setBackground(roundStroke("#FFFFFF", "#E2E8F0", dp(14), 1));

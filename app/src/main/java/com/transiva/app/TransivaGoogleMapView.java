@@ -224,8 +224,9 @@ public final class TransivaGoogleMapView extends FrameLayout implements OnMapRea
             centerPin.setImageResource(delivery
                     ? R.drawable.map_destination_pin : R.drawable.map_pickup_pin);
             if (centerAction != null) {
-                centerAction.setText(delivery ? "Antar ke lokasi ini" : "Jemput di lokasi ini");
-                centerAction.setBackground(actionBackground(delivery ? "#EF4444" : "#16A34A"));
+                centerAction.setText("Pilih lokasi ini");
+                // CTA utama selalu memakai biru Transiva; warna pin tetap membedakan jemput/tujuan.
+                centerAction.setBackground(actionBackground("#0B7CFF"));
             }
         }
     }

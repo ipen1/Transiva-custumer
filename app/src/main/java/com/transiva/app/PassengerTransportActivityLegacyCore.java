@@ -46,6 +46,7 @@ import com.google.android.libraries.places.api.net.PlacesClient;
 import com.google.android.libraries.places.api.net.FindAutocompletePredictionsRequest;
 import com.google.android.libraries.places.api.net.FetchPlaceRequest;
 import com.google.android.libraries.places.api.model.AutocompleteSessionToken;
+import com.google.android.libraries.places.api.model.RectangularBounds;
 import com.google.android.libraries.places.widget.Autocomplete;
 import com.google.android.libraries.places.widget.AutocompleteActivity;
 import com.google.android.libraries.places.widget.model.AutocompleteActivityMode;
@@ -912,12 +913,44 @@ class PassengerTransportActivityLegacyCore extends Activity {
         try{
             PlacesClient client=Places.createClient(this);
             FindAutocompletePredictionsRequest.Builder b=FindAutocompletePredictionsRequest.builder().setQuery(query).setCountries(java.util.Arrays.asList("ID")).setSessionToken(token);
+            // setOrigin() hanya menghitung jarak; ia TIDAK memprioritaskan hasil di sekitar user.
+            // Karena itu kita juga memberi locationBias di sekitar titik jemput / posisi perangkat.
             double olat=validCoord(pickupLat,pickupLng)?pickupLat:centerLat, olng=validCoord(pickupLat,pickupLng)?pickupLng:centerLng;
-            if(validCoord(olat,olng)) b.setOrigin(new LatLng(olat,olng));
+            if(!validCoord(olat,olng)){
+                try{
+                    if(checkSelfPermissionCompat(Manifest.permission.ACCESS_FINE_LOCATION)==PackageManager.PERMISSION_GRANTED ||
+                       checkSelfPermissionCompat(Manifest.permission.ACCESS_COARSE_LOCATION)==PackageManager.PERMISSION_GRANTED){
+                        android.location.LocationManager lm=(android.location.LocationManager)getSystemService(LOCATION_SERVICE);
+                        Location best=null;
+                        for(String provider:lm.getProviders(true)){
+                            try{ Location l=lm.getLastKnownLocation(provider); if(l!=null && (best==null || l.getAccuracy()<best.getAccuracy())) best=l; }catch(Exception ignored){}
+                        }
+                        if(best!=null){ olat=best.getLatitude(); olng=best.getLongitude(); centerLat=olat; centerLng=olng; }
+                    }
+                }catch(Exception ignored){}
+            }
+            if(validCoord(olat,olng)){
+                b.setOrigin(new LatLng(olat,olng));
+                // ~100 km kotak pencarian sebagai bias, bukan restriction keras.
+                // Tempat sekitar user diprioritaskan, tetapi pencarian tujuan jauh tetap memungkinkan.
+                double latDelta=0.90d;
+                double cos=Math.cos(Math.toRadians(olat));
+                double lngDelta=0.90d/Math.max(0.25d,Math.abs(cos));
+                b.setLocationBias(RectangularBounds.newInstance(
+                        new LatLng(Math.max(-90d,olat-latDelta),Math.max(-180d,olng-lngDelta)),
+                        new LatLng(Math.min(90d,olat+latDelta),Math.min(180d,olng+lngDelta))));
+            }
             client.findAutocompletePredictions(b.build()).addOnSuccessListener(r->{
-                results.removeAllViews(); int n=Math.min(7,r.getAutocompletePredictions().size());
+                results.removeAllViews();
+                java.util.List<AutocompletePrediction> predictions=new java.util.ArrayList<>(r.getAutocompletePredictions());
+                // Jika Google memberi distanceMeters, tampilkan yang terdekat lebih dahulu.
+                java.util.Collections.sort(predictions,(x,y)->{
+                    Integer dx=x.getDistanceMeters(), dy=y.getDistanceMeters();
+                    if(dx==null && dy==null)return 0; if(dx==null)return 1; if(dy==null)return -1; return Integer.compare(dx,dy);
+                });
+                int n=Math.min(7,predictions.size());
                 if(n==0){ TextView empty=text("Tempat tidak ditemukan. Coba nama atau alamat lain.",14,"#64748B",false); empty.setPadding(dp(12),dp(20),dp(12),dp(20)); results.addView(empty); return;}
-                for(int i=0;i<n;i++){ AutocompletePrediction ap=r.getAutocompletePredictions().get(i);
+                for(int i=0;i<n;i++){ AutocompletePrediction ap=predictions.get(i);
                     LinearLayout row=new LinearLayout(this); row.setOrientation(LinearLayout.VERTICAL); row.setPadding(dp(14),dp(12),dp(14),dp(12)); row.setBackground(roundStroke("#FFFFFF","#E2E8F0",dp(14),1));
                     String km=ap.getDistanceMeters()==null?"":String.format(new Locale("id","ID")," • %.1f km",ap.getDistanceMeters()/1000.0);
                     TextView a=text("📍  "+ap.getPrimaryText(null)+km,15,"#172033",true); TextView d=text(ap.getSecondaryText(null).toString(),12,"#64748B",false); d.setPadding(dp(28),dp(3),0,0); row.addView(a); row.addView(d);

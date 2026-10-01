@@ -101,7 +101,7 @@ class PassengerTransportActivityLegacyCore extends Activity {
 
     protected TransivaGoogleMapView mapView;
     protected TextView pickupText, deliveryText, modeText, fareText, paymentSummaryText, driverAvailabilityText;
-    protected TextView distanceInfoText, durationInfoText, originalPriceText, finalPriceText, discountInfoText, wizardStepText;
+    protected TextView distanceInfoText, durationInfoText, originalPriceText, finalPriceText, discountInfoText, wizardStepText, tripRouteSummaryText;
     protected Button voucherChoiceBtn, noteChoiceBtn, paymentChoiceBtn;
     protected LinearLayout bookingDetailsCard;
     protected EditText googleMapInput, noteInput, voucherInput;
@@ -426,67 +426,87 @@ class PassengerTransportActivityLegacyCore extends Activity {
         noteInput = new EditText(this);
         noteInput.setSingleLine(true);
 
+        // 2.3 FINAL ORDER UX: tampilkan hanya keputusan utama. Fitur lanjutan tetap tersedia
+        // melalui panel Opsi perjalanan agar halaman final tidak terasa penuh.
+        TextView finalSectionTitle = text("Ringkasan & pembayaran", 12, "#0B3A78", true);
+        finalSectionTitle.setPadding(dp(2), 0, dp(2), dp(5));
+        bottomCard.addView(finalSectionTitle, new LinearLayout.LayoutParams(-1, -2));
+        tripRouteSummaryText = text("Jemput → Tujuan", 9, "#64748B", false);
+        tripRouteSummaryText.setSingleLine(true);
+        tripRouteSummaryText.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        bottomCard.addView(tripRouteSummaryText, new LinearLayout.LayoutParams(-1, dp(24)));
+
         LinearLayout quickRow = new LinearLayout(this);
         quickRow.setOrientation(LinearLayout.HORIZONTAL);
         quickRow.setGravity(Gravity.CENTER_VERTICAL);
-        bottomCard.addView(quickRow, new LinearLayout.LayoutParams(-1, dp(44)));
+        bottomCard.addView(quickRow, new LinearLayout.LayoutParams(-1, dp(42)));
 
-        voucherChoiceBtn = smallButton("🏷 Voucher", "#0B7CFF", "#FFFFFF", "#0B7CFF");
-        noteChoiceBtn = smallButton("📝 Note", "#F59E0B", "#FFFFFF", "#F59E0B");
-        paymentChoiceBtn = smallButton("💵 Cara Bayar: Tunai", "#FFFFFF", "#0B3A78", "#C8D9EC");
-        voucherChoiceBtn.setTextSize(10);
-        noteChoiceBtn.setTextSize(10);
+        paymentChoiceBtn = smallButton("💵 Pembayaran: Tunai", "#FFFFFF", "#0B3A78", "#C8D9EC");
+        voucherChoiceBtn = smallButton("🏷 Voucher", "#FFFFFF", "#0B3A78", "#C8D9EC");
         paymentChoiceBtn.setTextSize(10);
+        voucherChoiceBtn.setTextSize(10);
+        quickRow.addView(paymentChoiceBtn, new LinearLayout.LayoutParams(0, -1, 1.2f));
+        LinearLayout.LayoutParams voucherLp = new LinearLayout.LayoutParams(0, -1, 0.8f);
+        voucherLp.setMargins(dp(6), 0, 0, 0);
+        quickRow.addView(voucherChoiceBtn, voucherLp);
 
-        quickRow.addView(voucherChoiceBtn, new LinearLayout.LayoutParams(0, -1, 0.95f));
-        LinearLayout.LayoutParams noteQuickLp = new LinearLayout.LayoutParams(0, -1, 0.82f);
-        noteQuickLp.setMargins(dp(6), 0, dp(6), 0);
-        quickRow.addView(noteChoiceBtn, noteQuickLp);
-        quickRow.addView(paymentChoiceBtn, new LinearLayout.LayoutParams(0, -1, 1.18f));
+        LinearLayout scheduleRow = new LinearLayout(this);
+        scheduleRow.setOrientation(LinearLayout.HORIZONTAL);
+        scheduleRow.setGravity(Gravity.CENTER_VERTICAL);
+        LinearLayout.LayoutParams scheduleRowLp = new LinearLayout.LayoutParams(-1, dp(40));
+        scheduleRowLp.setMargins(0, dp(5), 0, 0);
+        bottomCard.addView(scheduleRow, scheduleRowLp);
+        Button scheduleBtn = smallButton("🕒 Jadwal: Sekarang", "#FFFFFF", "#0B3A78", "#C8D9EC");
+        Button optionsBtn = smallButton("＋ Opsi perjalanan", "#F8FBFF", "#0B7CFF", "#BBD8F7");
+        scheduleRow.addView(scheduleBtn, new LinearLayout.LayoutParams(0,-1,1));
+        LinearLayout.LayoutParams optionsLp = new LinearLayout.LayoutParams(0,-1,1);
+        optionsLp.setMargins(dp(6),0,0,0);
+        scheduleRow.addView(optionsBtn, optionsLp);
 
-        LinearLayout smartRow = new LinearLayout(this);
-        smartRow.setOrientation(LinearLayout.HORIZONTAL);
-        smartRow.setGravity(Gravity.CENTER_VERTICAL);
-        bottomCard.addView(smartRow, new LinearLayout.LayoutParams(-1, dp(42)));
-        Button scheduleBtn = smallButton("🕒 Sekarang", "#FFFFFF", "#0B3A78", "#C8D9EC");
+        noteChoiceBtn = smallButton("📝 Catatan", "#FFFFFF", "#0B3A78", "#C8D9EC");
         Button hematBtn = smallButton("Hemat", "#EAF4FF", "#0B7CFF", "#9DCAFF");
-        hematBtn.setTextSize(12);
-        hematBtn.setPadding(dp(4), 0, dp(4), 0);
-        hematBtn.setMinWidth(0);
-        hematBtn.setMinimumWidth(0);
-        TierBadgeUi.applyToButton(hematBtn, TierBadgeUi.getCachedActiveTier(this), dp(20), dp(2));
+        hematBtn.setTextSize(11);
+        hematBtn.setMinWidth(0); hematBtn.setMinimumWidth(0);
+        TierBadgeUi.applyToButton(hematBtn, TierBadgeUi.getCachedActiveTier(this), dp(18), dp(2));
         familyBtn = smallButton(familyMemberId > 0 ? "👨‍👩‍👧 " + firstNonEmpty(familyMemberName,"Family") : "👨‍👩‍👧 Family", "#FFFFFF", "#0B3A78", "#C8D9EC");
-        smartRow.addView(scheduleBtn, new LinearLayout.LayoutParams(0,-1,1));
-        LinearLayout.LayoutParams hLp=new LinearLayout.LayoutParams(0,-1,1); hLp.setMargins(dp(5),0,dp(5),0); smartRow.addView(hematBtn,hLp);
-        smartRow.addView(familyBtn, new LinearLayout.LayoutParams(0,-1,1));
-        scheduleBtn.setOnClickListener(v -> showScheduleDialog(scheduleBtn));
-        hematBtn.setOnClickListener(v -> {
-            if ("hemat".equals(priceMode)) {
-                priceMode = "standard";
-                TierBadgeUi.restoreHematButton(hematBtn, TierBadgeUi.getCachedActiveTier(this), dp(20), dp(2));
-                requestPaymentQuote();
-            } else {
-                checkHematAccess(hematBtn);
-            }
-        });
-        familyBtn.setOnClickListener(v -> startActivity(new Intent(this, TransivaFamilyActivity.class)));
-
-        ecosystemRow = new LinearLayout(this);
-        ecosystemRow.setOrientation(LinearLayout.HORIZONTAL);
-        ecosystemRow.setGravity(Gravity.CENTER_VERTICAL);
-        LinearLayout.LayoutParams ecosystemLp = new LinearLayout.LayoutParams(-1, dp(42));
-        ecosystemLp.setMargins(0, dp(5), 0, 0);
-        bottomCard.addView(ecosystemRow, ecosystemLp);
         waypointBtn = smallButton("➕ Stop 0/2", "#FFFFFF", "#0B3A78", "#C8D9EC");
         groupRideBtn = smallButton("💳 Split Pay", "#FFFFFF", "#0B3A78", "#C8D9EC");
         safetyRideBtn = smallButton("🛡 Guardian", "#EAF4FF", "#0B7CFF", "#9DCAFF");
+
+        LinearLayout advancedBox = new LinearLayout(this);
+        advancedBox.setOrientation(LinearLayout.VERTICAL);
+        advancedBox.setPadding(0, dp(5), 0, 0);
+        advancedBox.setVisibility(View.GONE);
+        bottomCard.addView(advancedBox, new LinearLayout.LayoutParams(-1, -2));
+
+        LinearLayout advancedRow1 = new LinearLayout(this); advancedRow1.setOrientation(LinearLayout.HORIZONTAL);
+        advancedBox.addView(advancedRow1, new LinearLayout.LayoutParams(-1, dp(40)));
+        advancedRow1.addView(noteChoiceBtn,new LinearLayout.LayoutParams(0,-1,1));
+        LinearLayout.LayoutParams hLp=new LinearLayout.LayoutParams(0,-1,1); hLp.setMargins(dp(5),0,dp(5),0); advancedRow1.addView(hematBtn,hLp);
+        advancedRow1.addView(familyBtn,new LinearLayout.LayoutParams(0,-1,1));
+
+        ecosystemRow = new LinearLayout(this); ecosystemRow.setOrientation(LinearLayout.HORIZONTAL);
+        LinearLayout.LayoutParams ecosystemLp = new LinearLayout.LayoutParams(-1, dp(40)); ecosystemLp.setMargins(0,dp(5),0,0);
+        advancedBox.addView(ecosystemRow, ecosystemLp);
         ecosystemRow.addView(waypointBtn,new LinearLayout.LayoutParams(0,-1,1));
-        LinearLayout.LayoutParams grpLp=new LinearLayout.LayoutParams(0,-1,1);grpLp.setMargins(dp(5),0,dp(5),0);ecosystemRow.addView(groupRideBtn,grpLp);
+        LinearLayout.LayoutParams grpLp=new LinearLayout.LayoutParams(0,-1,1); grpLp.setMargins(dp(5),0,dp(5),0); ecosystemRow.addView(groupRideBtn,grpLp);
         ecosystemRow.addView(safetyRideBtn,new LinearLayout.LayoutParams(0,-1,1));
+
+        optionsBtn.setOnClickListener(v -> {
+            boolean open = advancedBox.getVisibility() != View.VISIBLE;
+            advancedBox.setVisibility(open ? View.VISIBLE : View.GONE);
+            optionsBtn.setText(open ? "− Tutup opsi" : "＋ Opsi perjalanan");
+            advancedBox.setAlpha(0f); advancedBox.animate().alpha(1f).setDuration(180L).start();
+        });
+        scheduleBtn.setOnClickListener(v -> showScheduleDialog(scheduleBtn));
+        hematBtn.setOnClickListener(v -> {
+            if ("hemat".equals(priceMode)) { priceMode = "standard"; TierBadgeUi.restoreHematButton(hematBtn, TierBadgeUi.getCachedActiveTier(this), dp(18), dp(2)); requestPaymentQuote(); }
+            else checkHematAccess(hematBtn);
+        });
+        familyBtn.setOnClickListener(v -> startActivity(new Intent(this, TransivaFamilyActivity.class)));
         waypointBtn.setOnClickListener(v -> showWaypointDialog());
         groupRideBtn.setOnClickListener(v -> showGroupRideDialog());
         safetyRideBtn.setOnClickListener(v -> showSafetyOptionsDialog());
-
         voucherChoiceBtn.setOnClickListener(v -> showVoucherDialog());
         noteChoiceBtn.setOnClickListener(v -> showNoteDialog());
         paymentChoiceBtn.setOnClickListener(v -> showPaymentDialog());
@@ -495,7 +515,7 @@ class PassengerTransportActivityLegacyCore extends Activity {
         LinearLayout estimateRow = new LinearLayout(this);
         estimateRow.setOrientation(LinearLayout.HORIZONTAL);
         estimateRow.setGravity(Gravity.CENTER_VERTICAL);
-        LinearLayout.LayoutParams estimateLp = new LinearLayout.LayoutParams(-1, dp(66));
+        LinearLayout.LayoutParams estimateLp = new LinearLayout.LayoutParams(-1, dp(62));
         estimateLp.setMargins(dp(2), dp(6), dp(2), dp(5));
         bottomCard.addView(estimateRow, estimateLp);
 
@@ -504,8 +524,8 @@ class PassengerTransportActivityLegacyCore extends Activity {
         tripInfo.setGravity(Gravity.CENTER_VERTICAL);
         estimateRow.addView(tripInfo, new LinearLayout.LayoutParams(0, -1, 1));
 
-        distanceInfoText = text("⌁  Jarak : -", 11, "#334155", false);
-        durationInfoText = text("◷  Waktu : -", 11, "#334155", false);
+        distanceInfoText = text("TransRide • Jarak -", 11, "#0B3A78", true);
+        durationInfoText = text("Estimasi waktu -", 10, "#64748B", false);
         tripInfo.addView(distanceInfoText, new LinearLayout.LayoutParams(-1, dp(28)));
         tripInfo.addView(durationInfoText, new LinearLayout.LayoutParams(-1, dp(28)));
 
@@ -519,7 +539,7 @@ class PassengerTransportActivityLegacyCore extends Activity {
         originalPriceText.setVisibility(View.GONE);
         priceBox.addView(originalPriceText, new LinearLayout.LayoutParams(-1, dp(20)));
 
-        finalPriceText = text("Rp -", 18, "#0B3A78", true);
+        finalPriceText = text("Rp -", 19, "#0B3A78", true);
         finalPriceText.setGravity(Gravity.END | Gravity.CENTER_VERTICAL);
         priceBox.addView(finalPriceText, new LinearLayout.LayoutParams(-1, dp(30)));
 
@@ -567,7 +587,7 @@ class PassengerTransportActivityLegacyCore extends Activity {
                 scheduledAt = f.format(chosen.getTime());
                 java.text.SimpleDateFormat label = new java.text.SimpleDateFormat("dd/MM HH:mm", Locale.getDefault());
                 target.setText("🕒 " + label.format(chosen.getTime()));
-                if ("balance".equals(paymentMethod)) { paymentMethod = "cash"; if (paymentChoiceBtn != null) paymentChoiceBtn.setText("💵 Tunai"); }
+                if ("balance".equals(paymentMethod)) { paymentMethod = "cash"; if (paymentChoiceBtn != null) paymentChoiceBtn.setText("💵 Pembayaran: Tunai"); }
             }, c.get(java.util.Calendar.HOUR_OF_DAY), c.get(java.util.Calendar.MINUTE), true).show();
         }, c.get(java.util.Calendar.YEAR), c.get(java.util.Calendar.MONTH), c.get(java.util.Calendar.DAY_OF_MONTH)).show();
     }
@@ -836,7 +856,7 @@ class PassengerTransportActivityLegacyCore extends Activity {
                 .setTitle("Pilih metode pembayaran")
                 .setSingleChoiceItems(methods, checked, (dialog, which) -> {
                     paymentMethod = which == 1 ? "balance" : "cash";
-                    paymentChoiceBtn.setText(which == 1 ? "💳 Cara Bayar: Transiva Pay" : "💵 Cara Bayar: Tunai");
+                    paymentChoiceBtn.setText(which == 1 ? "💳 Pembayaran: Transiva Pay" : "💵 Pembayaran: Tunai");
                     updateTransPayOnlyFeatures();
                     if (!"balance".equals(paymentMethod) && splitBillManager != null) splitBillManager.clear();
                     dialog.dismiss();
@@ -1861,7 +1881,7 @@ class PassengerTransportActivityLegacyCore extends Activity {
         ordering = true;
         setLoading(true);
         orderBtn.setEnabled(false);
-        orderBtn.setText("Proses...");
+        orderBtn.setText("Mencari driver...");
 
         featureRuntime.newThread(() -> {
             try {
@@ -2003,8 +2023,8 @@ class PassengerTransportActivityLegacyCore extends Activity {
             if (paymentSummaryText != null) {
                 paymentSummaryText.setText("Pilih titik penjemputan dan pengantaran");
             }
-            if (distanceInfoText != null) distanceInfoText.setText("⌁  Jarak : -");
-            if (durationInfoText != null) durationInfoText.setText("◷  Waktu : -");
+            if (distanceInfoText != null) distanceInfoText.setText(serviceName() + " • Jarak -");
+            if (durationInfoText != null) durationInfoText.setText("Estimasi waktu -");
             if (finalPriceText != null) finalPriceText.setText("Rp -");
             if (originalPriceText != null) originalPriceText.setVisibility(View.GONE);
             if (discountInfoText != null) discountInfoText.setVisibility(View.GONE);
@@ -2027,16 +2047,8 @@ class PassengerTransportActivityLegacyCore extends Activity {
                 (fallbackKm / 25.0) * 60.0
         );
 
-        distanceInfoText.setText(String.format(
-                new Locale("id", "ID"),
-                "⌁  Jarak : %.1f km",
-                fallbackKm
-        ));
-        durationInfoText.setText(String.format(
-                new Locale("id", "ID"),
-                "◷  Waktu : %.0f menit",
-                fallbackMinutes
-        ));
+        distanceInfoText.setText(String.format(new Locale("id", "ID"), serviceName() + " • %.1f km", fallbackKm));
+        durationInfoText.setText(String.format(new Locale("id", "ID"), "± %.0f menit • estimasi perjalanan", fallbackMinutes));
         finalPriceText.setText("Menghitung...");
         finalPriceText.setTextColor(Color.parseColor("#64748B"));
         paymentSummaryText.setText("Mengambil tarif dari database...");
@@ -2121,16 +2133,8 @@ class PassengerTransportActivityLegacyCore extends Activity {
                     distanceKm = Math.max(0.1, distanceKm);
                     durationMinutes = Math.max(1.0, durationMinutes);
 
-                    distanceInfoText.setText(String.format(
-                            new Locale("id", "ID"),
-                            "⌁  Jarak : %.1f km",
-                            distanceKm
-                    ));
-                    durationInfoText.setText(String.format(
-                            new Locale("id", "ID"),
-                            "◷  Waktu : %.0f menit",
-                            durationMinutes
-                    ));
+                    distanceInfoText.setText(String.format(new Locale("id", "ID"), serviceName() + " • %.1f km", distanceKm));
+                    durationInfoText.setText(String.format(new Locale("id", "ID"), "± %.0f menit • estimasi perjalanan", durationMinutes));
 
                     if (total <= 0) {
                         paymentSummaryText.setText("Tarif database tidak valid");
@@ -2168,11 +2172,9 @@ class PassengerTransportActivityLegacyCore extends Activity {
                     String label = paymentMethod.equals("balance")
                             ? "Transiva Pay"
                             : "Tunai";
-                    paymentChoiceBtn.setText(
-                            paymentMethod.equals("balance")
-                                    ? "💳 Transiva Pay"
-                                    : "💵 Tunai"
-                    );
+                    paymentChoiceBtn.setText(paymentMethod.equals("balance")
+                            ? "💳 Pembayaran: Transiva Pay"
+                            : "💵 Pembayaran: Tunai");
 
                     String info = label;
                     if (paymentMethod.equals("balance")) {
@@ -2234,12 +2236,17 @@ class PassengerTransportActivityLegacyCore extends Activity {
                         ? "Rute siap"
                         : (pickupMode ? "Cek titik jemput" : "Cari atau pilih tujuan")
         );
+        if (tripRouteSummaryText != null && routeComplete) {
+            String from = compactDisplayName(firstNonEmpty(pickupAddress, "Lokasi jemput"));
+            String to = compactDisplayName(firstNonEmpty(deliveryAddress, "Tujuan"));
+            tripRouteSummaryText.setText(from + "  →  " + to);
+        }
 
         pickupBtn.setAlpha(pickupMode ? 1f : .80f);
         deliveryBtn.setAlpha(pickupMode ? .80f : 1f);
         if (mapView != null) {
             if (routeComplete) {
-                mapView.showOrderAction(true, "LIHAT HARGA / PESAN");
+                mapView.showOrderAction(false, "");
             } else {
                 mapView.setSelectionMode(pickupMode ? "pickup" : "delivery");
                 mapView.showCenterPin(true);
@@ -2319,6 +2326,12 @@ class PassengerTransportActivityLegacyCore extends Activity {
             toastDialog("Sedang menghitung harga perjalanan. Coba lagi sebentar.");
             return;
         }
+        if (wizardStepText != null) {
+            String green = "#16A34A";
+            wizardStepText.setText(android.text.Html.fromHtml("<font color='"+green+"'><b>✓ Tujuan</b></font> &nbsp;›&nbsp; <font color='"+green+"'><b>✓ Harga</b></font> &nbsp;›&nbsp; <font color='"+green+"'><b>✓ Pesan</b></font>"));
+            wizardStepText.setScaleX(.96f); wizardStepText.setScaleY(.96f);
+            wizardStepText.animate().scaleX(1f).scaleY(1f).setDuration(180L).start();
+        }
         createOrder();
     }
 
@@ -2346,7 +2359,7 @@ class PassengerTransportActivityLegacyCore extends Activity {
             orderBtn.setText("LIHAT HARGA");
         } else {
             if (wizardStepText != null) setWizardProgress(2);
-            orderBtn.setText("PESAN SEKARANG");
+            orderBtn.setText("PESAN " + serviceName().toUpperCase(Locale.US) + " • " + finalPriceText.getText().toString());
         }
     }
 

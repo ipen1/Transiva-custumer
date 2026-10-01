@@ -2423,10 +2423,12 @@ class CustomerDashboardActivityScreenCore extends Activity
             });
         }).start();
 
-        ensurePlacesReady();
-        resolvePopularDistanceRealtime("Alfamidi", lat, lng, fallbackAlfamidiDistance);
-        resolvePopularDistanceRealtime("SPBU", lat, lng, fallbackSpbuDistance);
-        resolvePopularDistanceRealtime("Pasar", lat, lng, fallbackPasarDistance);
+        // 5.6 API Saver: dashboard tidak perlu membakar Places Autocomplete + FetchPlace
+        // setiap kali dibuka. Gunakan Geocoder lokal untuk kartu informatif; Places disimpan
+        // untuk flow inti pencarian TransRide/TransCar.
+        resolvePopularDistanceGeocoderFallback("Alfamidi", lat, lng, fallbackAlfamidiDistance);
+        resolvePopularDistanceGeocoderFallback("SPBU", lat, lng, fallbackSpbuDistance);
+        resolvePopularDistanceGeocoderFallback("Pasar", lat, lng, fallbackPasarDistance);
     }
 
     private void ensurePlacesReady() {

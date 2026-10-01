@@ -118,6 +118,18 @@ class PassengerTransportActivityLegacyCore extends Activity {
     protected volatile String pendingDeliverySubtitle = "";
     // 2.4: guards reverse-geocode/Places callbacks so an older map position can never overwrite the latest candidate.
     protected volatile long destinationResolveGeneration = 0L;
+
+    // 2.5 API Saver: keep Google Places traffic intentionally low.
+    protected static final int PLACES_MIN_QUERY_CHARS = 3;
+    protected static final long PLACES_DEBOUNCE_MS = 700L;
+    protected static final long PLACES_ERROR_COOLDOWN_MS = 30L * 60L * 1000L;
+    protected volatile long placesCooldownUntilMs = 0L;
+    protected final java.util.LinkedHashMap<String, java.util.List<AutocompletePrediction>> placesPredictionCache = new java.util.LinkedHashMap<String, java.util.List<AutocompletePrediction>>() {
+        @Override protected boolean removeEldestEntry(java.util.Map.Entry<String, java.util.List<AutocompletePrediction>> e) { return size() > 24; }
+    };
+    protected final java.util.LinkedHashMap<String, String> nearbyLandmarkCache = new java.util.LinkedHashMap<String, String>() {
+        @Override protected boolean removeEldestEntry(java.util.Map.Entry<String, String> e) { return size() > 48; }
+    };
     protected boolean ordering = false;
     protected String mode = "pickup";
 
@@ -977,7 +989,7 @@ class PassengerTransportActivityLegacyCore extends Activity {
         final AutocompleteSessionToken token=AutocompleteSessionToken.newInstance();
         search.addTextChangedListener(new TextWatcher(){ public void beforeTextChanged(CharSequence c,int st,int count,int after){} public void onTextChanged(CharSequence c,int st,int before,int count){
             if(pending[0]!=null) debounce.removeCallbacks(pending[0]); final String q=c.toString().trim();
-            pending[0]=()->{ if(q.length()<2){results.removeAllViews(); results.addView(hint); return;} loadSmartPredictions(q, token, results, overlay); }; debounce.postDelayed(pending[0],450);
+            pending[0]=()->{ if(q.length()<PLACES_MIN_QUERY_CHARS){results.removeAllViews(); results.addView(hint); return;} loadSmartPredictions(q, token, results, overlay); }; debounce.postDelayed(pending[0],PLACES_DEBOUNCE_MS);
         } public void afterTextChanged(Editable e){} });
         // Animated contextual search hint, Grab-style: changes only while the field is empty.
         final String[] smartHints = "pickup".equals(mode)
@@ -1004,92 +1016,61 @@ class PassengerTransportActivityLegacyCore extends Activity {
 
     protected void loadSmartPredictions(String query, AutocompleteSessionToken token, LinearLayout results, FrameLayout overlay){
         try {
+            final String normalized = query == null ? "" : query.trim().toLowerCase(new Locale("id","ID"));
+            if (normalized.length() < PLACES_MIN_QUERY_CHARS) return;
+            if (System.currentTimeMillis() < placesCooldownUntilMs) {
+                showPlacesFriendlyFallback(results, "Pencarian tempat sedang dibatasi. Pilih tujuan melalui peta atau tempel link Google Maps.");
+                return;
+            }
+            java.util.List<AutocompletePrediction> cached = placesPredictionCache.get(normalized);
+            if (cached != null) {
+                java.util.LinkedHashMap<String,AutocompletePrediction> map = new java.util.LinkedHashMap<>();
+                for (AutocompletePrediction ap : cached) if (ap != null && ap.getPlaceId()!=null) map.put(ap.getPlaceId(), ap);
+                renderSmartPredictions(Places.createClient(this), map, token, currentSearchOriginLat(), currentSearchOriginLng(), results, overlay);
+                return;
+            }
             final PlacesClient client = Places.createClient(this);
-
-            // Origin pencarian mengikuti titik yang paling relevan dan paling baru.
-            // Untuk mencari tujuan: pickup -> marker/pusat peta terbaru -> delivery lama.
-            // Untuk mencari pickup: marker/pusat peta terbaru -> delivery yang sudah dipilih.
-            double olat = 0d, olng = 0d;
-            if ("delivery".equals(mode) && validCoord(pickupLat, pickupLng)) {
-                olat = pickupLat; olng = pickupLng;
-            } else if (validCoord(pickLat, pickLng)) {
-                olat = pickLat; olng = pickLng;
-            } else if (validCoord(centerLat, centerLng)) {
-                olat = centerLat; olng = centerLng;
-            } else if (validCoord(deliveryLat, deliveryLng)) {
-                olat = deliveryLat; olng = deliveryLng;
+            final double olat=currentSearchOriginLat(), olng=currentSearchOriginLng();
+            FindAutocompletePredictionsRequest.Builder b = FindAutocompletePredictionsRequest.builder()
+                    .setQuery(query.trim()).setCountries(java.util.Arrays.asList("ID")).setSessionToken(token);
+            if(validCoord(olat,olng)){
+                b.setOrigin(new LatLng(olat,olng));
+                double radiusKm=25d, latDelta=radiusKm/111.32d;
+                double lngDelta=latDelta/Math.max(0.25d,Math.abs(Math.cos(Math.toRadians(olat))));
+                b.setLocationBias(RectangularBounds.newInstance(new LatLng(olat-latDelta,olng-lngDelta),new LatLng(olat+latDelta,olng+lngDelta)));
             }
-
-            // Fallback ke lokasi perangkat bila titik aplikasi belum valid.
-            if (!validCoord(olat, olng)) {
-                try {
-                    if (checkSelfPermissionCompat(Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED ||
-                            checkSelfPermissionCompat(Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
-                        android.location.LocationManager lm=(android.location.LocationManager)getSystemService(LOCATION_SERVICE);
-                        Location best=null;
-                        for(String provider:lm.getProviders(true)){
-                            try {
-                                Location l=lm.getLastKnownLocation(provider);
-                                if(l!=null && (best==null || l.getTime()>best.getTime() || l.getAccuracy()<best.getAccuracy())) best=l;
-                            } catch(Exception ignored) {}
-                        }
-                        if(best!=null){ olat=best.getLatitude(); olng=best.getLongitude(); }
-                    }
-                } catch(Exception ignored) {}
-            }
-
-            final double originLat=olat, originLng=olng;
-            final java.util.LinkedHashMap<String,AutocompletePrediction> found=new java.util.LinkedHashMap<>();
-            // Strategi seperti aplikasi ride-hailing: mulai sangat lokal supaya bisnis/POI kecil ikut naik,
-            // lalu perluas otomatis bila hasil lokal belum cukup. 50 km adalah jangkauan tampilan maksimum.
-            final double[] radiiKm = new double[]{5d, 15d, 30d, 50d, 0d}; // 0 = fallback Indonesia tanpa bias
-            findPredictionsProgressively(client, query, token, originLat, originLng, radiiKm, 0, found, results, overlay);
-        } catch(Exception e){ toastDialog(placesErrorDetail("AUTOCOMPLETE_SETUP", e)); }
+            client.findAutocompletePredictions(b.build()).addOnSuccessListener(r -> {
+                java.util.List<AutocompletePrediction> list=new java.util.ArrayList<>(r.getAutocompletePredictions());
+                placesPredictionCache.put(normalized,list);
+                java.util.LinkedHashMap<String,AutocompletePrediction> found=new java.util.LinkedHashMap<>();
+                for(AutocompletePrediction ap:list) if(ap.getPlaceId()!=null) found.put(ap.getPlaceId(),ap);
+                renderSmartPredictions(client,found,token,olat,olng,results,overlay);
+            }).addOnFailureListener(e -> {
+                placesErrorDetail("AUTOCOMPLETE", e); // Logcat only; never expose credentials/diagnostics to customer.
+                if(e instanceof ApiException) placesCooldownUntilMs=System.currentTimeMillis()+PLACES_ERROR_COOLDOWN_MS;
+                showPlacesFriendlyFallback(results,"Pencarian tempat sedang tidak tersedia. Pilih di peta atau tempel link Google Maps.");
+            });
+        } catch(Exception e){
+            placesErrorDetail("AUTOCOMPLETE_SETUP", e);
+            showPlacesFriendlyFallback(results,"Pencarian tempat sedang tidak tersedia. Pilih di peta atau tempel link Google Maps.");
+        }
     }
 
-    protected void findPredictionsProgressively(PlacesClient client, String query, AutocompleteSessionToken token,
-                                                  double olat, double olng, double[] radiiKm, int step,
-                                                  java.util.LinkedHashMap<String,AutocompletePrediction> found,
-                                                  LinearLayout results, FrameLayout overlay) {
-        if (step >= radiiKm.length) {
-            renderSmartPredictions(client, found, token, olat, olng, results, overlay);
-            return;
-        }
-        FindAutocompletePredictionsRequest.Builder b = FindAutocompletePredictionsRequest.builder()
-                .setQuery(query).setCountries(java.util.Arrays.asList("ID")).setSessionToken(token);
-        if (validCoord(olat,olng)) {
-            b.setOrigin(new LatLng(olat,olng));
-            double radiusKm=radiiKm[step];
-            if(radiusKm>0d){
-                double latDelta=radiusKm/111.32d;
-                double cos=Math.cos(Math.toRadians(olat));
-                double lngDelta=latDelta/Math.max(0.25d,Math.abs(cos));
-                b.setLocationBias(RectangularBounds.newInstance(
-                        new LatLng(Math.max(-90d,olat-latDelta),Math.max(-180d,olng-lngDelta)),
-                        new LatLng(Math.min(90d,olat+latDelta),Math.min(180d,olng+lngDelta))));
-            }
-        }
-        client.findAutocompletePredictions(b.build()).addOnSuccessListener(r -> {
-            for(AutocompletePrediction ap:r.getAutocompletePredictions()){
-                String id=ap.getPlaceId();
-                if(id!=null && !found.containsKey(id)) found.put(id,ap);
-            }
-            // Autocomplete mengembalikan maksimal sedikit prediction per request. Jika hasil lokal sudah cukup,
-            // tampilkan segera; bila belum, perluas area otomatis tanpa membuat user mengetik ulang.
-            if(found.size()>=5 || step==radiiKm.length-1) {
-                renderSmartPredictions(client, found, token, olat, olng, results, overlay);
-            } else {
-                findPredictionsProgressively(client, query, token, olat, olng, radiiKm, step+1, found, results, overlay);
-            }
-        }).addOnFailureListener(e -> {
-            if(step < radiiKm.length-1) {
-                findPredictionsProgressively(client, query, token, olat, olng, radiiKm, step+1, found, results, overlay);
-            } else {
-                results.removeAllViews();
-                TextView er=text(placesErrorDetail("AUTOCOMPLETE", e),13,"#B91C1C",true);
-                er.setPadding(dp(12),dp(20),dp(12),dp(20)); results.addView(er);
-            }
-        });
+    protected double currentSearchOriginLat(){
+        if("delivery".equals(mode)&&validCoord(pickupLat,pickupLng)) return pickupLat;
+        if(validCoord(pickLat,pickLng)) return pickLat;
+        if(validCoord(centerLat,centerLng)) return centerLat;
+        return validCoord(deliveryLat,deliveryLng)?deliveryLat:0d;
+    }
+    protected double currentSearchOriginLng(){
+        if("delivery".equals(mode)&&validCoord(pickupLat,pickupLng)) return pickupLng;
+        if(validCoord(pickLat,pickLng)) return pickLng;
+        if(validCoord(centerLat,centerLng)) return centerLng;
+        return validCoord(deliveryLat,deliveryLng)?deliveryLng:0d;
+    }
+    protected void showPlacesFriendlyFallback(LinearLayout results,String message){
+        if(results==null)return; results.removeAllViews();
+        TextView er=text(message,14,"#64748B",false); er.setPadding(dp(12),dp(20),dp(12),dp(20)); results.addView(er);
     }
 
     protected void renderSmartPredictions(PlacesClient client,
@@ -1143,7 +1124,7 @@ class PassengerTransportActivityLegacyCore extends Activity {
                 if(mapView!=null){mapView.setDelivery(deliveryLat,deliveryLng,deliveryAddress);mapView.moveTo(deliveryLat,deliveryLng,16f);}
             }
             try{((android.view.ViewGroup)overlay.getParent()).removeView(overlay);}catch(Exception ignored){} hideKeyboard(); updateModeUI(); requestPaymentQuote();
-        }).addOnFailureListener(e->toastDialog(placesErrorDetail("FETCH_PLACE", e)));
+         }).addOnFailureListener(e->{ placesErrorDetail("FETCH_PLACE", e); toastDialog("Tempat belum dapat dibuka. Coba pilih hasil lain atau gunakan peta."); });
     }
 
     protected String placesErrorDetail(String stage, Exception e) {
@@ -1579,7 +1560,9 @@ class PassengerTransportActivityLegacyCore extends Activity {
     /** Cari landmark Google terdekat agar titik hasil geser peta mudah dipahami driver. */
     protected void resolveNearestGooglePlace(double lat, double lng, NearbyPlaceCallback callback) {
         try {
-            if (!Places.isInitialized()) { callback.onResult(""); return; }
+            if (!Places.isInitialized() || System.currentTimeMillis() < placesCooldownUntilMs) { callback.onResult(""); return; }
+            final String cacheKey=String.format(Locale.US,"%.4f,%.4f",lat,lng);
+            if(nearbyLandmarkCache.containsKey(cacheKey)){ callback.onResult(nearbyLandmarkCache.get(cacheKey)); return; }
             PlacesClient client = Places.createClient(this);
             java.util.List<Place.Field> fields = java.util.Arrays.asList(Place.Field.ID, Place.Field.NAME, Place.Field.LAT_LNG);
             SearchNearbyRequest request = SearchNearbyRequest.builder(CircularBounds.newInstance(new LatLng(lat, lng), 250.0), fields)
@@ -1593,8 +1576,13 @@ class PassengerTransportActivityLegacyCore extends Activity {
                     // A POI farther than ~120 m is often misleading for a driver's pickup/dropoff label.
                     if (d <= 120.0 && d < best) { best = d; bestName = name; }
                 }
+                nearbyLandmarkCache.put(cacheKey,bestName);
                 callback.onResult(bestName);
-            }).addOnFailureListener(error -> callback.onResult(""));
+            }).addOnFailureListener(error -> {
+                placesErrorDetail("NEARBY_LANDMARK", error);
+                if(error instanceof ApiException) placesCooldownUntilMs=System.currentTimeMillis()+PLACES_ERROR_COOLDOWN_MS;
+                callback.onResult("");
+            });
         } catch (Exception ignored) { callback.onResult(""); }
     }
 

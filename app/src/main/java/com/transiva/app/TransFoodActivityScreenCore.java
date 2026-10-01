@@ -63,6 +63,10 @@ class TransFoodActivityScreenCore extends Activity {
     protected int currentScreen = 0; // 0=home, 1=detail menu, 2=checkout
     protected String homeMode = "nearby";
     protected volatile boolean restaurantsLoadFinished = false;
+    protected boolean restaurantsLoading = false;
+    protected String foodLoadError = "";
+    protected int savedHomeScroll = 0;
+    protected ScrollView foodScroll;
 
     protected int userId = 0;
     protected String username = "User";
@@ -132,11 +136,12 @@ class TransFoodActivityScreenCore extends Activity {
         page = new FrameLayout(this);
         page.setBackgroundColor(Color.parseColor("#F7FAFF"));
         ScrollView scroll = new ScrollView(this);
+        foodScroll = scroll;
         scroll.setFillViewport(false);
         page.addView(scroll, new FrameLayout.LayoutParams(-1, -1));
         root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
-        root.setPadding(dp(16), dp(18), dp(16), dp(28));
+        root.setPadding(dp(14), dp(12), dp(14), dp(32));
         scroll.addView(root, new ScrollView.LayoutParams(-1, -2));
         progressBar = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
         progressBar.setVisibility(View.GONE);
@@ -154,6 +159,7 @@ class TransFoodActivityScreenCore extends Activity {
         activeRestaurant = null;
         buildTopBar("Transfood", "Makanan favorit, diantar lebih cepat", true);
         addPremiumHero();
+        addDeliveryLocationRow();
         addHomeSearchBar();
         addQuickMenus();
         addHomeSectionHeader();
@@ -162,37 +168,43 @@ class TransFoodActivityScreenCore extends Activity {
         homeResultsBox.setOrientation(LinearLayout.VERTICAL);
         root.addView(homeResultsBox, new LinearLayout.LayoutParams(-1, -2));
         renderHomeResults();
+        if (foodScroll != null && savedHomeScroll > 0) foodScroll.post(() -> foodScroll.scrollTo(0, savedHomeScroll));
     }
-
 
     protected void addPremiumHero() {
         LinearLayout hero = new LinearLayout(this);
         hero.setOrientation(LinearLayout.VERTICAL);
-        hero.setPadding(dp(20), dp(18), dp(20), dp(18));
-        hero.setBackground(roundGradient("#087BFF", "#0754D8", dp(24)));
-        hero.setElevation(dp(5));
-
-        TextView eyebrow = text("TRANSFOOD DELIVERY", 11, "#DDEEFF", true);
-        hero.addView(eyebrow);
-        TextView title = text("Lapar? Pesan yang enak sekarang.", 22, "#FFFFFF", true);
-        title.setPadding(0, dp(5), 0, 0);
+        hero.setPadding(dp(16), dp(12), dp(16), dp(12));
+        hero.setBackground(roundGradient("#087BFF", "#0754D8", dp(20)));
+        hero.setElevation(dp(3));
+        hero.addView(text("TRANSFOOD DELIVERY", 10, "#DDEEFF", true));
+        TextView title = text("Mau makan apa hari ini?", 19, "#FFFFFF", true);
+        title.setPadding(0, dp(3), 0, 0);
         hero.addView(title);
-        TextView sub = text("Pilihan merchant terbaik di sekitar kamu", 13, "#EAF4FF", false);
-        sub.setPadding(0, dp(6), 0, 0);
-        hero.addView(sub);
+        hero.addView(text("Temukan makanan enak di sekitarmu", 12, "#EAF4FF", false));
+        if (voucherCode != null && !voucherCode.trim().isEmpty()) {
+            TextView promo = text("Promo tersedia • " + voucherCode, 11, "#FFFFFF", true);
+            promo.setPadding(0, dp(5), 0, 0); hero.addView(promo);
+        }
+        addWithMargin(hero, 0, 0, 0, dp(10));
+    }
 
-        TextView badge = text("⚡ Antar cepat  •  Promo setiap hari", 12, "#0754D8", true);
-        badge.setPadding(dp(12), dp(8), dp(12), dp(8));
-        badge.setBackground(round("#FFFFFF", dp(16)));
-        LinearLayout.LayoutParams badgeLp = new LinearLayout.LayoutParams(-2, -2);
-        badgeLp.setMargins(0, dp(14), 0, 0);
-        hero.addView(badge, badgeLp);
-        addWithMargin(hero, 0, 0, 0, dp(14));
+    protected void addDeliveryLocationRow() {
+        LinearLayout row = new LinearLayout(this);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setPadding(dp(12), dp(9), dp(12), dp(9));
+        row.setBackground(roundStroke("#FFFFFF", "#D7E6F8", dp(14), 1));
+        String address = "";
+        try { address = getSharedPreferences("transiva", MODE_PRIVATE).getString("delivery_address", ""); } catch (Exception ignored) {}
+        TextView location = text("📍 Antar ke  •  " + firstNonEmpty(address, "Lokasi akun / titik antar"), 12, "#123B6B", true);
+        location.setSingleLine(true); location.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        row.addView(location, new LinearLayout.LayoutParams(-1, -2));
+        addWithMargin(row, 0, 0, 0, dp(10));
     }
 
     protected void addQuickMenus() {
         LinearLayout panel = card();
-        panel.setPadding(dp(10), dp(14), dp(10), dp(12));
+        panel.setPadding(dp(7), dp(7), dp(7), dp(7));
         LinearLayout row = new LinearLayout(this);
         row.setOrientation(LinearLayout.HORIZONTAL);
         row.setGravity(Gravity.CENTER);
@@ -200,8 +212,8 @@ class TransFoodActivityScreenCore extends Activity {
         addQuickMenu(row, "Terdekat", "ic_food_nearby", "nearby");
         addQuickMenu(row, "Diskon", "ic_food_discount", "discount");
         addQuickMenu(row, "Terbaru", "ic_food_new", "newest");
-        addQuickMenu(row, "Best", "ic_food_best", "best");
-        addWithMargin(panel, 0, 0, 0, dp(18));
+        addQuickMenu(row, "Favorit", "ic_food_best", "best");
+        addWithMargin(panel, 0, 0, 0, dp(12));
     }
 
     protected void addQuickMenu(LinearLayout row, String label, String drawableName, String mode) {
@@ -216,7 +228,7 @@ class TransFoodActivityScreenCore extends Activity {
         icon.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
         int id = getResources().getIdentifier(drawableName, "drawable", getPackageName());
         if (id != 0) icon.setImageResource(id);
-        item.addView(icon, new LinearLayout.LayoutParams(dp(58), dp(58)));
+        item.addView(icon, new LinearLayout.LayoutParams(dp(42), dp(42)));
 
         TextView name = text(label, 12, homeMode.equals(mode) ? "#087BFF" : "#183B66", true);
         name.setGravity(Gravity.CENTER);
@@ -224,7 +236,7 @@ class TransFoodActivityScreenCore extends Activity {
         item.addView(name, new LinearLayout.LayoutParams(-1, -2));
         item.setOnClickListener(v -> {
             homeMode = mode;
-            homeSearchQuery = "";
+            if (foodScroll != null) savedHomeScroll = foodScroll.getScrollY();
             showRestaurantList();
         });
         row.addView(item, new LinearLayout.LayoutParams(0, -2, 1));
@@ -259,12 +271,12 @@ class TransFoodActivityScreenCore extends Activity {
                 homeSearchQuery = s == null ? "" : s.toString();
                 if (homeSearchRunnable != null) mainHandler.removeCallbacks(homeSearchRunnable);
                 homeSearchRunnable = () -> renderHomeResults();
-                mainHandler.postDelayed(homeSearchRunnable, 120);
+                mainHandler.postDelayed(homeSearchRunnable, 280);
             }
             @Override public void afterTextChanged(Editable e) {}
         });
-        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, dp(58));
-        lp.setMargins(0, 0, 0, dp(16));
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, dp(48));
+        lp.setMargins(0, 0, 0, dp(12));
         root.addView(search, lp);
     }
 
@@ -273,9 +285,17 @@ class TransFoodActivityScreenCore extends Activity {
         homeResultsBox.removeAllViews();
 
         if (restaurants.isEmpty()) {
-            addStatusTo(homeResultsBox, restaurantsLoadFinished
-                    ? "Belum ada makanan atau merchant yang tersedia di area kamu saat ini."
-                    : "Memuat merchant...");
+            String msg = !restaurantsLoadFinished ? "Menyiapkan merchant di sekitarmu..."
+                    : !foodLoadError.isEmpty() ? "Koneksi terganggu. Merchant belum berhasil dimuat."
+                    : "Belum ada merchant yang menerima pesanan di area ini.";
+            addStatusTo(homeResultsBox, msg);
+            if (restaurantsLoadFinished) {
+                TextView retry = text("↻ Coba lagi", 13, "#087BFF", true);
+                retry.setGravity(Gravity.CENTER); retry.setPadding(dp(12), dp(12), dp(12), dp(12));
+                retry.setBackground(roundStroke("#FFFFFF", "#D7E6F8", dp(14), 1));
+                retry.setOnClickListener(v -> loadRestaurants(true));
+                addWithMarginTo(homeResultsBox, retry, 0, dp(8), 0, dp(12));
+            }
             return;
         }
 
@@ -340,7 +360,7 @@ class TransFoodActivityScreenCore extends Activity {
         }
 
         if (restoHits.isEmpty()) {
-            addStatusTo(homeResultsBox, "Merchant tidak ditemukan untuk: " + homeSearchQuery);
+            addStatusTo(homeResultsBox, q.isEmpty() ? "Belum ada merchant untuk filter ini." : "Merchant tidak ditemukan untuk: " + homeSearchQuery);
         } else {
             addRestaurantGrid(homeResultsBox, restoHits);
         }
@@ -1063,7 +1083,9 @@ class TransFoodActivityScreenCore extends Activity {
 
     protected void loadRestaurants() { loadRestaurants(true); }
     protected void loadRestaurants(boolean showLoading) {
-        if (showLoading) { restaurantsLoadFinished = false; setLoading(true); }
+        if (restaurantsLoading) return;
+        restaurantsLoading = true;
+        if (showLoading) { restaurantsLoadFinished = false; foodLoadError = ""; renderHomeResults(); }
         featureRuntime.execute(() -> {
             try {
                 JSONObject res = getJson(BASE_URL + "server/get_food_restaurants.php?user_id=" + Uri.encode(String.valueOf(userId)) + "&v=" + System.currentTimeMillis());
@@ -1072,11 +1094,11 @@ class TransFoodActivityScreenCore extends Activity {
                 if (res.optBoolean("success", false) && arr != null) {
                     for (int i = 0; i < arr.length(); i++) restaurants.add(arr.getJSONObject(i));
                     restaurantsLoadFinished = true;
-                    featureRuntime.post(mainHandler, () -> { if (showLoading) setLoading(false); if (activeRestaurant == null) showRestaurantList(); loadAllMenuIndex(); });
+                    featureRuntime.post(mainHandler, () -> { restaurantsLoading = false; foodLoadError = ""; if (activeRestaurant == null) { if (showLoading) showRestaurantList(); else renderHomeResults(); } loadAllMenuIndex(); });
                 } else throw new Exception(firstNonEmpty(res.optString("message"), "Gagal memuat merchant"));
             } catch (Exception e) {
                 restaurantsLoadFinished = true;
-                featureRuntime.post(mainHandler, () -> { if (showLoading) { setLoading(false); root.removeAllViews(); buildTopBar("Trans Food", "", true); addStatus("Koneksi gagal memuat merchant"); showInfo("Gagal", e.getMessage()); } });
+                featureRuntime.post(mainHandler, () -> { restaurantsLoading = false; foodLoadError = "network"; if (activeRestaurant == null) renderHomeResults(); });
             }
         });
     }

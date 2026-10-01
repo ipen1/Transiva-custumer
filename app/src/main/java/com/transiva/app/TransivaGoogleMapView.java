@@ -136,19 +136,8 @@ public final class TransivaGoogleMapView extends FrameLayout implements OnMapRea
             lp.bottomMargin = h / 2;
             addView(centerPin, lp);
 
-            centerLocationCard = new TextView(context);
-            centerLocationCard.setText("Mencari lokasi…");
-            centerLocationCard.setTextColor(Color.parseColor("#0B3A78"));
-            centerLocationCard.setTextSize(12);
-            centerLocationCard.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
-            centerLocationCard.setGravity(Gravity.START | Gravity.CENTER_VERTICAL);
-            centerLocationCard.setPadding(dp(12), dp(8), dp(12), dp(8));
-            centerLocationCard.setBackground(actionBackground("#FFFFFF"));
-            centerLocationCard.setElevation(dp(5));
-            LayoutParams infoLp = new LayoutParams(Math.min(dp(290), getResources().getDisplayMetrics().widthPixels - dp(48)), LayoutParams.WRAP_CONTENT);
-            infoLp.gravity = Gravity.CENTER;
-            infoLp.topMargin = dp(112);
-            addView(centerLocationCard, infoLp);
+            // 2.2: preview card di dalam peta dihapus; kandidat lokasi ditampilkan pada kartu Tujuan di atas peta.
+            centerLocationCard = null;
 
             centerAction = new TextView(context);
             centerAction.setText("Jemput di lokasi ini");

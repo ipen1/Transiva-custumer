@@ -109,6 +109,10 @@ class PassengerTransportActivityLegacyCore extends Activity {
     protected ProgressBar progressBar;
 
     protected boolean mapReady = false;
+    // 2.2: preview lokasi peta terpisah dari tujuan yang sudah dikonfirmasi.
+    protected volatile boolean deliverySelectionLocked = false;
+    protected volatile String pendingDeliveryTitle = "";
+    protected volatile String pendingDeliverySubtitle = "";
     protected boolean ordering = false;
     protected String mode = "pickup";
 
@@ -350,19 +354,25 @@ class PassengerTransportActivityLegacyCore extends Activity {
         });
         mapView.setGestureListener(new TransivaGoogleMapView.GestureListener() {
             @Override public void onGestureStart() {
-                if (mapView != null) mapView.setCenterLocationPreview("Mencari lokasi…", "", true);
+                // Setelah tujuan dikonfirmasi, menggeser peta tidak boleh mengubah nama tujuan.
+                if (deliverySelectionLocked) return;
+                pendingDeliveryTitle = ""; pendingDeliverySubtitle = "";
+                if (deliveryBtn != null) deliveryBtn.setText("●  Mau ke mana?\nMencari lokasi…");
             }
             @Override public void onGestureEnd() {
+                if (deliverySelectionLocked) return;
                 final double lat = pickLat, lng = pickLng;
                 if (!validCoord(lat, lng)) return;
                 featureRuntime.newThread(() -> {
                     final String road = reverseAddress(lat, lng);
                     featureRuntime.post(mainHandler, () -> resolveNearestGooglePlace(lat, lng, googleName -> {
-                        if (destroyed || mapView == null) return;
+                        if (destroyed || deliverySelectionLocked) return;
                         String landmark = firstNonEmpty(googleName, findNearestPlaceName(lat, lng), "Lokasi dipilih");
                         String title = landmark.startsWith("Dekat ") ? landmark : "Dekat " + landmark;
                         String subtitle = compactDisplayName(road);
-                        mapView.setCenterLocationPreview(title, subtitle, false);
+                        pendingDeliveryTitle = title;
+                        pendingDeliverySubtitle = subtitle;
+                        if (deliveryBtn != null) deliveryBtn.setText("●  Mau ke mana?\nKe " + title + "?");
                     }));
                 }).start();
             }
@@ -371,6 +381,10 @@ class PassengerTransportActivityLegacyCore extends Activity {
         mapView.setCenterActionListener(() -> {
             if (selectingWaypoint) {
                 addWaypointFromCenter();
+                return;
+            }
+            if (!deliverySelectionLocked && "delivery".equals(mode) && validCoord(pickLat, pickLng)) {
+                confirmPendingDeliveryFromMap();
                 return;
             }
             if (validCoord(pickupLat, pickupLng) && validCoord(deliveryLat, deliveryLng)) handleWizardPrimaryAction();
@@ -1090,7 +1104,7 @@ class PassengerTransportActivityLegacyCore extends Activity {
                 pickupText.setText("Penjemputan: "+address); pickupBtn.setText("●  Lokasi Jemput\n"+shortAddress(address));
                 if(mapView!=null){mapView.setPickup(pickupLat,pickupLng,pickupAddress);mapView.moveTo(pickupLat,pickupLng,16f);}
             } else {
-                deliveryLat=pt.latitude; deliveryLng=pt.longitude; deliveryAddress=address;
+                deliveryLat=pt.latitude; deliveryLng=pt.longitude; deliveryAddress=address; deliverySelectionLocked=true;
                 deliveryText.setText("Pengantaran: "+address); deliveryBtn.setText("●  Mau ke mana?\n"+shortAddress(address));
                 if(mapView!=null){mapView.setDelivery(deliveryLat,deliveryLng,deliveryAddress);mapView.moveTo(deliveryLat,deliveryLng,16f);}
             }
@@ -1242,6 +1256,7 @@ class PassengerTransportActivityLegacyCore extends Activity {
         } else {
             deliveryLat = 0;
             deliveryLng = 0;
+            deliverySelectionLocked = false; pendingDeliveryTitle = ""; pendingDeliverySubtitle = "";
             if (mapView != null) mapView.clearDelivery();
         }
         updateModeUI();
@@ -1249,6 +1264,29 @@ class PassengerTransportActivityLegacyCore extends Activity {
 
 
 
+
+    /** Mengunci kandidat tujuan peta. Nama/koordinat tidak lagi mengikuti gesture setelah dikonfirmasi. */
+    protected void confirmPendingDeliveryFromMap() {
+        final double lat = validCoord(pickLat, pickLng) ? pickLat : centerLat;
+        final double lng = validCoord(pickLat, pickLng) ? pickLng : centerLng;
+        if (!validCoord(lat, lng)) return;
+        String title = firstNonEmpty(pendingDeliveryTitle, "Lokasi dipilih");
+        String subtitle = firstNonEmpty(pendingDeliverySubtitle, "");
+        deliveryLat = lat; deliveryLng = lng;
+        deliveryAddress = subtitle.isEmpty() ? title : title + ", " + subtitle;
+        deliverySelectionLocked = true;
+        deliveryText.setText("Pengantaran: " + deliveryAddress);
+        deliveryBtn.setText("●  Tujuan\n" + title + (subtitle.isEmpty() ? "" : "  •  " + subtitle));
+        deliveryBtn.setScaleX(0.97f); deliveryBtn.setScaleY(0.97f); deliveryBtn.setAlpha(0.72f);
+        deliveryBtn.animate().scaleX(1f).scaleY(1f).alpha(1f).setDuration(260L).start();
+        if (mapView != null) {
+            mapView.setDelivery(deliveryLat, deliveryLng, deliveryAddress);
+            mapView.showCenterPin(false);
+        }
+        setWizardProgress(1);
+        updateModeUI();
+        requestPaymentQuote();
+    }
 
     protected void setPointFromCenter() {
         double selectedLat = validCoord(pickLat, pickLng) ? pickLat : centerLat;

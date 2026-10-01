@@ -13,6 +13,8 @@ import android.graphics.Typeface;
 import android.graphics.Paint;
 import android.graphics.drawable.GradientDrawable;
 import android.location.Location;
+import android.location.Address;
+import android.location.Geocoder;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
@@ -67,6 +69,7 @@ import java.net.HttpURLConnection;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.util.Locale;
+import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 class PassengerTransportActivityLegacyCore extends Activity {
@@ -113,6 +116,8 @@ class PassengerTransportActivityLegacyCore extends Activity {
     protected volatile boolean deliverySelectionLocked = false;
     protected volatile String pendingDeliveryTitle = "";
     protected volatile String pendingDeliverySubtitle = "";
+    // 2.4: guards reverse-geocode/Places callbacks so an older map position can never overwrite the latest candidate.
+    protected volatile long destinationResolveGeneration = 0L;
     protected boolean ordering = false;
     protected String mode = "pickup";
 
@@ -356,6 +361,7 @@ class PassengerTransportActivityLegacyCore extends Activity {
             @Override public void onGestureStart() {
                 // Setelah tujuan dikonfirmasi, menggeser peta tidak boleh mengubah nama tujuan.
                 if (deliverySelectionLocked) return;
+                destinationResolveGeneration++;
                 pendingDeliveryTitle = ""; pendingDeliverySubtitle = "";
                 if (deliveryBtn != null) deliveryBtn.setText("●  Mau ke mana?\nMencari lokasi…");
             }
@@ -363,13 +369,21 @@ class PassengerTransportActivityLegacyCore extends Activity {
                 if (deliverySelectionLocked) return;
                 final double lat = pickLat, lng = pickLng;
                 if (!validCoord(lat, lng)) return;
+                final long generation = ++destinationResolveGeneration;
                 featureRuntime.newThread(() -> {
                     final String road = reverseAddress(lat, lng);
+                    final String admin = buildAdministrativeFallback(lat, lng);
                     featureRuntime.post(mainHandler, () -> resolveNearestGooglePlace(lat, lng, googleName -> {
-                        if (destroyed || deliverySelectionLocked) return;
-                        String landmark = firstNonEmpty(googleName, findNearestPlaceName(lat, lng), "Lokasi dipilih");
-                        String title = landmark.startsWith("Dekat ") ? landmark : "Dekat " + landmark;
+                        if (destroyed || deliverySelectionLocked || generation != destinationResolveGeneration) return;
+                        String localName = findNearestPlaceName(lat, lng);
+                        String landmark = cleanLandmarkName(firstNonEmpty(googleName, localName, ""));
+                        String title;
+                        if (!landmark.isEmpty()) title = "Dekat " + landmark;
+                        else if (!admin.isEmpty()) title = "Dekat " + admin;
+                        else if (!road.isEmpty()) title = compactDisplayName(road);
+                        else title = String.format(Locale.US, "%.5f, %.5f", lat, lng);
                         String subtitle = compactDisplayName(road);
+                        if (subtitle.equalsIgnoreCase(title) || (!landmark.isEmpty() && subtitle.toLowerCase(Locale.ROOT).contains(landmark.toLowerCase(Locale.ROOT)))) subtitle = admin;
                         pendingDeliveryTitle = title;
                         pendingDeliverySubtitle = subtitle;
                         if (deliveryBtn != null) deliveryBtn.setText("●  Mau ke mana?\nKe " + title + "?");
@@ -1290,7 +1304,7 @@ class PassengerTransportActivityLegacyCore extends Activity {
         final double lat = validCoord(pickLat, pickLng) ? pickLat : centerLat;
         final double lng = validCoord(pickLat, pickLng) ? pickLng : centerLng;
         if (!validCoord(lat, lng)) return;
-        String title = firstNonEmpty(pendingDeliveryTitle, "Lokasi dipilih");
+        String title = firstNonEmpty(pendingDeliveryTitle, buildAdministrativeFallback(lat, lng), compactDisplayName(reverseAddress(lat, lng)), String.format(Locale.US, "%.5f, %.5f", lat, lng));
         String subtitle = firstNonEmpty(pendingDeliverySubtitle, "");
         deliveryLat = lat; deliveryLng = lng;
         deliveryAddress = subtitle.isEmpty() ? title : title + ", " + subtitle;
@@ -1571,16 +1585,56 @@ class PassengerTransportActivityLegacyCore extends Activity {
             SearchNearbyRequest request = SearchNearbyRequest.builder(CircularBounds.newInstance(new LatLng(lat, lng), 250.0), fields)
                     .setMaxResultCount(10).build();
             client.searchNearby(request).addOnSuccessListener(response -> {
-                String bestName = ""; double best = 251.0;
+                String bestName = ""; double best = 121.0;
                 for (Place place : response.getPlaces()) {
-                    LatLng point = place.getLatLng(); String name = place.getName();
-                    if (point == null || name == null || name.trim().isEmpty()) continue;
+                    LatLng point = place.getLatLng(); String name = cleanLandmarkName(place.getName());
+                    if (point == null || name.isEmpty()) continue;
                     double d = distanceMeter(lat, lng, point.latitude, point.longitude);
-                    if (d < best) { best = d; bestName = name.trim(); }
+                    // A POI farther than ~120 m is often misleading for a driver's pickup/dropoff label.
+                    if (d <= 120.0 && d < best) { best = d; bestName = name; }
                 }
                 callback.onResult(bestName);
             }).addOnFailureListener(error -> callback.onResult(""));
         } catch (Exception ignored) { callback.onResult(""); }
+    }
+
+    /** Removes placeholder/generic names that must never be sent to drivers. */
+    protected String cleanLandmarkName(String value) {
+        String v = firstNonEmpty(value, "").trim();
+        if (v.isEmpty()) return "";
+        String n = v.toLowerCase(Locale.ROOT);
+        if (n.equals("lokasi dipilih") || n.equals("selected location") || n.equals("pin dipilih") ||
+                n.equals("lokasi") || n.equals("unnamed road") || n.equals("jalan tanpa nama")) return "";
+        if (n.startsWith("dekat ")) v = v.substring(6).trim();
+        return v;
+    }
+
+    /**
+     * Driver-safe fallback when Google has no useful POI near the pin.
+     * Prefer village/sub-locality + district/sub-admin-area + postal code instead of a generic placeholder.
+     */
+    protected String buildAdministrativeFallback(double lat, double lng) {
+        try {
+            if (!Geocoder.isPresent()) return "";
+            Geocoder g = new Geocoder(this, new Locale("id", "ID"));
+            List<Address> rows = g.getFromLocation(lat, lng, 1);
+            if (rows == null || rows.isEmpty()) return "";
+            Address a = rows.get(0);
+            String village = firstNonEmpty(a.getSubLocality(), a.getLocality(), "");
+            String district = firstNonEmpty(a.getSubAdminArea(), "");
+            String postal = firstNonEmpty(a.getPostalCode(), "");
+            StringBuilder out = new StringBuilder();
+            if (!village.isEmpty()) out.append(village);
+            if (!district.isEmpty() && !district.equalsIgnoreCase(village)) {
+                if (out.length() > 0) out.append(", ");
+                out.append(district);
+            }
+            if (!postal.isEmpty()) {
+                if (out.length() > 0) out.append(" • ");
+                out.append(postal);
+            }
+            return out.toString().trim();
+        } catch (Exception ignored) { return ""; }
     }
 
     protected void applyResolvedAddress(boolean isPickup, String address) {

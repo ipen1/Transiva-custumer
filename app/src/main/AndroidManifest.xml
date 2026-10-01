@@ -181,6 +181,7 @@
             android:screenOrientation="portrait"
             android:theme="@style/AppTheme" />
 
+        <activity android:name=".CustomerSupportActivity" android:exported="false" />
         <activity
             android:name=".CustomerNotificationActivity"
             android:exported="false"

@@ -432,8 +432,8 @@ class CustomerDashboardActivityScreenCore extends Activity
 
         LinearLayout.LayoutParams chatLp = new LinearLayout.LayoutParams(dp(40), dp(40));
         chatLp.setMargins(dp(8), 0, 0, 0);
-        View chat = headerAction("💬", "Chat", () ->
-                startActivity(new Intent(this, CustomerChatActivity.class)));
+        View chat = headerAction("🎧", "Customer Service", () ->
+                startActivity(new Intent(this, CustomerSupportActivity.class)));
         actions.addView(chat, chatLp);
 
         // Saldo + Royalti menyatu dengan card username agar ringkas, responsif, dan mudah dipindai.

@@ -107,6 +107,8 @@ class ProfileActivityScreenCore extends Activity {
     protected TextView deviceDetailView;
     protected TextView deviceStatusView;
     protected ProgressBar progress;
+    protected Button editProfileButton;
+    protected boolean profileEditMode;
 
     protected String userId = "";
     protected String username = "";
@@ -264,9 +266,9 @@ class ProfileActivityScreenCore extends Activity {
 
         root.setPadding(
                 dp(14),
+                dp(10),
                 dp(14),
-                dp(14),
-                dp(24)
+                dp(88)
         );
 
         scroll.addView(
@@ -334,7 +336,7 @@ class ProfileActivityScreenCore extends Activity {
         title.addView(
                 text(
                         "Akun",
-                        24,
+                        22,
                         "#0B3A78",
                         true
                 )
@@ -343,7 +345,7 @@ class ProfileActivityScreenCore extends Activity {
         title.addView(
                 text(
                         "Kelola identitas dan keamanan akun",
-                        11,
+                        10,
                         "#718096",
                         false
                 )
@@ -386,8 +388,8 @@ class ProfileActivityScreenCore extends Activity {
         row.addView(
                 refresh,
                 new LinearLayout.LayoutParams(
-                        dp(44),
-                        dp(44)
+                        dp(42),
+                        dp(42)
                 )
         );
 
@@ -411,10 +413,10 @@ class ProfileActivityScreenCore extends Activity {
         );
 
         card.setPadding(
-                dp(18),
-                dp(22),
-                dp(18),
-                dp(18)
+                dp(16),
+                dp(14),
+                dp(16),
+                dp(14)
         );
 
         card.setBackground(
@@ -435,9 +437,9 @@ class ProfileActivityScreenCore extends Activity {
 
         cardLp.setMargins(
                 0,
-                dp(14),
+                dp(10),
                 0,
-                dp(14)
+                dp(10)
         );
 
         root.addView(card, cardLp);
@@ -504,8 +506,8 @@ class ProfileActivityScreenCore extends Activity {
 
         FrameLayout.LayoutParams avatarLp =
                 new FrameLayout.LayoutParams(
-                        dp(92),
-                        dp(92)
+                        dp(72),
+                        dp(72)
                 );
 
         avatarLp.gravity =
@@ -519,15 +521,15 @@ class ProfileActivityScreenCore extends Activity {
         card.addView(
                 avatarFrame,
                 new LinearLayout.LayoutParams(
-                        dp(100),
-                        dp(100)
+                        dp(80),
+                        dp(80)
                 )
         );
 
         TextView photoOverlay =
                 text(
                         "✎",
-                        18,
+                        15,
                         "#FFFFFF",
                         true
                 );
@@ -537,8 +539,8 @@ class ProfileActivityScreenCore extends Activity {
 
         FrameLayout.LayoutParams overlayLp =
                 new FrameLayout.LayoutParams(
-                        dp(34),
-                        dp(34)
+                        dp(30),
+                        dp(30)
                 );
         overlayLp.gravity = Gravity.END | Gravity.BOTTOM;
         overlayLp.setMargins(0, 0, dp(2), dp(2));
@@ -554,7 +556,7 @@ class ProfileActivityScreenCore extends Activity {
         nameView =
                 text(
                         username,
-                        20,
+                        18,
                         "#FFFFFF",
                         true
                 );
@@ -568,7 +570,7 @@ class ProfileActivityScreenCore extends Activity {
         usernameView =
                 text(
                         "@" + username,
-                        11,
+                        10,
                         "#EAF5FF",
                         false
                 );
@@ -594,7 +596,7 @@ class ProfileActivityScreenCore extends Activity {
 
         badgesLp.setMargins(
                 0,
-                dp(12),
+                dp(8),
                 0,
                 0
         );
@@ -668,10 +670,10 @@ class ProfileActivityScreenCore extends Activity {
                 whiteCard();
 
         card.setPadding(
-                dp(16),
-                dp(16),
-                dp(16),
-                dp(16)
+                dp(14),
+                dp(14),
+                dp(14),
+                dp(12)
         );
 
         card.addView(
@@ -680,6 +682,12 @@ class ProfileActivityScreenCore extends Activity {
                         "Data utama akun Transiva"
                 )
         );
+
+        editProfileButton = outlineButton("Edit Profil");
+        editProfileButton.setOnClickListener(view -> setProfileEditMode(!profileEditMode));
+        LinearLayout.LayoutParams editLp = new LinearLayout.LayoutParams(-1, dp(44));
+        editLp.setMargins(0, 0, 0, dp(10));
+        card.addView(editProfileButton, editLp);
 
         card.addView(
                 label("Username")
@@ -793,7 +801,7 @@ class ProfileActivityScreenCore extends Activity {
         LinearLayout.LayoutParams addressLp =
                 new LinearLayout.LayoutParams(
                         -1,
-                        dp(94)
+                        dp(78)
                 );
 
         addressLp.setMargins(
@@ -836,12 +844,30 @@ class ProfileActivityScreenCore extends Activity {
                 buttonLp()
         );
 
+        setProfileEditMode(false);
+
         root.addView(
                 card,
                 sectionLp()
         );
     }
 
+
+    protected void setProfileEditMode(boolean enabled) {
+        profileEditMode = enabled;
+        if (usernameInput != null) usernameInput.setEnabled(enabled && !loading);
+        if (phoneInput != null) phoneInput.setEnabled(enabled && !loading);
+        if (addressInput != null) addressInput.setEnabled(enabled && !loading);
+        if (locationButton != null) {
+            locationButton.setVisibility(enabled ? View.VISIBLE : View.GONE);
+            locationButton.setEnabled(enabled && !loading);
+        }
+        if (saveButton != null) {
+            saveButton.setVisibility(enabled ? View.VISIBLE : View.GONE);
+            saveButton.setEnabled(enabled && !loading);
+        }
+        if (editProfileButton != null) editProfileButton.setText(enabled ? "Batal Edit" : "Edit Profil");
+    }
 
 
     protected void buildDeviceCard(
@@ -947,14 +973,23 @@ class ProfileActivityScreenCore extends Activity {
                                 | InputType.TYPE_TEXT_VARIATION_PASSWORD
                 );
 
+        passwordInput.setVisibility(View.GONE);
         card.addView(
                 passwordInput,
                 fieldLp()
         );
 
+        Button passwordToggle = outlineButton("🔐  Ubah Password                                      ›");
+        passwordToggle.setOnClickListener(view -> {
+            boolean show = passwordInput.getVisibility() != View.VISIBLE;
+            passwordInput.setVisibility(show ? View.VISIBLE : View.GONE);
+            if (show) { passwordInput.requestFocus(); }
+        });
+        card.addView(passwordToggle, buttonLp());
+
         Button changePinButton =
                 outlineButton(
-                        "Ubah PIN"
+                        "🔢  Ubah PIN                                             ›"
                 );
 
         changePinButton.setOnClickListener(
@@ -973,7 +1008,7 @@ class ProfileActivityScreenCore extends Activity {
 
         Button appSettings =
                 outlineButton(
-                        "Buka Pengaturan Aplikasi"
+                        "⚙  Pengaturan Aplikasi                                  ›"
                 );
 
         appSettings.setOnClickListener(
@@ -1001,7 +1036,7 @@ class ProfileActivityScreenCore extends Activity {
         );
 
         logoutButton =
-                dangerButton(
+                outlineButton(
                         "Keluar dari Akun"
                 );
 
@@ -1013,6 +1048,10 @@ class ProfileActivityScreenCore extends Activity {
                 logoutButton,
                 buttonLp()
         );
+
+        TextView dangerTitle = text("Zona berbahaya", 11, "#B91C1C", true);
+        dangerTitle.setPadding(dp(2), dp(8), 0, dp(7));
+        card.addView(dangerTitle);
 
         deleteAccountButton =
                 dangerButton(
@@ -2097,6 +2136,7 @@ class ProfileActivityScreenCore extends Activity {
 
                     passwordInput.setText("");
                     setLoading(false);
+                    setProfileEditMode(false);
 
                     if (forceAddressSetup && isValidDeliveryCoordinate(deliveryLat, deliveryLng)
                             && !first(address).trim().isEmpty()) {
@@ -2290,15 +2330,15 @@ class ProfileActivityScreenCore extends Activity {
         }
 
         if (usernameInput != null) {
-            usernameInput.setEnabled(!value);
+            usernameInput.setEnabled(!value && profileEditMode);
         }
 
         if (phoneInput != null) {
-            phoneInput.setEnabled(!value);
+            phoneInput.setEnabled(!value && profileEditMode);
         }
 
         if (addressInput != null) {
-            addressInput.setEnabled(!value);
+            addressInput.setEnabled(!value && profileEditMode);
         }
 
         if (passwordInput != null) {
@@ -2310,11 +2350,11 @@ class ProfileActivityScreenCore extends Activity {
         }
 
         if (locationButton != null) {
-            locationButton.setEnabled(!value);
+            locationButton.setEnabled(!value && profileEditMode);
         }
 
         if (saveButton != null) {
-            saveButton.setEnabled(!value);
+            saveButton.setEnabled(!value && profileEditMode);
         }
 
         if (logoutButton != null) {
@@ -2666,14 +2706,14 @@ class ProfileActivityScreenCore extends Activity {
         LinearLayout.LayoutParams lp =
                 new LinearLayout.LayoutParams(
                         -1,
-                        dp(50)
+                        dp(46)
                 );
 
         lp.setMargins(
                 0,
                 0,
                 0,
-                dp(12)
+                dp(9)
         );
 
         return lp;
@@ -2683,14 +2723,14 @@ class ProfileActivityScreenCore extends Activity {
         LinearLayout.LayoutParams lp =
                 new LinearLayout.LayoutParams(
                         -1,
-                        dp(50)
+                        dp(46)
                 );
 
         lp.setMargins(
                 0,
                 0,
                 0,
-                dp(10)
+                dp(8)
         );
 
         return lp;

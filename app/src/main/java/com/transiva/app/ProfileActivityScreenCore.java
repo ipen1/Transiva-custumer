@@ -11,6 +11,8 @@ import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
 import android.graphics.drawable.Drawable;
+import android.graphics.drawable.RippleDrawable;
+import android.content.res.ColorStateList;
 import android.location.Address;
 import android.location.Geocoder;
 import android.location.Location;
@@ -108,6 +110,13 @@ class ProfileActivityScreenCore extends Activity {
     protected TextView deviceStatusView;
     protected ProgressBar progress;
     protected Button editProfileButton;
+    protected LinearLayout profileViewBox;
+    protected LinearLayout profileEditBox;
+    protected TextView viewUsernameValue;
+    protected TextView viewEmailValue;
+    protected TextView viewPhoneValue;
+    protected TextView viewAddressValue;
+    protected LinearLayout passwordBox;
     protected boolean profileEditMode;
 
     protected String userId = "";
@@ -265,10 +274,10 @@ class ProfileActivityScreenCore extends Activity {
         );
 
         root.setPadding(
-                dp(14),
-                dp(10),
-                dp(14),
-                dp(88)
+                dp(12),
+                dp(8),
+                dp(12),
+                dp(80)
         );
 
         scroll.addView(
@@ -401,6 +410,8 @@ class ProfileActivityScreenCore extends Activity {
     protected void buildIdentityCard(
             LinearLayout root
     ) {
+        final boolean compactScreen = getResources().getConfiguration().screenHeightDp > 0
+                && getResources().getConfiguration().screenHeightDp < 700;
         LinearLayout card =
                 new LinearLayout(this);
 
@@ -413,10 +424,10 @@ class ProfileActivityScreenCore extends Activity {
         );
 
         card.setPadding(
-                dp(16),
                 dp(14),
-                dp(16),
-                dp(14)
+                dp(10),
+                dp(14),
+                dp(10)
         );
 
         card.setBackground(
@@ -506,8 +517,8 @@ class ProfileActivityScreenCore extends Activity {
 
         FrameLayout.LayoutParams avatarLp =
                 new FrameLayout.LayoutParams(
-                        dp(72),
-                        dp(72)
+                        dp(compactScreen ? 56 : 64),
+                        dp(compactScreen ? 56 : 64)
                 );
 
         avatarLp.gravity =
@@ -521,8 +532,8 @@ class ProfileActivityScreenCore extends Activity {
         card.addView(
                 avatarFrame,
                 new LinearLayout.LayoutParams(
-                        dp(80),
-                        dp(80)
+                        dp(compactScreen ? 62 : 70),
+                        dp(compactScreen ? 62 : 70)
                 )
         );
 
@@ -556,7 +567,7 @@ class ProfileActivityScreenCore extends Activity {
         nameView =
                 text(
                         username,
-                        18,
+                        compactScreen ? 16 : 18,
                         "#FFFFFF",
                         true
                 );
@@ -596,7 +607,7 @@ class ProfileActivityScreenCore extends Activity {
 
         badgesLp.setMargins(
                 0,
-                dp(8),
+                dp(compactScreen ? 5 : 8),
                 0,
                 0
         );
@@ -666,96 +677,65 @@ class ProfileActivityScreenCore extends Activity {
     protected void buildFormCard(
             LinearLayout root
     ) {
-        LinearLayout card =
-                whiteCard();
+        LinearLayout card = whiteCard();
+        card.setPadding(dp(14), dp(12), dp(14), dp(12));
 
-        card.setPadding(
-                dp(14),
-                dp(14),
-                dp(14),
-                dp(12)
-        );
+        LinearLayout heading = new LinearLayout(this);
+        heading.setGravity(Gravity.CENTER_VERTICAL);
+        LinearLayout headingText = new LinearLayout(this);
+        headingText.setOrientation(LinearLayout.VERTICAL);
+        headingText.addView(text("Informasi Akun", 16, "#0B3A78", true));
+        headingText.addView(text("Data utama akun Transiva", 9, "#718096", false));
+        heading.addView(headingText, new LinearLayout.LayoutParams(0, -2, 1f));
 
-        card.addView(
-                sectionTitle(
-                        "Informasi Akun",
-                        "Data utama akun Transiva"
-                )
-        );
-
-        editProfileButton = outlineButton("Edit Profil");
+        editProfileButton = compactActionButton("✎  Edit");
         editProfileButton.setOnClickListener(view -> setProfileEditMode(!profileEditMode));
-        LinearLayout.LayoutParams editLp = new LinearLayout.LayoutParams(-1, dp(44));
-        editLp.setMargins(0, 0, 0, dp(10));
-        card.addView(editProfileButton, editLp);
+        heading.addView(editProfileButton, new LinearLayout.LayoutParams(dp(82), dp(38)));
+        LinearLayout.LayoutParams headingLp = new LinearLayout.LayoutParams(-1, -2);
+        headingLp.setMargins(0, 0, 0, dp(8));
+        card.addView(heading, headingLp);
 
-        card.addView(
-                label("Username")
-        );
+        profileViewBox = new LinearLayout(this);
+        profileViewBox.setOrientation(LinearLayout.VERTICAL);
+        profileViewBox.setBackground(roundStroke("#F8FBFF", "#E2ECF7", 14, 1));
+        profileViewBox.setPadding(dp(12), dp(4), dp(12), dp(4));
+        viewUsernameValue = addInfoRow(profileViewBox, "Username", first(username, "-"), false);
+        viewEmailValue = addInfoRow(profileViewBox, "Email", first(email, "Email belum tersedia"), false);
+        viewPhoneValue = addInfoRow(profileViewBox, "Nomor HP", displayIndonesiaPhone(phone), false);
+        viewAddressValue = addInfoRow(profileViewBox, "Alamat Delivery", first(address, "Belum diatur"), true);
+        card.addView(profileViewBox, new LinearLayout.LayoutParams(-1, -2));
 
-        usernameInput =
-                input(
-                        "Username",
-                        InputType.TYPE_CLASS_TEXT
-                );
+        profileEditBox = new LinearLayout(this);
+        profileEditBox.setOrientation(LinearLayout.VERTICAL);
 
+        profileEditBox.addView(label("Username"));
+        usernameInput = input("Username", InputType.TYPE_CLASS_TEXT);
         usernameInput.setText(username);
+        profileEditBox.addView(usernameInput, fieldLp());
 
-        card.addView(
-                usernameInput,
-                fieldLp()
-        );
+        profileEditBox.addView(label("Email"));
+        emailView = readonlyField(first(email, "Email belum tersedia"));
+        profileEditBox.addView(emailView, fieldLp());
 
-        card.addView(
-                label("Email")
-        );
-
-        emailView =
-                readonlyField(
-                        first(
-                                email,
-                                "Email belum tersedia"
-                        )
-                );
-
-        card.addView(
-                emailView,
-                fieldLp()
-        );
-
-        card.addView(
-                label("Nomor HP")
-        );
-
+        profileEditBox.addView(label("Nomor HP"));
         LinearLayout phoneRow = new LinearLayout(this);
         phoneRow.setOrientation(LinearLayout.HORIZONTAL);
         phoneRow.setGravity(Gravity.CENTER_VERTICAL);
-
-        TextView prefix62 = text("62", 14, "#0F172A", true);
+        TextView prefix62 = text("+62", 13, "#0F172A", true);
         prefix62.setGravity(Gravity.CENTER);
-        prefix62.setBackground(roundStroke("#EEF5FF", "#D7E4F2", 14, 1));
-
-        LinearLayout.LayoutParams prefixLp =
-                new LinearLayout.LayoutParams(dp(58), dp(50));
+        prefix62.setBackground(roundStroke("#EEF5FF", "#D7E4F2", 13, 1));
+        LinearLayout.LayoutParams prefixLp = new LinearLayout.LayoutParams(dp(58), dp(46));
         prefixLp.setMargins(0, 0, dp(8), 0);
         phoneRow.addView(prefix62, prefixLp);
-
-        phoneInput =
-                input(
-                        "8123XXX",
-                        InputType.TYPE_CLASS_PHONE
-                );
+        phoneInput = input("8123XXX", InputType.TYPE_CLASS_PHONE);
         phoneInput.setSingleLine(true);
         phoneInput.setText(localIndonesiaPhone(phone));
         phoneInput.setSelection(phoneInput.getText().length());
         phoneInput.addTextChangedListener(new TextWatcher() {
             protected boolean changing;
-
             @Override public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
             @Override public void onTextChanged(CharSequence s, int start, int before, int count) {}
-
-            @Override
-            public void afterTextChanged(Editable editable) {
+            @Override public void afterTextChanged(Editable editable) {
                 if (changing) return;
                 String digits = editable == null ? "" : editable.toString().replaceAll("[^0-9]", "");
                 while (digits.startsWith("0")) digits = digits.substring(1);
@@ -770,103 +750,76 @@ class ProfileActivityScreenCore extends Activity {
                 }
             }
         });
-
-        phoneRow.addView(
-                phoneInput,
-                new LinearLayout.LayoutParams(0, dp(50), 1f)
-        );
-
-        card.addView(phoneRow, fieldLp());
+        phoneRow.addView(phoneInput, new LinearLayout.LayoutParams(0, dp(46), 1f));
+        profileEditBox.addView(phoneRow, fieldLp());
         phoneView = phoneInput;
 
-        card.addView(
-                label("Alamat Delivery")
-        );
-
-        addressInput =
-                input(
-                        "Alamat lengkap untuk layanan Transiva",
-                        InputType.TYPE_CLASS_TEXT
-                                | InputType.TYPE_TEXT_FLAG_MULTI_LINE
-                );
-
+        profileEditBox.addView(label("Alamat Delivery"));
+        addressInput = input("Alamat lengkap untuk layanan Transiva", InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_MULTI_LINE);
         addressInput.setSingleLine(false);
-        addressInput.setMinLines(3);
-        addressInput.setGravity(
-                Gravity.TOP | Gravity.START
-        );
-
+        addressInput.setMinLines(2);
+        addressInput.setGravity(Gravity.TOP | Gravity.START);
+        addressInput.setPadding(dp(14), dp(10), dp(14), dp(8));
         addressInput.setText(address);
+        LinearLayout.LayoutParams addressLp = new LinearLayout.LayoutParams(-1, dp(70));
+        addressLp.setMargins(0, 0, 0, dp(8));
+        profileEditBox.addView(addressInput, addressLp);
 
-        LinearLayout.LayoutParams addressLp =
-                new LinearLayout.LayoutParams(
-                        -1,
-                        dp(78)
-                );
-
-        addressLp.setMargins(
-                0,
-                0,
-                0,
-                dp(12)
-        );
-
-        card.addView(
-                addressInput,
-                addressLp
-        );
-
-        locationButton =
-                outlineButton(
-                        "📍 Dapatkan Lokasi Saya"
-                );
-
-        locationButton.setOnClickListener(
-                view -> requestCurrentLocation()
-        );
-
-        card.addView(
-                locationButton,
-                buttonLp()
-        );
-
-        saveButton =
-                primaryButton(
-                        "Simpan Perubahan"
-                );
-
-        saveButton.setOnClickListener(
-                view -> saveProfile()
-        );
-
-        card.addView(
-                saveButton,
-                buttonLp()
-        );
+        locationButton = outlineButton("📍 Dapatkan Lokasi Saya");
+        locationButton.setOnClickListener(view -> requestCurrentLocation());
+        profileEditBox.addView(locationButton, compactButtonLp());
+        saveButton = primaryButton("Simpan Perubahan");
+        saveButton.setOnClickListener(view -> saveProfile());
+        profileEditBox.addView(saveButton, compactButtonLp());
+        card.addView(profileEditBox);
 
         setProfileEditMode(false);
-
-        root.addView(
-                card,
-                sectionLp()
-        );
+        root.addView(card, sectionLp());
     }
-
 
     protected void setProfileEditMode(boolean enabled) {
         profileEditMode = enabled;
+        if (profileViewBox != null) profileViewBox.setVisibility(enabled ? View.GONE : View.VISIBLE);
+        if (profileEditBox != null) profileEditBox.setVisibility(enabled ? View.VISIBLE : View.GONE);
         if (usernameInput != null) usernameInput.setEnabled(enabled && !loading);
         if (phoneInput != null) phoneInput.setEnabled(enabled && !loading);
         if (addressInput != null) addressInput.setEnabled(enabled && !loading);
-        if (locationButton != null) {
-            locationButton.setVisibility(enabled ? View.VISIBLE : View.GONE);
-            locationButton.setEnabled(enabled && !loading);
+        if (locationButton != null) locationButton.setEnabled(enabled && !loading);
+        if (saveButton != null) saveButton.setEnabled(enabled && !loading);
+        if (editProfileButton != null) editProfileButton.setText(enabled ? "Batal" : "✎  Edit");
+        if (!enabled) {
+            if (usernameInput != null) usernameInput.setText(username);
+            if (phoneInput != null) phoneInput.setText(localIndonesiaPhone(phone));
+            if (addressInput != null) addressInput.setText(address);
+            refreshCompactProfileRows();
         }
-        if (saveButton != null) {
-            saveButton.setVisibility(enabled ? View.VISIBLE : View.GONE);
-            saveButton.setEnabled(enabled && !loading);
-        }
-        if (editProfileButton != null) editProfileButton.setText(enabled ? "Batal Edit" : "Edit Profil");
+    }
+
+    protected void refreshCompactProfileRows() {
+        if (viewUsernameValue != null) viewUsernameValue.setText(first(username, "-"));
+        if (viewEmailValue != null) viewEmailValue.setText(first(email, "Email belum tersedia"));
+        if (viewPhoneValue != null) viewPhoneValue.setText(displayIndonesiaPhone(phone));
+        if (viewAddressValue != null) viewAddressValue.setText(first(address, "Belum diatur"));
+    }
+
+    protected TextView addInfoRow(LinearLayout parent, String label, String value, boolean multiline) {
+        LinearLayout row = new LinearLayout(this);
+        row.setGravity(multiline ? Gravity.TOP : Gravity.CENTER_VERTICAL);
+        row.setPadding(0, dp(8), 0, dp(8));
+        TextView left = text(label, 10, "#52667F", true);
+        row.addView(left, new LinearLayout.LayoutParams(dp(96), -2));
+        TextView right = text(value, 12, "#0F172A", false);
+        right.setGravity(Gravity.END);
+        if (!multiline) { right.setSingleLine(true); right.setEllipsize(TextUtils.TruncateAt.END); }
+        else { right.setMaxLines(2); right.setEllipsize(TextUtils.TruncateAt.END); }
+        row.addView(right, new LinearLayout.LayoutParams(0, -2, 1f));
+        parent.addView(row, new LinearLayout.LayoutParams(-1, -2));
+        return right;
+    }
+
+    protected String displayIndonesiaPhone(String raw) {
+        String local = localIndonesiaPhone(raw);
+        return TextUtils.isEmpty(local) ? "Belum diatur" : "+62 " + local;
     }
 
 
@@ -945,140 +898,91 @@ class ProfileActivityScreenCore extends Activity {
     protected void buildSecurityCard(
             LinearLayout root
     ) {
-        LinearLayout card =
-                whiteCard();
+        LinearLayout card = whiteCard();
+        card.setPadding(dp(14), dp(12), dp(14), dp(12));
+        card.addView(sectionTitle("Keamanan", "Password, PIN dan pengaturan aplikasi"));
 
-        card.setPadding(
-                dp(16),
-                dp(16),
-                dp(16),
-                dp(16)
-        );
+        passwordBox = new LinearLayout(this);
+        passwordBox.setOrientation(LinearLayout.VERTICAL);
+        passwordBox.setVisibility(View.GONE);
+        passwordBox.addView(label("Password Baru"));
+        passwordInput = input("Masukkan password baru", InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
+        passwordInput.setSingleLine(true);
+        passwordInput.setImeOptions(EditorInfo.IME_ACTION_DONE);
+        passwordBox.addView(passwordInput, fieldLp());
+        Button savePassword = primaryButton("Simpan Password");
+        savePassword.setOnClickListener(view -> saveProfile());
+        passwordBox.addView(savePassword, compactButtonLp());
+        card.addView(passwordBox);
 
-        card.addView(
-                sectionTitle(
-                        "Keamanan",
-                        "Gunakan password yang kuat dan unik"
-                )
-        );
+        card.addView(settingsRow("🔐", "Ubah Password", "Perbarui password akun", view -> {
+            boolean show = passwordBox.getVisibility() != View.VISIBLE;
+            passwordBox.setVisibility(show ? View.VISIBLE : View.GONE);
+            if (show) { passwordInput.requestFocus(); passwordInput.postDelayed(() -> {
+                android.view.inputmethod.InputMethodManager imm = (android.view.inputmethod.InputMethodManager) getSystemService(INPUT_METHOD_SERVICE);
+                if (imm != null) imm.showSoftInput(passwordInput, android.view.inputmethod.InputMethodManager.SHOW_IMPLICIT);
+            }, 120); }
+        }));
+        card.addView(settingsDivider());
+        card.addView(settingsRow("🔢", "Ubah PIN", "Ganti PIN keamanan", view -> startActivity(new Intent(ProfileActivityScreenCore.this, ChangePinActivity.class))));
+        card.addView(settingsDivider());
+        card.addView(settingsRow("⚙", "Pengaturan Aplikasi", "Izin, notifikasi dan sistem", view -> {
+            Intent intent = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS);
+            intent.setData(Uri.parse("package:" + getPackageName()));
+            startActivity(intent);
+        }));
+        card.addView(settingsDivider());
+        logoutButton = compactActionButton("↪  Keluar dari Akun");
+        logoutButton.setTextColor(Color.parseColor("#334E6F"));
+        logoutButton.setOnClickListener(view -> confirmLogout());
+        LinearLayout.LayoutParams logoutLp = new LinearLayout.LayoutParams(-1, dp(42));
+        logoutLp.setMargins(0, dp(8), 0, dp(8));
+        card.addView(logoutButton, logoutLp);
 
-        card.addView(
-                label("Password Baru")
-        );
-
-        passwordInput =
-                input(
-                        "Kosongkan jika tidak diganti",
-                        InputType.TYPE_CLASS_TEXT
-                                | InputType.TYPE_TEXT_VARIATION_PASSWORD
-                );
-
-        passwordInput.setVisibility(View.GONE);
-        card.addView(
-                passwordInput,
-                fieldLp()
-        );
-
-        Button passwordToggle = outlineButton("🔐  Ubah Password                                      ›");
-        passwordToggle.setOnClickListener(view -> {
-            boolean show = passwordInput.getVisibility() != View.VISIBLE;
-            passwordInput.setVisibility(show ? View.VISIBLE : View.GONE);
-            if (show) { passwordInput.requestFocus(); }
-        });
-        card.addView(passwordToggle, buttonLp());
-
-        Button changePinButton =
-                outlineButton(
-                        "🔢  Ubah PIN                                             ›"
-                );
-
-        changePinButton.setOnClickListener(
-                view -> startActivity(
-                        new Intent(
-                                ProfileActivityScreenCore.this,
-                                ChangePinActivity.class
-                        )
-                )
-        );
-
-        card.addView(
-                changePinButton,
-                buttonLp()
-        );
-
-        Button appSettings =
-                outlineButton(
-                        "⚙  Pengaturan Aplikasi                                  ›"
-                );
-
-        appSettings.setOnClickListener(
-                view -> {
-                    Intent intent =
-                            new Intent(
-                                    Settings
-                                            .ACTION_APPLICATION_DETAILS_SETTINGS
-                            );
-
-                    intent.setData(
-                            Uri.parse(
-                                    "package:"
-                                            + getPackageName()
-                            )
-                    );
-
-                    startActivity(intent);
-                }
-        );
-
-        card.addView(
-                appSettings,
-                buttonLp()
-        );
-
-        logoutButton =
-                outlineButton(
-                        "Keluar dari Akun"
-                );
-
-        logoutButton.setOnClickListener(
-                view -> confirmLogout()
-        );
-
-        card.addView(
-                logoutButton,
-                buttonLp()
-        );
-
-        TextView dangerTitle = text("Zona berbahaya", 11, "#B91C1C", true);
-        dangerTitle.setPadding(dp(2), dp(8), 0, dp(7));
+        TextView dangerTitle = text("Zona berbahaya", 10, "#B91C1C", true);
+        dangerTitle.setPadding(dp(2), dp(5), 0, dp(6));
         card.addView(dangerTitle);
-
-        deleteAccountButton =
-                dangerButton(
-                        "Hapus Akun Permanen"
-                );
-        deleteAccountButton.setOnClickListener(view ->
-                CustomerAccountDeletionController.show(
-                        this,
-                        new CustomerAccountDeletionController.Listener() {
-                            @Override public void onBusyChanged(boolean busy) { setLoading(busy); }
-                            @Override public void onError(String message) {
-                                new TransivaAlertDialogBuilder(ProfileActivityScreenCore.this)
-                                        .setTitle("Hapus Akun")
-                                        .setMessage(message)
-                                        .setPositiveButton("OK", null)
-                                        .show();
-                            }
-                        }
-                )
-        );
-        card.addView(deleteAccountButton, buttonLp());
-
-        root.addView(
-                card,
-                sectionLp()
-        );
+        deleteAccountButton = dangerButton("Hapus Akun Permanen");
+        deleteAccountButton.setOnClickListener(view -> CustomerAccountDeletionController.show(
+                this,
+                new CustomerAccountDeletionController.Listener() {
+                    @Override public void onBusyChanged(boolean busy) { setLoading(busy); }
+                    @Override public void onError(String message) {
+                        new TransivaAlertDialogBuilder(ProfileActivityScreenCore.this)
+                                .setTitle("Hapus Akun").setMessage(message).setPositiveButton("OK", null).show();
+                    }
+                }
+        ));
+        card.addView(deleteAccountButton, compactButtonLp());
+        root.addView(card, sectionLp());
     }
+
+    protected View settingsRow(String iconText, String titleText, String subtitleText, View.OnClickListener listener) {
+        LinearLayout row = new LinearLayout(this);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setPadding(dp(8), dp(7), dp(6), dp(7));
+        row.setClickable(true); row.setFocusable(true);
+        row.setBackground(rippleBackground("#FFFFFF", "#EAF4FF", 12));
+        TextView icon = text(iconText, 16, "#0B7CFF", true);
+        icon.setGravity(Gravity.CENTER);
+        row.addView(icon, new LinearLayout.LayoutParams(dp(34), dp(38)));
+        LinearLayout copy = new LinearLayout(this); copy.setOrientation(LinearLayout.VERTICAL);
+        copy.addView(text(titleText, 12, "#0B3A78", true));
+        copy.addView(text(subtitleText, 9, "#718096", false));
+        LinearLayout.LayoutParams copyLp = new LinearLayout.LayoutParams(0, -2, 1f); copyLp.setMargins(dp(5),0,dp(5),0);
+        row.addView(copy, copyLp);
+        TextView arrow = text("›", 20, "#0B7CFF", true); arrow.setGravity(Gravity.CENTER);
+        row.addView(arrow, new LinearLayout.LayoutParams(dp(26), dp(38)));
+        row.setOnClickListener(listener);
+        return row;
+    }
+
+    protected View settingsDivider() {
+        View line = new View(this); line.setBackgroundColor(Color.parseColor("#EDF2F7"));
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, dp(1)); lp.setMargins(dp(42), 0, dp(6), 0); line.setLayoutParams(lp);
+        return line;
+    }
+
 
     protected void loadConnectedDevice() {
         if (deviceLoading || session == null || !session.isLoggedIn()) {
@@ -1714,6 +1618,8 @@ class ProfileActivityScreenCore extends Activity {
         phoneInput.setSelection(phoneInput.getText().length());
         addressInput.setText(address);
 
+        refreshCompactProfileRows();
+
         emailBadge.setText(
                 emailVerified
                         ? "✓ Email Terverifikasi"
@@ -2135,6 +2041,7 @@ class ProfileActivityScreenCore extends Activity {
                     }
 
                     passwordInput.setText("");
+                    if (passwordBox != null) passwordBox.setVisibility(View.GONE);
                     setLoading(false);
                     setProfileEditMode(false);
 
@@ -2685,6 +2592,30 @@ class ProfileActivityScreenCore extends Activity {
         return button;
     }
 
+    protected Button compactActionButton(String value) {
+        Button button = new Button(this);
+        button.setText(value); button.setAllCaps(false); button.setTextSize(11);
+        button.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+        button.setTextColor(Color.parseColor("#0B7CFF"));
+        button.setPadding(dp(8), 0, dp(8), 0);
+        button.setBackground(rippleBackground("#FFFFFF", "#EAF4FF", 13));
+        return button;
+    }
+
+    protected Drawable rippleBackground(String normal, String ripple, int radius) {
+        GradientDrawable content = roundStroke(normal, "#D8E7F5", radius, 1);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+            return new RippleDrawable(ColorStateList.valueOf(Color.parseColor(ripple)), content, null);
+        }
+        return content;
+    }
+
+    protected LinearLayout.LayoutParams compactButtonLp() {
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, dp(42));
+        lp.setMargins(0, 0, 0, dp(7));
+        return lp;
+    }
+
     protected LinearLayout.LayoutParams sectionLp() {
         LinearLayout.LayoutParams lp =
                 new LinearLayout.LayoutParams(
@@ -2696,7 +2627,7 @@ class ProfileActivityScreenCore extends Activity {
                 0,
                 0,
                 0,
-                dp(14)
+                dp(10)
         );
 
         return lp;
@@ -2706,7 +2637,7 @@ class ProfileActivityScreenCore extends Activity {
         LinearLayout.LayoutParams lp =
                 new LinearLayout.LayoutParams(
                         -1,
-                        dp(46)
+                        dp(44)
                 );
 
         lp.setMargins(

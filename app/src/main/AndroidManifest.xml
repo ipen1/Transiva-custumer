@@ -63,6 +63,7 @@
         android:supportsRtl="true"
         android:theme="@style/AppTheme"
         android:usesCleartextTraffic="false">
+        <activity android:name=".TransShopZoomActivity" android:exported="false" />
         <activity android:name=".TransAssistantActivity" android:exported="false" android:screenOrientation="portrait" android:theme="@style/AppTheme" />
         <activity android:name=".TransAssistantTourActivity" android:exported="false" android:screenOrientation="portrait" android:theme="@style/AppTheme" />
         <activity android:name=".FamilyLiveActivity" android:exported="false" android:screenOrientation="portrait" android:theme="@style/AppTheme" />

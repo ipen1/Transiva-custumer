@@ -59,7 +59,7 @@ class CustomerChatActivityScreenCore extends Activity {
     protected LinearLayout content;
     protected LinearLayout listBox;
     protected LinearLayout tabRow;
-    protected ProgressBar progress;
+    protected View progress;
 
     protected int userId;
     protected String selectedTab = "active";
@@ -219,8 +219,7 @@ class CustomerChatActivityScreenCore extends Activity {
                 )
         );
 
-        progress =
-                new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
+        progress = CustomerSkeleton.list(this, 4);
 
         progress.setVisibility(
                 View.GONE
@@ -228,12 +227,10 @@ class CustomerChatActivityScreenCore extends Activity {
 
         FrameLayout.LayoutParams progressLp =
                 new FrameLayout.LayoutParams(
-                        dp(44),
-                        dp(44)
+                        -1, -2
                 );
 
-        progressLp.gravity =
-                Gravity.CENTER;
+        progressLp.gravity = Gravity.TOP;
 
         page.addView(
                 progress,

@@ -76,7 +76,7 @@ class CustomerHistoryActivityScreenCore extends Activity {
     protected LinearLayout listBox;
     protected LinearLayout serviceChipRow;
     protected LinearLayout tabRow;
-    protected ProgressBar progressBar;
+    protected View progressBar;
     protected EditText searchInput;
     protected TextView summaryTotal;
     protected TextView summaryActive;
@@ -253,16 +253,15 @@ class CustomerHistoryActivityScreenCore extends Activity {
                 new LinearLayout.LayoutParams(-1, dp(66))
         );
 
-        progressBar = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
+        progressBar = CustomerSkeleton.list(this, 4);
         progressBar.setVisibility(View.GONE);
 
         FrameLayout.LayoutParams progressLp =
                 new FrameLayout.LayoutParams(
-                        dp(44),
-                        dp(44)
+                        -1, -2
                 );
 
-        progressLp.gravity = Gravity.CENTER;
+        progressLp.gravity = Gravity.TOP;
 
         page.addView(progressBar, progressLp);
 

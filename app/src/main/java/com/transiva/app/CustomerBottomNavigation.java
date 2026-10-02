@@ -39,7 +39,7 @@ public final class CustomerBottomNavigation {
         add(nav, item(activity, "Aktivitas", "ic_nav2_activity", CustomerHistoryActivity.class,
                 CustomerPageTransition.ACTIVITY, activeIndex, false, dark));
         add(nav, item(activity, "Pesan", "ic_nav2_chat", CustomerChatActivity.class,
-                CustomerPageTransition.CHAT, activeIndex, true, dark));
+                CustomerPageTransition.CHAT, activeIndex, false, dark));
         add(nav, item(activity, "Transaksi", "ic_nav2_wallet", CustomerBalanceHistoryActivity.class,
                 CustomerPageTransition.WALLET, activeIndex, false, dark));
         add(nav, item(activity, "Akun", "ic_nav2_profile", ProfileActivity.class,

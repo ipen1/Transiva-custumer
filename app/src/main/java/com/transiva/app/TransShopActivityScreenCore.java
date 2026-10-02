@@ -65,6 +65,7 @@ class TransShopActivityScreenCore extends Activity {
     protected TextView distanceInfoText, durationInfoText, originalPriceText, finalPriceText, discountInfoText;
     protected Button voucherChoiceBtn, noteChoiceBtn, paymentChoiceBtn;
     protected EditText googleMapInput, noteInput, voucherInput;
+    protected TextView cartDetailText;
     protected Button pickupBtn, deliveryBtn, gpsBtn, orderBtn, backBtn, useLinkBtn;
     protected ProgressBar progressBar;
 
@@ -109,6 +110,8 @@ class TransShopActivityScreenCore extends Activity {
     protected double centerLat = -0.018137, centerLng = 120.087380;
     protected double pickLat = 0, pickLng = 0;
 
+    protected String catalogStoreName = "";
+    protected boolean catalogPickup = false;
     protected String pickupAddress = "Lokasi Belanja";
     protected String deliveryAddress = "Lokasi Pengantaran";
     protected boolean destroyed = false;
@@ -126,7 +129,38 @@ class TransShopActivityScreenCore extends Activity {
         String catalogList = getIntent().getStringExtra("transshop_catalog_list");
         if (catalogList != null && !catalogList.trim().isEmpty() && noteInput != null) noteInput.setText(catalogList);
         loadDeliveryLocation();
+        applyCatalogCheckout();
         requestLocationIfNeeded();
+    }
+
+    protected void applyCatalogCheckout() {
+        String raw = getIntent().getStringExtra("transshop_store_json");
+        if (raw == null || raw.isEmpty()) return;
+        try {
+            org.json.JSONObject shop = new org.json.JSONObject(raw);
+            catalogStoreName = shop.optString("name", "Toko").trim();
+            double lat = shop.optDouble("latitude", Double.NaN), lng = shop.optDouble("longitude", Double.NaN);
+            if (Double.isNaN(lat) || Double.isNaN(lng) || !validCoord(lat,lng)) {
+                toastDialog("Toko belum menyimpan GPS. Pilih titik toko pada peta sebelum memesan.");
+            } else {
+                catalogPickup = true; pickupLat=lat; pickupLng=lng;
+                pickupAddress = catalogStoreName + " - " + shop.optString("location", "");
+                pickupBtn.setText("●  Belanja di " + catalogStoreName + "\n" + shortAddress(shop.optString("location", "")));
+                pickupText.setText("Belanja di: " + pickupAddress);
+                if (mapView != null) {mapView.setPickup(lat,lng,pickupAddress);if(mapReady)mapView.moveTo(lat,lng,17f);}
+                updateModeUI();
+            }
+            org.json.JSONArray cart = new org.json.JSONArray(getIntent().getStringExtra("transshop_cart_json"));
+            StringBuilder detail = new StringBuilder("DETAIL BELANJA • " + catalogStoreName);
+            double subtotal=0;
+            for(int i=0;i<cart.length();i++) {org.json.JSONObject line=cart.optJSONObject(i);if(line==null)continue;
+                int qty=line.optInt("quantity");double price=line.optDouble("price");subtotal+=qty*price;
+                detail.append("\n").append(qty).append("x ").append(line.optString("name")).append(" • Rp ").append(String.format(java.util.Locale.forLanguageTag("id-ID"),"%,.0f",qty*price));
+            }
+            detail.append("\nSubtotal produk: Rp ").append(String.format(java.util.Locale.forLanguageTag("id-ID"),"%,.0f",subtotal)).append(" (di luar biaya antar/layanan)");
+            if(cartDetailText!=null){cartDetailText.setText(detail.toString());cartDetailText.setVisibility(View.VISIBLE);}
+            noteChoiceBtn.setText("📝 Detail belanja");
+        } catch(Exception ignored) {toastDialog("Detail katalog tidak dapat dibaca.");}
     }
 
     protected void readUser() {
@@ -275,7 +309,7 @@ class TransShopActivityScreenCore extends Activity {
             @Override public void onReady(double lat, double lng) {
                 mapReady = true;
                 centerLat = lat; centerLng = lng; pickLat = lat; pickLng = lng;
-                goToMyLocation();
+                if (catalogPickup) { mapView.setPickup(pickupLat, pickupLng, pickupAddress); mapView.moveTo(pickupLat,pickupLng,17f); } else goToMyLocation();
                 loadMapPlaces();
                 loadOnlineDrivers();
             }
@@ -325,6 +359,11 @@ class TransShopActivityScreenCore extends Activity {
         quickRow.setOrientation(LinearLayout.HORIZONTAL);
         quickRow.setGravity(Gravity.CENTER_VERTICAL);
         bottomCard.addView(quickRow, new LinearLayout.LayoutParams(-1, dp(44)));
+        cartDetailText = text("", 11, "#17365D", false);
+        cartDetailText.setPadding(dp(10),dp(7),dp(10),dp(7));
+        cartDetailText.setBackground(roundStroke("#F0F7FF", "#D7E6F8", dp(10), 1));
+        cartDetailText.setVisibility(View.GONE);
+        bottomCard.addView(cartDetailText, new LinearLayout.LayoutParams(-1,-2));
 
         voucherChoiceBtn = smallButton("🏷 Voucher", "#0B7CFF", "#FFFFFF", "#0B7CFF");
         noteChoiceBtn = smallButton("📝 Daftar belanja", "#F59E0B", "#FFFFFF", "#F59E0B");
@@ -479,6 +518,7 @@ class TransShopActivityScreenCore extends Activity {
     protected void handlePointButtonClick(String requestedMode) {
         mode = requestedMode;
         if ("pickup".equals(requestedMode)) {
+            catalogPickup = false;
             pickupLat = 0;
             pickupLng = 0;
             if (mapView != null) mapView.clearPickup();
@@ -729,7 +769,7 @@ class TransShopActivityScreenCore extends Activity {
                 if (isPickup) {
                     pickupAddress = address;
                     pickupText.setText("Belanja di: " + address);
-                    pickupBtn.setText("●  Belanja di sini\n" + shortAddress(address));
+                    pickupBtn.setText("●  Belanja di " + (catalogPickup ? catalogStoreName : "sini") + "\n" + shortAddress(address));
                     if (mapView != null) mapView.setPickup(pickupLat, pickupLng, address);
                 } else {
                     deliveryAddress = address;
@@ -1381,7 +1421,7 @@ class TransShopActivityScreenCore extends Activity {
     protected void updateModeUI() {
         boolean routeComplete = validCoord(pickupLat, pickupLng) && validCoord(deliveryLat, deliveryLng);
         mode = "pickup";
-        modeText.setText(routeComplete ? "Rute siap • antar ke alamat delivery akun" : "Geser peta lalu klik marka Belanja di sini");
+        modeText.setText(routeComplete ? "Rute siap • antar ke alamat delivery akun" : catalogPickup ? "Toko terpilih: " + catalogStoreName : "Geser peta lalu klik marka Belanja di sini");
         pickupBtn.setAlpha(1f);
         if (mapView != null) {
             if (routeComplete) {

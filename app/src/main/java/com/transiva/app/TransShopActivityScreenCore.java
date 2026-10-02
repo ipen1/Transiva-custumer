@@ -123,6 +123,8 @@ class TransShopActivityScreenCore extends Activity {
 
         readUser();
         buildLayout();
+        String catalogList = getIntent().getStringExtra("transshop_catalog_list");
+        if (catalogList != null && !catalogList.trim().isEmpty() && noteInput != null) noteInput.setText(catalogList);
         loadDeliveryLocation();
         requestLocationIfNeeded();
     }

@@ -970,7 +970,7 @@ class PassengerTransportActivityLegacyCore extends Activity {
     }
 
     protected void bindActions() {
-        pickupBtn.setOnClickListener(v -> { if (isRouteConfirmationLocked()) return; mode = "pickup"; openDestinationAutocomplete(); });
+        pickupBtn.setOnClickListener(v -> { if (isRouteConfirmationLocked()) return; showGpsPickupDialog(); });
         deliveryBtn.setOnClickListener(v -> { if (isRouteConfirmationLocked()) return; mode = "delivery"; openDestinationAutocomplete(); });
         gpsBtn.setOnClickListener(v -> goToMyLocation());
         backBtn.setOnClickListener(v -> finish());
@@ -1386,6 +1386,7 @@ class PassengerTransportActivityLegacyCore extends Activity {
         if (!validCoord(selectedLat, selectedLng)) return;
 
         if ("pickup".equals(mode)) {
+            pickupGpsSelected = false;
             pickupLat = selectedLat;
             pickupLng = selectedLng;
             pickupAddress = "Mencari alamat jemput...";
@@ -1412,40 +1413,101 @@ class PassengerTransportActivityLegacyCore extends Activity {
 
     }
 
-    protected void goToMyLocation() {
-        if (checkSelfPermissionCompat(Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
-            requestPermissions(new String[]{Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION}, REQ_LOCATION);
-            return;
-        }
-        setLoading(true);
-        try {
-            android.location.LocationManager lm = (android.location.LocationManager) getSystemService(LOCATION_SERVICE);
-            Location best = null;
-            for (String provider : lm.getProviders(true)) {
-                try {
-                    Location candidate = lm.getLastKnownLocation(provider);
-                    if (candidate != null && (best == null || candidate.getTime() > best.getTime() || candidate.getAccuracy() < best.getAccuracy())) best = candidate;
-                } catch (Exception ignored) {}
-            }
-            if (best == null) { toastDialog("GPS belum mendapatkan lokasi. Aktifkan lokasi lalu tekan GPS lagi."); return; }
-            centerLat = best.getLatitude(); centerLng = best.getLongitude(); pickLat = centerLat; pickLng = centerLng;
-            pickupLat = centerLat; pickupLng = centerLng;
-            pickupAddress = "Mencari lokasi jemput terdekat...";
-            if (pickupText != null) pickupText.setText("Penjemputan: " + pickupAddress);
-            if (pickupBtn != null) pickupBtn.setText("●  Jemput\nLokasi Anda");
-            if (mapView != null) {
-                mapView.setPickup(pickupLat, pickupLng, pickupAddress);
-                if (validCoord(deliveryLat, deliveryLng)) mapView.setDelivery(deliveryLat, deliveryLng, deliveryAddress);
-                mapView.moveTo(centerLat, centerLng, 17f);
-            }
-            resolveAddressAsync(true, pickupLat, pickupLng);
-            mode = "delivery";
-            updateModeUI();
-        } catch (Exception e) {
-            toastDialog("GPS tidak tersedia di perangkat ini.");
-        } finally { setLoading(false); }
+    private android.location.LocationManager liveGpsManager;
+    private android.location.LocationListener liveGpsListener;
+    private Location liveGpsBest;
+    private boolean pickupGpsSelected = true;
+    private boolean gpsRefreshActive = false;
+    private long lastGpsAppliedAt = 0L;
+    private final android.os.Handler gpsHandler = new android.os.Handler(android.os.Looper.getMainLooper());
+    private String gpsQuality(Location loc) {
+        if (loc == null) return "GPS mencari sinyal…";
+        long age = Math.max(0, System.currentTimeMillis() - loc.getTime());
+        if (age > 15000) return "🔴 GPS lama • perbarui lokasi";
+        if (!loc.hasAccuracy()) return "🔴 Akurasi belum diketahui";
+        int m = Math.round(loc.getAccuracy());
+        return (m <= 20 ? "🟢 " : m <= 50 ? "🟡 " : "🔴 ") + "Akurasi GPS ±" + m + " m";
     }
-
+    private void showGpsPickupDialog() {
+        Location loc = liveGpsBest;
+        new TransivaAlertDialogBuilder(this).setTitle("Lokasi jemput & GPS")
+            .setMessage(gpsQuality(loc) + "\\n\\n" + (loc == null ? "Menunggu lokasi terkini." :
+                "Ketelitian adalah perkiraan radius GPS, bukan jaminan titik tepat."))
+            .setPositiveButton("⌖ Tetapkan GPS terbaru", (d,w) -> goToMyLocation())
+            .setNegativeButton("Pilih manual", (d,w) -> { pickupGpsSelected=false; mode="pickup"; openDestinationAutocomplete(); })
+            .setNeutralButton("Tutup", null).show();
+    }
+    private void applyGpsPickup(Location loc, boolean force) {
+        if (loc == null || !loc.hasAccuracy() || loc.getAccuracy() > 100f) return;
+        if (Math.abs(System.currentTimeMillis()-loc.getTime()) > 15000L) return;
+        if (!force && (!pickupGpsSelected || isRouteConfirmationLocked())) return;
+        if (!force && liveGpsBest != null && lastGpsAppliedAt > 0 &&
+                loc.getTime() < lastGpsAppliedAt) return;
+        pickupLat=loc.getLatitude(); pickupLng=loc.getLongitude();
+        lastGpsAppliedAt=loc.getTime();
+        pickupAddress="Memperbarui alamat GPS…";
+        if (pickupBtn != null) pickupBtn.setText("●  Jemput\\n"+gpsQuality(loc));
+        if (pickupText != null) pickupText.setText("Penjemputan: "+pickupAddress);
+        if (mapView != null) { mapView.setPickup(pickupLat,pickupLng,pickupAddress); if (force) mapView.moveTo(pickupLat,pickupLng,17f); }
+        resolveAddressAsync(true,pickupLat,pickupLng);
+    }
+    private void startLiveGps() {
+        if (gpsRefreshActive || checkSelfPermissionCompat(Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) return;
+        try {
+            liveGpsManager=(android.location.LocationManager)getSystemService(LOCATION_SERVICE);
+            if (liveGpsManager == null) return;
+            liveGpsListener=new android.location.LocationListener() {
+                @Override public void onLocationChanged(Location loc) {
+                    if (loc == null || loc.isFromMockProvider()) return;
+                    long age=Math.abs(System.currentTimeMillis()-loc.getTime());
+                    if (age>15000L || !loc.hasAccuracy()) return;
+                    if (liveGpsBest==null || loc.getTime()>liveGpsBest.getTime() ||
+                       (loc.getTime()>=liveGpsBest.getTime()-3000 && loc.getAccuracy()<liveGpsBest.getAccuracy()))
+                        liveGpsBest=loc;
+                    if (pickupGpsSelected && !isRouteConfirmationLocked() &&
+                        (lastGpsAppliedAt==0 || (System.currentTimeMillis()-lastGpsAppliedAt>5000 && loc.getAccuracy()<=50f)))
+                        applyGpsPickup(loc,false);
+                }
+                @Override public void onStatusChanged(String p,int status,android.os.Bundle extras) {}
+                @Override public void onProviderEnabled(String p) {}
+                @Override public void onProviderDisabled(String p) {}
+            };
+            boolean registered=false;
+            for (String provider : new String[]{android.location.LocationManager.GPS_PROVIDER,android.location.LocationManager.NETWORK_PROVIDER}) {
+                if (liveGpsManager.isProviderEnabled(provider)) {
+                    liveGpsManager.requestLocationUpdates(provider,2000L,0f,liveGpsListener,android.os.Looper.getMainLooper());
+                    registered=true;
+                }
+            }
+            gpsRefreshActive=registered;
+        } catch (SecurityException ignored) { stopLiveGps(); }
+          catch (Exception ignored) { stopLiveGps(); }
+    }
+    private void stopLiveGps() {
+        gpsRefreshActive=false;
+        if (liveGpsManager!=null && liveGpsListener!=null) {
+            try {liveGpsManager.removeUpdates(liveGpsListener);} catch(Exception ignored) {}
+        }
+        liveGpsListener=null;
+    }
+    protected void goToMyLocation() {
+        if (isRouteConfirmationLocked()) return;
+        if (checkSelfPermissionCompat(Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(new String[]{Manifest.permission.ACCESS_FINE_LOCATION,Manifest.permission.ACCESS_COARSE_LOCATION},REQ_LOCATION);return;
+        }
+        pickupGpsSelected=true;
+        startLiveGps();
+        TransivaFreshLocation.request(this,new TransivaFreshLocation.Callback() {
+            @Override public void onLocation(Location loc,boolean fresh) {
+                if (!fresh || loc==null || !loc.hasAccuracy() || loc.getAccuracy()>100f) {
+                    toastDialog("Lokasi GPS belum cukup akurat. Tunggu sinyal membaik atau pilih titik manual.");return;
+                }
+                liveGpsBest=loc; applyGpsPickup(loc,true);
+                mode="delivery";updateModeUI();
+            }
+            @Override public void onFailure(String msg) {toastDialog(msg);}
+        });
+    }
 
     /** Smart Favorite: tujuan dari server favorit, jemput otomatis dari GPS saat ini. */
     protected void applySmartFavoriteIntent() {
@@ -2579,10 +2641,12 @@ class PassengerTransportActivityLegacyCore extends Activity {
     @Override protected void onResume() {
         super.onResume();
         featureRuntime.onResume();
+        startLiveGps();
         if (mapView != null) mapView.onResumeMap();
     }
 
     @Override protected void onPause() {
+        stopLiveGps();
         featureRuntime.onPause();
         if (mapView != null) mapView.onPauseMap();
         super.onPause();

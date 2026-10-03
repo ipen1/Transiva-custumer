@@ -679,6 +679,7 @@ class PassengerTransportActivityLegacyCore extends Activity {
     }
 
     protected void showWaypointDialog() {
+        if (isRouteConfirmationLocked()) return;
         int count = ecosystemFeatures.waypoints.length();
         if (count >= 2) {
             new TransivaAlertDialogBuilder(this)
@@ -792,6 +793,10 @@ class PassengerTransportActivityLegacyCore extends Activity {
                 }).show();
     }
 
+    protected boolean isRouteConfirmationLocked() {
+        return bookingDetailsCard != null && bookingDetailsCard.getVisibility() == View.VISIBLE;
+    }
+
     protected void refreshWaypointHeader() {
         if (waypointHeaderRows == null) return;
         waypointHeaderRows.removeAllViews();
@@ -807,7 +812,8 @@ class PassengerTransportActivityLegacyCore extends Activity {
             lp.topMargin = dp(4);
             waypointHeaderRows.addView(row, lp);
             row.setContentDescription(name + ", " + address + ". Ketuk untuk mengubah atau menghapus.");
-            row.setOnClickListener(v -> new TransivaAlertDialogBuilder(this)
+            row.setEnabled(!isRouteConfirmationLocked());
+            row.setOnClickListener(v -> { if (isRouteConfirmationLocked()) return; new TransivaAlertDialogBuilder(this)
                     .setTitle(name)
                     .setMessage(addressForWaypoint(position))
                     .setPositiveButton("Ubah lokasi", (dialog, which) -> {
@@ -815,9 +821,9 @@ class PassengerTransportActivityLegacyCore extends Activity {
                         showWaypointDialog();
                     })
                     .setNegativeButton("Hapus", (dialog, which) -> removeWaypointAt(position))
-                    .setNeutralButton("Batal", null).show());
+                    .setNeutralButton("Batal", null).show(); });
         }
-        if (count < 2) {
+        if (count < 2 && !isRouteConfirmationLocked()) {
             Button add = smallButton("＋ Tambah persinggahan (Opsional)", "#F0F7FF", "#0B7CFF", "#BBD8F7");
             LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, dp(40));
             lp.topMargin = dp(4);
@@ -830,6 +836,7 @@ class PassengerTransportActivityLegacyCore extends Activity {
         return wp == null ? "" : wp.optString("address", "Titik persinggahan");
     }
     protected void removeWaypointAt(int index) {
+        if (isRouteConfirmationLocked()) return;
         JSONArray updated = new JSONArray();
         for (int i = 0; i < ecosystemFeatures.waypoints.length(); i++)
             if (i != index) updated.put(ecosystemFeatures.waypoints.optJSONObject(i));
@@ -961,8 +968,8 @@ class PassengerTransportActivityLegacyCore extends Activity {
     }
 
     protected void bindActions() {
-        pickupBtn.setOnClickListener(v -> { mode = "pickup"; openDestinationAutocomplete(); });
-        deliveryBtn.setOnClickListener(v -> { mode = "delivery"; openDestinationAutocomplete(); });
+        pickupBtn.setOnClickListener(v -> { if (isRouteConfirmationLocked()) return; mode = "pickup"; openDestinationAutocomplete(); });
+        deliveryBtn.setOnClickListener(v -> { if (isRouteConfirmationLocked()) return; mode = "delivery"; openDestinationAutocomplete(); });
         gpsBtn.setOnClickListener(v -> goToMyLocation());
         backBtn.setOnClickListener(v -> finish());
         orderBtn.setOnClickListener(v -> handleWizardPrimaryAction());
@@ -2341,6 +2348,11 @@ class PassengerTransportActivityLegacyCore extends Activity {
 
         boolean routeComplete = validCoord(pickupLat, pickupLng) && validCoord(deliveryLat, deliveryLng);
         if (bookingDetailsCard != null) bookingDetailsCard.setVisibility(routeComplete ? View.VISIBLE : View.GONE);
+        if (pickupBtn != null) { pickupBtn.setEnabled(!routeComplete); pickupBtn.setClickable(!routeComplete); }
+        if (deliveryBtn != null) { deliveryBtn.setEnabled(!routeComplete); deliveryBtn.setClickable(!routeComplete); }
+        if (waypointQuickButton != null) waypointQuickButton.setVisibility(View.GONE);
+        if (waypointBtn != null) waypointBtn.setVisibility(View.GONE);
+        refreshWaypointHeader();
         modeText.setText(
                 routeComplete
                         ? "Rute siap"

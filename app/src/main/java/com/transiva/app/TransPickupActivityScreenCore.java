@@ -88,6 +88,7 @@ class TransPickupActivityScreenCore extends FragmentActivity {
     protected String paymentMethod = "cash";
     protected double deliveryFee = 0, distanceKm = 0;
     protected String otpCode = "";
+    private boolean submittingOrder = false;
     protected LocationManager locationManager;
 
     @Override protected void onCreate(Bundle savedInstanceState) {
@@ -160,6 +161,7 @@ class TransPickupActivityScreenCore extends FragmentActivity {
         p.gravity = Gravity.CENTER;
         page.addView(progressBar, p);
 
+        getWindow().setSoftInputMode(android.view.WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
         setContentView(page);
         CustomerAppSettings.apply(this);
     }
@@ -240,18 +242,19 @@ class TransPickupActivityScreenCore extends FragmentActivity {
         LinearLayout sheet = new LinearLayout(this);
         bottomSheet = sheet;
         sheet.setOrientation(LinearLayout.VERTICAL);
-        sheet.setPadding(dp(10), dp(8), dp(10), dp(8));
+        sheet.setPadding(dp(10), dp(4), dp(10), dp(6));
         sheet.setBackground(roundStroke("#F7FAFF", "#C7DBF2", dp(24), 1));
         sheet.setElevation(dp(8));
 
-        FrameLayout.LayoutParams sheetLp = new FrameLayout.LayoutParams(-1, dp(330));
+        FrameLayout.LayoutParams sheetLp = new FrameLayout.LayoutParams(-1, dp(286));
         sheetLp.gravity = Gravity.BOTTOM;
         sheetLp.setMargins(dp(7), 0, dp(7), dp(6));
         page.addView(sheet, sheetLp);
 
         TextView handle = text("━", 24, "#94A3B8", true);
         handle.setGravity(Gravity.CENTER);
-        sheet.addView(handle, new LinearLayout.LayoutParams(-1, dp(26)));
+        sheet.addView(handle, new LinearLayout.LayoutParams(-1, dp(20)));
+        handle.setOnClickListener(v -> toggleSheetSize());
 
         ScrollView scroll = new ScrollView(this);
         scroll.setFillViewport(false);
@@ -261,6 +264,15 @@ class TransPickupActivityScreenCore extends FragmentActivity {
         root.setOrientation(LinearLayout.VERTICAL);
         root.setPadding(dp(2), 0, dp(2), dp(8));
         scroll.addView(root, new ScrollView.LayoutParams(-1, -2));
+    }
+
+    protected void toggleSheetSize() {
+        if (bottomSheet == null || page == null) return;
+        FrameLayout.LayoutParams lp = (FrameLayout.LayoutParams) bottomSheet.getLayoutParams();
+        int compact = dp(286);
+        int expanded = Math.max(compact, page.getHeight() - dp(150));
+        lp.height = Math.abs(lp.height - compact) < dp(20) ? expanded : compact;
+        bottomSheet.setLayoutParams(lp);
     }
 
     protected void setBottomSheetHidden(boolean hidden) {
@@ -479,7 +491,7 @@ class TransPickupActivityScreenCore extends FragmentActivity {
     protected void buildItemCard() {
         LinearLayout card = card();
         card.setPadding(dp(12), dp(10), dp(12), dp(10));
-        card.addView(text("Detail Barang", 15, "#0B3A78", true));
+        card.addView(text("2. Detail Barang", 15, "#0B3A78", true));
         itemNameInput = edit("Nama barang, contoh: Dokumen / paket baju");
         addInner(card, itemNameInput, dp(6));
         itemValueInput = edit("Nilai barang, contoh: 50000");
@@ -491,8 +503,9 @@ class TransPickupActivityScreenCore extends FragmentActivity {
         receiverPhoneInput.setInputType(android.text.InputType.TYPE_CLASS_PHONE);
         addInner(card, receiverPhoneInput, dp(6));
         noteInput = edit("Catatan untuk driver");
-        noteInput.setSingleLine(true); noteInput.setMinLines(1);
+        noteInput.setSingleLine(false); noteInput.setMinLines(2); noteInput.setMaxLines(3); noteInput.setGravity(Gravity.TOP | Gravity.START);
         addInner(card, noteInput, dp(6));
+        noteInput.getLayoutParams().height = dp(62);
         addWithMargin(card, 0, 0, 0, dp(8));
     }
 
@@ -737,14 +750,20 @@ class TransPickupActivityScreenCore extends FragmentActivity {
     }
 
     private void createPickupOrderAuthorized() {
+        if (submittingOrder) return;
         if (userId <= 0) { showInfo("Login", "User ID tidak ditemukan. Silakan login ulang."); return; }
         if (!validLocation()) return;
         String itemName = itemNameInput.getText().toString().trim();
         String receiverName = receiverNameInput.getText().toString().trim();
         String receiverPhone = receiverPhoneInput.getText().toString().trim();
         if (itemName.length() < 2) { showInfo("Barang", "Nama barang wajib diisi."); return; }
-        if (receiverName.length() < 2 || receiverPhone.length() < 6) { showInfo("Penerima", "Nama dan nomor HP penerima wajib diisi."); return; }
+        if (receiverName.length() < 2 || !receiverPhone.matches("\\+?[0-9]{9,15}")) { showInfo("Penerima", "Nama dan nomor HP penerima wajib diisi."); return; }
+        if (itemValueInput.getText().toString().trim().isEmpty() || parseMoney(itemValueInput.getText().toString()) < 0) {
+            showInfo("Nilai barang", "Masukkan nilai barang yang valid."); return;
+        }
         if (deliveryFee <= 0) { calculateOngkir(); return; }
+        submittingOrder = true;
+        if (orderBtn != null) orderBtn.setEnabled(false);
         setLoading(true);
         networkScope.newThread(() -> {
             try {
@@ -762,6 +781,7 @@ class TransPickupActivityScreenCore extends FragmentActivity {
                 String msg = firstNonEmpty(res.optString("message"), ok ? "Order penjemputan berhasil dibuat" : "Gagal membuat order penjemputan");
                 mainHandler.post(() -> {
                     setLoading(false);
+                    if (!ok) { submittingOrder = false; if (orderBtn != null) orderBtn.setEnabled(true); }
                     if (ok) {
                         otpCode = res.optString("otp", "").trim();
                         if (otpText != null) otpText.setText("OTP penerima: " + otpCode);
@@ -773,7 +793,7 @@ class TransPickupActivityScreenCore extends FragmentActivity {
                                 .show();
                     } else showInfo("Gagal", msg);
                 });
-            } catch (Exception e) { mainHandler.post(() -> { setLoading(false); showInfo("Error", "Koneksi gagal membuat order penjemputan."); }); }
+            } catch (Exception e) { mainHandler.post(() -> { submittingOrder = false; if (orderBtn != null) orderBtn.setEnabled(true); setLoading(false); showInfo("Error", "Koneksi gagal membuat order penjemputan."); }); }
         }).start();
     }
 
@@ -857,7 +877,7 @@ class TransPickupActivityScreenCore extends FragmentActivity {
     private EditText edit(String hint) { EditText e = new EditText(this); e.setHint(hint); e.setTextSize(14); e.setSingleLine(true); e.setTextColor(Color.parseColor("#0F172A")); e.setHintTextColor(Color.parseColor("#94A3B8")); e.setPadding(dp(14),0,dp(14),0); e.setBackground(roundStroke("#FFFFFF", "#D7E6F8", dp(18), 1)); return e; }
     private LinearLayout row() { LinearLayout r = new LinearLayout(this); r.setOrientation(LinearLayout.HORIZONTAL); return r; }
     private void addChoice(LinearLayout row, Button a, Button b) { row.addView(a, new LinearLayout.LayoutParams(0, dp(58), 1)); LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, dp(58), 1); lp.setMargins(dp(10),0,0,0); row.addView(b, lp); }
-    private void addInner(LinearLayout parent, View v, int top) { LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, dp(50)); lp.setMargins(0, top, 0, 0); parent.addView(v, lp); }
+    private void addInner(LinearLayout parent, View v, int top) { LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, dp(48)); lp.setMargins(0, top, 0, 0); parent.addView(v, lp); }
     private LinearLayout card() { LinearLayout v = new LinearLayout(this); v.setOrientation(LinearLayout.VERTICAL); v.setBackground(roundStroke("#FFFFFF", "#E2ECF8", dp(22), 1)); v.setElevation(dp(2)); return v; }
     private TextView text(String s, int sp, String color, boolean bold) { TextView t = new TextView(this); t.setText(s); t.setTextSize(sp); t.setTextColor(Color.parseColor(color)); if (bold) t.setTypeface(Typeface.DEFAULT_BOLD); return t; }
     private Button primaryButton(String s) { Button b = new Button(this); b.setText(s); b.setAllCaps(false); b.setTextColor(Color.WHITE); b.setTypeface(Typeface.DEFAULT_BOLD); b.setBackground(roundGradient("#086BFF", "#2EA2FF", dp(18))); return b; }

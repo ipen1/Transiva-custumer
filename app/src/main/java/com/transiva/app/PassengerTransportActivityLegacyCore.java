@@ -739,6 +739,7 @@ class PassengerTransportActivityLegacyCore extends Activity {
         selectingWaypoint = false;
         if (mapView != null) mapView.setWaypoints(ecosystemFeatures.waypoints);
         updateWaypointButton();
+        updateModeUI();
         requestPaymentQuote();
         requestVisibleOsrmRoute();
 
@@ -851,6 +852,7 @@ class PassengerTransportActivityLegacyCore extends Activity {
         }
         if (mapView != null) mapView.setWaypoints(ecosystemFeatures.waypoints);
         updateWaypointButton();
+        updateModeUI();
         requestPaymentQuote();
         requestVisibleOsrmRoute();
     }
@@ -2133,7 +2135,11 @@ class PassengerTransportActivityLegacyCore extends Activity {
 
 
 
+    private int routePreviewVersion = 0;
+    private int quoteVersion = 0;
+
     private void requestPaymentQuote() {
+        final int quoteRequest = ++quoteVersion;
         requestVisibleOsrmRoute();
         if (!validCoordinate(pickupLat, pickupLng)
                 || !validCoordinate(deliveryLat, deliveryLng)) {
@@ -2148,15 +2154,19 @@ class PassengerTransportActivityLegacyCore extends Activity {
             return;
         }
 
-        final double fallbackKm = Math.max(
-                0.1,
-                distanceMeter(
-                        pickupLat,
-                        pickupLng,
-                        deliveryLat,
-                        deliveryLng
-                ) / 1000.0
-        );
+        double fallbackDistance = 0;
+        double previousLat = pickupLat, previousLng = pickupLng;
+        for (int i = 0; i < ecosystemFeatures.waypoints.length(); i++) {
+            JSONObject stop = ecosystemFeatures.waypoints.optJSONObject(i);
+            if (stop == null) continue;
+            double lat = stop.optDouble("latitude", Double.NaN);
+            double lng = stop.optDouble("longitude", Double.NaN);
+            if (!validCoord(lat, lng)) continue;
+            fallbackDistance += distanceMeter(previousLat, previousLng, lat, lng);
+            previousLat = lat; previousLng = lng;
+        }
+        fallbackDistance += distanceMeter(previousLat, previousLng, deliveryLat, deliveryLng);
+        final double fallbackKm = Math.max(0.1, fallbackDistance * 1.25 / 1000.0);
 
         // Tampilkan estimasi jarak/waktu segera, lalu harga diisi dari database.
         final double fallbackMinutes = Math.max(
@@ -2207,7 +2217,7 @@ class PassengerTransportActivityLegacyCore extends Activity {
                 JSONObject res = postJson(PAYMENT_QUOTE_URL, payload);
 
                 featureRuntime.post(mainHandler, () -> {
-                    if (destroyed) return;
+                    if (destroyed || quoteRequest != quoteVersion) return;
 
                     if (!res.optBoolean("success", false)) {
                         String message = firstNonEmpty(
@@ -2361,7 +2371,12 @@ class PassengerTransportActivityLegacyCore extends Activity {
         if (tripRouteSummaryText != null && routeComplete) {
             String from = compactDisplayName(firstNonEmpty(pickupAddress, "Lokasi jemput"));
             String to = compactDisplayName(firstNonEmpty(deliveryAddress, "Tujuan"));
-            tripRouteSummaryText.setText(from + "  →  " + to);
+            StringBuilder itinerary = new StringBuilder(from);
+            for (int i = 0; i < ecosystemFeatures.waypoints.length(); i++) {
+                itinerary.append("  →  ").append(compactDisplayName(addressForWaypoint(i)));
+            }
+            itinerary.append("  →  ").append(to);
+            tripRouteSummaryText.setText(itinerary.toString());
         }
 
         pickupBtn.setAlpha(pickupMode ? 1f : .80f);
@@ -2377,7 +2392,8 @@ class PassengerTransportActivityLegacyCore extends Activity {
     }
 
     private void requestVisibleOsrmRoute() {
-        if (!mapReady || mapView == null || !validCoord(pickupLat, pickupLng) || !validCoord(deliveryLat, deliveryLng)) return;
+        if (!mapReady || mapView == null || !validCoord(pickupLat, pickupLng)) return;
+        final int previewRequest = ++routePreviewVersion;
         final JSONArray routeStops = new JSONArray();
         try {
             routeStops.put(new JSONArray().put(pickupLat).put(pickupLng));
@@ -2388,9 +2404,10 @@ class PassengerTransportActivityLegacyCore extends Activity {
                 double lng = wp.optDouble("longitude", Double.NaN);
                 if (validCoord(lat, lng)) routeStops.put(new JSONArray().put(lat).put(lng));
             }
-            routeStops.put(new JSONArray().put(deliveryLat).put(deliveryLng));
+            if (validCoord(deliveryLat, deliveryLng)) routeStops.put(new JSONArray().put(deliveryLat).put(deliveryLng));
         } catch (Exception ignored) {}
 
+        if (routeStops.length() < 2) return;
         featureRuntime.newThread(() -> {
             try {
                 JSONArray merged = new JSONArray();
@@ -2408,7 +2425,7 @@ class PassengerTransportActivityLegacyCore extends Activity {
                     }
                 }
                 featureRuntime.post(mainHandler, () -> {
-                    if (!destroyed && mapView != null) {
+                    if (!destroyed && previewRequest == routePreviewVersion && mapView != null) {
                         mapView.setWaypoints(ecosystemFeatures.waypoints);
                         mapView.drawRideRoute(merged);
                     }

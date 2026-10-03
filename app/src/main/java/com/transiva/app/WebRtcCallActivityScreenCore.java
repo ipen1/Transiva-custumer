@@ -120,7 +120,8 @@ class WebRtcCallActivityScreenCore extends Activity {
             if (destroyed || ended || !accepted || callId.isEmpty()) return;
             status("Mencoba menyambungkan audio kembali...");
             resetRtcForRetry();
-            loadIceAndStartPeer();
+            startCallForeground();
+        loadIceAndStartPeer();
         }
     };
 
@@ -330,6 +331,7 @@ class WebRtcCallActivityScreenCore extends Activity {
             requestPermissions(new String[]{Manifest.permission.RECORD_AUDIO}, REQ_MIC);
             return;
         }
+        startCallForeground();
         if (incoming && accepted) loadIceAndStartPeer();
         else if (!incoming) startOutgoingCall();
     }
@@ -339,6 +341,7 @@ class WebRtcCallActivityScreenCore extends Activity {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
         if (requestCode == REQ_MIC) {
             if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                startCallForeground();
                 if (incoming && accepted) {
                     loadIceAndStartPeer();
                 } else if (!incoming) {
@@ -673,6 +676,7 @@ class WebRtcCallActivityScreenCore extends Activity {
         if (closeNow) userRequestedClose = true;
         if (ended) return;
         ended = true;
+        stopService(new Intent(this, WebRtcCallForegroundService.class));
         stopRingtone();
         main.removeCallbacks(pollTask);
         main.removeCallbacks(rtcRetryTask);
@@ -837,11 +841,27 @@ class WebRtcCallActivityScreenCore extends Activity {
     }
 
     @Override
+    private void startCallForeground() {
+        if (android.os.Build.VERSION.SDK_INT >= 23 &&
+                checkSelfPermission(android.Manifest.permission.RECORD_AUDIO)
+                        != android.content.pm.PackageManager.PERMISSION_GRANTED) return;
+        try {
+            Intent intent = new Intent(this, WebRtcCallForegroundService.class);
+            intent.putExtra("peer", peerName);
+            if (android.os.Build.VERSION.SDK_INT >= 26) startForegroundService(intent);
+            else startService(intent);
+        } catch (RuntimeException ignored) {
+            // No false success indication: platform restrictions may deny service start.
+        }
+    }
+
     public void onBackPressed() {
-        finishCall(
-                callId.isEmpty() ? "" : (incoming && !accepted ? "reject" : "end"),
-                true
-        );
+        // Back minimizes the call; only the explicit End button hangs up.
+        if (!ended && !callId.isEmpty()) {
+            moveTaskToBack(true);
+        } else {
+            finish();
+        }
     }
 
     @Override

@@ -2161,6 +2161,8 @@ class CustomerDashboardActivityScreenCore extends Activity
     }
 
     protected void openTrackedService(String serviceName) {
+        if (("TransFood".equalsIgnoreCase(serviceName) || "TransShop".equalsIgnoreCase(serviceName))
+                && !DeliveryAddressGate.require(this, serviceName)) return;
         recordServiceUsage(serviceName);
         if ("TransRide".equalsIgnoreCase(serviceName)) {
             startActivity(new Intent(this, TransRideActivity.class));

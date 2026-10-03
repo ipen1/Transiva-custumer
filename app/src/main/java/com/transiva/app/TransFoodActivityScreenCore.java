@@ -194,11 +194,12 @@ class TransFoodActivityScreenCore extends Activity {
         row.setGravity(Gravity.CENTER_VERTICAL);
         row.setPadding(dp(12), dp(9), dp(12), dp(9));
         row.setBackground(roundStroke("#FFFFFF", "#D7E6F8", dp(14), 1));
-        String address = "";
-        try { address = getSharedPreferences("transiva", MODE_PRIVATE).getString("delivery_address", ""); } catch (Exception ignored) {}
+        String address = DeliveryAddressGate.address(this);
         TextView location = text("📍 Antar ke  •  " + firstNonEmpty(address, "Lokasi akun / titik antar"), 12, "#123B6B", true);
         location.setSingleLine(true); location.setEllipsize(android.text.TextUtils.TruncateAt.END);
         row.addView(location, new LinearLayout.LayoutParams(-1, -2));
+        row.setClickable(true);
+        row.setOnClickListener(v -> DeliveryAddressGate.edit(this,"TransFood"));
         addWithMargin(row, 0, 0, 0, dp(10));
     }
 
@@ -1621,6 +1622,8 @@ class TransFoodActivityScreenCore extends Activity {
     protected void onResume() {
         super.onResume();
         featureRuntime.onResume();
+        if (!DeliveryAddressGate.require(this,"TransFood")) { finish(); return; }
+        if (currentScreen == 0 && root != null) showRestaurantList();
         mainHandler.removeCallbacks(realtimeFoodRefresh);
         mainHandler.postDelayed(realtimeFoodRefresh, CustomerPerformanceManager.pollingBackground(this, 30000L));
     }

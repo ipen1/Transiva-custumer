@@ -148,7 +148,7 @@ class ProfileActivityScreenCore extends Activity {
         );
 
         session = new SessionManager(this);
-        forceAddressSetup = getIntent().getBooleanExtra("force_address_setup", false);
+        forceAddressSetup = false;
 
         readSession();
         setContentView(buildScreen());
@@ -156,6 +156,10 @@ class ProfileActivityScreenCore extends Activity {
         CustomerAppSettings.apply(this);
         loadProfile();
         loadLoyalty();
+        if (getIntent().getBooleanExtra("edit_delivery_address",false))
+            new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(() -> {
+                if (!profileEditMode) setProfileEditMode(true);
+            }, 350);
     }
 
     @Override
@@ -2091,17 +2095,7 @@ class ProfileActivityScreenCore extends Activity {
                 && !(Math.abs(lat) < 0.000001 && Math.abs(lng) < 0.000001);
     }
 
-    @Override
-    public void onBackPressed() {
-        if (forceAddressSetup) {
-            showInfo(
-                    "Lokasi Wajib Ditetapkan",
-                    "Tetapkan alamat dan lokasi delivery terlebih dahulu sebelum masuk ke Transiva."
-            );
-            return;
-        }
-        super.onBackPressed();
-    }
+    @Override public void onBackPressed() { super.onBackPressed(); }
 
     protected void writeField(
             OutputStream output,

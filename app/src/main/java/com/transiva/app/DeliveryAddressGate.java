@@ -6,6 +6,7 @@ import android.content.Context;
 import android.os.Handler;
 import android.os.Looper;
 import android.widget.Toast;
+import android.app.ProgressDialog;
 import org.json.JSONObject;
 import java.net.HttpURLConnection;
 import java.net.URL;
@@ -49,12 +50,17 @@ public final class DeliveryAddressGate {
   if(id.isEmpty()){profile(a,service);return false;}
   String key=id+":"+service;
   if(!pending.add(key))return false;
+  final ProgressDialog progress=new ProgressDialog(a);
+  progress.setMessage("Menyiapkan alamat delivery Anda…");
+  progress.setIndeterminate(true);
+  progress.setCancelable(false);
+  progress.show();
   new Thread(()->{
    HttpURLConnection c=null;String addr="";double lat=0,lng=0;boolean loaded=false;
    try {
     URL url=new URL("https://transiva.my.id/server/get_customer_profile.php?id="+
        java.net.URLEncoder.encode(id,"UTF-8")+"&_="+System.currentTimeMillis());
-    c=CustomerApiClient.open(a,url.toString());c.setConnectTimeout(8000);c.setReadTimeout(8000);
+    c=CustomerApiClient.open(a,url.toString());c.setConnectTimeout(4500);c.setReadTimeout(5000);
     InputStream in=c.getInputStream();ByteArrayOutputStream bytes=new ByteArrayOutputStream();
     byte[] buf=new byte[4096];int n;while((n=in.read(buf))!=-1)bytes.write(buf,0,n);in.close();
     JSONObject result=new JSONObject(bytes.toString("UTF-8"));
@@ -67,6 +73,7 @@ public final class DeliveryAddressGate {
    final String saved=addr;final double la=lat,lo=lng;final boolean ok=loaded;
    new Handler(Looper.getMainLooper()).post(()->{
     pending.remove(key);
+    if(progress.isShowing()) progress.dismiss();
     if(a.isFinishing()||a.isDestroyed()||!id.equals(user(a)))return;
     if(ok){update(a,saved,la,lo);if(!saved.isEmpty()){
       Intent i=new Intent(a,"TransFood".equalsIgnoreCase(service)?TransFoodActivity.class:TransShopActivity.class);

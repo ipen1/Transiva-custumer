@@ -167,7 +167,7 @@ class PassengerTransportActivityLegacyCore extends Activity {
     protected String priceMode = "standard";
     protected int familyMemberId = 0;
     protected final RideEcosystemFeatures ecosystemFeatures = new RideEcosystemFeatures();
-    protected Button waypointBtn, groupRideBtn, safetyRideBtn, familyBtn;
+    protected Button waypointQuickButton, waypointBtn, groupRideBtn, safetyRideBtn, familyBtn;
     protected LinearLayout ecosystemRow;
     protected SplitBillManager splitBillManager;
     protected int lastQuotedFare = 0;
@@ -495,7 +495,7 @@ class PassengerTransportActivityLegacyCore extends Activity {
         hematBtn.setMinWidth(0); hematBtn.setMinimumWidth(0);
         TierBadgeUi.applyToButton(hematBtn, TierBadgeUi.getCachedActiveTier(this), dp(18), dp(2));
         familyBtn = smallButton(familyMemberId > 0 ? "👨‍👩‍👧 " + firstNonEmpty(familyMemberName,"Family") : "👨‍👩‍👧 Family", "#FFFFFF", "#0B3A78", "#C8D9EC");
-        waypointBtn = smallButton("➕ Stop 0/2", "#FFFFFF", "#0B3A78", "#C8D9EC");
+        waypointBtn = smallButton("＋ Tambahkan persinggahan (Opsional)", "#FFFFFF", "#0B3A78", "#C8D9EC");
         groupRideBtn = smallButton("💳 Split Pay", "#FFFFFF", "#0B3A78", "#C8D9EC");
         safetyRideBtn = smallButton("🛡 Guardian", "#EAF4FF", "#0B7CFF", "#9DCAFF");
 
@@ -504,6 +504,14 @@ class PassengerTransportActivityLegacyCore extends Activity {
         advancedBox.setPadding(0, dp(5), 0, 0);
         advancedBox.setVisibility(View.GONE);
         bottomCard.addView(advancedBox, new LinearLayout.LayoutParams(-1, -2));
+        // Persinggahan is a first-class option, visible for cash and wallet alike.
+        Button waypointQuickBtn = smallButton("＋ Tambahkan persinggahan (Opsional)", "#F0F7FF", "#0B7CFF", "#BBD8F7");
+        LinearLayout.LayoutParams waypointQuickLp = new LinearLayout.LayoutParams(-1, dp(44));
+        waypointQuickLp.setMargins(0, dp(6), 0, dp(2));
+        bottomCard.addView(waypointQuickBtn, waypointQuickLp);
+        waypointQuickBtn.setOnClickListener(v -> showWaypointDialog());
+        waypointQuickButton = waypointQuickBtn;
+
 
         LinearLayout advancedRow1 = new LinearLayout(this); advancedRow1.setOrientation(LinearLayout.HORIZONTAL);
         advancedBox.addView(advancedRow1, new LinearLayout.LayoutParams(-1, dp(40)));
@@ -781,7 +789,8 @@ class PassengerTransportActivityLegacyCore extends Activity {
     protected void updateWaypointButton(){
         if(waypointBtn!=null) {
             int count = ecosystemFeatures.waypoints.length();
-            waypointBtn.setText(count >= 2 ? "✓ Stop 2/2" : "➕ Stop " + count + "/2");
+            waypointBtn.setText(count >= 2 ? "✓ Persinggahan 2/2" : "＋ Persinggahan " + count + "/2");
+            if (waypointQuickButton != null) waypointQuickButton.setText(count == 0 ? "＋ Tambahkan persinggahan (Opsional)" : "✓ Persinggahan " + count + "/2  •  Ubah");
         }
     }
 
@@ -799,11 +808,10 @@ class PassengerTransportActivityLegacyCore extends Activity {
     protected void updateTransPayOnlyFeatures() {
         boolean show="balance".equals(paymentMethod);
         if(familyBtn!=null) familyBtn.setVisibility(show?View.VISIBLE:View.GONE);
-        if(waypointBtn!=null) waypointBtn.setVisibility(show?View.VISIBLE:View.GONE);
+        if(waypointBtn!=null) waypointBtn.setVisibility(View.VISIBLE);
         if(groupRideBtn!=null) groupRideBtn.setVisibility(show?View.VISIBLE:View.GONE);
         if(!show){
             familyMemberId=0; familyMemberName="";
-            if(ecosystemFeatures.waypoints.length()>0){ ecosystemFeatures.clearWaypoints(); if(mapView!=null)mapView.clearWaypoints(); updateWaypointButton(); }
             ecosystemFeatures.groupSize=1; ecosystemFeatures.splitFareMode="none";
         }
     }

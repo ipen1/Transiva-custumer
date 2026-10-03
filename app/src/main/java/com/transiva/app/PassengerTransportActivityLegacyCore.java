@@ -168,6 +168,7 @@ class PassengerTransportActivityLegacyCore extends Activity {
     protected int familyMemberId = 0;
     protected final RideEcosystemFeatures ecosystemFeatures = new RideEcosystemFeatures();
     protected Button waypointQuickButton, waypointBtn, groupRideBtn, safetyRideBtn, familyBtn;
+    protected LinearLayout waypointHeaderRows;
     protected LinearLayout ecosystemRow;
     protected SplitBillManager splitBillManager;
     protected int lastQuotedFare = 0;
@@ -325,7 +326,11 @@ class PassengerTransportActivityLegacyCore extends Activity {
         pointRow.addView(pickupBtn, new LinearLayout.LayoutParams(-1, dp(compactScreen ? 46 : 50)));
         LinearLayout.LayoutParams deliveryLp = new LinearLayout.LayoutParams(-1, dp(compactScreen ? 46 : 50));
         deliveryLp.setMargins(0, dp(4), 0, 0);
+        waypointHeaderRows = new LinearLayout(this);
+        waypointHeaderRows.setOrientation(LinearLayout.VERTICAL);
+        pointRow.addView(waypointHeaderRows, new LinearLayout.LayoutParams(-1, -2));
         pointRow.addView(deliveryBtn, deliveryLp);
+        refreshWaypointHeader();
 
         pickupText = text("Penjemputan: belum dipilih", 9, "#334155", false);
         deliveryText = text("Pengantaran: belum dipilih", 9, "#334155", false);
@@ -746,6 +751,7 @@ class PassengerTransportActivityLegacyCore extends Activity {
                     if (wp != null && address != null && !address.trim().isEmpty()) wp.put("address", address);
                 } catch (Exception ignored) {}
                 if (mapView != null) mapView.setWaypoints(ecosystemFeatures.waypoints);
+                updateWaypointButton();
                 requestPaymentQuote();
             });
         }, "transiva-waypoint-geocode").start();
@@ -786,12 +792,66 @@ class PassengerTransportActivityLegacyCore extends Activity {
                 }).show();
     }
 
-    protected void updateWaypointButton(){
-        if(waypointBtn!=null) {
-            int count = ecosystemFeatures.waypoints.length();
-            waypointBtn.setText(count >= 2 ? "✓ Persinggahan 2/2" : "＋ Persinggahan " + count + "/2");
-            if (waypointQuickButton != null) waypointQuickButton.setText(count == 0 ? "＋ Tambahkan persinggahan (Opsional)" : "✓ Persinggahan " + count + "/2  •  Ubah");
+    protected void refreshWaypointHeader() {
+        if (waypointHeaderRows == null) return;
+        waypointHeaderRows.removeAllViews();
+        int count = ecosystemFeatures.waypoints.length();
+        for (int i = 0; i < count; i++) {
+            final int position = i;
+            JSONObject wp = ecosystemFeatures.waypoints.optJSONObject(i);
+            String name = count == 1 ? "Persinggahan" : (i == 0 ? "Persinggahan Pertama" : "Persinggahan Kedua");
+            String address = wp == null ? "" : wp.optString("address", "");
+            if (address.trim().isEmpty()) address = "Titik dipilih di peta";
+            Button row = compactPointButton("●  " + name, address, "#D97706");
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, dp(50));
+            lp.topMargin = dp(4);
+            waypointHeaderRows.addView(row, lp);
+            row.setContentDescription(name + ", " + address + ". Ketuk untuk mengubah atau menghapus.");
+            row.setOnClickListener(v -> new TransivaAlertDialogBuilder(this)
+                    .setTitle(name)
+                    .setMessage(addressForWaypoint(position))
+                    .setPositiveButton("Ubah lokasi", (dialog, which) -> {
+                        removeWaypointAt(position);
+                        showWaypointDialog();
+                    })
+                    .setNegativeButton("Hapus", (dialog, which) -> removeWaypointAt(position))
+                    .setNeutralButton("Batal", null).show());
         }
+        if (count < 2) {
+            Button add = smallButton("＋ Tambah persinggahan (Opsional)", "#F0F7FF", "#0B7CFF", "#BBD8F7");
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, dp(40));
+            lp.topMargin = dp(4);
+            waypointHeaderRows.addView(add, lp);
+            add.setOnClickListener(v -> showWaypointDialog());
+        }
+    }
+    protected String addressForWaypoint(int index) {
+        JSONObject wp = ecosystemFeatures.waypoints.optJSONObject(index);
+        return wp == null ? "" : wp.optString("address", "Titik persinggahan");
+    }
+    protected void removeWaypointAt(int index) {
+        JSONArray updated = new JSONArray();
+        for (int i = 0; i < ecosystemFeatures.waypoints.length(); i++)
+            if (i != index) updated.put(ecosystemFeatures.waypoints.optJSONObject(i));
+        ecosystemFeatures.clearWaypoints();
+        for (int i = 0; i < updated.length(); i++) {
+            JSONObject wp = updated.optJSONObject(i);
+            if (wp == null) continue;
+            if (ecosystemFeatures.addWaypoint(wp.optDouble("latitude"), wp.optDouble("longitude"), wp.optString("address"))) {
+                JSONObject target = ecosystemFeatures.waypoints.optJSONObject(i);
+                if (target != null) try { target.put("note", wp.optString("note")); } catch (Exception ignored) {}
+            }
+        }
+        if (mapView != null) mapView.setWaypoints(ecosystemFeatures.waypoints);
+        updateWaypointButton();
+        requestPaymentQuote();
+        requestVisibleOsrmRoute();
+    }
+    protected void updateWaypointButton(){
+        int count = ecosystemFeatures.waypoints.length();
+        if (waypointBtn != null) waypointBtn.setText(count >= 2 ? "✓ Persinggahan 2/2" : "＋ Persinggahan " + count + "/2");
+        if (waypointQuickButton != null) waypointQuickButton.setVisibility(View.GONE);
+        refreshWaypointHeader();
     }
 
     protected void showGroupRideDialog() {
@@ -808,7 +868,7 @@ class PassengerTransportActivityLegacyCore extends Activity {
     protected void updateTransPayOnlyFeatures() {
         boolean show="balance".equals(paymentMethod);
         if(familyBtn!=null) familyBtn.setVisibility(show?View.VISIBLE:View.GONE);
-        if(waypointBtn!=null) waypointBtn.setVisibility(View.VISIBLE);
+        if(waypointBtn!=null) waypointBtn.setVisibility(View.GONE);
         if(groupRideBtn!=null) groupRideBtn.setVisibility(show?View.VISIBLE:View.GONE);
         if(!show){
             familyMemberId=0; familyMemberName="";

@@ -840,7 +840,6 @@ class WebRtcCallActivityScreenCore extends Activity {
         pendingRemoteCandidates.clear();
     }
 
-    @Override
     private void startCallForeground() {
         if (android.os.Build.VERSION.SDK_INT >= 23 &&
                 checkSelfPermission(android.Manifest.permission.RECORD_AUDIO)

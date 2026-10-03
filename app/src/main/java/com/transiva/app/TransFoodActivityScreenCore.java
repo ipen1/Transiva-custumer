@@ -1622,7 +1622,7 @@ class TransFoodActivityScreenCore extends Activity {
     protected void onResume() {
         super.onResume();
         featureRuntime.onResume();
-        if (!DeliveryAddressGate.require(this,"TransFood")) { finish(); return; }
+        if (!DeliveryAddressGate.valid(this)) { finish(); return; }
         if (currentScreen == 0 && root != null) showRestaurantList();
         mainHandler.removeCallbacks(realtimeFoodRefresh);
         mainHandler.postDelayed(realtimeFoodRefresh, CustomerPerformanceManager.pollingBackground(this, 30000L));

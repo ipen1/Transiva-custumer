@@ -1598,6 +1598,7 @@ class ProfileActivityScreenCore extends Activity {
                         "delivery_lng",
                         deliveryLng
                 );
+        DeliveryAddressGate.update(this,address,deliveryLat,deliveryLng);
 
         emailVerified =
                 user.optInt(

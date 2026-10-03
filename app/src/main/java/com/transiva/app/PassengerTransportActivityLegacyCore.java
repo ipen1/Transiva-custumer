@@ -323,7 +323,10 @@ class PassengerTransportActivityLegacyCore extends Activity {
 
         pickupBtn = compactPointButton("●  Jemput", "Lokasi Anda • ketuk untuk ubah   ›", "#16A34A");
         deliveryBtn = compactPointButton("●  Mau ke mana?", "Cari tujuan / tempel link Maps   ›", "#EF4444");
-        pointRow.addView(pickupBtn, new LinearLayout.LayoutParams(-1, dp(compactScreen ? 46 : 50)));
+        pointRow.addView(pickupBtn, new LinearLayout.LayoutParams(-1, dp(compactScreen ? 52 : 56)));
+        pickupGpsBadge = text("GPS • menunggu lokasi terbaru", 11, "#64748B", true);
+        pickupGpsBadge.setPadding(dp(12), dp(2), dp(8), dp(3));
+        pointRow.addView(pickupGpsBadge, new LinearLayout.LayoutParams(-1, -2));
         LinearLayout.LayoutParams deliveryLp = new LinearLayout.LayoutParams(-1, dp(compactScreen ? 46 : 50));
         deliveryLp.setMargins(0, dp(4), 0, 0);
         waypointHeaderRows = new LinearLayout(this);
@@ -1386,7 +1389,7 @@ class PassengerTransportActivityLegacyCore extends Activity {
         if (!validCoord(selectedLat, selectedLng)) return;
 
         if ("pickup".equals(mode)) {
-            pickupGpsSelected = false;
+            pickupGpsSelected = false; pickupGpsPinned = true;
             pickupLat = selectedLat;
             pickupLng = selectedLng;
             pickupAddress = "Mencari alamat jemput...";
@@ -1417,9 +1420,20 @@ class PassengerTransportActivityLegacyCore extends Activity {
     private android.location.LocationListener liveGpsListener;
     private Location liveGpsBest;
     private boolean pickupGpsSelected = true;
+    private boolean pickupGpsPinned = false;
+    private long pickupAddressRequest = 0;
+    private android.widget.TextView pickupGpsBadge;
     private boolean gpsRefreshActive = false;
     private long lastGpsAppliedAt = 0L;
     private final android.os.Handler gpsHandler = new android.os.Handler(android.os.Looper.getMainLooper());
+    private void updateGpsBadge(Location loc) {
+        if (pickupGpsBadge == null) return;
+        String quality = gpsQuality(loc);
+        pickupGpsBadge.setText(quality + (pickupGpsPinned ? "  •  Titik jemput tetap" : ""));
+        boolean fresh = loc != null && Math.abs(System.currentTimeMillis()-loc.getTime()) <= 15000 && loc.hasAccuracy();
+        int color = !fresh || loc.getAccuracy()>50 ? 0xFFCC4444 : loc.getAccuracy()>20 ? 0xFFAD7900 : 0xFF16865B;
+        pickupGpsBadge.setTextColor(color);
+    }
     private String gpsQuality(Location loc) {
         if (loc == null) return "GPS mencari sinyal…";
         long age = Math.max(0, System.currentTimeMillis() - loc.getTime());
@@ -1440,13 +1454,14 @@ class PassengerTransportActivityLegacyCore extends Activity {
     private void applyGpsPickup(Location loc, boolean force) {
         if (loc == null || !loc.hasAccuracy() || loc.getAccuracy() > 100f) return;
         if (Math.abs(System.currentTimeMillis()-loc.getTime()) > 15000L) return;
-        if (!force && (!pickupGpsSelected || isRouteConfirmationLocked())) return;
+        if (!force && (!pickupGpsSelected || pickupGpsPinned || isRouteConfirmationLocked())) return;
         if (!force && liveGpsBest != null && lastGpsAppliedAt > 0 &&
                 loc.getTime() < lastGpsAppliedAt) return;
         pickupLat=loc.getLatitude(); pickupLng=loc.getLongitude();
         lastGpsAppliedAt=loc.getTime();
-        pickupAddress="Memperbarui alamat GPS…";
-        if (pickupBtn != null) pickupBtn.setText("●  Jemput\\n"+gpsQuality(loc));
+        pickupAddress="Mencari alamat lokasi terbaru…";
+        if (pickupBtn != null) pickupBtn.setText("●  Jemput\\n"+shortAddress(pickupAddress));
+        updateGpsBadge(loc);
         if (pickupText != null) pickupText.setText("Penjemputan: "+pickupAddress);
         if (mapView != null) { mapView.setPickup(pickupLat,pickupLng,pickupAddress); if (force) mapView.moveTo(pickupLat,pickupLng,17f); }
         resolveAddressAsync(true,pickupLat,pickupLng);
@@ -1464,8 +1479,8 @@ class PassengerTransportActivityLegacyCore extends Activity {
                     if (liveGpsBest==null || loc.getTime()>liveGpsBest.getTime() ||
                        (loc.getTime()>=liveGpsBest.getTime()-3000 && loc.getAccuracy()<liveGpsBest.getAccuracy()))
                         liveGpsBest=loc;
-                    if (pickupGpsSelected && !isRouteConfirmationLocked() &&
-                        (lastGpsAppliedAt==0 || (System.currentTimeMillis()-lastGpsAppliedAt>5000 && loc.getAccuracy()<=50f)))
+                    updateGpsBadge(liveGpsBest);\n                    if (pickupGpsSelected && !pickupGpsPinned && !isRouteConfirmationLocked() &&
+                        (lastGpsAppliedAt==0 || (System.currentTimeMillis()-lastGpsAppliedAt>12000 && loc.getAccuracy()<=35f)))
                         applyGpsPickup(loc,false);
                 }
                 @Override public void onStatusChanged(String p,int status,android.os.Bundle extras) {}
@@ -1495,14 +1510,13 @@ class PassengerTransportActivityLegacyCore extends Activity {
         if (checkSelfPermissionCompat(Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
             requestPermissions(new String[]{Manifest.permission.ACCESS_FINE_LOCATION,Manifest.permission.ACCESS_COARSE_LOCATION},REQ_LOCATION);return;
         }
-        pickupGpsSelected=true;
-        startLiveGps();
+        pickupGpsSelected=true;\n        pickupGpsPinned=false;\n        startLiveGps();
         TransivaFreshLocation.request(this,new TransivaFreshLocation.Callback() {
             @Override public void onLocation(Location loc,boolean fresh) {
                 if (!fresh || loc==null || !loc.hasAccuracy() || loc.getAccuracy()>100f) {
                     toastDialog("Lokasi GPS belum cukup akurat. Tunggu sinyal membaik atau pilih titik manual.");return;
                 }
-                liveGpsBest=loc; applyGpsPickup(loc,true);
+                if (isFinishing() || destroyed || isRouteConfirmationLocked()) return;\n                liveGpsBest=loc; applyGpsPickup(loc,true);\n                pickupGpsPinned=true; updateGpsBadge(loc);
                 mode="delivery";updateModeUI();
             }
             @Override public void onFailure(String msg) {toastDialog(msg);}
@@ -1678,11 +1692,13 @@ class PassengerTransportActivityLegacyCore extends Activity {
 
 
     protected void resolveAddressAsync(boolean isPickup, double lat, double lng) {
+        final long requestId = isPickup ? ++pickupAddressRequest : 0;
         featureRuntime.newThread(() -> {
             String road = reverseAddress(lat, lng);
             String localMerchant = findNearestPlaceName(lat, lng);
             featureRuntime.post(mainHandler, () -> resolveNearestGooglePlace(lat, lng, (googleName) -> {
-                if (destroyed) return;
+                if (destroyed || (isPickup && (requestId != pickupAddressRequest ||
+                    Math.abs(lat-pickupLat)>0.000001 || Math.abs(lng-pickupLng)>0.000001))) return;
                 String nearName = firstNonEmpty(googleName, localMerchant, "");
                 String address;
                 if (!nearName.isEmpty() && !road.isEmpty()) address = "Dekat " + nearName + ", " + road;
@@ -1769,7 +1785,7 @@ class PassengerTransportActivityLegacyCore extends Activity {
         if (isPickup) {
             pickupAddress = address;
             pickupText.setText("Penjemputan: " + address);
-            pickupBtn.setText("●  Jemput\n" + shortAddress(address));
+            pickupBtn.setText("●  Jemput\n" + shortAddress(address));\n            updateGpsBadge(liveGpsBest);
             if (mapView != null) mapView.setPickup(pickupLat, pickupLng, address);
         } else {
             deliveryAddress = address;
@@ -2641,6 +2657,9 @@ class PassengerTransportActivityLegacyCore extends Activity {
     @Override protected void onResume() {
         super.onResume();
         featureRuntime.onResume();
+        liveGpsBest=null;
+        lastGpsAppliedAt=0L;
+        updateGpsBadge(null);
         startLiveGps();
         if (mapView != null) mapView.onResumeMap();
     }

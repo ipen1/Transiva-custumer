@@ -1445,7 +1445,7 @@ class PassengerTransportActivityLegacyCore extends Activity {
     private void showGpsPickupDialog() {
         Location loc = liveGpsBest;
         new TransivaAlertDialogBuilder(this).setTitle("Lokasi jemput & GPS")
-            .setMessage(gpsQuality(loc) + "\\n\\n" + (loc == null ? "Menunggu lokasi terkini." :
+            .setMessage(gpsQuality(loc) + "\n\n" + (loc == null ? "Menunggu lokasi terkini." :
                 "Ketelitian adalah perkiraan radius GPS, bukan jaminan titik tepat."))
             .setPositiveButton("⌖ Tetapkan GPS terbaru", (d,w) -> goToMyLocation())
             .setNegativeButton("Pilih manual", (d,w) -> { pickupGpsSelected=false; mode="pickup"; openDestinationAutocomplete(); })
@@ -1460,7 +1460,7 @@ class PassengerTransportActivityLegacyCore extends Activity {
         pickupLat=loc.getLatitude(); pickupLng=loc.getLongitude();
         lastGpsAppliedAt=loc.getTime();
         pickupAddress="Mencari alamat lokasi terbaru…";
-        if (pickupBtn != null) pickupBtn.setText("●  Jemput\\n"+shortAddress(pickupAddress));
+        if (pickupBtn != null) pickupBtn.setText("●  Jemput\n"+shortAddress(pickupAddress));
         updateGpsBadge(loc);
         if (pickupText != null) pickupText.setText("Penjemputan: "+pickupAddress);
         if (mapView != null) { mapView.setPickup(pickupLat,pickupLng,pickupAddress); if (force) mapView.moveTo(pickupLat,pickupLng,17f); }
@@ -1479,7 +1479,8 @@ class PassengerTransportActivityLegacyCore extends Activity {
                     if (liveGpsBest==null || loc.getTime()>liveGpsBest.getTime() ||
                        (loc.getTime()>=liveGpsBest.getTime()-3000 && loc.getAccuracy()<liveGpsBest.getAccuracy()))
                         liveGpsBest=loc;
-                    updateGpsBadge(liveGpsBest);\n                    if (pickupGpsSelected && !pickupGpsPinned && !isRouteConfirmationLocked() &&
+                    updateGpsBadge(liveGpsBest);
+                    if (pickupGpsSelected && !pickupGpsPinned && !isRouteConfirmationLocked() &&
                         (lastGpsAppliedAt==0 || (System.currentTimeMillis()-lastGpsAppliedAt>12000 && loc.getAccuracy()<=35f)))
                         applyGpsPickup(loc,false);
                 }
@@ -1510,13 +1511,17 @@ class PassengerTransportActivityLegacyCore extends Activity {
         if (checkSelfPermissionCompat(Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
             requestPermissions(new String[]{Manifest.permission.ACCESS_FINE_LOCATION,Manifest.permission.ACCESS_COARSE_LOCATION},REQ_LOCATION);return;
         }
-        pickupGpsSelected=true;\n        pickupGpsPinned=false;\n        startLiveGps();
+        pickupGpsSelected=true;
+        pickupGpsPinned=false;
+        startLiveGps();
         TransivaFreshLocation.request(this,new TransivaFreshLocation.Callback() {
             @Override public void onLocation(Location loc,boolean fresh) {
                 if (!fresh || loc==null || !loc.hasAccuracy() || loc.getAccuracy()>100f) {
                     toastDialog("Lokasi GPS belum cukup akurat. Tunggu sinyal membaik atau pilih titik manual.");return;
                 }
-                if (isFinishing() || destroyed || isRouteConfirmationLocked()) return;\n                liveGpsBest=loc; applyGpsPickup(loc,true);\n                pickupGpsPinned=true; updateGpsBadge(loc);
+                if (isFinishing() || destroyed || isRouteConfirmationLocked()) return;
+                liveGpsBest=loc; applyGpsPickup(loc,true);
+                pickupGpsPinned=true; updateGpsBadge(loc);
                 mode="delivery";updateModeUI();
             }
             @Override public void onFailure(String msg) {toastDialog(msg);}
@@ -1583,7 +1588,7 @@ class PassengerTransportActivityLegacyCore extends Activity {
                         pickupLng = coordinate[1];
                         pickupAddress = "Mencari alamat jemput...";
                         pickupText.setText("Penjemputan: " + pickupAddress);
-                        pickupBtn.setText("●  Jemput\\nMencari alamat...");
+                        pickupBtn.setText("●  Jemput\nMencari alamat...");
                         mode = "pickup";
                         if (mapView != null) {
                             mapView.setPickup(pickupLat, pickupLng, pickupAddress);
@@ -1785,7 +1790,8 @@ class PassengerTransportActivityLegacyCore extends Activity {
         if (isPickup) {
             pickupAddress = address;
             pickupText.setText("Penjemputan: " + address);
-            pickupBtn.setText("●  Jemput\n" + shortAddress(address));\n            updateGpsBadge(liveGpsBest);
+            pickupBtn.setText("●  Jemput\n" + shortAddress(address));
+            updateGpsBadge(liveGpsBest);
             if (mapView != null) mapView.setPickup(pickupLat, pickupLng, address);
         } else {
             deliveryAddress = address;

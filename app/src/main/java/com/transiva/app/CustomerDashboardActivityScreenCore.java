@@ -207,6 +207,7 @@ class CustomerDashboardActivityScreenCore extends Activity
     protected void onResume() {
         super.onResume();
         featureRuntime.onResume();
+        DeliveryAddressGate.prefetch(this);
 
         // Terapkan ulang agar perubahan tema dari menu Pengaturan langsung
         // terlihat saat kembali ke Dashboard.

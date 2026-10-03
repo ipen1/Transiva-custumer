@@ -35,7 +35,8 @@ public final class DeliveryAddressGate {
   if(id.equals(p.getString("user",""))) {
    String cached=p.getString("address","").trim();if(!cached.isEmpty())return cached;
   }
-  String local=new SessionManager(a).get("delivery_address");
+  SessionManager session=new SessionManager(a);
+  String local=id.equals(session.get("delivery_owner_id")) ? session.get("delivery_address") : "";
   return local==null?"":local.trim();
  }
  public static boolean valid(Activity a) {return !address(a).isEmpty();}
@@ -43,6 +44,33 @@ public final class DeliveryAddressGate {
   Intent i=new Intent(a,ProfileActivity.class);
   i.putExtra("edit_delivery_address",true);i.putExtra("delivery_return_service",service);
   a.startActivity(i);
+ }
+ public static void prefetch(Activity a) {
+  if(valid(a))return;
+  final String id=user(a);
+  if(id.isEmpty() || !pending.add(id+":prefetch"))return;
+  final Context context=a.getApplicationContext();
+  new Thread(()->{
+   HttpURLConnection c=null;
+   try {
+    String endpoint="https://transiva.my.id/server/get_customer_profile.php?id="+
+      java.net.URLEncoder.encode(id,"UTF-8");
+    c=CustomerApiClient.open(context,endpoint);
+    c.setConnectTimeout(3500);c.setReadTimeout(4000);
+    try(InputStream in=c.getInputStream();ByteArrayOutputStream b=new ByteArrayOutputStream()){
+      byte[] buffer=new byte[4096];int n;while((n=in.read(buffer))!=-1)b.write(buffer,0,n);
+      JSONObject response=new JSONObject(b.toString("UTF-8"));
+      JSONObject u=response.optJSONObject("user");
+      if(response.optBoolean("success",false) && u!=null && id.equals(user(a))){
+       String addr=u.optString("delivery_address","").trim();
+       if(!addr.isEmpty())update(a,addr,u.optDouble("delivery_lat",0),u.optDouble("delivery_lng",0));
+      }
+    }
+   }catch(Exception ignored){}finally{
+    if(c!=null)c.disconnect();
+    pending.remove(id+":prefetch");
+   }
+  }).start();
  }
  public static boolean require(Activity a,String service) {
   if(valid(a))return true;

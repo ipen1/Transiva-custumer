@@ -104,6 +104,20 @@ public class SessionManager {
             e.putString("name", clean.optString("name", ""));
             e.putString("role", role);
             e.putString("phone", clean.optString("phone", ""));
+            // Keep delivery data across partial profile/dashboard payloads, but never across accounts.
+            String incomingId = clean.optString("id", clean.optString("user_id", ""));
+            String previousId = prefs.getString("id", "");
+            boolean sameAccount = !incomingId.isEmpty() && incomingId.equals(previousId);
+            String delivery = clean.has("delivery_address") && !clean.isNull("delivery_address")
+                    ? clean.optString("delivery_address", "").trim()
+                    : (sameAccount ? prefs.getString("delivery_address", "") : "");
+            e.putString("delivery_address", delivery);
+            e.putString("delivery_owner_id", incomingId);
+            if (clean.has("delivery_lat")) e.putString("delivery_lat", clean.optString("delivery_lat", ""));
+            else if (!sameAccount) e.remove("delivery_lat");
+            if (clean.has("delivery_lng")) e.putString("delivery_lng", clean.optString("delivery_lng", ""));
+            else if (!sameAccount) e.remove("delivery_lng");
+
             // Respons profile/dashboard tidak selalu membawa token. Jangan pernah
             // menghapus Bearer token aktif hanya karena field token tidak ada/kosong.
             String tokenToSave = firstNonEmpty(
@@ -274,6 +288,9 @@ public class SessionManager {
             obj.put("name", getName());
             obj.put("role", getRole());
             obj.put("phone", getPhone());
+            obj.put("delivery_address", get("delivery_address"));
+            obj.put("delivery_lat", get("delivery_lat"));
+            obj.put("delivery_lng", get("delivery_lng"));
             obj.put("token", getToken());
             obj.put("restaurant_id", getRestaurantId());
             obj.put("balance", getBalance());

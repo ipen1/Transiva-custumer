@@ -353,6 +353,7 @@
             android:theme="@style/AppTheme"
             android:windowSoftInputMode="adjustResize" />
 
+        <service android:name=".WebRtcCallForegroundService" android:exported="false" android:foregroundServiceType="microphone" />
         <activity
             android:name=".WebRtcCallActivity"
             android:exported="false"

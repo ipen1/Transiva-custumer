@@ -1,3 +1,4 @@
 package com.transiva.app;
 
-public class CustomerLiveDriverActivity extends CustomerLiveDriverActivityScreenCore { }
+/** Legacy entry point uses the same trip screen and action rules. */
+public class CustomerLiveDriverActivity extends CustomerTripActivityScreenCore { }

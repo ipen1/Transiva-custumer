@@ -317,7 +317,7 @@ class CustomerTripActivityScreenCore extends Activity {
         tripInfoText.setPadding(dp(4), 0, dp(4), dp(8));
         card.addView(tripInfoText, new LinearLayout.LayoutParams(-1, -2));
 
-        Button liveBtn = outlineButton("📍 Lihat Live Driver");
+        Button liveBtn = outlineButton("📍 Pusatkan Peta");
         liveBtn.setTextColor(Color.parseColor("#FFFFFF"));
         liveBtn.setBackground(roundStroke("#0B7CFF", "#0B7CFF", dp(18), 1));
         LinearLayout.LayoutParams liveLp = new LinearLayout.LayoutParams(-1, dp(50));
@@ -915,14 +915,7 @@ class CustomerTripActivityScreenCore extends Activity {
             showInfo("Live Driver", "ID order belum tersedia.");
             return;
         }
-        Intent i = new Intent(this, CustomerLiveDriverActivity.class);
-        i.putExtra("order_id", orderId);
-        i.putExtra("pickup_lat", pickupLat);
-        i.putExtra("pickup_lng", pickupLng);
-        i.putExtra("delivery_lat", deliveryLat);
-        i.putExtra("delivery_lng", deliveryLng);
-        i.putExtra("active_driver_type", activeDriverType);
-        startActivity(i);
+        if(mapView!=null && mapReady) mapView.fitAll();
     }
 
     protected void saveTripPrefs() {

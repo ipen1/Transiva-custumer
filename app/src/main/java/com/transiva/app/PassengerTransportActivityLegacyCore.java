@@ -108,6 +108,8 @@ class PassengerTransportActivityLegacyCore extends Activity {
     protected Button voucherChoiceBtn, noteChoiceBtn, paymentChoiceBtn;
     protected LinearLayout bookingDetailsCard;
     protected EditText googleMapInput, noteInput, voucherInput;
+    private String driverNoteDraft = "";
+    private boolean orderAfterNote;
     protected Button pickupBtn, deliveryBtn, gpsBtn, orderBtn, backBtn, useLinkBtn;
     protected ProgressBar progressBar;
 
@@ -200,6 +202,7 @@ class PassengerTransportActivityLegacyCore extends Activity {
         readUser();
         familyMemberId = getIntent() == null ? 0 : getIntent().getIntExtra("family_member_id", 0);
         familyMemberName = getIntent() == null ? "" : firstNonEmpty(getIntent().getStringExtra("family_member_name"), "");
+        if(savedInstanceState!=null) driverNoteDraft=savedInstanceState.getString("driver_note_draft","");
         buildLayout();
         applySmartFavoriteIntent();
         CustomerBestOffer.load(this, offerService(), offer -> featureRuntime.post(mainHandler, () -> {
@@ -459,6 +462,7 @@ class PassengerTransportActivityLegacyCore extends Activity {
         voucherInput.setSingleLine(true);
         noteInput = new EditText(this);
         noteInput.setSingleLine(true);
+        noteInput.setText(driverNoteDraft);
 
         // 2.3 FINAL ORDER UX: tampilkan hanya keputusan utama. Fitur lanjutan tetap tersedia
         // melalui panel Opsi perjalanan agar halaman final tidak terasa penuh.
@@ -497,7 +501,7 @@ class PassengerTransportActivityLegacyCore extends Activity {
         optionsLp.setMargins(dp(6),0,0,0);
         scheduleRow.addView(optionsBtn, optionsLp);
 
-        noteChoiceBtn = smallButton("📝 Catatan", "#FFFFFF", "#0B3A78", "#C8D9EC");
+        noteChoiceBtn = smallButton(driverNoteDraft.isEmpty()?"📝 Catatan":"📝 Catatan tersimpan", "#FFFFFF", "#0B3A78", "#C8D9EC");
         Button hematBtn = smallButton("Hemat", "#EAF4FF", "#0B7CFF", "#9DCAFF");
         hematBtn.setTextSize(11);
         hematBtn.setMinWidth(0); hematBtn.setMinimumWidth(0);
@@ -669,16 +673,28 @@ class PassengerTransportActivityLegacyCore extends Activity {
         input.setHint("Contoh: jemput di depan pagar");
         input.setPadding(dp(14), dp(8), dp(14), dp(8));
 
-        new TransivaAlertDialogBuilder(this)
+        final android.app.AlertDialog noteDialog = new TransivaAlertDialogBuilder(this)
                 .setTitle("Catatan untuk driver")
                 .setView(input)
-                .setNegativeButton("Batal", null)
-                .setPositiveButton("Simpan", (dialog, which) -> {
-                    String note = input.getText().toString().trim();
-                    if (noteInput != null) noteInput.setText(note);
-                    noteChoiceBtn.setText(note.isEmpty() ? "📝 Note" : "📝 Ada Note");
-                })
-                .show();
+                .setNegativeButton("Batal", (dialog, which) -> orderAfterNote=false)
+                .setPositiveButton("Simpan", null)
+                .create();
+        noteDialog.setOnCancelListener(dialog -> orderAfterNote=false);
+        noteDialog.show();
+        noteDialog.getButton(android.content.DialogInterface.BUTTON_POSITIVE).setOnClickListener(v -> {
+            String note=input.getText().toString().trim();
+            if(orderAfterNote && note.isEmpty()) { input.setError("Isi petunjuk singkat untuk driver"); input.requestFocus(); return; }
+            driverNoteDraft=note;
+            if(noteInput!=null) noteInput.setText(note);
+            if(noteChoiceBtn!=null) noteChoiceBtn.setText(note.isEmpty()?"📝 Catatan":"📝 Catatan tersimpan");
+            boolean resumeOrder=orderAfterNote; orderAfterNote=false; noteDialog.dismiss();
+            if(resumeOrder) createOrder();
+        });
+    }
+
+    @Override protected void onSaveInstanceState(Bundle outState) {
+        outState.putString("driver_note_draft", noteInput==null?driverNoteDraft:noteInput.getText().toString());
+        super.onSaveInstanceState(outState);
     }
 
     protected void showWaypointDialog() {
@@ -2076,11 +2092,12 @@ class PassengerTransportActivityLegacyCore extends Activity {
         }
 
         if (noteInput == null || noteInput.getText().toString().trim().isEmpty()) {
-            toastDialog("Catatan untuk driver wajib diisi sebelum membuat perjalanan.");
+            orderAfterNote=true;
             showNoteDialog();
             return;
         }
 
+        final String submittedDriverNote=noteInput.getText().toString().trim();
         ordering = true;
         setLoading(true);
         orderBtn.setEnabled(false);
@@ -2122,7 +2139,7 @@ class PassengerTransportActivityLegacyCore extends Activity {
                 payload.put("pickup_address", firstNonEmpty(pickupAddress, "Lokasi Jemput"));
                 payload.put("delivery_address", firstNonEmpty(deliveryAddress, "Lokasi Pengantaran"));
                 payload.put("userLocation", userLocation);
-                payload.put("note", noteInput.getText().toString().trim());
+                payload.put("note", submittedDriverNote);
                 payload.put("payment_method", paymentMethod);
                 payload.put("voucher_code", voucherInput == null ? "" : voucherInput.getText().toString().trim().toUpperCase(Locale.US));
                 JSONObject eco = ecosystemFeatures.toJson();

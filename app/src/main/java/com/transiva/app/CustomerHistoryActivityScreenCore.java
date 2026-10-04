@@ -1436,7 +1436,13 @@ class CustomerHistoryActivityScreenCore extends Activity {
         if(!proposalSummary.isEmpty()) {
             TextView proposal=new TextView(this); proposal.setText(proposalSummary); proposal.setTextSize(14); proposal.setTextColor(Color.parseColor("#0B477D")); proposal.setPadding(dp(10),dp(10),dp(10),dp(10)); card.addView(proposal);
             if(CustomerOrderChangeState.pending(order)) {
-                Button review=primaryButton("Tinjau pengajuan driver"); review.setOnClickListener(v -> openActiveOrder(order)); card.addView(review,new LinearLayout.LayoutParams(-1,dp(44)));
+                LinearLayout decisions=new LinearLayout(this);
+                Button accept=primaryButton("Terima"); accept.setOnClickListener(v -> sendProposalDecision(order,"approve_price"));
+                Button reject=dangerButton("Tolak"); reject.setOnClickListener(v -> sendProposalDecision(order,"reject_price"));
+                decisions.addView(accept,new LinearLayout.LayoutParams(0,dp(48),1));
+                LinearLayout.LayoutParams rejectLp=new LinearLayout.LayoutParams(0,dp(48),1); rejectLp.setMargins(dp(8),0,0,0);
+                decisions.addView(reject,rejectLp); card.addView(decisions);
+
             }
         }
         if (isActiveStatus(status)) {
@@ -1945,6 +1951,36 @@ class CustomerHistoryActivityScreenCore extends Activity {
         }, "activity-save-review").start();
     }
 
+    protected void sendProposalDecision(JSONObject order,String action) {
+        if(loading || !CustomerOrderChangeState.pending(order)) return;
+        final JSONObject payload=new JSONObject();
+        try {
+            payload.put("order_id",first(order.optString("order_id"),order.optString("id")));
+            payload.put("source",order.optString("source","").contains("pickup")?"pickup_orders":"orders");
+            payload.put("action",action);
+            CustomerOrderChangeState.payload(order,payload,action);
+        } catch(Exception error) { return; }
+        loading=true; progressBar.setVisibility(View.VISIBLE);
+        featureRuntime.newThread(() -> {
+            try {
+                JSONObject response=postJson(ACTION_URL,payload);
+                boolean ok=response.optBoolean("success");
+                String message=first(response.optString("message"),ok?"Pengajuan diperbarui.":"Pengajuan belum dapat diproses.");
+                JSONObject updated=response.optJSONObject("order");
+                featureRuntime.post(mainHandler,() -> {
+                    loading=false; progressBar.setVisibility(View.GONE);
+                    if(ok && updated!=null) {
+                        try { java.util.Iterator<String> keys=updated.keys(); while(keys.hasNext()) { String key=keys.next(); order.put(key,updated.opt(key)); } } catch(Exception ignored) { }
+                        renderOrders();
+                    }
+                    toast(message); loadHistory(true);
+                });
+            } catch(Exception error) {
+                featureRuntime.post(mainHandler,() -> { loading=false; progressBar.setVisibility(View.GONE); toast(CustomerOrderChangeState.error(error)); loadHistory(true); });
+            }
+        },"activity-proposal-decision").start();
+    }
+
     protected void confirmReceivedFromActivity(JSONObject order) {
         new TransivaAlertDialogBuilder(this)
                 .setTitle("Terima pesanan ini?")
@@ -2387,7 +2423,7 @@ class CustomerHistoryActivityScreenCore extends Activity {
                     )
             );
 
-            trip.putExtra("tracking_only", true);
+            trip.putExtra("tracking_only", false);
 
             trip.putExtra(
                     "active_driver_type",

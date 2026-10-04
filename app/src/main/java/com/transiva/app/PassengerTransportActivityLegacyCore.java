@@ -1713,13 +1713,17 @@ class PassengerTransportActivityLegacyCore extends Activity {
 
 
     protected void resolveAddressAsync(boolean isPickup, double lat, double lng) {
-        final long requestId = isPickup ? ++pickupAddressRequest : 0;
+        final long requestId = isPickup ? ++pickupAddressRequest : ++deliveryAddressRequest;
+        if(isPickup) { pickupAddressResolving=true; resolvingPickupLat=lat; resolvingPickupLng=lng; }
+        locationQuoteReady=false; ++quoteVersion; updateWizardState();
         featureRuntime.newThread(() -> {
             String road = reverseAddress(lat, lng);
             String localMerchant = findNearestPlaceName(lat, lng);
             featureRuntime.post(mainHandler, () -> resolveNearestGooglePlace(lat, lng, (googleName) -> {
                 if (destroyed || (isPickup && (requestId != pickupAddressRequest ||
                     Math.abs(lat-pickupLat)>0.000001 || Math.abs(lng-pickupLng)>0.000001))) return;
+                if(!isPickup && (requestId!=deliveryAddressRequest || Math.abs(lat-deliveryLat)>0.000001 || Math.abs(lng-deliveryLng)>0.000001)) return;
+                if(isPickup) pickupAddressResolving=false;
                 String nearName = firstNonEmpty(googleName, localMerchant, "");
                 String address;
                 if (!nearName.isEmpty() && !road.isEmpty()) address = "Dekat " + nearName + ", " + road;
@@ -2067,6 +2071,7 @@ class PassengerTransportActivityLegacyCore extends Activity {
 
     protected void createOrder() {
         if (ordering) return;
+        if(!locationReady() || !locationQuoteReady) { updateWizardState(); return; }
 
         if (userId <= 0) {
             readUser();
@@ -2238,9 +2243,26 @@ class PassengerTransportActivityLegacyCore extends Activity {
 
     private int routePreviewVersion = 0;
     private int quoteVersion = 0;
+    private boolean locationQuoteReady;
+    private boolean pickupAddressResolving;
+    private double resolvingPickupLat, resolvingPickupLng;
+    private long deliveryAddressRequest;
+    private boolean locationReady() {
+        boolean busy=pickupAddressResolving && Math.abs(pickupLat-resolvingPickupLat)<0.000001 && Math.abs(pickupLng-resolvingPickupLng)<0.000001;
+        return !busy && validCoord(pickupLat,pickupLng) && validCoord(deliveryLat,deliveryLng)
+            && addressReady(pickupAddress) && addressReady(deliveryAddress);
+    }
+    private boolean addressReady(String address) {
+        String value=address==null?"":address.trim().toLowerCase(Locale.ROOT);
+        return !value.isEmpty() && !value.contains("mencari") && !value.contains("mengambil") && !value.contains("belum") && !value.contains("menunggu");
+    }
+
 
     private void requestPaymentQuote() {
         final int quoteRequest = ++quoteVersion;
+        locationQuoteReady=false;
+        updateWizardState();
+        if(!locationReady()) return;
         requestVisibleOsrmRoute();
         if (!validCoordinate(pickupLat, pickupLng)
                 || !validCoordinate(deliveryLat, deliveryLng)) {
@@ -2371,6 +2393,7 @@ class PassengerTransportActivityLegacyCore extends Activity {
                         return;
                     }
 
+                    locationQuoteReady=true;
                     lastQuotedFare = total;
                     finalPriceText.setText("Rp " + formatMoney(total));
                     updateWizardState();
@@ -2549,6 +2572,7 @@ class PassengerTransportActivityLegacyCore extends Activity {
     }
 
     private void handleWizardPrimaryAction() {
+        if(!locationReady()) { updateWizardState(); return; }
         if (!validCoord(deliveryLat, deliveryLng)) {
             mode = "delivery";
             updateModeUI();
@@ -2561,7 +2585,7 @@ class PassengerTransportActivityLegacyCore extends Activity {
             toastDialog("Periksa dan tentukan lokasi jemput.");
             return;
         }
-        if (finalPriceText == null || finalPriceText.getText().toString().contains("-")) {
+        if (!locationQuoteReady || finalPriceText == null || finalPriceText.getText().toString().contains("-")) {
             requestPaymentQuote();
             toastDialog("Sedang menghitung harga perjalanan. Coba lagi sebentar.");
             return;
@@ -2588,6 +2612,15 @@ class PassengerTransportActivityLegacyCore extends Activity {
 
     private void updateWizardState() {
         if (orderBtn == null) return;
+        if(ordering) { orderBtn.setEnabled(false); return; }
+        if(!locationReady()) {
+            orderBtn.setEnabled(false); orderBtn.setAlpha(.6f);
+            orderBtn.setText(validCoord(pickupLat,pickupLng)?"MENYIAPKAN ALAMAT LOKASI…":"MENUNGGU LOKASI JEMPUT…");
+            if(wizardStepText!=null) setWizardProgress(0);
+            return;
+        }
+        orderBtn.setEnabled(true); orderBtn.setAlpha(1f);
+        if(!locationQuoteReady) { orderBtn.setText("LIHAT HARGA"); return; }
         if (!validCoord(deliveryLat, deliveryLng)) {
             if (wizardStepText != null) setWizardProgress(0);
             orderBtn.setText("PILIH TUJUAN");

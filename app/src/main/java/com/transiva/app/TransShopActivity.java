@@ -176,7 +176,7 @@ public class TransShopActivity extends Activity {
         address.setBackground(bg(Color.WHITE, 12));
         LinearLayout labels = new LinearLayout(this);
         labels.setOrientation(LinearLayout.VERTICAL);
-        add(labels, text("Antar ke", 11, true, blue), 0);
+        add(labels, text("📍 PERIKSA ALAMAT ANTAR", 12, true, blue), 0);
         deliveryLabel = text("", 13, false, ink);
         deliveryLabel.setMaxLines(2);
         deliveryLabel.setEllipsize(TextUtils.TruncateAt.END);
@@ -190,6 +190,7 @@ public class TransShopActivity extends Activity {
         address.setForeground(new RippleDrawable(ColorStateList.valueOf(Color.argb(28, 12, 108, 234)),
                 null, bg(Color.WHITE, 12)));
         address.setOnClickListener(view -> DeliveryAddressGate.edit(this, "TransShop"));
+        DeliveryAddressAttention.attach(address);
         deliveryCard = address;
         updateDelivery();
         add(root, address, 8);

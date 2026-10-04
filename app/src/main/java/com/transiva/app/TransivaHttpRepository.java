@@ -13,6 +13,10 @@ import java.util.concurrent.ThreadLocalRandom;
 
 /** Central JSON HTTP repository with bounded retry for idempotent reads. */
 public final class TransivaHttpRepository {
+    public static final class ServerResponseException extends Exception {
+        public ServerResponseException(String message) { super(message); }
+    }
+
     private TransivaHttpRepository() { }
 
     public static JSONObject getJson(Context context, String url, int timeoutMs) throws Exception {
@@ -61,7 +65,9 @@ public final class TransivaHttpRepository {
                 CustomerApiClient.handleSessionResponse(context, code, raw);
                 if (code >= 200 && code < 300) return new JSONObject(raw.isEmpty() ? "{}" : raw);
                 boolean retryable = code == 408 || code == 429 || code >= 500;
-                IllegalStateException error = new IllegalStateException("HTTP " + code);
+                String message="Server belum dapat memproses permintaan ("+code+").";
+                try { message=new JSONObject(raw).optString("message",message); } catch (Exception ignored) { }
+                ServerResponseException error = new ServerResponseException(message);
                 if (!retryable || attempt + 1 >= attempts) throw error;
                 last = error;
             } catch (Exception error) {

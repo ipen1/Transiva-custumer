@@ -1432,11 +1432,18 @@ class CustomerHistoryActivityScreenCore extends Activity {
                 )
         );
 
+        String proposalSummary=CustomerOrderChangeState.summary(order);
+        if(!proposalSummary.isEmpty()) {
+            TextView proposal=new TextView(this); proposal.setText(proposalSummary); proposal.setTextSize(14); proposal.setTextColor(Color.parseColor("#0B477D")); proposal.setPadding(dp(10),dp(10),dp(10),dp(10)); card.addView(proposal);
+            if(CustomerOrderChangeState.pending(order)) {
+                Button review=primaryButton("Tinjau pengajuan driver"); review.setOnClickListener(v -> openActiveOrder(order)); card.addView(review,new LinearLayout.LayoutParams(-1,dp(44)));
+            }
+        }
         if (isActiveStatus(status)) {
             boolean customerReceived = order.optInt("customer_received", 0) == 1;
             String normalizedStatus = normalized(status).trim();
             boolean showReceive = "arrived_delivery".equals(normalizedStatus)
-                    && !customerReceived
+                    && CustomerOrderChangeState.canReceive(order)
                     && supportsReceiveButton(order);
 
             // Tombol utama tetap menampilkan Lacak. Tombol konfirmasi tidak boleh
@@ -1989,6 +1996,7 @@ class CustomerHistoryActivityScreenCore extends Activity {
                         renderOrders();
                     }
 
+                    loadHistory(true);
                     new TransivaAlertDialogBuilder(this)
                             .setTitle(success ? "Berhasil" : "Gagal")
                             .setMessage(message)
@@ -2001,9 +2009,10 @@ class CustomerHistoryActivityScreenCore extends Activity {
                     loading = false;
                     progressBar.setVisibility(View.GONE);
 
+                    loadHistory(true);
                     new TransivaAlertDialogBuilder(this)
                             .setTitle("Gagal")
-                            .setMessage("Koneksi server bermasalah. Silakan coba kembali.")
+                            .setMessage(CustomerOrderChangeState.error(error))
                             .setPositiveButton("OK", null)
                             .show();
                 });

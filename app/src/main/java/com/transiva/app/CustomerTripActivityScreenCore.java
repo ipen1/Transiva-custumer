@@ -585,34 +585,22 @@ class CustomerTripActivityScreenCore extends Activity {
         destinationRequestedPrice=requested;
         String change=order.optString("price_change_status","none").toLowerCase(Locale.US), reason=order.optString("price_change_reason","");
         String line=(nonCash?"💳 TransPay • sudah dibayar":"💵 Tunai • bayar ke driver")+(price>0?" • "+rupiah(price):"");
-        if(original>0 && Math.abs(original-price)>0.5) line += "\nHarga berubah dari " + rupiah(original) + " menjadi " + rupiah(price) + (reason.isEmpty() ? "" : " • " + reason);
-        if(change.equals("pending") && (requested > 0 || destinationRequestId > 0)) line += "\nDriver mengajukan " + rupiah(requested) + (reason.isEmpty() ? "" : " • " + reason);
-        if(extension!=null){
-            if (destinationRequestId > 0) {
-                line += "\nTujuan baru: " + extension.optString("address")
-                        + "\nJarak tambahan: " + extension.optString("distance_km") + " km"
-                        + " • tambahan " + rupiah(extension.optDouble("extra_fare"));
-                JSONObject quoteRoute = extension.optJSONObject("pricing_summary");
-                if (quoteRoute != null) line += "\nJarak: " + String.format(Locale.US,"%.2f + %.2f = %.2f km",
-                        quoteRoute.optDouble("previous_distance_km"),quoteRoute.optDouble("additional_distance_km"),quoteRoute.optDouble("total_distance_km"));
-                line += "\nTarif minimum berlaku sekali untuk seluruh perjalanan.";
-            }
-            else if("approved".equals(extension.optString("status")))line+="\nMenuju tujuan tambahan: "+extension.optString("address");
-        }
+        String proposal=CustomerOrderChangeState.summary(order);
+        if(!proposal.isEmpty()) line+="\n"+proposal;
         if(extensionTravelling && statusText!=null)statusText.setText("Dalam perjalanan ke tujuan tambahan");
         if(approvePriceButton!=null)approvePriceButton.setText(destinationRequestId>0?"Setujui Tujuan & Biaya":"Setujui Harga");
         paymentInfoText.setText(line); paymentInfoText.setVisibility(View.VISIBLE); paymentInfoText.setBackground(round("#EFF6FF",dp(14)));
-        receivedButton.setVisibility(!extensionTravelling && destinationRequestId==0 && "arrived_delivery".equals(status) && order.optInt("customer_received",0)!=1 ? View.VISIBLE:View.GONE);
+        receivedButton.setVisibility(CustomerOrderChangeState.canReceive(order) ? View.VISIBLE:View.GONE);
         View priceActions=null; android.view.ViewParent par=approvePriceButton==null?null:approvePriceButton.getParent(); if(par instanceof View) priceActions=(View)par;
-        if(priceActions!=null) priceActions.setVisibility(change.equals("pending")?View.VISIBLE:View.GONE);
+        if(priceActions!=null) priceActions.setVisibility(CustomerOrderChangeState.pending(order)?View.VISIBLE:View.GONE);
     }
     protected void sendCustomerAction(String action){sendCustomerAction(action,destinationRequestId,destinationRequestedPrice);}
     protected void sendCustomerAction(String action,long requestId,double expectedPrice){
         if(orderId.isEmpty()) return; setLoading(true); featureRuntime.execute(()->{ try{
             JSONObject p=new JSONObject(); p.put("order_id",orderId); p.put("source",orderSource.contains("pickup")?"pickup_orders":"orders"); p.put("action",action); if(requestId>0)p.put("destination_request_id",requestId); if("approve_price".equals(action))p.put("expected_price",expectedPrice);
             JSONObject r=postJson(CUSTOMER_ACTION_URL,p); boolean ok=r.optBoolean("success",false); String m=firstNonEmpty(r.optString("message",""),ok?"Berhasil":"Gagal");
-            featureRuntime.post(mainHandler, ()->{setLoading(false); showInfo(ok?"Berhasil":"Gagal",m); if(ok) fetchDriverPosition();});
-        }catch(Exception e){TransivaCrashReporter.recordNetworkFailure(e,"POST",CUSTOMER_ACTION_URL);featureRuntime.post(mainHandler, ()->{setLoading(false);showInfo("Gagal","Koneksi server bermasalah.");});}});
+            featureRuntime.post(mainHandler, ()->{setLoading(false); showInfo(ok?"Berhasil":"Gagal",m); fetchDriverPosition();});
+        }catch(Exception e){TransivaCrashReporter.recordNetworkFailure(e,"POST",CUSTOMER_ACTION_URL);featureRuntime.post(mainHandler, ()->{setLoading(false);showInfo("Gagal",CustomerOrderChangeState.error(e));});}});
     }
     protected String rupiah(double value){
         return CustomerCommonFormatters.rupiahCompactPrefix(value);

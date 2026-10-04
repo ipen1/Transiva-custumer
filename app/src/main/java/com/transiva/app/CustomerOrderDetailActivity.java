@@ -49,6 +49,10 @@ public class CustomerOrderDetailActivity extends Activity {
 
     private final Handler main = new Handler(Looper.getMainLooper());
     private JSONObject order = new JSONObject();
+    private boolean refreshingOrder;
+    private boolean detailVisible;
+    private final Runnable orderRefresh = new Runnable() { public void run() { if(detailVisible) { refreshOrder(); main.postDelayed(this,8000); } } };
+
     private LinearLayout body;
     private ProgressBar progress;
     private int selectedRating = 0;
@@ -66,6 +70,31 @@ public class CustomerOrderDetailActivity extends Activity {
         super.onResume();
         // Menangani perubahan tema saat halaman detail masih berada di back stack.
         CustomerAppSettings.apply(this);
+        detailVisible=true;
+        main.removeCallbacks(orderRefresh); main.post(orderRefresh);
+    }
+
+    @Override protected void onPause() {
+        detailVisible=false; main.removeCallbacks(orderRefresh); super.onPause();
+    }
+    private void refreshOrder() {
+        if(refreshingOrder || !detailVisible) return;
+        refreshingOrder=true;
+        final String selected=first(order.optString("order_id"),order.optString("id"));
+        final String selectedSource=order.optString("source","orders");
+        networkScope.newThread(() -> {
+            try {
+                JSONObject response=TransivaHttpRepository.getJson(this,BASE_URL+"server/get_user_orders.php",20000);
+                org.json.JSONArray rows=response.optJSONArray("orders");
+                if(!response.optBoolean("success") || rows==null) return;
+                for(int i=0;i<rows.length();i++) {
+                    JSONObject row=rows.optJSONObject(i);
+                    if(row!=null && selected.equals(first(row.optString("order_id"),row.optString("id"))) && selectedSource.equals(row.optString("source","orders"))) {
+                        main.post(() -> { if(!isFinishing()) { order=row; render(); } }); break;
+                    }
+                }
+            } catch(Exception ignored) { } finally { main.post(() -> refreshingOrder=false); }
+        },"detail-refresh").start();
     }
 
     private void buildUi() {
@@ -108,6 +137,7 @@ public class CustomerOrderDetailActivity extends Activity {
         root.addView(progress, new LinearLayout.LayoutParams(-1, dp(4)));
         setContentView(root);
         CustomerAppSettings.apply(this);
+        refreshOrder();
         render();
     }
 
@@ -217,7 +247,7 @@ public class CustomerOrderDetailActivity extends Activity {
         double requested = order.optDouble("price_change_requested", 0);
         String pcs = order.optString("price_change_status", "none").toLowerCase(Locale.US);
         String reason = order.optString("price_change_reason", "").trim();
-        if (Math.abs(original - price) > 0.5 || "pending".equals(pcs) || !reason.isEmpty()) {
+        if (!CustomerOrderChangeState.pending(order) && !CustomerOrderChangeState.travelling(order) && (Math.abs(original - price) > 0.5 || !reason.isEmpty())) {
             LinearLayout change = card(24);
             change.addView(sectionHeader("Perubahan Harga", "Riwayat penyesuaian total oleh driver"));
             LinearLayout changePanel = infoPanel();
@@ -231,18 +261,20 @@ public class CustomerOrderDetailActivity extends Activity {
             addCard(change);
         }
 
+        String proposalSummary=CustomerOrderChangeState.summary(order);
+        if(!proposalSummary.isEmpty()) { LinearLayout proposalCard=card(18); proposalCard.addView(text(proposalSummary,14,Color.parseColor("#0B477D"),true)); addCard(proposalCard); }
         LinearLayout actionBox = card(24);
         actionBox.addView(sectionHeader("Tindakan Pesanan", "Konfirmasi yang diperlukan untuk melanjutkan"));
         boolean received = order.optInt("customer_received", 0) == 1;
         int actionCount = 0;
-        if ("arrived_delivery".equals(statusRaw) && !received) {
+        if (CustomerOrderChangeState.canReceive(order)) {
             Button receive = primary("✓ Terima Pesanan");
             receive.setOnClickListener(v -> confirmAction("confirm_received", "Terima pesanan ini?", "Pastikan pesanan sudah Anda terima dengan baik."));
             actionBox.addView(receive, buttonLp()); actionCount++;
         }
-        if ("pending".equals(pcs)) {
-            Button approve = primary("Setujui Harga " + rupiah(requested));
-            approve.setOnClickListener(v -> confirmAction("approve_price", "Setujui perubahan harga?", "Total pesanan akan berubah menjadi " + rupiah(requested) + "."));
+        if (CustomerOrderChangeState.pending(order)) {
+            Button approve = primary("Setujui Tujuan & Biaya");
+            approve.setOnClickListener(v -> confirmAction("approve_price", "Setujui perubahan harga?", CustomerOrderChangeState.summary(order)));
             actionBox.addView(approve, buttonLp());
             Button reject = outline("Tolak Perubahan Harga");
             reject.setOnClickListener(v -> confirmAction("reject_price", "Tolak perubahan harga?", "Harga pesanan tidak akan dinaikkan."));
@@ -423,7 +455,7 @@ public class CustomerOrderDetailActivity extends Activity {
                             .setMessage(msg)
                             .setPositiveButton("OK", null)
                             .show();
-                    if (ok) render();
+                    if (ok) render(); refreshOrder();
                 });
             } catch (Exception e) {
                 main.post(() -> {
@@ -481,7 +513,7 @@ public class CustomerOrderDetailActivity extends Activity {
                     }
                 });
             } catch (Exception e) {
-                main.post(() -> { progress.setVisibility(View.GONE); submitReviewButton.setEnabled(true); submitReviewButton.setText(ratingLabel(selectedRating)); new TransivaAlertDialogBuilder(this).setTitle("Gagal").setMessage("Koneksi server bermasalah.").setPositiveButton("OK", null).show(); });
+                main.post(() -> { progress.setVisibility(View.GONE); submitReviewButton.setEnabled(true); submitReviewButton.setText(ratingLabel(selectedRating)); new TransivaAlertDialogBuilder(this).setTitle("Gagal").setMessage(CustomerOrderChangeState.error(e)).setPositiveButton("OK", null).show(); refreshOrder(); });
             }
         }, "detail-save-review").start();
     }
@@ -505,17 +537,15 @@ public class CustomerOrderDetailActivity extends Activity {
                 p.put("order_id", first(order.optString("order_id"), order.optString("id")));
                 p.put("source", order.optString("source", "").contains("pickup") ? "pickup_orders" : "orders");
                 p.put("action", action);
+                CustomerOrderChangeState.payload(order,p,action);
                 JSONObject r = post(ACTION_URL, p);
                 boolean ok = r.optBoolean("success", false);
                 String msg = first(r.optString("message"), ok ? "Berhasil" : "Gagal");
-                if (ok) {
-                    if ("confirm_received".equals(action)) order.put("customer_received", 1);
-                    else if ("approve_price".equals(action)) { order.put("price", order.optDouble("price_change_requested", order.optDouble("price", 0))); order.put("price_change_status", "approved"); }
-                    else if ("reject_price".equals(action)) order.put("price_change_status", "rejected");
-                }
-                main.post(() -> { progress.setVisibility(View.GONE); new TransivaAlertDialogBuilder(this).setTitle(ok ? "Berhasil" : "Gagal").setMessage(msg).setPositiveButton("OK", null).show(); if (ok) render(); });
+                JSONObject updated=r.optJSONObject("order");
+                if(ok && updated!=null) { java.util.Iterator<String> keys=updated.keys(); while(keys.hasNext()) { String k=keys.next(); order.put(k,updated.opt(k)); } }
+                main.post(() -> { progress.setVisibility(View.GONE); new TransivaAlertDialogBuilder(this).setTitle(ok ? "Berhasil" : "Gagal").setMessage(msg).setPositiveButton("OK", null).show(); if (ok) render(); refreshOrder(); });
             } catch (Exception e) {
-                main.post(() -> { progress.setVisibility(View.GONE); new TransivaAlertDialogBuilder(this).setTitle("Gagal").setMessage("Koneksi server bermasalah.").setPositiveButton("OK", null).show(); });
+                main.post(() -> { progress.setVisibility(View.GONE); new TransivaAlertDialogBuilder(this).setTitle("Gagal").setMessage(CustomerOrderChangeState.error(e)).setPositiveButton("OK", null).show(); refreshOrder(); });
             }
         }, "detail-action").start();
     }

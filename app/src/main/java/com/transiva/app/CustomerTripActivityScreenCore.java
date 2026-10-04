@@ -586,9 +586,17 @@ class CustomerTripActivityScreenCore extends Activity {
         String change=order.optString("price_change_status","none").toLowerCase(Locale.US), reason=order.optString("price_change_reason","");
         String line=(nonCash?"💳 TransPay • sudah dibayar":"💵 Tunai • bayar ke driver")+(price>0?" • "+rupiah(price):"");
         if(original>0 && Math.abs(original-price)>0.5) line += "\nHarga berubah dari " + rupiah(original) + " menjadi " + rupiah(price) + (reason.isEmpty() ? "" : " • " + reason);
-        if(change.equals("pending") && requested > 0) line += "\nDriver mengajukan " + rupiah(requested) + (reason.isEmpty() ? "" : " • " + reason);
+        if(change.equals("pending") && (requested > 0 || destinationRequestId > 0)) line += "\nDriver mengajukan " + rupiah(requested) + (reason.isEmpty() ? "" : " • " + reason);
         if(extension!=null){
-            if(destinationRequestId>0)line+="\nTujuan baru: "+extension.optString("address")+"\nDari tujuan sebelumnya: "+extension.optString("distance_km")+" km • tambahan "+rupiah(extension.optDouble("extra_fare"));
+            if (destinationRequestId > 0) {
+                line += "\nTujuan baru: " + extension.optString("address")
+                        + "\nJarak tambahan: " + extension.optString("distance_km") + " km"
+                        + " • tambahan " + rupiah(extension.optDouble("extra_fare"));
+                JSONObject quoteRoute = extension.optJSONObject("pricing_summary");
+                if (quoteRoute != null) line += "\nJarak: " + String.format(Locale.US,"%.2f + %.2f = %.2f km",
+                        quoteRoute.optDouble("previous_distance_km"),quoteRoute.optDouble("additional_distance_km"),quoteRoute.optDouble("total_distance_km"));
+                line += "\nTarif minimum berlaku sekali untuk seluruh perjalanan.";
+            }
             else if("approved".equals(extension.optString("status")))line+="\nMenuju tujuan tambahan: "+extension.optString("address");
         }
         if(extensionTravelling && statusText!=null)statusText.setText("Dalam perjalanan ke tujuan tambahan");

@@ -92,6 +92,7 @@ class CustomerDashboardActivityScreenCore extends Activity
     protected TextView balanceText;
     protected TextView orderText;
     protected TextView orderHint;
+    private SmartWaitingTextView dashboardWaiting;
     protected FrameLayout orderCard;
     protected JSONObject activeOrderJson;
     protected TextView loyaltyTierText;
@@ -2298,6 +2299,7 @@ class CustomerDashboardActivityScreenCore extends Activity
         );
 
         box.addView(orderHint, hintLp);
+        dashboardWaiting=new SmartWaitingTextView(this); box.addView(dashboardWaiting,new LinearLayout.LayoutParams(-1,-2));
 
         card.setClickable(true);
         card.setOnClickListener(v -> openActiveOrder());
@@ -2691,6 +2693,7 @@ class CustomerDashboardActivityScreenCore extends Activity
 
         currentOrderText = activeOrderText;
         activeOrderJson = state.activeOrder;
+        if(dashboardWaiting!=null)dashboardWaiting.bind(activeOrderJson==null?null:activeOrderJson.optJSONObject("smart_waiting"));
         boolean hasActiveOrder = isActiveOrderText(activeOrderText);
         orderText.setText(hasActiveOrder
                 ? activeOrderText

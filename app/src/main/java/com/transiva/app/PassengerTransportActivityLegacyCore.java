@@ -466,6 +466,7 @@ class PassengerTransportActivityLegacyCore extends Activity {
 
         // 2.3 FINAL ORDER UX: tampilkan hanya keputusan utama. Fitur lanjutan tetap tersedia
         // melalui panel Opsi perjalanan agar halaman final tidak terasa penuh.
+        bottomCard.addView(text("⏱ Smart Waiting: gratis 5 menit setiap titik; berikutnya Rp500 per menit tambahan yang dimulai.",10,"#0B477D",false));
         TextView finalSectionTitle = text("Ringkasan & pembayaran", 12, "#0B3A78", true);
         finalSectionTitle.setPadding(dp(2), 0, dp(2), dp(5));
         bottomCard.addView(finalSectionTitle, new LinearLayout.LayoutParams(-1, -2));

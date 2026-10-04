@@ -203,6 +203,7 @@ class TransFoodActivityScreenCore extends Activity {
         row.setClickable(true);
         row.setOnClickListener(v -> DeliveryAddressGate.edit(this,"TransFood"));
         addWithMargin(row, 0, 0, 0, dp(10));
+        addWithMargin(text("⏱ Smart Waiting: gratis 5 menit/titik; lalu Rp500/menit tambahan.",10,"#0B477D",false),0,0,0,dp(8));
     }
 
     protected void addQuickMenus() {

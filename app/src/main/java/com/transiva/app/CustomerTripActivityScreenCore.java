@@ -89,6 +89,7 @@ class CustomerTripActivityScreenCore extends Activity {
     protected String activeDriverType = "motor";
     protected String orderSource = "orders";
     protected boolean trackingOnly = false;
+    private SmartWaitingTextView waitingView;
 
     protected boolean mapReady = false;
     protected boolean firstFocus = true;
@@ -295,6 +296,7 @@ class CustomerTripActivityScreenCore extends Activity {
         statusText.setPadding(dp(4), dp(10), dp(4), dp(8));
         card.addView(statusText, new LinearLayout.LayoutParams(-1, -2));
 
+        waitingView=new SmartWaitingTextView(this); card.addView(waitingView,new LinearLayout.LayoutParams(-1,-2));
         paymentInfoText = text("", 13, "#0B3A78", true); paymentInfoText.setPadding(dp(12),dp(9),dp(12),dp(9)); paymentInfoText.setVisibility(View.GONE); card.addView(paymentInfoText,new LinearLayout.LayoutParams(-1,-2));
         receivedButton = smallButton("✅ Terima Pesanan", "#DCFCE7", "#047857", "#86EFAC"); receivedButton.setVisibility(View.GONE); receivedButton.setOnClickListener(v -> sendCustomerAction("confirm_received")); LinearLayout.LayoutParams rlp=new LinearLayout.LayoutParams(-1,dp(50)); rlp.setMargins(0,dp(8),0,0); card.addView(receivedButton,rlp);
         LinearLayout priceActions=new LinearLayout(this); priceActions.setOrientation(LinearLayout.HORIZONTAL); priceActions.setVisibility(View.GONE); priceActions.setTag("price_actions");
@@ -569,6 +571,7 @@ class CustomerTripActivityScreenCore extends Activity {
             .setNegativeButton("Batal",null).setPositiveButton("Setujui",(d,w)->sendCustomerAction("approve_price",shownId,shownPrice)).show();
     }
     protected void updatePaymentControls(JSONObject order,String status){
+        if(waitingView!=null)waitingView.bind(order.optJSONObject("smart_waiting"));
         JSONObject extension=order.optJSONObject("destination_extension");
         pendingDestinationProposal=extension!=null && "pending".equals(extension.optString("status"))?extension:null;
         destinationRequestId=extension!=null && "pending".equals(extension.optString("status"))?extension.optLong("id"):0;

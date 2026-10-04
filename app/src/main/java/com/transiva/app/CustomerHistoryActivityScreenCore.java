@@ -1432,6 +1432,7 @@ class CustomerHistoryActivityScreenCore extends Activity {
                 )
         );
 
+        SmartWaitingTextView waiting=new SmartWaitingTextView(this); waiting.bind(order.optJSONObject("smart_waiting")); card.addView(waiting);
         String proposalSummary=CustomerOrderChangeState.summary(order);
         if(!proposalSummary.isEmpty()) {
             TextView proposal=new TextView(this); proposal.setText(proposalSummary); proposal.setTextSize(14); proposal.setTextColor(Color.parseColor("#0B477D")); proposal.setPadding(dp(10),dp(10),dp(10),dp(10)); card.addView(proposal);

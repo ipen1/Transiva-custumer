@@ -276,6 +276,7 @@ public class TransivaFirebaseService extends FirebaseMessagingService {
             );
             title = arrival.title;
             body = arrival.body;
+            if(data!=null && "1".equals(data.get("smart_waiting")))body += "\nSmart Waiting aktif: gratis 5 menit, lalu Rp500/menit tambahan yang dimulai.";
         }
 
         String channelId = channelForType(type);
@@ -415,6 +416,7 @@ public class TransivaFirebaseService extends FirebaseMessagingService {
         i.putExtra("order_type", data != null ? first(data.get("order_type"), data.get("service_type"), "") : "");
         i.putExtra("source", data != null ? first(data.get("source"), "orders") : "orders");
         i.putExtra("restaurant_name", data != null ? first(data.get("restaurant_name"), data.get("merchant_name"), "") : "");
+        i.putExtra("smart_waiting",data!=null?first(data.get("smart_waiting"),"0"):"0");
         i.putExtra("from_fcm", true);
         return i;
     }

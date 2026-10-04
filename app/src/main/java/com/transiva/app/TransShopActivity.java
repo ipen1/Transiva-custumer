@@ -181,6 +181,7 @@ public class TransShopActivity extends Activity {
         deliveryLabel.setMaxLines(2);
         deliveryLabel.setEllipsize(TextUtils.TruncateAt.END);
         add(labels, deliveryLabel, 4);
+        add(labels,text("Smart Waiting: gratis 5 menit/titik; lalu Rp500/menit tambahan.",10,false,ink),4);
         address.addView(labels, new LinearLayout.LayoutParams(0, -2, 1));
         TextView edit = text("›", 25, true, blue);
         edit.setGravity(Gravity.CENTER);

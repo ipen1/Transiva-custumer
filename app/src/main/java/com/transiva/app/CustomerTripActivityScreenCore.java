@@ -478,6 +478,7 @@ class CustomerTripActivityScreenCore extends Activity {
             if (!merchantLine.isEmpty()) statusText.setText(statusText.getText() + "\n" + merchantLine);
         }
 
+        agreedServerRoute=order.optJSONObject("server_route");
         updatePaymentControls(order, status);
         saveTripPrefs();
 
@@ -553,6 +554,7 @@ class CustomerTripActivityScreenCore extends Activity {
         }
     }
 
+    protected JSONObject agreedServerRoute;
     protected String additionalDestinationLabel="",proposalMapKey="";
     protected JSONObject pendingDestinationProposal;
     protected org.json.JSONArray destinationRouteStops=new org.json.JSONArray();
@@ -607,7 +609,16 @@ class CustomerTripActivityScreenCore extends Activity {
         return CustomerCommonFormatters.rupiahCompactPrefix(value);
     }
 
+    protected boolean drawAgreedServerRoute(){
+        JSONObject payload=agreedServerRoute==null?null:agreedServerRoute.optJSONObject("route");JSONArray routes=payload==null?null:payload.optJSONArray("routes");JSONObject route=routes==null?null:routes.optJSONObject(0);
+        JSONObject geometry=route==null?null:route.optJSONObject("geometry");JSONArray coords=geometry==null?null:geometry.optJSONArray("coordinates");
+        if(mapView==null||!mapReady||coords==null||coords.length()<2)return false;
+        JSONArray points=new JSONArray();for(int i=0;i<coords.length();i++){JSONArray xy=coords.optJSONArray(i);if(xy!=null&&xy.length()>1)points.put(new JSONArray().put(xy.optDouble(1)).put(xy.optDouble(0)));}
+        mapView.drawOsrmRoute(points,lastStatus);
+        if(tripInfoText!=null)tripInfoText.setText("Rute disetujui: "+String.format(Locale.US,"%.2f",route.optDouble("distance")/1000)+" km • "+Math.max(1,(int)Math.ceil(route.optDouble("duration")/60))+" menit");return true;
+    }
     protected void requestStableRoute(double toLat,double toLng,boolean force){
+        if(CustomerOrderState.targetsDelivery(lastStatus) && drawAgreedServerRoute())return;
         if(mapView==null || !mapReady || !validCoord(lastDriverLat,lastDriverLng) || !validCoord(toLat,toLng)) return;
         if(routeRequestInFlight) return;
         long now=System.currentTimeMillis();

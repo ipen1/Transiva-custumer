@@ -17,7 +17,7 @@ import java.util.Locale;
  */
 public final class StableRouteEngine {
     private static final int CONNECT_TIMEOUT_MS = 3000;
-    private static final int READ_TIMEOUT_MS = 5000;
+    private static final int READ_TIMEOUT_MS = 18000;
     private static final long CACHE_TTL_MS = 180000L;
     private static volatile Result cacheResult;
     private static volatile double cacheFromLat, cacheFromLng, cacheToLat, cacheToLng;
@@ -57,7 +57,7 @@ public final class StableRouteEngine {
             HttpURLConnection connection = null;
             try {
                 android.content.Context app = TransivaCustomerApplication.appContext();
-                String base = CustomerResourceConfig.routeEndpoint(app);
+                String base = "https://transiva.my.id/server/customer_route_proxy.php";
                 String endpoint = base + "?from_lat=" + String.format(Locale.US, "%.7f", fromLat)
                         + "&from_lng=" + String.format(Locale.US, "%.7f", fromLng)
                         + "&to_lat=" + String.format(Locale.US, "%.7f", toLat)

@@ -297,7 +297,7 @@ class CustomerTripActivityScreenCore extends Activity {
         paymentInfoText = text("", 13, "#0B3A78", true); paymentInfoText.setPadding(dp(12),dp(9),dp(12),dp(9)); paymentInfoText.setVisibility(View.GONE); card.addView(paymentInfoText,new LinearLayout.LayoutParams(-1,-2));
         receivedButton = smallButton("✅ Terima Pesanan", "#DCFCE7", "#047857", "#86EFAC"); receivedButton.setVisibility(View.GONE); receivedButton.setOnClickListener(v -> sendCustomerAction("confirm_received")); LinearLayout.LayoutParams rlp=new LinearLayout.LayoutParams(-1,dp(50)); rlp.setMargins(0,dp(8),0,0); card.addView(receivedButton,rlp);
         LinearLayout priceActions=new LinearLayout(this); priceActions.setOrientation(LinearLayout.HORIZONTAL); priceActions.setVisibility(View.GONE); priceActions.setTag("price_actions");
-        approvePriceButton=smallButton("Setujui Harga", "#DBEAFE", "#1D4ED8", "#93C5FD"); approvePriceButton.setOnClickListener(v->sendCustomerAction("approve_price")); priceActions.addView(approvePriceButton,new LinearLayout.LayoutParams(0,dp(48),1));
+        approvePriceButton=smallButton("Setujui Harga", "#DBEAFE", "#1D4ED8", "#93C5FD"); approvePriceButton.setOnClickListener(v->confirmPriceChange()); priceActions.addView(approvePriceButton,new LinearLayout.LayoutParams(0,dp(48),1));
         rejectPriceButton=smallButton("Tolak", "#FEE2E2", "#B91C1C", "#FCA5A5"); rejectPriceButton.setOnClickListener(v->sendCustomerAction("reject_price")); LinearLayout.LayoutParams rej=new LinearLayout.LayoutParams(0,dp(48),1); rej.setMargins(dp(8),0,0,0); priceActions.addView(rejectPriceButton,rej); LinearLayout.LayoutParams palp=new LinearLayout.LayoutParams(-1,-2); palp.setMargins(0,dp(8),0,0); card.addView(priceActions,palp);
 
         mapView = new TransivaGoogleMapView(this, TransivaGoogleMapView.Mode.TRIP);
@@ -547,24 +547,48 @@ class CustomerTripActivityScreenCore extends Activity {
         }
     }
 
+    protected org.json.JSONArray destinationRouteStops=new org.json.JSONArray();
+    protected boolean destinationRouteActive=false;
+    protected long destinationRequestId=0;
+    protected double destinationRequestedPrice=0;
+    protected void confirmPriceChange(){
+        final long shownId=destinationRequestId; final double shownPrice=destinationRequestedPrice;
+        new TransivaAlertDialogBuilder(this).setTitle("Setujui tujuan dan biaya?")
+            .setMessage(String.valueOf(paymentInfoText.getText())+"\n\nDengan menyetujui, tujuan tambahan dan total baru berlaku. Saldo TransPay tambahan dipotong jika menggunakan TransPay.")
+            .setNegativeButton("Batal",null).setPositiveButton("Setujui",(d,w)->sendCustomerAction("approve_price",shownId,shownPrice)).show();
+    }
     protected void updatePaymentControls(JSONObject order,String status){
+        JSONObject extension=order.optJSONObject("destination_extension");
+        destinationRequestId=extension!=null && "pending".equals(extension.optString("status"))?extension.optLong("id"):0;
+        boolean extensionTravelling=extension!=null && "approved".equals(extension.optString("status")) && extension.optInt("needs_arrival")==1;
+        destinationRouteActive=extensionTravelling;
+        JSONObject eco=order.optJSONObject("ecosystem");destinationRouteStops=eco==null?new org.json.JSONArray():eco.optJSONArray("waypoints");
+        if(destinationRouteStops==null)destinationRouteStops=new org.json.JSONArray();
         if (trackingOnly) return;
         if(paymentInfoText==null||receivedButton==null) return;
         String method=firstNonEmpty(order.optString("payment_method",""),"cash").toLowerCase(Locale.US);
         boolean nonCash=method.equals("balance")||method.contains("transpay")||method.contains("transiva_pay")||method.equals("wallet")||method.equals("saldo");
         double price=order.optDouble("price",0), original=order.optDouble("original_price",price), requested=order.optDouble("price_change_requested",0);
+        destinationRequestedPrice=requested;
         String change=order.optString("price_change_status","none").toLowerCase(Locale.US), reason=order.optString("price_change_reason","");
         String line=(nonCash?"💳 TransPay • sudah dibayar":"💵 Tunai • bayar ke driver")+(price>0?" • "+rupiah(price):"");
         if(original>0 && Math.abs(original-price)>0.5) line += "\nHarga berubah dari " + rupiah(original) + " menjadi " + rupiah(price) + (reason.isEmpty() ? "" : " • " + reason);
         if(change.equals("pending") && requested > 0) line += "\nDriver mengajukan " + rupiah(requested) + (reason.isEmpty() ? "" : " • " + reason);
+        if(extension!=null){
+            if(destinationRequestId>0)line+="\nTujuan baru: "+extension.optString("address")+"\nDari tujuan sebelumnya: "+extension.optString("distance_km")+" km • tambahan "+rupiah(extension.optDouble("extra_fare"));
+            else if("approved".equals(extension.optString("status")))line+="\nMenuju tujuan tambahan: "+extension.optString("address");
+        }
+        if(extensionTravelling && statusText!=null)statusText.setText("Dalam perjalanan ke tujuan tambahan");
+        if(approvePriceButton!=null)approvePriceButton.setText(destinationRequestId>0?"Setujui Tujuan & Biaya":"Setujui Harga");
         paymentInfoText.setText(line); paymentInfoText.setVisibility(View.VISIBLE); paymentInfoText.setBackground(round("#EFF6FF",dp(14)));
-        receivedButton.setVisibility("arrived_delivery".equals(status) && order.optInt("customer_received",0)!=1 ? View.VISIBLE:View.GONE);
+        receivedButton.setVisibility(!extensionTravelling && destinationRequestId==0 && "arrived_delivery".equals(status) && order.optInt("customer_received",0)!=1 ? View.VISIBLE:View.GONE);
         View priceActions=null; android.view.ViewParent par=approvePriceButton==null?null:approvePriceButton.getParent(); if(par instanceof View) priceActions=(View)par;
         if(priceActions!=null) priceActions.setVisibility(change.equals("pending")?View.VISIBLE:View.GONE);
     }
-    protected void sendCustomerAction(String action){
+    protected void sendCustomerAction(String action){sendCustomerAction(action,destinationRequestId,destinationRequestedPrice);}
+    protected void sendCustomerAction(String action,long requestId,double expectedPrice){
         if(orderId.isEmpty()) return; setLoading(true); featureRuntime.execute(()->{ try{
-            JSONObject p=new JSONObject(); p.put("order_id",orderId); p.put("source",orderSource.contains("pickup")?"pickup_orders":"orders"); p.put("action",action);
+            JSONObject p=new JSONObject(); p.put("order_id",orderId); p.put("source",orderSource.contains("pickup")?"pickup_orders":"orders"); p.put("action",action); if(requestId>0)p.put("destination_request_id",requestId); if("approve_price".equals(action))p.put("expected_price",expectedPrice);
             JSONObject r=postJson(CUSTOMER_ACTION_URL,p); boolean ok=r.optBoolean("success",false); String m=firstNonEmpty(r.optString("message",""),ok?"Berhasil":"Gagal");
             featureRuntime.post(mainHandler, ()->{setLoading(false); showInfo(ok?"Berhasil":"Gagal",m); if(ok) fetchDriverPosition();});
         }catch(Exception e){TransivaCrashReporter.recordNetworkFailure(e,"POST",CUSTOMER_ACTION_URL);featureRuntime.post(mainHandler, ()->{setLoading(false);showInfo("Gagal","Koneksi server bermasalah.");});}});
@@ -583,12 +607,23 @@ class CustomerTripActivityScreenCore extends Activity {
         routeRequestInFlight=true; lastRouteRequestAt=now;
         final double fromLat=lastDriverLat,fromLng=lastDriverLng;
         final String status=lastStatus;
+        final boolean extensionRoute=destinationRouteActive;
+        final org.json.JSONArray stops=destinationRouteStops;final double finalLat=deliveryLat,finalLng=deliveryLng;
         featureRuntime.execute(() -> {
             try{
-                StableRouteEngine.Result r=StableRouteEngine.fetch(fromLat,fromLng,toLat,toLng);
+                org.json.JSONArray points=new org.json.JSONArray();double meters=0,seconds=0,a=fromLat,b=fromLng;
+                if(extensionRoute){for(int i=0;i<stops.length();i++){
+                    JSONObject stop=stops.optJSONObject(i);if(stop==null||"arrived".equals(stop.optString("status")))continue;
+                    double x=stop.optDouble("latitude"),y=stop.optDouble("longitude");if(!validCoord(x,y))continue;
+                    StableRouteEngine.Result leg=StableRouteEngine.fetch(a,b,x,y);
+                    for(int n=0;n<leg.latLngPoints.length();n++)points.put(leg.latLngPoints.opt(n));
+                    meters+=leg.distanceMeters;seconds+=leg.durationSeconds;a=x;b=y;
+                }}
+                StableRouteEngine.Result r=StableRouteEngine.fetch(a,b,extensionRoute?finalLat:toLat,extensionRoute?finalLng:toLng);
+                for(int n=0;n<r.latLngPoints.length();n++)points.put(r.latLngPoints.opt(n));meters+=r.distanceMeters;seconds+=r.durationSeconds;
                 lastRouteFromLat=fromLat; lastRouteFromLng=fromLng; lastRouteToLat=toLat; lastRouteToLng=toLng; lastRouteStatus=status;
-                final String pts=r.pointsJson(); final double km=r.distanceMeters/1000d,sec=r.durationSeconds;
-                featureRuntime.post(mainHandler, () -> { if (mapView != null) { mapView.drawOsrmRoute(r.latLngPoints, status); mapView.fitAll(); } if (tripInfoText != null && km > 0 && sec > 0) tripInfoText.setText("Estimasi rute driver: " + String.format(Locale.US, "%.1f", km) + " KM • " + Math.max(1, (int)Math.ceil(sec / 60.0)) + " menit"); });
+                final String pts=points.toString(); final double km=meters/1000d,sec=seconds;
+                featureRuntime.post(mainHandler, () -> { if (mapView != null) { mapView.drawOsrmRoute(points, status); mapView.fitAll(); } if (tripInfoText != null && km > 0 && sec > 0) tripInfoText.setText("Estimasi rute driver: " + String.format(Locale.US, "%.1f", km) + " KM • " + Math.max(1, (int)Math.ceil(sec / 60.0)) + " menit"); });
             }catch(Exception error){ TransivaCrashReporter.record(error,"customer_route","stable_route"); } finally{ routeRequestInFlight=false; }
         });
     }

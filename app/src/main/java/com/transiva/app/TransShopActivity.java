@@ -4,10 +4,14 @@ import android.content.Intent;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
+import android.graphics.drawable.RippleDrawable;
+import android.content.res.ColorStateList;
 import android.os.Bundle;
 import android.view.Gravity;
 import android.view.View;
 import android.widget.LinearLayout;
+import android.widget.FrameLayout;
+import android.widget.ImageView;
 import android.widget.ScrollView;
 import android.widget.TextView;
 
@@ -21,11 +25,29 @@ public class TransShopActivity extends Activity {
  private void open(Class<?> c){startActivity(new Intent(this,c));overridePendingTransition(android.R.anim.fade_in,android.R.anim.fade_out);}
  private TextView deliveryLabel;
  @Override protected void onResume(){super.onResume();if(DeliveryAddressGate.valid(this)&&deliveryLabel==null){recreate();return;}if(deliveryLabel!=null)deliveryLabel.setText("📍 Antar ke: "+DeliveryAddressGate.address(this)+"   ›");}
- private void choice(LinearLayout root,String symbol,String title,String desc,String action,int accent,int fill,Class<?> target,int delay){
-  LinearLayout card=new LinearLayout(this);card.setOrientation(1);card.setPadding(dp(19),dp(18),dp(19),dp(18));card.setBackground(bg(fill,20));card.setElevation(dp(2));card.setClickable(true);card.setFocusable(true);
-  add(card,text(symbol,29,true,accent),0);add(card,text(title,21,true,Color.rgb(20,52,89)),9);
-  TextView detail=text(desc,14,false,Color.rgb(78,99,121));detail.setLineSpacing(dp(3),1f);add(card,detail,6);
-  add(card,text(action+"  →",14,true,accent),16);card.setContentDescription(title+". "+desc+". "+action);card.setOnClickListener(v->open(target));add(root,card,13);
+ private void choice(LinearLayout root,String title,String desc,String action,int imageRes,int accent,Class<?> target,int delay){
+  FrameLayout card=new FrameLayout(this);
+  card.setBackground(bg(Color.WHITE,20));card.setClipToOutline(true);card.setElevation(dp(3));
+  card.setClickable(true);card.setFocusable(true);
+  ImageView photo=new ImageView(this);
+  photo.setImageResource(imageRes);photo.setScaleType(ImageView.ScaleType.CENTER_CROP);
+  photo.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+  card.addView(photo,new FrameLayout.LayoutParams(-1,-1));
+  LinearLayout content=new LinearLayout(this);content.setOrientation(LinearLayout.VERTICAL);
+  content.setPadding(dp(19),0,dp(19),dp(18));
+  GradientDrawable fade=new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,
+    new int[]{Color.TRANSPARENT,Color.TRANSPARENT,Color.WHITE,Color.WHITE,Color.WHITE,Color.WHITE});
+  content.setBackground(fade);
+  View space=new View(this);content.addView(space,new LinearLayout.LayoutParams(-1,dp(150)));
+  add(content,text(title,21,true,Color.rgb(20,52,89)),0);
+  TextView detail=text(desc,14,false,Color.rgb(78,99,121));detail.setLineSpacing(dp(3),1f);add(content,detail,6);
+  TextView cta=text(action+"  →",14,true,accent);cta.setGravity(Gravity.CENTER_VERTICAL);
+  cta.setMinHeight(dp(44));add(content,cta,8);
+  card.addView(content,new FrameLayout.LayoutParams(-1,-2));
+  card.setForeground(new RippleDrawable(ColorStateList.valueOf(Color.argb(28,12,108,234)),null,bg(Color.WHITE,20)));
+  card.setContentDescription(title+". "+desc+". "+action);
+  content.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS);
+  card.setOnClickListener(v->open(target));add(root,card,13);
   card.setAlpha(0f);card.setTranslationY(dp(14));card.animate().alpha(1f).translationY(0).setStartDelay(delay).setDuration(260).start();
  }
  @Override public void onCreate(Bundle state){super.onCreate(state);getWindow().setStatusBarColor(blue);getWindow().setNavigationBarColor(Color.rgb(5,16,29));
@@ -39,8 +61,8 @@ public class TransShopActivity extends Activity {
   addr.setOnClickListener(v->DeliveryAddressGate.edit(this,"TransShop"));add(root,addr,10);
   add(root,text("Belanja dengan caramu",17,true,blue),16);
   TextView intro=text("Temukan pilihan terbaik dari toko sekitar, atau titipkan belanjaan dari lokasi pilihanmu.",14,false,Color.rgb(83,103,124));intro.setLineSpacing(dp(3),1f);add(root,intro,6);
-  choice(root,"▣","Toko Terdaftar","Jelajahi etalase merchant pilihan TransShop. Pilih produk, atur jumlah, lalu pesan dengan checkout praktis.","Jelajahi toko",blue,Color.WHITE,TransShopCatalogActivity.class,50);
-  choice(root,"⌖","Belanja Bebas","Punya tempat belanja sendiri? Tentukan lokasinya lewat peta dan biarkan Transiva membantu perjalanan belanjamu.","Buka peta belanja",Color.rgb(15,125,139),Color.rgb(232,249,250),TransShopLegacyActivity.class,120);
+  choice(root,"Toko Terdaftar","Jelajahi etalase merchant pilihan TransShop. Pilih produk, atur jumlah, lalu pesan dengan checkout praktis.","Jelajahi toko",R.drawable.transshop_registered_background,blue,TransShopCatalogActivity.class,50);
+  choice(root,"Belanja Bebas","Punya tempat belanja sendiri? Tentukan lokasinya lewat peta dan biarkan Transiva membantu perjalanan belanjamu.","Buka peta belanja",R.drawable.transshop_free_background,Color.rgb(15,125,139),TransShopLegacyActivity.class,120);
   TextView note=text("Dua cara belanja, satu kemudahan bersama Transiva.",12,false,Color.rgb(112,130,149));note.setGravity(Gravity.CENTER);add(root,note,22);
  }
 }

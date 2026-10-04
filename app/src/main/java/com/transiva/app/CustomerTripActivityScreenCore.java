@@ -614,7 +614,22 @@ class CustomerTripActivityScreenCore extends Activity {
         JSONObject payload=agreedServerRoute==null?null:agreedServerRoute.optJSONObject("route");JSONArray routes=payload==null?null:payload.optJSONArray("routes");JSONObject route=routes==null?null:routes.optJSONObject(0);
         JSONObject geometry=route==null?null:route.optJSONObject("geometry");JSONArray coords=geometry==null?null:geometry.optJSONArray("coordinates");
         if(mapView==null||!mapReady||coords==null||coords.length()<2)return false;
-        JSONArray points=new JSONArray();for(int i=0;i<coords.length();i++){JSONArray xy=coords.optJSONArray(i);if(xy!=null&&xy.length()>1)points.put(new JSONArray().put(xy.optDouble(1)).put(xy.optDouble(0)));}
+        JSONArray points = new JSONArray();
+        try {
+            for (int i = 0; i < coords.length(); i++) {
+                JSONArray xy = coords.optJSONArray(i);
+                if (xy == null || xy.length() < 2) return false;
+                double latitude = xy.optDouble(1, Double.NaN);
+                double longitude = xy.optDouble(0, Double.NaN);
+                if (Double.isNaN(latitude) || Double.isInfinite(latitude)
+                        || Double.isNaN(longitude) || Double.isInfinite(longitude)
+                        || Math.abs(latitude) > 90 || Math.abs(longitude) > 180) return false;
+                points.put(new JSONArray().put(latitude).put(longitude));
+            }
+        } catch (org.json.JSONException invalidGeometry) {
+            return false;
+        }
+        if (points.length() < 2) return false;
         mapView.drawOsrmRoute(points,lastStatus);
         if(tripInfoText!=null)tripInfoText.setText("Rute disetujui: "+String.format(Locale.US,"%.2f",route.optDouble("distance")/1000)+" km • "+Math.max(1,(int)Math.ceil(route.optDouble("duration")/60))+" menit");return true;
     }

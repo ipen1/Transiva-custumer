@@ -515,13 +515,19 @@ class CustomerTripActivityScreenCore extends Activity {
         if (mapView == null || !mapReady) return;
 
         lastDataAlreadyPushed = true;
+        String previewKey=pendingDestinationProposal==null?"":String.valueOf(pendingDestinationProposal.optLong("id"));
+        if(!previewKey.equals(proposalMapKey)){
+            mapView.clearPlaces();proposalMapKey=previewKey;
+            if(pendingDestinationProposal!=null)mapView.addPlace(pendingDestinationProposal.optDouble("to_lat"),pendingDestinationProposal.optDouble("to_lng"),"Usulan tujuan tambahan","Menunggu persetujuan Anda",pendingDestinationProposal.optString("address"));
+        }
+        if(destinationRouteStops!=null && destinationRouteStops.length()>0)mapView.setWaypoints(destinationRouteStops);
 
         if (validCoord(pickupLat, pickupLng)) {
             if (mapView != null) mapView.setPickup(pickupLat, pickupLng, "Lokasi Penjemputan");
         }
 
         if (validCoord(deliveryLat, deliveryLng)) {
-            if (mapView != null) mapView.setDelivery(deliveryLat, deliveryLng, "Lokasi Delivery");
+            if (mapView != null) mapView.setDelivery(deliveryLat, deliveryLng, additionalDestinationLabel.isEmpty()?"Tujuan":"Tujuan tambahan: "+additionalDestinationLabel);
         }
 
         if (validCoord(lastDriverLat, lastDriverLng)) {
@@ -547,6 +553,8 @@ class CustomerTripActivityScreenCore extends Activity {
         }
     }
 
+    protected String additionalDestinationLabel="",proposalMapKey="";
+    protected JSONObject pendingDestinationProposal;
     protected org.json.JSONArray destinationRouteStops=new org.json.JSONArray();
     protected boolean destinationRouteActive=false;
     protected long destinationRequestId=0;
@@ -559,8 +567,10 @@ class CustomerTripActivityScreenCore extends Activity {
     }
     protected void updatePaymentControls(JSONObject order,String status){
         JSONObject extension=order.optJSONObject("destination_extension");
+        pendingDestinationProposal=extension!=null && "pending".equals(extension.optString("status"))?extension:null;
         destinationRequestId=extension!=null && "pending".equals(extension.optString("status"))?extension.optLong("id"):0;
         boolean extensionTravelling=extension!=null && "approved".equals(extension.optString("status")) && extension.optInt("needs_arrival")==1;
+        additionalDestinationLabel=extension!=null && "approved".equals(extension.optString("status"))?extension.optString("address",""):"";
         destinationRouteActive=extensionTravelling;
         JSONObject eco=order.optJSONObject("ecosystem");destinationRouteStops=eco==null?new org.json.JSONArray():eco.optJSONArray("waypoints");
         if(destinationRouteStops==null)destinationRouteStops=new org.json.JSONArray();

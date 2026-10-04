@@ -75,7 +75,7 @@ public final class DeliveryAddressGate {
  public static boolean require(Activity a,String service) {
   if(valid(a))return true;
   String id=user(a);
-  if(id.isEmpty()){profile(a,service);return false;}
+  if(id.isEmpty()){explainMissing(a,service);return false;}
   String key=id+":"+service;
   if(!pending.add(key))return false;
   final ProgressDialog progress=new ProgressDialog(a);
@@ -105,12 +105,30 @@ public final class DeliveryAddressGate {
     if(a.isFinishing()||a.isDestroyed()||!id.equals(user(a)))return;
     if(ok){update(a,saved,la,lo);if(!saved.isEmpty()){
       Intent i=new Intent(a,"TransFood".equalsIgnoreCase(service)?TransFoodActivity.class:TransShopActivity.class);
-      a.startActivity(i);return;
-    }profile(a,service);
-    }else Toast.makeText(a,"Alamat belum dapat diperiksa. Periksa koneksi dan coba lagi.",Toast.LENGTH_LONG).show();
+      if(("TransFood".equalsIgnoreCase(service)&&a instanceof TransFoodActivity)||("TransShop".equalsIgnoreCase(service)&&a instanceof TransShopActivity))a.recreate();else a.startActivity(i);return;
+    }explainMissing(a,service);
+    }else new TransivaAlertDialogBuilder(a).setTitle("Alamat belum dapat diperiksa")
+      .setMessage("Koneksi ke server belum berhasil. Anda dapat mencoba lagi atau menyimpan alamat delivery melalui profil.")
+      .setPositiveButton("Coba lagi",(dialog,which)->require(a,service))
+      .setNeutralButton("Simpan alamat",(dialog,which)->profile(a,service)).setNegativeButton("Tutup",null).show();
    });
   }).start();
   return false;
+ }
+ private static void explainMissing(Activity a,String service){
+  if(a.isFinishing()||a.isDestroyed())return;
+  new TransivaAlertDialogBuilder(a).setTitle("Simpan alamat delivery dahulu")
+   .setMessage(service+" membutuhkan alamat tujuan pengantaran. Alamat delivery Anda belum tersimpan. Pilih Simpan alamat untuk mengaturnya di profil, lalu buka layanan kembali.")
+   .setPositiveButton("Simpan alamat",(dialog,which)->profile(a,service)).setNegativeButton("Nanti",null).show();
+ }
+ public static void showUnavailable(Activity a,String service){
+  android.widget.LinearLayout layout=new android.widget.LinearLayout(a);layout.setOrientation(1);layout.setPadding(32,40,32,32);
+  android.widget.TextView title=new android.widget.TextView(a);title.setText(service);title.setTextSize(23);layout.addView(title);
+  android.widget.TextView message=new android.widget.TextView(a);message.setText("Alamat delivery belum siap. Simpan alamat pengantaran agar toko dan restoran dapat ditampilkan sesuai lokasi Anda.");message.setTextSize(16);message.setPadding(0,24,0,24);layout.addView(message);
+  android.widget.Button save=new android.widget.Button(a);save.setText("Simpan alamat delivery");save.setOnClickListener(v->profile(a,service));layout.addView(save);
+  android.widget.Button retry=new android.widget.Button(a);retry.setText("Periksa alamat lagi");retry.setOnClickListener(v->require(a,service));layout.addView(retry);
+  android.widget.Button back=new android.widget.Button(a);back.setText("Kembali");back.setOnClickListener(v->a.finish());layout.addView(back);
+  a.setContentView(layout);CustomerAppSettings.applyToView(a,layout);
  }
  public static void edit(Activity a,String service){profile(a,service);}
 }

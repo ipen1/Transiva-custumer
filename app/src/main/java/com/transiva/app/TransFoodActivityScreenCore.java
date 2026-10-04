@@ -91,6 +91,7 @@ class TransFoodActivityScreenCore extends Activity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        if(!DeliveryAddressGate.valid(this)){DeliveryAddressGate.showUnavailable(this,"TransFood");DeliveryAddressGate.require(this,"TransFood");return;}
         splitBillManager = new SplitBillManager(this, (key,size,ready) -> { if(currentScreen==2) renderCheckout(); });
         try {
             getWindow().setStatusBarColor(Color.WHITE);
@@ -1622,7 +1623,8 @@ class TransFoodActivityScreenCore extends Activity {
     protected void onResume() {
         super.onResume();
         featureRuntime.onResume();
-        if (!DeliveryAddressGate.valid(this)) { finish(); return; }
+        if (!DeliveryAddressGate.valid(this)) { return; }
+        if(root==null){recreate();return;}
         if (currentScreen == 0 && root != null) showRestaurantList();
         mainHandler.removeCallbacks(realtimeFoodRefresh);
         mainHandler.postDelayed(realtimeFoodRefresh, CustomerPerformanceManager.pollingBackground(this, 30000L));

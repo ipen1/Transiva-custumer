@@ -20,7 +20,7 @@ public class TransShopActivity extends Activity {
  private void add(LinearLayout p,View v,int top){LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-1,-2);lp.topMargin=dp(top);p.addView(v,lp);}
  private void open(Class<?> c){startActivity(new Intent(this,c));overridePendingTransition(android.R.anim.fade_in,android.R.anim.fade_out);}
  private TextView deliveryLabel;
- @Override protected void onResume(){super.onResume();if(deliveryLabel!=null)deliveryLabel.setText("📍 Antar ke: "+DeliveryAddressGate.address(this)+"   ›");}
+ @Override protected void onResume(){super.onResume();if(DeliveryAddressGate.valid(this)&&deliveryLabel==null){recreate();return;}if(deliveryLabel!=null)deliveryLabel.setText("📍 Antar ke: "+DeliveryAddressGate.address(this)+"   ›");}
  private void choice(LinearLayout root,String symbol,String title,String desc,String action,int accent,int fill,Class<?> target,int delay){
   LinearLayout card=new LinearLayout(this);card.setOrientation(1);card.setPadding(dp(19),dp(18),dp(19),dp(18));card.setBackground(bg(fill,20));card.setElevation(dp(2));card.setClickable(true);card.setFocusable(true);
   add(card,text(symbol,29,true,accent),0);add(card,text(title,21,true,Color.rgb(20,52,89)),9);
@@ -29,7 +29,7 @@ public class TransShopActivity extends Activity {
   card.setAlpha(0f);card.setTranslationY(dp(14));card.animate().alpha(1f).translationY(0).setStartDelay(delay).setDuration(260).start();
  }
  @Override public void onCreate(Bundle state){super.onCreate(state);getWindow().setStatusBarColor(blue);getWindow().setNavigationBarColor(Color.rgb(5,16,29));
-  if (!DeliveryAddressGate.valid(this)) {finish();return;}
+  if (!DeliveryAddressGate.valid(this)) {DeliveryAddressGate.showUnavailable(this,"TransShop");DeliveryAddressGate.require(this,"TransShop");return;}
   ScrollView scroll=new ScrollView(this);scroll.setFillViewport(true);scroll.setBackgroundColor(Color.rgb(246,249,255));
   LinearLayout root=new LinearLayout(this);root.setOrientation(1);root.setPadding(dp(18),dp(18),dp(18),dp(26));scroll.addView(root);setContentView(scroll);
   TextView back=text("‹  TransShop",27,true,Color.rgb(20,52,89));back.setGravity(Gravity.CENTER_VERTICAL);back.setMinHeight(dp(52));back.setOnClickListener(v->finish());add(root,back,0);

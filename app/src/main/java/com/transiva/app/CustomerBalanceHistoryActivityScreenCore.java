@@ -88,6 +88,12 @@ class CustomerBalanceHistoryActivityScreenCore extends Activity {
     protected String username = "";
     protected int userId;
     protected String filter = "all";
+    private int periodDays=30;
+    private int displayedBalance;
+    private boolean balanceHidden;
+    private ScrollView historyScroll;
+    private TextView periodText;
+    private String lastListSignature="";
     protected boolean loadingData;
 
     @Override
@@ -176,6 +182,7 @@ class CustomerBalanceHistoryActivityScreenCore extends Activity {
         ScrollView scroll =
                 new ScrollView(this);
 
+        historyScroll=scroll;
         scroll.setFillViewport(true);
         scroll.setClipToPadding(false);
 
@@ -327,157 +334,13 @@ class CustomerBalanceHistoryActivityScreenCore extends Activity {
     }
 
     protected void buildBalanceCard() {
-        FrameLayout frame =
-                new FrameLayout(this);
-
-        frame.setBackground(
-                gradient(
-                        "#075EF4",
-                        "#22A4FF",
-                        22
-                )
-        );
-
-        frame.setElevation(dp(3));
-
-        LinearLayout.LayoutParams frameLp =
-                new LinearLayout.LayoutParams(
-                        -1,
-                        dp(180)
-                );
-
-        frameLp.setMargins(
-                0,
-                dp(14),
-                0,
-                dp(14)
-        );
-
-        content.addView(frame, frameLp);
-
-        LinearLayout card =
-                new LinearLayout(this);
-
-        card.setOrientation(
-                LinearLayout.VERTICAL
-        );
-
-        card.setPadding(
-                dp(18),
-                dp(17),
-                dp(18),
-                dp(14)
-        );
-
-        frame.addView(
-                card,
-                new FrameLayout.LayoutParams(
-                        -1,
-                        -1
-                )
-        );
-
-        card.addView(
-                text(
-                        "Transiva Pay",
-                        16,
-                        "#FFFFFF",
-                        true
-                )
-        );
-
-        card.addView(
-                text(
-                        "Saldo tersedia",
-                        11,
-                        "#EAF4FF",
-                        false
-                )
-        );
-
-        balanceText =
-                text(
-                        "Memuat...",
-                        29,
-                        "#FFFFFF",
-                        true
-                );
-
-        balanceText.setSingleLine(true);
-
-        LinearLayout.LayoutParams balanceLp =
-                new LinearLayout.LayoutParams(
-                        -1,
-                        -2
-                );
-
-        balanceLp.setMargins(
-                0,
-                dp(3),
-                0,
-                dp(13)
-        );
-
-        card.addView(
-                balanceText,
-                balanceLp
-        );
-
-        LinearLayout security =
-                new LinearLayout(this);
-
-        security.setGravity(
-                Gravity.CENTER_VERTICAL
-        );
-
-        security.setPadding(
-                dp(10),
-                dp(7),
-                dp(10),
-                dp(7)
-        );
-
-        security.setBackground(
-                round("#FFD84D", 12)
-        );
-
-        TextView secureIcon =
-                text(
-                        "✓",
-                        12,
-                        "#5A3B00",
-                        true
-                );
-
-        security.addView(secureIcon);
-
-        TextView secureText =
-                text(
-                        "  Transaksi terlindungi dan tercatat",
-                        10,
-                        "#5A3B00",
-                        true
-                );
-
-        security.addView(
-                secureText,
-                new LinearLayout.LayoutParams(
-                        0,
-                        -2,
-                        1
-                )
-        );
-
-        card.addView(
-                security,
-                new LinearLayout.LayoutParams(
-                        -1,
-                        -2
-                )
-        );
+        LinearLayout card=new LinearLayout(this);card.setOrientation(LinearLayout.VERTICAL);card.setPadding(dp(18),dp(16),dp(18),dp(14));card.setBackground(gradient("#075EF4","#22A4FF",20));
+        LinearLayout top=new LinearLayout(this);top.setGravity(Gravity.CENTER_VERTICAL);top.addView(text("Transiva Pay",16,"#FFFFFF",true),new LinearLayout.LayoutParams(0,-2,1));
+        TextView eye=text("Sembunyikan",10,"#FFFFFF",true);eye.setPadding(dp(8),dp(8),dp(8),dp(8));eye.setContentDescription("Tampilkan atau sembunyikan saldo");eye.setOnClickListener(v->{balanceHidden=!balanceHidden;balanceText.setText(balanceHidden?"Rp ••••••":rupiah(displayedBalance));eye.setText(balanceHidden?"Tampilkan":"Sembunyikan");});top.addView(eye);card.addView(top);
+        card.addView(text("Saldo tersedia",11,"#DDEFFF",false));balanceText=text("Memuat...",27,"#FFFFFF",true);balanceText.setMaxLines(2);card.addView(balanceText);
+        TextView note=text("✓ Riwayat mutasi tercatat",10,"#EAF5FF",false);note.setPadding(0,dp(7),0,0);card.addView(note);
+        LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-1,-2);lp.setMargins(0,dp(12),0,dp(12));content.addView(card,lp);
     }
-
-
 
     protected void buildActionGrid() {
         LinearLayout card =
@@ -527,7 +390,7 @@ class CustomerBalanceHistoryActivityScreenCore extends Activity {
         actions.addView(
                 actionItem(
                         "＋",
-                        "Deposit",
+                        "Isi Saldo",
                         "#EAF4FF",
                         this::openDeposit
                 ),
@@ -547,7 +410,7 @@ class CustomerBalanceHistoryActivityScreenCore extends Activity {
         actions.addView(
                 actionItem(
                         "↓",
-                        "Withdraw",
+                        "Tarik Saldo",
                         "#FFF4E8",
                         this::showWithdrawDialog
                 ),
@@ -584,7 +447,7 @@ class CustomerBalanceHistoryActivityScreenCore extends Activity {
         LinearLayout.LayoutParams lp =
                 new LinearLayout.LayoutParams(
                         0,
-                        dp(92),
+                        dp(76),
                         1
                 );
 
@@ -691,6 +554,7 @@ class CustomerBalanceHistoryActivityScreenCore extends Activity {
     }
 
     protected void buildSummary() {
+        content.addView(text("Mutasi Transiva Pay • periode terpilih",11,"#64748B",true));
         LinearLayout row =
                 new LinearLayout(this);
 
@@ -860,12 +724,14 @@ class CustomerBalanceHistoryActivityScreenCore extends Activity {
 
         TextView period =
                 text(
-                        "30 hari terakhir",
+                        "30 hari ▾",
                         10,
                         "#718096",
                         false
                 );
 
+        periodText=period;
+        period.setPadding(dp(8),dp(12),dp(8),dp(12));period.setOnClickListener(v->new AlertDialog.Builder(this).setTitle("Periode transaksi").setItems(new String[]{"7 hari terakhir","30 hari terakhir","90 hari terakhir"},(dialog,which)->{periodDays=new int[]{7,30,90}[which];periodText.setText(periodDays+" hari ▾");loadWallet();}).show());
         header.addView(period);
         content.addView(header);
 
@@ -933,11 +799,12 @@ class CustomerBalanceHistoryActivityScreenCore extends Activity {
         filterRow.removeAllViews();
 
         addFilter("all", "Semua");
+        addFilter("transpay", "Transiva Pay");
+        addFilter("cash", "Tunai");
         addFilter("in", "Pemasukan");
         addFilter("out", "Pengeluaran");
         addFilter("pending", "Diproses");
-        addFilter("cash", "Cash");
-        addFilter("transpay", "Transpay");
+
     }
 
 
@@ -1025,6 +892,7 @@ class CustomerBalanceHistoryActivityScreenCore extends Activity {
         loadingData = true;
         setLoading(true);
 
+        final int requestedDays=periodDays;
         featureRuntime.execute(() -> {
             try {
                 JSONObject request =
@@ -1040,6 +908,7 @@ class CustomerBalanceHistoryActivityScreenCore extends Activity {
                         username
                 );
 
+                request.put("days",requestedDays);
                 JSONObject response =
                         postJson(
                                 SUMMARY_URL,
@@ -1110,10 +979,10 @@ class CustomerBalanceHistoryActivityScreenCore extends Activity {
                 mainHandler.post(() -> {
                     loadingData = false;
                     setLoading(false);
+                    if(requestedDays!=periodDays){loadWallet();return;}
 
-                    balanceText.setText(
-                            rupiah(balance)
-                    );
+                    displayedBalance=balance;
+                    balanceText.setText(balanceHidden?"Rp ••••••":rupiah(balance));
 
                     incomeText.setText(
                             "+" + rupiah(income)
@@ -1127,9 +996,12 @@ class CustomerBalanceHistoryActivityScreenCore extends Activity {
                             rupiah(pending)
                     );
 
-                    transactions.clear();
-                    transactions.addAll(fresh);
-                    renderTransactions();
+                    String signature=fresh.toString();
+                    if(!signature.equals(lastListSignature)){
+                        int savedY=historyScroll==null?0:historyScroll.getScrollY();lastListSignature=signature;
+                        transactions.clear();transactions.addAll(fresh);renderTransactions();
+                        if(historyScroll!=null)historyScroll.post(()->historyScroll.scrollTo(0,savedY));
+                    }
                 });
 
             } catch (Exception error) {
@@ -1243,265 +1115,33 @@ class CustomerBalanceHistoryActivityScreenCore extends Activity {
 
 
 
-    protected View transactionCard(
-            JSONObject item
-    ) {
-        String direction =
-                item.optString(
-                        "direction",
-                        "out"
-                );
-
-        String status =
-                item.optString(
-                        "status",
-                        "success"
-                );
-
-        boolean incoming =
-                direction.equals("in");
-
-        LinearLayout card =
-                new LinearLayout(this);
-
-        card.setOrientation(
-                LinearLayout.HORIZONTAL
-        );
-
-        card.setGravity(
-                Gravity.CENTER_VERTICAL
-        );
-
-        card.setPadding(
-                dp(12),
-                dp(12),
-                dp(12),
-                dp(12)
-        );
-
-        card.setBackground(
-                roundStroke(
-                        "#FFFFFF",
-                        "#E1EAF5",
-                        16,
-                        1
-                )
-        );
-
-        TextView icon =
-                text(
-                        incoming
-                                ? "↓"
-                                : "↑",
-                        20,
-                        incoming
-                                ? "#0E9F4B"
-                                : "#D9485F",
-                        true
-                );
-
-        icon.setGravity(Gravity.CENTER);
-
-        icon.setBackground(
-                round(
-                        incoming
-                                ? "#ECFDF5"
-                                : "#FFF0F2",
-                        13
-                )
-        );
-
-        card.addView(
-                icon,
-                new LinearLayout.LayoutParams(
-                        dp(44),
-                        dp(44)
-                )
-        );
-
-        LinearLayout info =
-                new LinearLayout(this);
-
-        info.setOrientation(
-                LinearLayout.VERTICAL
-        );
-
-        info.setPadding(
-                dp(10),
-                0,
-                dp(8),
-                0
-        );
-
-        TextView title =
-                text(
-                        item.optString(
-                                "title",
-                                transactionTitle(
-                                        item.optString(
-                                                "type",
-                                                ""
-                                        )
-                                )
-                        ),
-                        12,
-                        "#0B3A78",
-                        true
-                );
-
-        title.setSingleLine(true);
-        title.setEllipsize(
-                TextUtils.TruncateAt.END
-        );
-
-        info.addView(title);
-
-        TextView description =
-                text(
-                        item.optString(
-                                "description",
-                                ""
-                        ),
-                        9,
-                        "#718096",
-                        false
-                );
-
-        description.setMaxLines(2);
-        description.setEllipsize(
-                TextUtils.TruncateAt.END
-        );
-
-        info.addView(description);
-
-        String channelLabel = item.optString("payment_label", "Transpay");
-        info.addView(text(channelLabel, 9, "#0B7CFF", true));
-
-        info.addView(
-                text(
-                        formatDate(
-                                item.optString(
-                                        "created_at",
-                                        ""
-                                )
-                        ),
-                        9,
-                        "#94A3B8",
-                        false
-                )
-        );
-
-        card.addView(
-                info,
-                new LinearLayout.LayoutParams(
-                        0,
-                        -2,
-                        1
-                )
-        );
-
-        LinearLayout end =
-                new LinearLayout(this);
-
-        end.setOrientation(
-                LinearLayout.VERTICAL
-        );
-
-        end.setGravity(
-                Gravity.END
-        );
-
-        TextView amount =
-                text(
-                        (
-                                incoming
-                                        ? "+"
-                                        : "-"
-                        )
-                                + rupiah(
-                                item.optInt(
-                                        "amount",
-                                        0
-                                )
-                        ),
-                        12,
-                        incoming
-                                ? "#0E9F4B"
-                                : "#D9485F",
-                        true
-                );
-
-        amount.setGravity(Gravity.END);
-        end.addView(amount);
-
-        TextView statusView =
-                text(
-                        statusLabel(status),
-                        9,
-                        statusColor(status),
-                        true
-                );
-
-        statusView.setGravity(
-                Gravity.CENTER
-        );
-
-        statusView.setPadding(
-                dp(7),
-                dp(3),
-                dp(7),
-                dp(3)
-        );
-
-        statusView.setBackground(
-                round(
-                        statusBackground(status),
-                        10
-                )
-        );
-
-        LinearLayout.LayoutParams statusLp =
-                new LinearLayout.LayoutParams(
-                        -2,
-                        -2
-                );
-
-        statusLp.setMargins(
-                0,
-                dp(5),
-                0,
-                0
-        );
-
-        end.addView(
-                statusView,
-                statusLp
-        );
-
-        card.addView(
-                end,
-                new LinearLayout.LayoutParams(
-                        dp(112),
-                        -2
-                )
-        );
-
-        LinearLayout.LayoutParams cardLp =
-                new LinearLayout.LayoutParams(
-                        -1,
-                        -2
-                );
-
-        cardLp.setMargins(
-                0,
-                0,
-                0,
-                dp(8)
-        );
-
-        card.setLayoutParams(cardLp);
-
-        return card;
+    protected View transactionCard(JSONObject item) {
+        boolean cash="cash".equals(item.optString("payment_channel"));boolean incoming="in".equals(item.optString("direction"));String status=item.optString("status","success");
+        LinearLayout card=new LinearLayout(this);card.setOrientation(LinearLayout.VERTICAL);card.setPadding(dp(12),dp(10),dp(12),dp(10));card.setBackground(roundStroke("#FFFFFF","#E1EAF5",14,1));
+        LinearLayout top=new LinearLayout(this);top.setGravity(Gravity.CENTER_VERTICAL);
+        TextView title=text(cash?cashService(item):item.optString("title",transactionTitle(item.optString("type"))),12,"#0B3A78",true);title.setMaxLines(2);top.addView(title,new LinearLayout.LayoutParams(0,-2,1));
+        TextView amount=text((cash?"":incoming?"+":"−")+rupiah(item.optInt("amount")),12,cash?"#0B3A78":incoming?"#0E9F4B":"#D9485F",true);amount.setPadding(dp(8),0,0,0);top.addView(amount);card.addView(top);
+        String channel=cash?"Tunai":"Transiva Pay";
+        TextView meta=text(channel+" • "+transactionStatus(item),10,statusColor(status),false);meta.setPadding(0,dp(4),0,0);card.addView(meta);
+        card.addView(text(formatDate(item.optString("created_at")),10,"#8495A8",false));
+        LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-1,-2);lp.setMargins(0,0,0,dp(7));card.setLayoutParams(lp);card.setOnClickListener(v->showTransactionDetails(item));return card;
+    }
+    private String transactionStatus(JSONObject item){
+        String status=item.optString("status");
+        if(status.equals("cancelled")||status.equals("canceled"))return "Dibatalkan";
+        if("cash".equals(item.optString("payment_channel"))){if(status.equals("success"))return "Dibayar tunai";if(status.equals("pending"))return "Menunggu pembayaran";}
+        return statusLabel(status);
+    }
+    private String cashService(JSONObject item){
+        String service=item.optString("service_label").toLowerCase(Locale.ROOT);
+        if(service.contains("food"))return "TransFood";if(service.contains("shop"))return "TransShop";if(service.contains("car"))return "TransCar";if(service.contains("pickup")||service.contains("send"))return "TransSend";if(service.contains("bike")||service.contains("ride"))return "TransRide";return "Pembayaran Tunai";
+    }
+    private void showTransactionDetails(JSONObject item){
+        boolean cash="cash".equals(item.optString("payment_channel"));
+        String body="Nominal: "+rupiah(item.optInt("amount"))+"\nMetode: "+(cash?"Tunai":"Transiva Pay")+"\nStatus: "+transactionStatus(item)+"\nWaktu: "+formatDate(item.optString("created_at"))+"\nReferensi: "+item.optString("reference","-")+"\n\n"+item.optString("description");
+        if(cash&&item.has("waiting_fee"))body+="\n\nOngkir: "+rupiah(item.optInt("fare_before_waiting"))+"\nSmart Waiting: "+rupiah(item.optInt("waiting_fee"))+"\nTotal: "+rupiah(item.optInt("amount"));
+        body+=cash?"\n\nPembayaran tunai tidak memotong saldo Transiva Pay.":"\n\nSaldo sebelum: "+rupiah(item.optInt("balance_before"))+"\nSaldo setelah: "+rupiah(item.optInt("balance_after"));
+        new AlertDialog.Builder(this).setTitle(item.optString("title","Detail transaksi")).setMessage(body).setPositiveButton("Tutup",null).show();
     }
 
     protected void openDeposit() {

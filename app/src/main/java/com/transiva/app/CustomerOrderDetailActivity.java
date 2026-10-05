@@ -261,7 +261,7 @@ public class CustomerOrderDetailActivity extends Activity {
             addCard(change);
         }
 
-        SmartWaitingTextView waiting=new SmartWaitingTextView(this); waiting.bind(order.optJSONObject("smart_waiting")); addCard(waiting);
+        SmartWaitingTextView waiting=new SmartWaitingTextView(this); waiting.bind(order.optJSONObject("smart_waiting"),order.optString("status")); addCard(waiting);
         String proposalSummary=CustomerOrderChangeState.summary(order);
         if(!proposalSummary.isEmpty()) { LinearLayout proposalCard=card(18); proposalCard.addView(text(proposalSummary,14,Color.parseColor("#0B477D"),true)); addCard(proposalCard); }
         LinearLayout actionBox = card(24);

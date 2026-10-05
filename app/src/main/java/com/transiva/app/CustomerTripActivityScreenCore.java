@@ -81,6 +81,8 @@ class CustomerTripActivityScreenCore extends Activity {
     protected TextView driverPlateText;
     protected TextView tripInfoText;
     protected ImageView driverPhotoView;
+    private ImageView vehiclePhotoView;
+    private String loadedDriverPhoto="", loadedVehiclePhoto="";
     protected ProgressBar progressBar;
     protected TextView paymentInfoText;
     protected Button receivedButton, approvePriceButton, rejectPriceButton;
@@ -242,22 +244,22 @@ class CustomerTripActivityScreenCore extends Activity {
 
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
-        root.setPadding(dp(14), dp(18), dp(14), dp(12));
+        root.setPadding(dp(10), dp(10), dp(10), dp(10));
         page.addView(root, new FrameLayout.LayoutParams(-1, -1));
 
         LinearLayout card = new LinearLayout(this);
         card.setOrientation(LinearLayout.VERTICAL);
         card.setPadding(dp(14), dp(14), dp(14), dp(14));
         card.setBackground(roundStroke("#FAFCFF", "#D7E6F8", dp(24), 1));
-        card.setElevation(dp(7));
-        root.addView(card, new LinearLayout.LayoutParams(-1, -1));
+        card.setElevation(dp(2));
+        android.widget.ScrollView tripScroll=new android.widget.ScrollView(this);tripScroll.setFillViewport(true);tripScroll.setClipToPadding(false);root.addView(tripScroll,new LinearLayout.LayoutParams(-1,-1));tripScroll.addView(card,new android.widget.ScrollView.LayoutParams(-1,-2));
 
         LinearLayout head = new LinearLayout(this);
         head.setOrientation(LinearLayout.HORIZONTAL);
         head.setGravity(Gravity.CENTER_VERTICAL);
         card.addView(head, new LinearLayout.LayoutParams(-1, -2));
 
-        TextView title = text("Driver Ditemukan", 20, "#0B3A78", true);
+        TextView title = text("Driver Ditemukan", 18, "#0B3A78", true);
         head.addView(title, new LinearLayout.LayoutParams(0, -2, 1));
 
         Button close = smallButton("×", "#FEE2E2", "#DC2626", "#FECACA");
@@ -276,7 +278,8 @@ class CustomerTripActivityScreenCore extends Activity {
         driverPhotoView = new ImageView(this);
         driverPhotoView.setScaleType(ImageView.ScaleType.CENTER_CROP);
         driverPhotoView.setImageResource(android.R.drawable.ic_menu_myplaces);
-        driverPhotoView.setBackground(round("#EAF4FF", dp(26)));
+        driverPhotoView.setBackground(round("#EAF4FF", dp(16)));
+        driverPhotoView.setClipToOutline(true);
         driverBox.addView(driverPhotoView, new LinearLayout.LayoutParams(dp(52), dp(52)));
 
         LinearLayout info = new LinearLayout(this);
@@ -291,6 +294,7 @@ class CustomerTripActivityScreenCore extends Activity {
         info.addView(driverNameText);
         info.addView(driverTypeText);
         info.addView(driverPlateText);
+        vehiclePhotoView=new ImageView(this);vehiclePhotoView.setScaleType(ImageView.ScaleType.CENTER_CROP);vehiclePhotoView.setBackground(round("#EAF4FF",dp(12)));vehiclePhotoView.setClipToOutline(true);vehiclePhotoView.setVisibility(View.GONE);driverBox.addView(vehiclePhotoView,new LinearLayout.LayoutParams(dp(58),dp(48)));
 
         statusText = text("Menghubungkan lokasi driver...", 13, "#334155", true);
         statusText.setPadding(dp(4), dp(10), dp(4), dp(8));
@@ -304,7 +308,7 @@ class CustomerTripActivityScreenCore extends Activity {
         rejectPriceButton=smallButton("Tolak", "#FEE2E2", "#B91C1C", "#FCA5A5"); rejectPriceButton.setOnClickListener(v->sendCustomerAction("reject_price")); LinearLayout.LayoutParams rej=new LinearLayout.LayoutParams(0,dp(48),1); rej.setMargins(dp(8),0,0,0); priceActions.addView(rejectPriceButton,rej); LinearLayout.LayoutParams palp=new LinearLayout.LayoutParams(-1,-2); palp.setMargins(0,dp(8),0,0); card.addView(priceActions,palp);
 
         mapView = new TransivaGoogleMapView(this, TransivaGoogleMapView.Mode.TRIP);
-        LinearLayout.LayoutParams mlp = new LinearLayout.LayoutParams(-1, 0, 1);
+        LinearLayout.LayoutParams mlp = new LinearLayout.LayoutParams(-1, dp(getResources().getConfiguration().screenHeightDp<640?210:260));
         mlp.setMargins(0, dp(4), 0, dp(10));
         card.addView(mapView, mlp);
         mapView.initialize(null, new TransivaGoogleMapView.Listener() {
@@ -338,9 +342,7 @@ class CustomerTripActivityScreenCore extends Activity {
         shareBtn.setOnClickListener(v -> shareTrip());
         sosBtn.setOnClickListener(v -> openSos());
 
-        Button backBtn = outlineButton("Kembali");
-        card.addView(backBtn, new LinearLayout.LayoutParams(-1, dp(48)));
-        backBtn.setOnClickListener(v -> goToHome());
+        // Header close already returns home; keep the map and actions compact.
 
         progressBar = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
         progressBar.setVisibility(View.GONE);
@@ -350,6 +352,22 @@ class CustomerTripActivityScreenCore extends Activity {
 
         setContentView(page);
         CustomerAppSettings.apply(this);
+    }
+
+    private void loadTripPhoto(ImageView target,String raw,boolean vehicle){
+        if(target==null||raw==null||raw.trim().isEmpty())return;
+        final String value=raw.trim();if(value.equals(vehicle?loadedVehiclePhoto:loadedDriverPhoto))return;
+        if(vehicle)loadedVehiclePhoto=value;else loadedDriverPhoto=value;
+        final String url=value.startsWith("https://")||value.startsWith("http://")?value:BASE_URL+(value.startsWith("/")?value.substring(1):value);
+        featureRuntime.execute(()->{java.net.HttpURLConnection connection=null;try{
+            connection=(java.net.HttpURLConnection)new java.net.URL(url).openConnection();connection.setConnectTimeout(5000);connection.setReadTimeout(5000);
+            if(connection.getContentLengthLong()>5*1024*1024)return;
+            try(java.io.InputStream input=connection.getInputStream()){
+                android.graphics.BitmapFactory.Options options=new android.graphics.BitmapFactory.Options();options.inSampleSize=4;
+                final Bitmap bitmap=android.graphics.BitmapFactory.decodeStream(input,null,options);
+                if(bitmap!=null)featureRuntime.post(mainHandler,()->{if(!isFinishing()&&!isDestroyed()&&value.equals(vehicle?loadedVehiclePhoto:loadedDriverPhoto)){target.setImageBitmap(bitmap);target.setVisibility(View.VISIBLE);}});
+            }
+        }catch(Exception ignored){}finally{if(connection!=null)connection.disconnect();}});
     }
 
     protected void startTrackingOnce() {
@@ -425,6 +443,8 @@ class CustomerTripActivityScreenCore extends Activity {
         );
 
         activeDriverType = resolveDriverType(order, driver);
+        loadTripPhoto(driverPhotoView,firstNonEmpty(driver.optString("driver_photo"),driver.optString("photo"),order.optString("driver_photo")),false);
+        loadTripPhoto(vehiclePhotoView,firstNonEmpty(driver.optString("vehicle_photo"),order.optString("vehicle_photo")),true);
         lastDriverName = driverName;
         lastStatus = status;
         CustomerOrderBreadcrumbs.state(orderId, status, orderSource);
@@ -571,7 +591,7 @@ class CustomerTripActivityScreenCore extends Activity {
             .setNegativeButton("Batal",null).setPositiveButton("Setujui",(d,w)->sendCustomerAction("approve_price",shownId,shownPrice)).show();
     }
     protected void updatePaymentControls(JSONObject order,String status){
-        if(waitingView!=null)waitingView.bind(order.optJSONObject("smart_waiting"));
+        if(waitingView!=null)waitingView.bind(order.optJSONObject("smart_waiting"),order.optString("status"));
         JSONObject extension=order.optJSONObject("destination_extension");
         pendingDestinationProposal=extension!=null && "pending".equals(extension.optString("status"))?extension:null;
         destinationRequestId=extension!=null && "pending".equals(extension.optString("status"))?extension.optLong("id"):0;

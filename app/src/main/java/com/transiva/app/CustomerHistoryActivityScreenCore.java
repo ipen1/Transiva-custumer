@@ -380,7 +380,7 @@ class CustomerHistoryActivityScreenCore extends Activity {
 
         card.addView(
                 text(
-                        "Ringkasan aktivitas",
+                        "Aktivitas Anda",
                         13,
                         "#EAF5FF",
                         true
@@ -388,8 +388,8 @@ class CustomerHistoryActivityScreenCore extends Activity {
         );
 
         TextView greeting = text(
-                "Halo, " + username,
-                19,
+                "Ringkasan pesanan",
+                15,
                 "#FFFFFF",
                 true
         );
@@ -404,7 +404,7 @@ class CustomerHistoryActivityScreenCore extends Activity {
                 dp(12)
         );
 
-        card.addView(greeting, greetingLp);
+        // Keep summary compact; greeting is redundant with dashboard.
 
         LinearLayout stats =
                 new LinearLayout(this);
@@ -1172,6 +1172,8 @@ class CustomerHistoryActivityScreenCore extends Activity {
         );
 
         badge.setGravity(Gravity.CENTER);
+        badge.setMaxWidth(dp(145));
+        badge.setMaxLines(2);
 
         badge.setPadding(
                 dp(9),
@@ -1432,7 +1434,7 @@ class CustomerHistoryActivityScreenCore extends Activity {
                 )
         );
 
-        SmartWaitingTextView waiting=new SmartWaitingTextView(this); waiting.bind(order.optJSONObject("smart_waiting")); card.addView(waiting);
+        SmartWaitingTextView waiting=new SmartWaitingTextView(this); waiting.bind(order.optJSONObject("smart_waiting"),order.optString("status")); card.addView(waiting);
         String proposalSummary=CustomerOrderChangeState.summary(order);
         if(!proposalSummary.isEmpty()) {
             TextView proposal=new TextView(this); proposal.setText(proposalSummary); proposal.setTextSize(14); proposal.setTextColor(Color.parseColor("#0B477D")); proposal.setPadding(dp(10),dp(10),dp(10),dp(10)); card.addView(proposal);

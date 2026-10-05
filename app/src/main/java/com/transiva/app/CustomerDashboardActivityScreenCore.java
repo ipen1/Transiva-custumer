@@ -93,6 +93,8 @@ class CustomerDashboardActivityScreenCore extends Activity
     protected TextView orderText;
     protected TextView orderHint;
     private SmartWaitingTextView dashboardWaiting;
+    private boolean orderStatusVisible;
+    private final Runnable orderStatusRefresh=new Runnable(){public void run(){if(!orderStatusVisible)return;if(presenter!=null&&activeOrderJson!=null)presenter.refresh(username,userId);uiHandler.postDelayed(this,5000L);}};
     protected FrameLayout orderCard;
     protected JSONObject activeOrderJson;
     protected TextView loyaltyTierText;
@@ -208,6 +210,7 @@ class CustomerDashboardActivityScreenCore extends Activity
     protected void onResume() {
         super.onResume();
         featureRuntime.onResume();
+        orderStatusVisible=true;uiHandler.removeCallbacks(orderStatusRefresh);uiHandler.postDelayed(orderStatusRefresh,5000L);
         DeliveryAddressGate.prefetch(this);
 
         // Terapkan ulang agar perubahan tema dari menu Pengaturan langsung
@@ -238,6 +241,7 @@ class CustomerDashboardActivityScreenCore extends Activity
 
     @Override
     protected void onPause() {
+        orderStatusVisible=false;uiHandler.removeCallbacks(orderStatusRefresh);
         stopPromoAutoSlide();
         featureRuntime.onPause();
         super.onPause();
@@ -245,6 +249,7 @@ class CustomerDashboardActivityScreenCore extends Activity
 
     @Override
     protected void onDestroy() {
+        orderStatusVisible=false;uiHandler.removeCallbacks(orderStatusRefresh);
         if (dashboardController != null) dashboardController.onDestroy();
         featureRuntime.destroy();
         networkScope.destroy();
@@ -2693,7 +2698,7 @@ class CustomerDashboardActivityScreenCore extends Activity
 
         currentOrderText = activeOrderText;
         activeOrderJson = state.activeOrder;
-        if(dashboardWaiting!=null)dashboardWaiting.bind(activeOrderJson==null?null:activeOrderJson.optJSONObject("smart_waiting"));
+        if(dashboardWaiting!=null)dashboardWaiting.bind(activeOrderJson==null||!isActiveOrderText(activeOrderText)?null:activeOrderJson.optJSONObject("smart_waiting"),activeOrderJson==null?"":activeOrderJson.optString("status"));
         boolean hasActiveOrder = isActiveOrderText(activeOrderText);
         orderText.setText(hasActiveOrder
                 ? activeOrderText

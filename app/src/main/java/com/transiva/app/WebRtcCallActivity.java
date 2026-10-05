@@ -1,3 +1,4 @@
 package com.transiva.app;
 
-public class WebRtcCallActivity extends WebRtcCallActivityScreenCore { }
+/** Shared service-backed call screen for voice and PiP video. */
+public class WebRtcCallActivity extends TransivaCallUiActivity { }

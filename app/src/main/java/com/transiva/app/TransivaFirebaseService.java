@@ -485,6 +485,7 @@ public class TransivaFirebaseService extends FirebaseMessagingService {
             intent.putExtra("call_id", data != null ? first(data.get("call_id"), "") : "");
             intent.putExtra("order_id", orderId);
             intent.putExtra("source", data != null ? first(data.get("source"), "orders") : "orders");
+            intent.putExtra("call_type",data!=null?first(data.get("call_type"),"audio"):"audio");
             intent.putExtra("caller_name", data != null ? first(data.get("caller_name"), "Transiva") : "Transiva");
             intent.putExtra("incoming", data != null && "incoming_call".equalsIgnoreCase(first(data.get("event"), "")));
             return intent;
@@ -586,7 +587,7 @@ public class TransivaFirebaseService extends FirebaseMessagingService {
         createChannel(
                 CH_CALL,
                 "Panggilan Transiva",
-                "Panggilan suara Driver dan Customer",
+                "Panggilan suara dan video Driver–Customer",
                 NotificationManager.IMPORTANCE_HIGH
         );
 

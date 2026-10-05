@@ -280,7 +280,8 @@ class CustomerChatRoomActivityScreenCore extends Activity {
                         .isEnded(orderStatus);
     }
 
-    protected void callDriver() {
+    protected void callDriver() {openRoomCall(false);}
+    private void openRoomCall(boolean video) {
         if (orderId == null || orderId.trim().isEmpty()) {
             Toast.makeText(this, "Order tidak valid", Toast.LENGTH_SHORT).show();
             return;
@@ -297,6 +298,7 @@ class CustomerChatRoomActivityScreenCore extends Activity {
                 )
         );
         call.putExtra("incoming", false);
+        call.putExtra("call_type",video?"video":"audio");
         startActivity(call);
     }
 
@@ -439,6 +441,7 @@ class CustomerChatRoomActivityScreenCore extends Activity {
             callLp.setMargins(dp(7), 0, 0, 0);
             header.addView(callButton, callLp);
             callButton.setOnClickListener(v -> callDriver());
+            TextView videoButton=text("📹",22,"#0B7CFF",true);videoButton.setGravity(Gravity.CENTER);videoButton.setContentDescription("Video Call");videoButton.setBackground(round("#EAF4FF",15));LinearLayout.LayoutParams videoLp=new LinearLayout.LayoutParams(dp(42),dp(42));videoLp.setMargins(dp(6),0,0,0);header.addView(videoButton,videoLp);videoButton.setOnClickListener(v->openRoomCall(true));
         }
 
         root.addView(header);

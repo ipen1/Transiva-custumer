@@ -33,8 +33,8 @@ android {
         applicationId 'com.transiva.customer'
         minSdk 23
         targetSdk 36
-        versionCode 26
-        versionName '2.5.26'
+        versionCode 27
+        versionName '2.5.27'
     }
 
     signingConfigs {
@@ -72,6 +72,8 @@ dependencies {
 
     // Regression tests for critical customer order/chat state rules.
     testImplementation 'junit:junit:4.13.2'
+    // Real JSON implementation for local JVM tests; Android's mockable jar throws at runtime.
+    testImplementation 'org.json:json:20240303'
 
     // Native audio WebRTC (Maven Central)
     implementation 'io.github.webrtc-sdk:android:144.7559.09'

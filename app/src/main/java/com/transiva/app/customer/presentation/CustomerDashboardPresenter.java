@@ -43,6 +43,7 @@ public final class CustomerDashboardPresenter {
         loading = true;
         if (visibleLoading) view.showLoading(true);
 
+        try {
         currentTask = TransivaNetworkExecutor.execute(() -> {
             try {
                 DashboardState state = repository.load(username, userId);
@@ -62,6 +63,13 @@ public final class CustomerDashboardPresenter {
                 });
             }
         });
+        } catch (java.util.concurrent.RejectedExecutionException busy) {
+            loading = false;
+            if (view != null) {
+                view.showLoading(false);
+                view.showError("Aplikasi sedang sibuk. Coba muat ulang sebentar lagi.");
+            }
+        }
     }
 
     public void destroy() {

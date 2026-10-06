@@ -7,7 +7,9 @@ import com.transiva.app.CustomerApiClient;
 import com.transiva.app.ApiConfig;
 import com.transiva.app.CustomerResourceConfig;
 import com.transiva.app.TransivaHttpRepository;
-import com.transiva.app.TransivaNetworkExecutor;
+import com.transiva.app.DashboardReadExecutor;
+import android.os.SystemClock;
+import java.util.concurrent.TimeUnit;
 
 import com.transiva.app.customer.domain.CustomerDashboardRepository;
 import com.transiva.app.customer.domain.DashboardState;
@@ -28,7 +30,8 @@ public final class CustomerDashboardRepositoryImpl
         implements CustomerDashboardRepository {
 
     private static final String BASE_URL = ApiConfig.ROOT;
-    private static final int TIMEOUT = 15000;
+    private static final int TIMEOUT = 4500;
+    private static final long LOAD_BUDGET_MS = 10000L;
 
     private final Context context;
 
@@ -44,28 +47,41 @@ public final class CustomerDashboardRepositoryImpl
             String username,
             int userId
     ) throws Exception {
-        // P1: independent dashboard endpoints run concurrently instead of serially.
-        // This keeps a slow optional endpoint from multiplying total dashboard latency.
-        Future<Double> balanceTask = TransivaNetworkExecutor.submit(() -> loadBalance(username));
-        Future<JSONObject> activeTask = TransivaNetworkExecutor.submit(() -> loadActiveOrderJson(username, userId));
-        Future<JSONObject> loyaltyTask = TransivaNetworkExecutor.submit(() -> loadOptional(BASE_URL + "server/customer_loyalty.php"));
-        Future<JSONObject> referralTask = TransivaNetworkExecutor.submit(() -> loadOptional(BASE_URL + "server/customer_referral.php"));
-        Future<JSONObject> bestOfferTask = TransivaNetworkExecutor.submit(() -> loadOptional(BASE_URL + "server/customer_best_offer.php"));
-        Future<List<Promo>> promoTask = TransivaNetworkExecutor.submit(this::loadPromos);
-
-        double balance = safeGet(balanceTask, 0d);
-        JSONObject activeOrder = safeGet(activeTask, null);
-        JSONObject loyalty = safeGet(loyaltyTask, null);
-        JSONObject referral = safeGet(referralTask, null);
-        JSONObject bestOffer = safeGet(bestOfferTask, null);
-        List<Promo> promos = safeGet(promoTask, new ArrayList<>());
-        String order = formatActiveOrder(activeOrder);
-
-        DashboardState state = new DashboardState(
-                balance, order, activeOrder, loyalty, referral, bestOffer, promos
-        );
-        DashboardStateCache.put(context, state);
-        return state;
+        // Coordinators run in the general pool; leaf reads use their own bounded pool.
+        // One shared deadline prevents six endpoint waits from accumulating.
+        long deadline = SystemClock.elapsedRealtime() + LOAD_BUDGET_MS;
+        List<Future<?>> tasks = new ArrayList<>();
+        try {
+            Future<Double> balanceTask = DashboardReadExecutor.submit(() -> loadBalance(username));
+            tasks.add(balanceTask);
+            Future<JSONObject> activeTask = DashboardReadExecutor.submit(() -> loadActiveOrderJson(username, userId));
+            tasks.add(activeTask);
+            Future<List<Promo>> promoTask = DashboardReadExecutor.submit(this::loadPromos);
+            tasks.add(promoTask);
+            Future<JSONObject> loyaltyTask = DashboardReadExecutor.submit(() -> loadOptional(BASE_URL + "server/customer_loyalty.php"));
+            tasks.add(loyaltyTask);
+            Future<JSONObject> referralTask = DashboardReadExecutor.submit(() -> loadOptional(BASE_URL + "server/customer_referral.php"));
+            tasks.add(referralTask);
+            Future<JSONObject> bestOfferTask = DashboardReadExecutor.submit(() -> loadOptional(BASE_URL + "server/customer_best_offer.php"));
+            tasks.add(bestOfferTask);
+            // Financial/active-order failures are errors, never a fake zero/empty order.
+            double balance = await(balanceTask, deadline);
+            JSONObject activeOrder = await(activeTask, deadline);
+            List<Promo> promos = safeGet(promoTask, new ArrayList<>(), deadline);
+            JSONObject loyalty = safeGet(loyaltyTask, null, deadline);
+            JSONObject referral = safeGet(referralTask, null, deadline);
+            JSONObject bestOffer = safeGet(bestOfferTask, null, deadline);
+            DashboardState state = new DashboardState(balance, formatActiveOrder(activeOrder),
+                    activeOrder, loyalty, referral, bestOffer, promos);
+            // An old account's request must never overwrite the new account's render cache.
+            com.transiva.app.SessionManager session = new com.transiva.app.SessionManager(context);
+            String currentId = first(session.getId(), session.getUserId());
+            if (!Integer.toString(userId).equals(currentId)) throw new InterruptedException("Account changed");
+            DashboardStateCache.put(context, state, Integer.toString(userId));
+            return state;
+        } finally {
+            for (Future<?> task : tasks) if (!task.isDone()) task.cancel(true);
+        }
     }
 
     private double loadBalance(String username)
@@ -78,21 +94,18 @@ public final class CustomerDashboardRepositoryImpl
                         + System.currentTimeMillis()
         );
 
-        return json.optBoolean("success", false)
-                ? json.optDouble("balance", 0)
-                : 0;
+        if (!json.optBoolean("success", false) || !json.has("balance"))
+            throw new IllegalStateException("Balance unavailable");
+        return json.getDouble("balance");
     }
 
-    private JSONObject loadActiveOrderJson(String username, int userId) {
-        try {
-            JSONObject json = get(BASE_URL + "server/customer_get_active_orders.php?user_id="
-                    + userId + "&username=" + Uri.encode(username) + "&_=" + System.currentTimeMillis());
-            JSONArray orders = json.optJSONArray("orders");
-            if (!json.optBoolean("success", false) || orders == null || orders.length() == 0) return null;
-            return orders.optJSONObject(0);
-        } catch (Exception ignored) {
-            return null;
-        }
+    private JSONObject loadActiveOrderJson(String username, int userId) throws Exception {
+        JSONObject json = get(BASE_URL + "server/customer_get_active_orders.php?user_id="
+                + userId + "&username=" + Uri.encode(username));
+        JSONArray orders = json.optJSONArray("orders");
+        if (!json.optBoolean("success", false) || orders == null)
+            throw new IllegalStateException("Active orders unavailable");
+        return orders.length() == 0 ? null : orders.optJSONObject(0);
     }
 
     private String formatActiveOrder(JSONObject order) {
@@ -222,7 +235,7 @@ public final class CustomerDashboardRepositoryImpl
     }
 
     private JSONObject get(String endpoint) throws Exception {
-        return TransivaHttpRepository.getJson(context, endpoint, TIMEOUT);
+        return TransivaHttpRepository.getJsonOnce(context, endpoint, TIMEOUT);
     }
 
     private String safeColor(
@@ -242,13 +255,21 @@ public final class CustomerDashboardRepositoryImpl
         return color;
     }
 
-    private <T> T safeGet(Future<T> future, T fallback) {
-        if (future == null) return fallback;
+    private <T> T await(Future<T> future, long deadline) throws Exception {
+        long remaining = deadline - SystemClock.elapsedRealtime();
+        if (remaining <= 0L) throw new java.util.concurrent.TimeoutException("Dashboard deadline");
+        return future.get(remaining, TimeUnit.MILLISECONDS);
+    }
+
+    private <T> T safeGet(Future<T> future, T fallback, long deadline) throws InterruptedException {
         try {
-            T value = future.get();
+            T value = await(future, deadline);
             return value != null ? value : fallback;
+        } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
+            throw interrupted;
         } catch (Exception ignored) {
-            try { future.cancel(true); } catch (Throwable ignoredCancel) {}
+            future.cancel(true);
             return fallback;
         }
     }

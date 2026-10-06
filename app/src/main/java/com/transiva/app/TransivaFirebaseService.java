@@ -129,6 +129,7 @@ public class TransivaFirebaseService extends FirebaseMessagingService {
             // All state/signaling events are consumed here so they cannot launch
             // WebRtcCallActivity again through a PendingIntent/full-screen intent.
             if ("call_accepted".equals(event) || "accepted".equals(event)) {
+                IncomingCallAlertManager.resolve(callId);
                 sendCallState(callId, "accepted");
                 cancelCallNotification(callId);
                 return;
@@ -144,6 +145,7 @@ public class TransivaFirebaseService extends FirebaseMessagingService {
                 if (event.contains("reject")) status = "rejected";
                 else if (event.contains("miss")) status = "missed";
                 else status = "ended";
+                IncomingCallAlertManager.resolve(callId);
                 sendCallState(callId, status);
                 cancelCallNotification(callId);
                 return;
@@ -250,6 +252,10 @@ public class TransivaFirebaseService extends FirebaseMessagingService {
             String url,
             Map<String, String> data
     ) {
+        if ("webrtc_call".equals(type) && data != null
+                && "incoming_call".equalsIgnoreCase(first(data.get("event"), ""))
+                && !IncomingCallAlertManager.claimNotification(first(data.get("call_id"), ""))) return;
+
         TransivaNotificationStore.add(
                 this,
                 type,
@@ -357,6 +363,7 @@ public class TransivaFirebaseService extends FirebaseMessagingService {
                 && "incoming_call".equalsIgnoreCase(first(data.get("event"), ""));
 
         if (incomingCallNotification) {
+            IncomingCallAlertManager.start(this, callNotificationId);
             // Full-screen is reserved strictly for a new incoming call. Accepted,
             // SDP and ICE events must never relaunch the active call Activity.
             builder.setCategory(NotificationCompat.CATEGORY_CALL)

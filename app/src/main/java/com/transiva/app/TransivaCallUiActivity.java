@@ -13,6 +13,8 @@ import android.util.Rational;
 import android.view.*;
 import android.widget.*;
 import androidx.core.content.ContextCompat;
+import androidx.annotation.ChecksSdkIntAtLeast;
+import androidx.annotation.RequiresApi;
 import org.webrtc.*;
 
 /** A replaceable view of the service session. Back never owns or tears down media. */
@@ -27,7 +29,6 @@ public class TransivaCallUiActivity extends Activity {
     private WebRtcSessionEngine attached;
     private boolean serviceRequested,startedSession,incoming,video,registered,rendererReady,resumed,backToChat,pipEntering;
     private int insetLeft,insetTop,insetRight,insetBottom;
-    private Ringtone ringtone;
     private android.window.OnBackInvokedCallback backCallback;
     private final Handler main=new Handler(Looper.getMainLooper());
     private final BroadcastReceiver receiver=new BroadcastReceiver(){public void onReceive(Context c,Intent i){
@@ -60,7 +61,7 @@ public class TransivaCallUiActivity extends Activity {
         accept.setOnClickListener(v->requestStart());end.setOnClickListener(v->hangup());mute.setOnClickListener(v->{WebRtcSessionEngine e=WebRtcCallForegroundService.current();if(e!=null)e.toggleMute();});speaker.setOnClickListener(v->{WebRtcSessionEngine e=WebRtcCallForegroundService.current();if(e!=null)e.toggleSpeaker();});camera.setOnClickListener(v->{WebRtcSessionEngine e=WebRtcCallForegroundService.current();if(e!=null)e.toggleCamera();});swap.setOnClickListener(v->{WebRtcSessionEngine e=WebRtcCallForegroundService.current();if(e!=null)e.switchCamera();});
     }
     private boolean permission(){return checkSelfPermission(Manifest.permission.RECORD_AUDIO)==PackageManager.PERMISSION_GRANTED&&(!video||checkSelfPermission(Manifest.permission.CAMERA)==PackageManager.PERMISSION_GRANTED);}
-    private void requestStart(){if(serviceRequested)return;if(!permission()){requestPermissions(video?new String[]{Manifest.permission.RECORD_AUDIO,Manifest.permission.CAMERA}:new String[]{Manifest.permission.RECORD_AUDIO},PERMISSIONS);return;}stopRing();serviceRequested=true;status.setText("Menyiapkan koneksi…");accept.setEnabled(false);
+    private void requestStart(){if(serviceRequested)return;if(!permission()){requestPermissions(video?new String[]{Manifest.permission.RECORD_AUDIO,Manifest.permission.CAMERA}:new String[]{Manifest.permission.RECORD_AUDIO},PERMISSIONS);return;}resolveRing();stopRing();serviceRequested=true;cancelIncomingNotification();status.setText("Menyiapkan koneksi…");accept.setEnabled(false);
         Intent i=new Intent(this,WebRtcCallForegroundService.class).setAction(WebRtcCallForegroundService.CONNECT);i.putExtras(getIntent());i.putExtra("incoming",incoming);i.putExtra("call_type",video?"video":"audio");
         try{ContextCompat.startForegroundService(this,i);}catch(RuntimeException e){serviceRequested=false;accept.setEnabled(true);status.setText("Panggilan tidak dapat dimulai. Buka kembali aplikasi dan coba lagi.");}
     }
@@ -75,21 +76,26 @@ public class TransivaCallUiActivity extends Activity {
     }
     private String duration(long base){long seconds=Math.max(0,(SystemClock.elapsedRealtime()-base)/1000);return String.format(java.util.Locale.US,"%02d:%02d",seconds/60,seconds%60);}
     private void releaseRenderers(){if(attached!=null)attached.detach(local,remote);attached=null;if(local!=null){local.release();local=null;}if(remote!=null){remote.release();remote=null;}rendererReady=false;}
-    private void hangup(){stopRing();WebRtcSessionEngine e=WebRtcCallForegroundService.current();if(e!=null&&e.active()){e.end(true,"Panggilan berakhir");}else if(serviceRequested){startService(new Intent(this,WebRtcCallForegroundService.class).setAction(WebRtcCallForegroundService.END));finish();}else{final String id=getIntent().getStringExtra("call_id");final SessionManager session=new SessionManager(getApplicationContext());final String role=getPackageName().endsWith(".driver")?"driver":"customer";if(id!=null&&!id.isEmpty())new Thread(()->{try{WebRtcSignalApi.post(session,new org.json.JSONObject().put("action","reject").put("role",role).put("call_id",id));}catch(Exception ignored){}},"TransivaCallReject").start();finish();}}
+    private void hangup(){resolveRing();stopRing();cancelIncomingNotification(true);WebRtcSessionEngine e=WebRtcCallForegroundService.current();if(e!=null&&e.active()){e.end(true,"Panggilan berakhir");}else if(serviceRequested){startService(new Intent(this,WebRtcCallForegroundService.class).setAction(WebRtcCallForegroundService.END));finish();}else{final String id=getIntent().getStringExtra("call_id");final SessionManager session=new SessionManager(getApplicationContext());final String role=getPackageName().endsWith(".driver")?"driver":"customer";if(id!=null&&!id.isEmpty())new Thread(()->{try{WebRtcSignalApi.post(session,new org.json.JSONObject().put("action","reject").put("role",role).put("call_id",id));}catch(Exception ignored){}},"TransivaCallReject").start();finish();}}
+    @ChecksSdkIntAtLeast(api = 26)
     private boolean pipAvailable(){return Build.VERSION.SDK_INT>=26&&getPackageManager().hasSystemFeature(PackageManager.FEATURE_PICTURE_IN_PICTURE);}
+    @RequiresApi(26)
     private PictureInPictureParams pipParams(){PictureInPictureParams.Builder b=new PictureInPictureParams.Builder().setAspectRatio(new Rational(3,4));if(stage!=null){Rect r=new Rect();if(stage.getGlobalVisibleRect(r))b.setSourceRectHint(r);}if(Build.VERSION.SDK_INT>=31)b.setAutoEnterEnabled(video&&startedSession&&WebRtcCallForegroundService.current()!=null&&WebRtcCallForegroundService.current().active());return b.build();}
-    private void updatePip(){if(video&&pipAvailable())try{setPictureInPictureParams(pipParams());}catch(RuntimeException ignored){}}
-    private boolean enterPip(){if(!video||!startedSession||!pipAvailable())return false;try{pipEntering=true;boolean success=enterPictureInPictureMode(pipParams());if(!success)pipEntering=false;return success;}catch(RuntimeException e){pipEntering=false;return false;}}
+    private void updatePip(){if(Build.VERSION.SDK_INT>=26&&video&&pipAvailable())try{setPictureInPictureParams(pipParams());}catch(RuntimeException ignored){}}
+    private boolean enterPip(){if(Build.VERSION.SDK_INT<26||!video||!startedSession||!pipAvailable())return false;try{pipEntering=true;boolean success=enterPictureInPictureMode(pipParams());if(!success)pipEntering=false;return success;}catch(RuntimeException e){pipEntering=false;return false;}}
     @Override public void onBackPressed(){if(video&&startedSession){backToChat=true;if(enterPip())return;backToChat=false;Toast.makeText(this,"PiP tidak tersedia; suara tetap berjalan",Toast.LENGTH_SHORT).show();}openChat();finish();}
     @Override protected void onUserLeaveHint(){super.onUserLeaveHint();if(video&&startedSession&&Build.VERSION.SDK_INT<31)enterPip();}
+    @RequiresApi(26)
     @Override public void onPictureInPictureModeChanged(boolean pip,Configuration config){super.onPictureInPictureModeChanged(pip,config);pipEntering=false;header.setVisibility(pip?View.GONE:View.VISIBLE);controls.setVisibility(pip?View.GONE:View.VISIBLE);actions.setVisibility(pip?View.GONE:View.VISIBLE);applyPadding();if(local!=null)local.setVisibility(!pip&&WebRtcCallForegroundService.current()!=null&&WebRtcCallForegroundService.current().cameraEnabled?View.VISIBLE:View.INVISIBLE);WebRtcSessionEngine e=WebRtcCallForegroundService.current();if(e!=null)e.setVisible(pip||resumed);if(pip&&backToChat){backToChat=false;openChat();}}
     private void applyPadding(){boolean pip=Build.VERSION.SDK_INT>=26&&isInPictureInPictureMode();root.setPadding(pip?0:dp(12)+insetLeft,pip?0:dp(12)+insetTop,pip?0:dp(12)+insetRight,pip?0:dp(12)+insetBottom);}
     private void openChat(){WebRtcSessionEngine e=WebRtcCallForegroundService.current();String order=e!=null?e.orderId:getIntent().getStringExtra("order_id");if(order==null||order.isEmpty())return;Intent i=new Intent();i.setClassName(this,getPackageName().endsWith(".driver")?"com.transiva.app.DriverChatRoomActivity":"com.transiva.app.CustomerChatRoomActivity");i.putExtra("order_id",order).putExtra("order_source",e!=null?e.source:getIntent().getStringExtra("source")).putExtra("source",e!=null?e.source:getIntent().getStringExtra("source")).putExtra("participant_name",e!=null?e.peer:getIntent().getStringExtra("peer_name"));i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK|Intent.FLAG_ACTIVITY_CLEAR_TOP);startActivity(i);}
     @Override protected void onResume(){super.onResume();resumed=true;WebRtcSessionEngine e=WebRtcCallForegroundService.current();if(e!=null)e.setVisible(true);render();}
     @Override protected void onPause(){super.onPause();resumed=false;/* Camera remains active during PiP transition; onStop decides visibility. */}
     @Override protected void onStop(){super.onStop();WebRtcSessionEngine e=WebRtcCallForegroundService.current();if(e!=null)e.setVisible(Build.VERSION.SDK_INT>=26&&isInPictureInPictureMode());}
-    @Override protected void onDestroy(){stopRing();main.removeCallbacksAndMessages(null);releaseRenderers();if(registered)unregisterReceiver(receiver);if(Build.VERSION.SDK_INT>=33&&backCallback!=null)getOnBackInvokedDispatcher().unregisterOnBackInvokedCallback(backCallback);super.onDestroy();/* Never end or release the service session here. */}
-    private void startRing(){try{ringtone=RingtoneManager.getRingtone(this,RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE));if(ringtone!=null)ringtone.play();}catch(RuntimeException ignored){}}
-    private void stopRing(){if(ringtone!=null){ringtone.stop();ringtone=null;}}
-    private void cancelIncomingNotification(){String id=getIntent().getStringExtra("call_id");if(id!=null&&!id.isEmpty()){NotificationManager n=(NotificationManager)getSystemService(NOTIFICATION_SERVICE);n.cancel(Math.abs(("webrtc_call|"+id).hashCode()));}}
+    @Override protected void onDestroy(){if(!incoming||startedSession||serviceRequested)stopRing();main.removeCallbacksAndMessages(null);releaseRenderers();if(registered)unregisterReceiver(receiver);if(Build.VERSION.SDK_INT>=33&&backCallback!=null)getOnBackInvokedDispatcher().unregisterOnBackInvokedCallback(backCallback);super.onDestroy();/* Never end or release the service session here. */}
+    private void startRing(){if(incoming)IncomingCallAlertManager.start(this,getIntent().getStringExtra("call_id"));}
+    private void stopRing(){if(incoming){String id=getIntent().getStringExtra("call_id");if(id!=null&&!id.trim().isEmpty())IncomingCallAlertManager.stop(id);}}
+    private void resolveRing(){if(incoming)IncomingCallAlertManager.resolve(getIntent().getStringExtra("call_id"));}
+    private void cancelIncomingNotification(){cancelIncomingNotification(false);}
+    private void cancelIncomingNotification(boolean force){if(!force&&incoming&&!serviceRequested&&!startedSession)return;String id=getIntent().getStringExtra("call_id");if(id!=null&&!id.isEmpty()){NotificationManager n=(NotificationManager)getSystemService(NOTIFICATION_SERVICE);n.cancel(Math.abs(("webrtc_call|"+id).hashCode()));}}
 }

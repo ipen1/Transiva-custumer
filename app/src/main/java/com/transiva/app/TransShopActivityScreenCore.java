@@ -1141,12 +1141,12 @@ class TransShopActivityScreenCore extends Activity {
                 payload.put("payment_method", paymentMethod);
                 payload.put("voucher_code", voucherInput == null ? "" : voucherInput.getText().toString().trim().toUpperCase(Locale.US));
 
-                JSONObject res = postJson(CREATE_ORDER_URL, payload);
+                JSONObject res = ReliableOrderClient.create(this, CREATE_ORDER_URL, payload, TIMEOUT_MS);
                 mainHandler.post(() -> handleOrderResult(res));
             } catch (Exception e) {
                 mainHandler.post(() -> {
                     resetOrderButton();
-                    toastDialog(TransivaUserMessage.network());
+                    toastDialog(ReliableOrderClient.failureMessage(e));
                 });
             }
         }).start();

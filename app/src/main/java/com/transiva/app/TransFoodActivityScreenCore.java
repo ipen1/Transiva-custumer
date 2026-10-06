@@ -1263,7 +1263,7 @@ class TransFoodActivityScreenCore extends Activity {
                     items.put(o);
                 }
                 payload.put("items", items);
-                JSONObject res = postJson(BASE_URL + "server/create_food_order.php", payload);
+                JSONObject res = ReliableOrderClient.create(this, BASE_URL + "server/create_food_order.php", payload, TIMEOUT_MS);
                 boolean ok = res.optBoolean("success", false);
                 String msg = firstNonEmpty(res.optString("message"), ok ? "Pesanan berhasil dibuat" : "Gagal membuat pesanan");
                 featureRuntime.post(mainHandler, () -> {
@@ -1277,7 +1277,7 @@ class TransFoodActivityScreenCore extends Activity {
                     } else showInfo("Gagal", msg);
                 });
             } catch (Exception e) {
-                featureRuntime.post(mainHandler, () -> { setLoading(false); showInfo("Error", "Koneksi gagal membuat pesanan makanan."); });
+                featureRuntime.post(mainHandler, () -> { setLoading(false); showInfo("Error", ReliableOrderClient.failureMessage(e)); });
             }
         });
     }

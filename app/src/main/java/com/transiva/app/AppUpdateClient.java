@@ -124,14 +124,5 @@ public final class AppUpdateClient {
         }
     }
 
-    private static String read(InputStream stream) throws Exception {
-        if (stream == null) return "";
-        StringBuilder result = new StringBuilder();
-        try (BufferedReader reader = new BufferedReader(
-                new InputStreamReader(stream, StandardCharsets.UTF_8))) {
-            String line;
-            while ((line = reader.readLine()) != null) result.append(line);
-        }
-        return result.toString();
-    }
+    private static String read(InputStream stream) throws Exception { return BoundedResponseReader.read(stream); }
 }

@@ -22,6 +22,9 @@ public final class CustomerStartupSecurityGate {
                 RootSecurityGuard.checkBeforeContinue(activity,
                         () -> MockLocationGuard.checkBeforeContinue(activity, onAllowed));
             });
-        });
+        }, () -> MAIN.post(() -> {
+            if (!activity.isFinishing()) RootSecurityGuard.checkBeforeContinue(activity,
+                    () -> MockLocationGuard.checkBeforeContinue(activity, onAllowed));
+        }));
     }
 }

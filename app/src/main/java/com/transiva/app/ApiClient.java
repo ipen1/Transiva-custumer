@@ -151,7 +151,7 @@ public class ApiClient {
                 } catch (Exception ignored) {}
             }
 
-        });
+        }, () -> sendToWeb("api_error", makeError("request", new java.util.concurrent.RejectedExecutionException("Aplikasi sedang sibuk."), callbackId)));
     }
 
     private String cleanPath(String path) {
@@ -240,27 +240,8 @@ public class ApiClient {
         }
     }
 
-    private String readStream(InputStream stream) {
-        try {
-            if (stream == null) return "";
-
-            BufferedReader reader = new BufferedReader(
-                    new InputStreamReader(stream, "UTF-8")
-            );
-
-            StringBuilder builder = new StringBuilder();
-            String line;
-
-            while ((line = reader.readLine()) != null) {
-                builder.append(line);
-            }
-
-            reader.close();
-            return builder.toString();
-
-        } catch (Exception e) {
-            return "";
-        }
+    private String readStream(InputStream stream) throws java.io.IOException {
+        return BoundedResponseReader.read(stream);
     }
 
     private void sendToWeb(final String eventName, final String jsonData) {

@@ -21,25 +21,10 @@ public final class TransivaNetworkExecutor {
         return t;
     };
 
-    /*
-     * P0: never execute network work on the caller/UI thread.
-     * When saturated, cancel the oldest queued FutureTask and admit the newest task.
-     * The rejection handler performs queue operations only; it never runs task.run().
-     */
+    /* Accepted work is never evicted. Saturation rejects only the incoming task. */
     private static final ThreadPoolExecutor POOL = new ThreadPoolExecutor(
-            4, 4, 30L, TimeUnit.SECONDS,
-            new ArrayBlockingQueue<>(64), FACTORY,
-            (task, executor) -> {
-                if (executor.isShutdown()) throw new RejectedExecutionException("Transiva network pool is shutdown");
-                Runnable dropped = executor.getQueue().poll();
-                if (dropped instanceof Future<?>) {
-                    try { ((Future<?>) dropped).cancel(true); } catch (Throwable ignored) {}
-                }
-                REJECTED.incrementAndGet();
-                if (!executor.getQueue().offer(task)) {
-                    throw new RejectedExecutionException("Transiva network queue saturated");
-                }
-            });
+            4, 6, 30L, TimeUnit.SECONDS,
+            new ArrayBlockingQueue<>(64), FACTORY, new ThreadPoolExecutor.AbortPolicy());
 
     static { POOL.allowCoreThreadTimeOut(true); }
 
@@ -47,7 +32,7 @@ public final class TransivaNetworkExecutor {
 
     public static Future<?> execute(Runnable task) {
         if (task == null) throw new IllegalArgumentException("task == null");
-        return POOL.submit(() -> {
+        return admit(() -> {
             try {
                 task.run();
             } catch (Throwable error) {
@@ -56,12 +41,13 @@ public final class TransivaNetworkExecutor {
                 }
                 throw error;
             }
+            return null;
         });
     }
 
     public static <T> Future<T> submit(Callable<T> task) {
         if (task == null) throw new IllegalArgumentException("task == null");
-        return POOL.submit(() -> {
+        return admit(() -> {
             try {
                 return task.call();
             } catch (Throwable error) {
@@ -74,8 +60,40 @@ public final class TransivaNetworkExecutor {
         });
     }
 
+    private static <T> Future<T> admit(Callable<T> task) {
+        java.util.concurrent.FutureTask<T> future = new java.util.concurrent.FutureTask<>(task);
+        try {
+            if (POOL.getQueue().remainingCapacity() == 0) POOL.purge();
+            POOL.execute(future);
+        }
+        catch (RejectedExecutionException error) {
+            REJECTED.incrementAndGet();
+            // Caller receives a completed exceptional Future; no previously accepted task is canceled.
+            future = new java.util.concurrent.FutureTask<>(() -> { throw error; });
+            future.run(); // Failure completion only: no network or caller task is executed here.
+            TransivaCrashReporter.record(error, "network_admission_rejected", "queue_full");
+            android.app.Application app = TransivaCustomerApplication.appContext();
+            if (app != null) new android.os.Handler(android.os.Looper.getMainLooper()).post(() ->
+                    android.widget.Toast.makeText(app, "Aplikasi sedang sibuk. Coba kembali sebentar lagi.", android.widget.Toast.LENGTH_LONG).show());
+        }
+        return future;
+    }
+
+    /** Explicit rejection callback for UI operations that need to reset progress controls. */
+    public static Future<?> execute(Runnable task, Runnable onRejected) {
+        Future<?> future = execute(task);
+        if (future.isDone()) {
+            try { future.get(); }
+            catch (java.util.concurrent.ExecutionException error) {
+                if (error.getCause() instanceof RejectedExecutionException && onRejected != null) onRejected.run();
+            } catch (InterruptedException error) { Thread.currentThread().interrupt(); }
+            catch (java.util.concurrent.CancellationException ignored) { }
+        }
+        return future;
+    }
+
     public static int queuedTasks() { return POOL.getQueue().size(); }
     public static int activeTasks() { return POOL.getActiveCount(); }
     public static int rejectedTasks() { return REJECTED.get(); }
-    public static boolean isSaturated() { return activeTasks() >= 4 && queuedTasks() >= 56; }
+    public static boolean isSaturated() { return activeTasks() >= 6 && queuedTasks() >= 56; }
 }

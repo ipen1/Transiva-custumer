@@ -2158,12 +2158,12 @@ class PassengerTransportActivityLegacyCore extends Activity {
                 if (splitBillManager != null && !splitBillManager.sessionKey().isEmpty()) payload.put("split_session_key", splitBillManager.sessionKey());
                 if (splitBillManager != null && splitBillManager.groupSize() > 1) payload.put("split_bill_required", true);
 
-                JSONObject res = postJson(CREATE_ORDER_URL, payload);
+                JSONObject res = ReliableOrderClient.create(this, CREATE_ORDER_URL, payload, TIMEOUT_MS);
                 featureRuntime.post(mainHandler, () -> handleOrderResult(res));
             } catch (Exception e) {
                 featureRuntime.post(mainHandler, () -> {
                     resetOrderButton();
-                    toastDialog(TransivaUserMessage.network());
+                    toastDialog(ReliableOrderClient.failureMessage(e));
                 });
             }
         }).start();

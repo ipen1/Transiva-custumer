@@ -776,7 +776,7 @@ class TransPickupActivityScreenCore extends FragmentActivity {
                 p.put("package_size", packageSize); p.put("vehicle_type", vehicleType); p.put("fragile", fragile ? 1 : 0);
                 p.put("receiver_name", receiverName); p.put("receiver_phone", receiverPhone); p.put("note", noteInput.getText().toString().trim());
                 p.put("payment_method", paymentMethod); // price, distance, dan OTP dihitung/dibuat ulang oleh server
-                JSONObject res = postJson(BASE_URL + "server/create_pickup_order.php", p);
+                JSONObject res = ReliableOrderClient.create(this, BASE_URL + "server/create_pickup_order.php", p, TIMEOUT_MS);
                 boolean ok = res.optBoolean("success", false);
                 String msg = firstNonEmpty(res.optString("message"), ok ? "Order penjemputan berhasil dibuat" : "Gagal membuat order penjemputan");
                 mainHandler.post(() -> {
@@ -793,7 +793,7 @@ class TransPickupActivityScreenCore extends FragmentActivity {
                                 .show();
                     } else showInfo("Gagal", msg);
                 });
-            } catch (Exception e) { mainHandler.post(() -> { submittingOrder = false; if (orderBtn != null) orderBtn.setEnabled(true); setLoading(false); showInfo("Error", "Koneksi gagal membuat order penjemputan."); }); }
+            } catch (Exception e) { mainHandler.post(() -> { submittingOrder = false; if (orderBtn != null) orderBtn.setEnabled(true); setLoading(false); showInfo("Error", ReliableOrderClient.failureMessage(e)); }); }
         }).start();
     }
 

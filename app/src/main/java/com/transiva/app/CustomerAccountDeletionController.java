@@ -112,17 +112,12 @@ public final class CustomerAccountDeletionController {
                 activity.startActivity(intent);
                 activity.finish();
             });
-        });
+        }, () -> activity.runOnUiThread(() -> {
+            if (listener != null) { listener.onBusyChanged(false); listener.onError("Aplikasi sedang sibuk. Coba kembali sebentar lagi."); }
+        }));
     }
 
-    private static String read(InputStream stream) throws Exception {
-        if (stream == null) return "{}";
-        StringBuilder out = new StringBuilder();
-        try (BufferedReader r = new BufferedReader(new InputStreamReader(stream, StandardCharsets.UTF_8))) {
-            String line; while ((line = r.readLine()) != null) out.append(line);
-        }
-        return out.toString();
-    }
+    private static String read(InputStream stream) throws Exception { return BoundedResponseReader.read(stream); }
 
     private static int dp(Activity activity, int value) {
         return (int) (value * activity.getResources().getDisplayMetrics().density + 0.5f);

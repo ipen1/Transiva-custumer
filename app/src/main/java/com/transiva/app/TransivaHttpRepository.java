@@ -36,10 +36,13 @@ public final class TransivaHttpRepository {
     }
     private static JSONObject request(Context context, String method, String url, JSONObject body,
                                       int timeoutMs, int retries, String key) throws Exception {
+        String expectedUser = new SessionManager(context).getUserId();
         int socketTimeout = Math.max(3000, Math.min(30000, timeoutMs));
         long deadline = SystemClock.elapsedRealtime() + socketTimeout * 2L;
         for (int attempt = 0; ; attempt++) {
             checkCancelled(deadline);
+            String liveUser = new SessionManager(context).getUserId();
+            if (!java.util.Objects.equals(expectedUser, liveUser)) throw new InterruptedException("Account changed during request");
             if (!TransivaNetworkMonitor.isOnline()) throw new java.net.UnknownHostException("Perangkat sedang offline");
             HttpURLConnection c = null;
             long started = SystemClock.elapsedRealtime();

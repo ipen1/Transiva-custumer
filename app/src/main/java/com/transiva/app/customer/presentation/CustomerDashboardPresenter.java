@@ -62,7 +62,10 @@ public final class CustomerDashboardPresenter {
                     view.showError("Dashboard gagal dimuat. Periksa koneksi.");
                 });
             }
-        });
+        }, () -> main.post(() -> {
+            loading = false;
+            if (view != null) { view.showLoading(false); view.showError("Aplikasi sedang sibuk. Coba muat ulang sebentar lagi."); }
+        }));
         } catch (java.util.concurrent.RejectedExecutionException busy) {
             loading = false;
             if (view != null) {

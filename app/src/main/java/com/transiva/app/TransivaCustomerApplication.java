@@ -98,6 +98,16 @@ public class TransivaCustomerApplication extends Application implements Applicat
     @Override public void onActivityStopped(Activity activity) { }
     @Override public void onActivitySaveInstanceState(Activity activity, Bundle state) { }
     @Override public void onActivityDestroyed(Activity activity) { }
+    @Override public void onTrimMemory(int level) {
+        super.onTrimMemory(level);
+        if (level >= android.content.ComponentCallbacks2.TRIM_MEMORY_BACKGROUND
+                || level == android.content.ComponentCallbacks2.TRIM_MEMORY_RUNNING_CRITICAL) {
+            ImageMemoryDiskCache.clearMemory();
+        } else if (level >= android.content.ComponentCallbacks2.TRIM_MEMORY_RUNNING_LOW) {
+            ImageMemoryDiskCache.trimMemory();
+        }
+    }
+
     public static Application appContext() {
         return instance;
     }

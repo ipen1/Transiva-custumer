@@ -3,51 +3,93 @@ package com.transiva.app;
 import android.content.Context;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
+import android.os.Build;
 import android.util.LruCache;
 import java.io.*;
 import java.security.MessageDigest;
+import java.util.Arrays;
 
-/** Memory + disk image cache. Disk I/O is intentionally exposed separately so UI callers can stay non-blocking. */
+/** Bounded render cache. No bitmap is recycled while a view may still own it. */
 public final class ImageMemoryDiskCache {
-    private static final LruCache<String,Bitmap> MEMORY=new LruCache<String,Bitmap>((int)Math.max(8,Runtime.getRuntime().maxMemory()/1024/12)){
-        @Override protected int sizeOf(String k,Bitmap b){ return b==null?1:Math.max(1,b.getByteCount()/1024); }
+    private static final int MEMORY_KB = (int) Math.max(4096L,
+            Math.min(24576L, Runtime.getRuntime().maxMemory() / 1024L / 16L));
+    private static final long DISK_BYTES = 48L * 1024L * 1024L;
+    private static final long MAX_AGE_MS = 7L * 24L * 60L * 60L * 1000L;
+    private static final LruCache<String, Bitmap> MEMORY = new LruCache<String, Bitmap>(MEMORY_KB) {
+        @Override protected int sizeOf(String key, Bitmap bitmap) { return Math.max(1, bitmap.getByteCount() / 1024); }
     };
-    private ImageMemoryDiskCache(){}
-
-    public static Bitmap getMemory(String key){
-        if(key==null)return null;
-        Bitmap b=MEMORY.get(key);
-        return b!=null&&!b.isRecycled()?b:null;
+    private ImageMemoryDiskCache() { }
+    public static Bitmap getMemory(String key) {
+        if (key == null) return null;
+        Bitmap b = MEMORY.get(key);
+        return b != null && !b.isRecycled() ? b : null;
     }
-
-    public static Bitmap getDisk(Context c,String key){
-        if(c==null||key==null)return null;
-        Bitmap memory=getMemory(key);
-        if(memory!=null)return memory;
-        File f=file(c,key);
-        if(!f.exists())return null;
-        Bitmap b=BitmapFactory.decodeFile(f.getAbsolutePath());
-        if(b!=null)MEMORY.put(key,b);
-        try{f.setLastModified(System.currentTimeMillis());}catch(Throwable ignored){}
-        return b;
+    public static void clearMemory() { MEMORY.evictAll(); }
+    public static void trimMemory() { MEMORY.trimToSize(MEMORY_KB / 2); }
+    public static Bitmap getDisk(Context context, String key) {
+        if (context == null || key == null) return null;
+        Bitmap memory = getMemory(key); if (memory != null) return memory;
+        File f = file(context, key);
+        if (!f.isFile()) return null;
+        long age = System.currentTimeMillis() - f.lastModified();
+        if (age < 0L || age > MAX_AGE_MS || f.length() > 20L * 1024L * 1024L) { f.delete(); return null; }
+        try {
+            BitmapFactory.Options options = new BitmapFactory.Options(); options.inJustDecodeBounds = true;
+            BitmapFactory.decodeFile(f.getAbsolutePath(), options);
+            options.inSampleSize = NetworkSafetyRules.bitmapSample(options.outWidth, options.outHeight, 2048, 4194304L);
+            options.inJustDecodeBounds = false;
+            Bitmap b = BitmapFactory.decodeFile(f.getAbsolutePath(), options);
+            if (b != null) MEMORY.put(key, b); else f.delete();
+            return b;
+        } catch (OutOfMemoryError lowMemory) { clearMemory(); return null; }
     }
-
-    /** Compatibility method. Do not call from the Android main thread. */
-    public static Bitmap get(Context c,String key){ Bitmap b=getMemory(key); return b!=null?b:getDisk(c,key); }
-
-    public static void put(Context c,String key,Bitmap b){
-        if(c==null||key==null||b==null||b.isRecycled())return;
-        MEMORY.put(key,b);
-        final Context app=c.getApplicationContext();
-        TransivaImageExecutor.execute(() -> {
-            File f=file(app,key);
-            if(f.exists())return;
-            try(FileOutputStream o=new FileOutputStream(f)){ b.compress(Bitmap.CompressFormat.WEBP_LOSSY,86,o); }catch(Throwable ignored){}
-            trim(app);
-        });
+    public static Bitmap get(Context c, String key) { Bitmap b = getMemory(key); return b != null ? b : getDisk(c, key); }
+    public static void put(Context context, String key, Bitmap bitmap) {
+        if (context == null || key == null || bitmap == null || bitmap.isRecycled()) return;
+        MEMORY.put(key, bitmap);
+        Context app = context.getApplicationContext();
+        try {
+            TransivaImageExecutor.execute(() -> {
+                File destination = file(app, key); File temporary = null;
+                try {
+                    long age = System.currentTimeMillis() - destination.lastModified();
+                    if (destination.isFile() && age >= 0 && age <= MAX_AGE_MS) return;
+                    temporary = File.createTempFile("write-", ".tmp", destination.getParentFile());
+                    boolean written;
+                    try (FileOutputStream out = new FileOutputStream(temporary)) {
+                        Bitmap.CompressFormat format = Build.VERSION.SDK_INT >= 30
+                                ? Bitmap.CompressFormat.WEBP_LOSSY : Bitmap.CompressFormat.WEBP;
+                        written = bitmap.compress(format, 86, out);
+                    }
+                    if (written) temporary.renameTo(destination);
+                    trim(app);
+                } catch (Exception ignored) {
+                } finally { if (temporary != null) temporary.delete(); }
+            });
+        } catch (java.util.concurrent.RejectedExecutionException busy) { /* Memory cache remains usable. */ }
     }
-
-    private static File file(Context c,String k){ File d=new File(c.getCacheDir(),"img_v2"); if(!d.exists())d.mkdirs(); return new File(d,sha(k)+".webp"); }
-    private static void trim(Context c){ File d=new File(c.getCacheDir(),"img_v2"); File[] fs=d.listFiles(); if(fs==null||fs.length<120)return; java.util.Arrays.sort(fs,(a,b)->Long.compare(a.lastModified(),b.lastModified())); for(int i=0;i<fs.length-90;i++)fs[i].delete(); }
-    private static String sha(String s){ try{byte[]x=MessageDigest.getInstance("SHA-256").digest(s.getBytes("UTF-8"));StringBuilder b=new StringBuilder();for(byte v:x)b.append(String.format("%02x",v));return b.toString();}catch(Exception e){return Integer.toHexString(s.hashCode());} }
+    private static File file(Context c, String key) {
+        File directory = new File(c.getCacheDir(), "img_v3");
+        if (!directory.isDirectory()) directory.mkdirs();
+        return new File(directory, sha(key) + ".webp");
+    }
+    private static synchronized void trim(Context context) {
+        File[] files = new File(context.getCacheDir(), "img_v3").listFiles((d, n) -> n.endsWith(".webp"));
+        if (files == null) return;
+        Arrays.sort(files, (a, b) -> Long.compare(a.lastModified(), b.lastModified()));
+        long total = 0L; for (File f : files) total += f.length();
+        long now = System.currentTimeMillis(); int count = files.length;
+        for (File f : files) {
+            if (total <= DISK_BYTES && count <= 120 && now - f.lastModified() <= MAX_AGE_MS) continue;
+            long bytes = f.length(); if (f.delete()) { total -= bytes; count--; }
+        }
+    }
+    private static String sha(String s) {
+        try {
+            byte[] bytes = MessageDigest.getInstance("SHA-256").digest(s.getBytes("UTF-8"));
+            StringBuilder value = new StringBuilder();
+            for (byte b : bytes) value.append(String.format(java.util.Locale.ROOT, "%02x", b));
+            return value.toString();
+        } catch (Exception ignored) { return Integer.toHexString(s.hashCode()); }
+    }
 }

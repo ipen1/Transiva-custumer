@@ -18,7 +18,7 @@ public final class DeliveryAddressGate {
  private DeliveryAddressGate(){}
  private static final String PREF="delivery_address_gate_v2";
  private static final java.util.Set<String> pending=java.util.Collections.synchronizedSet(new java.util.HashSet<>());
- private static String user(Activity a) {
+ private static String user(Context a) {
   SessionManager s=new SessionManager(a);
   String id=s.getId(); if(id==null||id.trim().isEmpty()) id=s.getUserId();
   return id==null?"":id.trim();
@@ -45,74 +45,80 @@ public final class DeliveryAddressGate {
   i.putExtra("edit_delivery_address",true);i.putExtra("delivery_return_service",service);
   a.startActivity(i);
  }
+ private static final Handler main=new Handler(Looper.getMainLooper());
+ private interface Result { void done(JSONObject profile); }
+ private static final java.util.Map<String,java.util.List<Result>> requests=new java.util.HashMap<>();
+ private static void save(Context context,String id,JSONObject profile) {
+  if(!id.equals(user(context)) || profile==null)return;
+  context.getSharedPreferences(PREF,Context.MODE_PRIVATE).edit()
+    .putString("user",id).putString("address",profile.optString("delivery_address","").trim())
+    .putLong("lat",Double.doubleToRawLongBits(profile.optDouble("delivery_lat",0)))
+    .putLong("lng",Double.doubleToRawLongBits(profile.optDouble("delivery_lng",0))).apply();
+ }
+ private static void fetch(Context context,String id,Result listener) {
+  synchronized(requests) {
+   java.util.List<Result> existing=requests.get(id);
+   if(existing!=null){if(listener!=null)existing.add(listener);return;}
+   java.util.List<Result> callbacks=new java.util.ArrayList<>();
+   if(listener!=null)callbacks.add(listener);requests.put(id,callbacks);
+  }
+  final Context app=context.getApplicationContext();
+  try {
+   DashboardReadExecutor.submit(()->{
+    JSONObject profile=null;
+    try {
+     JSONObject response=TransivaHttpRepository.getJsonOnce(app,
+       ApiConfig.server("get_customer_profile.php?id="+java.net.URLEncoder.encode(id,"UTF-8")),4500);
+     if(response.optBoolean("success",false))profile=response.optJSONObject("user");
+     save(app,id,profile);
+    }catch(Exception ignored){}
+    complete(id,profile);return null;
+   });
+  }catch(java.util.concurrent.RejectedExecutionException busy){complete(id,null);}
+ }
+ private static void complete(String id,JSONObject profile) {
+  java.util.List<Result> callbacks;
+  synchronized(requests){callbacks=requests.remove(id);}
+  if(callbacks==null)return;
+  main.post(()->{for(Result listener:callbacks)listener.done(profile);});
+ }
  public static void prefetch(Activity a) {
   if(valid(a))return;
-  final String id=user(a);
-  if(id.isEmpty() || !pending.add(id+":prefetch"))return;
-  final Context context=a.getApplicationContext();
-  new Thread(()->{
-   HttpURLConnection c=null;
-   try {
-    String endpoint="https://transiva.my.id/server/get_customer_profile.php?id="+
-      java.net.URLEncoder.encode(id,"UTF-8");
-    c=CustomerApiClient.open(context,endpoint);
-    c.setConnectTimeout(3500);c.setReadTimeout(4000);
-    try(InputStream in=c.getInputStream();ByteArrayOutputStream b=new ByteArrayOutputStream()){
-      byte[] buffer=new byte[4096];int n;while((n=in.read(buffer))!=-1)b.write(buffer,0,n);
-      JSONObject response=new JSONObject(b.toString("UTF-8"));
-      JSONObject u=response.optJSONObject("user");
-      if(response.optBoolean("success",false) && u!=null && id.equals(user(a))){
-       String addr=u.optString("delivery_address","").trim();
-       if(!addr.isEmpty())update(a,addr,u.optDouble("delivery_lat",0),u.optDouble("delivery_lng",0));
-      }
-    }
-   }catch(Exception ignored){}finally{
-    if(c!=null)c.disconnect();
-    pending.remove(id+":prefetch");
-   }
-  }).start();
+  String id=user(a);if(!id.isEmpty())fetch(a.getApplicationContext(),id,null);
  }
  public static boolean require(Activity a,String service) {
   if(valid(a))return true;
   String id=user(a);
   if(id.isEmpty()){explainMissing(a,service);return false;}
-  String key=id+":"+service;
+  if(a.isFinishing()||a.isDestroyed())return false;
+  String key=id+":gate";
   if(!pending.add(key))return false;
   final ProgressDialog progress=new ProgressDialog(a);
+  final java.lang.ref.WeakReference<Activity> target=new java.lang.ref.WeakReference<>(a);
+  final java.util.concurrent.atomic.AtomicBoolean cancelled=new java.util.concurrent.atomic.AtomicBoolean(false);
   progress.setMessage("Menyiapkan alamat delivery Anda…");
-  progress.setIndeterminate(true);
-  progress.setCancelable(false);
-  progress.show();
-  new Thread(()->{
-   HttpURLConnection c=null;String addr="";double lat=0,lng=0;boolean loaded=false;
-   try {
-    URL url=new URL("https://transiva.my.id/server/get_customer_profile.php?id="+
-       java.net.URLEncoder.encode(id,"UTF-8")+"&_="+System.currentTimeMillis());
-    c=CustomerApiClient.open(a,url.toString());c.setConnectTimeout(4500);c.setReadTimeout(5000);
-    InputStream in=c.getInputStream();ByteArrayOutputStream bytes=new ByteArrayOutputStream();
-    byte[] buf=new byte[4096];int n;while((n=in.read(buf))!=-1)bytes.write(buf,0,n);in.close();
-    JSONObject result=new JSONObject(bytes.toString("UTF-8"));
-    JSONObject u=result.optJSONObject("user");
-    if(result.optBoolean("success",false)&&u!=null){
-      addr=u.optString("delivery_address","").trim();
-      lat=u.optDouble("delivery_lat",0);lng=u.optDouble("delivery_lng",0);loaded=true;
-    }
-   }catch(Exception ignored){}finally{if(c!=null)c.disconnect();}
-   final String saved=addr;final double la=lat,lo=lng;final boolean ok=loaded;
-   new Handler(Looper.getMainLooper()).post(()->{
-    pending.remove(key);
-    if(progress.isShowing()) progress.dismiss();
-    if(a.isFinishing()||a.isDestroyed()||!id.equals(user(a)))return;
-    if(ok){update(a,saved,la,lo);if(!saved.isEmpty()){
-      Intent i=new Intent(a,"TransFood".equalsIgnoreCase(service)?TransFoodActivity.class:TransShopActivity.class);
-      if(("TransFood".equalsIgnoreCase(service)&&a instanceof TransFoodActivity)||("TransShop".equalsIgnoreCase(service)&&a instanceof TransShopActivity))a.recreate();else a.startActivity(i);return;
-    }explainMissing(a,service);
-    }else new TransivaAlertDialogBuilder(a).setTitle("Alamat belum dapat diperiksa")
-      .setMessage("Koneksi ke server belum berhasil. Anda dapat mencoba lagi atau menyimpan alamat delivery melalui profil.")
-      .setPositiveButton("Coba lagi",(dialog,which)->require(a,service))
-      .setNeutralButton("Simpan alamat",(dialog,which)->profile(a,service)).setNegativeButton("Tutup",null).show();
-   });
-  }).start();
+  progress.setIndeterminate(true);progress.setCancelable(true);
+  progress.setOnCancelListener(dialog->{cancelled.set(true);pending.remove(key);});
+  try{progress.show();}catch(RuntimeException unavailable){pending.remove(key);return false;}
+  fetch(a.getApplicationContext(),id,profile->{
+   if(!cancelled.get())pending.remove(key);
+   try{if(progress.isShowing())progress.dismiss();}catch(RuntimeException ignored){}
+   Activity current=target.get();
+   if(cancelled.get()||current==null||current.isFinishing()||current.isDestroyed()||!id.equals(user(current)))return;
+   if(profile!=null){
+    String saved=profile.optString("delivery_address","").trim();
+    if(!saved.isEmpty()){
+     Intent intent=new Intent(current,"TransFood".equalsIgnoreCase(service)?TransFoodActivity.class:TransShopActivity.class);
+     if(("TransFood".equalsIgnoreCase(service)&&current instanceof TransFoodActivity)
+       ||("TransShop".equalsIgnoreCase(service)&&current instanceof TransShopActivity))current.recreate();
+     else current.startActivity(intent);
+    }else explainMissing(current,service);
+   }else new TransivaAlertDialogBuilder(current).setTitle("Alamat belum dapat diperiksa")
+     .setMessage("Koneksi ke server belum berhasil. Coba lagi atau simpan alamat delivery melalui profil.")
+     .setPositiveButton("Coba lagi",(dialog,which)->require(current,service))
+     .setNeutralButton("Simpan alamat",(dialog,which)->profile(current,service))
+     .setNegativeButton("Tutup",null).show();
+  });
   return false;
  }
  private static void explainMissing(Activity a,String service){

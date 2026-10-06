@@ -2687,6 +2687,9 @@ class CustomerDashboardActivityScreenCore extends Activity
             return;
         }
 
+        SessionManager liveSession = new SessionManager(this);
+        String liveId = first(liveSession.getId(), liveSession.getUserId(), "0");
+        if (!liveSession.isLoggedIn() || !Integer.toString(userId).equals(liveId)) return;
         currentBalance = state.balance;
         renderBalance();
 
@@ -2750,9 +2753,7 @@ class CustomerDashboardActivityScreenCore extends Activity
 
     @Override
     public void showError(String message) {
-        // Saat dashboard gagal dimuat, promo tidak boleh meninggalkan
-        // area kosong tinggi. Tampilkan empty state yang ringkas.
-        renderPromos(null);
+        // Keep the last successful render; a failed read must not erase the active order.
 
         Toast.makeText(
                 this,

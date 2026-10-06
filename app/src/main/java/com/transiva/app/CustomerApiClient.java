@@ -31,7 +31,10 @@ public final class CustomerApiClient {
     }
 
     public static void applySecurity(Context context, HttpURLConnection connection) {
-        if (context == null || connection == null) return;
+        if (context == null || connection == null
+                || !NetworkSafetyRules.maySendCredentials(connection.getURL().toString())) return;
+        // Do not forward bearer/device headers through an automatic redirect.
+        connection.setInstanceFollowRedirects(false);
         SessionManager session = new SessionManager(context.getApplicationContext());
         String token = session.getToken();
         if (token != null && !token.trim().isEmpty()) {
@@ -72,8 +75,6 @@ public final class CustomerApiClient {
     }
 
     private static boolean isTransivaOwned(String url) {
-        if (url == null) return false;
-        String v = url.trim().toLowerCase();
-        return v.startsWith("https://transiva.my.id/");
+        return NetworkSafetyRules.maySendCredentials(url);
     }
 }

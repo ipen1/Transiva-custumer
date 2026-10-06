@@ -11,7 +11,7 @@ permissions:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
 
     steps:
       - name: Checkout project
@@ -68,13 +68,23 @@ jobs:
           echo "Play regression tests executed:   $PLAY_COUNT"
           echo "Total regression tests executed:  $TOTAL_COUNT"
 
-          test "$DIRECT_COUNT" -gt 0
-          test "$PLAY_COUNT" -gt 0
+          test "$DIRECT_COUNT" -ge 39
+          test "$PLAY_COUNT" -ge 39
+
+      - name: Upload Regression Reports
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: customer-regression-reports
+          path: |
+            app/build/test-results/
+            app/build/reports/tests/
+          if-no-files-found: warn
 
       # Direct = APK for your own server/distribution.
       # Play   = AAB intended for Google Play.
       - name: Build Direct Signed APK and Play Signed AAB
-        run: gradle clean :app:assembleDirectRelease :app:bundlePlayRelease
+        run: gradle :app:assembleDirectRelease :app:bundlePlayRelease
         env:
           KEYSTORE_FILE: transiva-release.jks
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}

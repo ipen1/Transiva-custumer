@@ -47,8 +47,7 @@ public final class DeliveryAddressGate {
  }
  private static final Handler main=new Handler(Looper.getMainLooper());
  private interface Result { void done(JSONObject profile); }
- private static final java.util.Map<String,java.util.List<Result>> requests=new java.util.HashMap<>();
- private static void save(Context context,String id,JSONObject profile) {
+ static void storeProfile(Context context,String id,JSONObject profile) {
   if(!id.equals(user(context)) || profile==null)return;
   context.getSharedPreferences(PREF,Context.MODE_PRIVATE).edit()
     .putString("user",id).putString("address",profile.optString("delivery_address","").trim())
@@ -56,35 +55,13 @@ public final class DeliveryAddressGate {
     .putLong("lng",Double.doubleToRawLongBits(profile.optDouble("delivery_lng",0))).apply();
  }
  private static void fetch(Context context,String id,Result listener) {
-  synchronized(requests) {
-   java.util.List<Result> existing=requests.get(id);
-   if(existing!=null){if(listener!=null)existing.add(listener);return;}
-   java.util.List<Result> callbacks=new java.util.ArrayList<>();
-   if(listener!=null)callbacks.add(listener);requests.put(id,callbacks);
-  }
-  final Context app=context.getApplicationContext();
-  try {
-   DashboardReadExecutor.submit(()->{
-    JSONObject profile=null;
-    try {
-     JSONObject response=TransivaHttpRepository.getJsonOnce(app,
-       ApiConfig.server("get_customer_profile.php?id="+java.net.URLEncoder.encode(id,"UTF-8")),4500);
-     if(response.optBoolean("success",false))profile=response.optJSONObject("user");
-     save(app,id,profile);
-    }catch(Exception ignored){}
-    complete(id,profile);return null;
-   });
-  }catch(java.util.concurrent.RejectedExecutionException busy){complete(id,null);}
- }
- private static void complete(String id,JSONObject profile) {
-  java.util.List<Result> callbacks;
-  synchronized(requests){callbacks=requests.remove(id);}
-  if(callbacks==null)return;
-  main.post(()->{for(Result listener:callbacks)listener.done(profile);});
+  CustomerProfileCache.fetch(context,false,profile->{
+   if(profile!=null)storeProfile(context,id,profile);
+   if(listener!=null)listener.done(profile);
+  });
  }
  public static void prefetch(Activity a) {
-  if(valid(a))return;
-  String id=user(a);if(!id.isEmpty())fetch(a.getApplicationContext(),id,null);
+  CustomerProfileCache.warm(a.getApplicationContext());
  }
  public static boolean require(Activity a,String service) {
   if(valid(a))return true;

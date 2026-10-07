@@ -537,31 +537,23 @@ class TransShopActivityScreenCore extends Activity {
             toastDialog("User ID tidak ditemukan. Silakan login ulang.");
             return;
         }
-        featureRuntime.newThread(() -> {
-            try {
-                JSONObject res = getJson(PROFILE_URL + "?id=" + userId);
-                JSONObject user = res.optJSONObject("user");
-                if (!res.optBoolean("success", false) || user == null) throw new Exception(res.optString("message", "Profil tidak tersedia"));
-                final double lat = user.optDouble("delivery_lat", 0);
-                final double lng = user.optDouble("delivery_lng", 0);
-                final String address = firstNonEmpty(user.optString("delivery_address", ""), "Alamat delivery");
-                mainHandler.post(() -> {
-                    if (destroyed) return;
-                    deliveryLat = lat; deliveryLng = lng; deliveryAddress = address;
-                    if (!validCoord(deliveryLat, deliveryLng)) {
-                        modeText.setText("Alamat delivery belum valid");
-                        toastDialog("Alamat delivery belum memiliki koordinat valid. Tetapkan lokasi dari menu Akun terlebih dahulu.");
-                        return;
-                    }
-                    deliveryText.setText("Pengantaran: " + deliveryAddress);
-                    deliveryBtn.setText("●  Antar ke alamat akun\n" + shortAddress(deliveryAddress));
-                    updateModeUI();
-                    if (validCoord(pickupLat, pickupLng)) requestPaymentQuote();
-                });
-            } catch (Exception e) {
-                mainHandler.post(() -> toastDialog("Gagal membaca alamat delivery akun. " + cleanError(e.getMessage())));
+        final java.lang.ref.WeakReference<TransShopActivityScreenCore> weak=new java.lang.ref.WeakReference<>(this);
+        CustomerProfileCache.fetch(getApplicationContext(),false,user->{
+            TransShopActivityScreenCore screen=weak.get();
+            if(screen==null||screen.destroyed||screen.isFinishing()||screen.isDestroyed())return;
+            if(user==null){screen.toastDialog("Alamat delivery belum dapat dimuat. Coba kembali.");return;}
+            screen.deliveryLat=user.optDouble("delivery_lat",0);
+            screen.deliveryLng=user.optDouble("delivery_lng",0);
+            screen.deliveryAddress=screen.firstNonEmpty(user.optString("delivery_address",""),"Alamat delivery");
+            if(!screen.validCoord(screen.deliveryLat,screen.deliveryLng)){
+                screen.modeText.setText("Alamat delivery belum valid");
+                screen.toastDialog("Tetapkan lokasi pengantaran dari menu Akun terlebih dahulu.");return;
             }
-        }, "transshop-delivery-profile").start();
+            screen.deliveryText.setText("Pengantaran: "+screen.deliveryAddress);
+            screen.deliveryBtn.setText("●  Antar ke alamat akun\n"+screen.shortAddress(screen.deliveryAddress));
+            screen.updateModeUI();
+            if(screen.validCoord(screen.pickupLat,screen.pickupLng))screen.requestPaymentQuote();
+        });
     }
 
     protected void setPointFromCenter() {

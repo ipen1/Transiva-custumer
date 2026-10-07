@@ -34,6 +34,7 @@ public class TransivaCustomerApplication extends Application implements Applicat
         AppUpdateRuntimeGate.onActivityResumed(activity);
         NetworkStatusBanner.attach(activity);
         if (activity instanceof SplashActivity || activity instanceof UpdateDownloadActivity) return;
+        CustomerProfileCache.warm(this);
         main.postDelayed(() -> {
             if (!activity.isFinishing()) {
                 try {

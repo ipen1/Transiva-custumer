@@ -241,6 +241,8 @@ public class SessionManager {
     public void forceLogout(String reason) {
         try {
             CustomerChatNotificationPoller.stop();
+            CustomerProfileCache.clear(appContext);
+            appContext.getSharedPreferences("delivery_address_gate_v2",Context.MODE_PRIVATE).edit().clear().apply();
             SecureTokenStore.clear(appContext);
             String fcmToken = prefs.getString("fcm_token", "");
             long fcmSavedAt = prefs.getLong("fcm_token_saved_at", 0L);

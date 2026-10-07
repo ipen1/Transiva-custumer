@@ -395,7 +395,7 @@ class ProfileActivityScreenCore extends Activity {
         );
 
         refresh.setOnClickListener(
-                view -> loadProfile()
+                view -> loadProfile(true)
         );
 
         row.addView(
@@ -1451,102 +1451,20 @@ class ProfileActivityScreenCore extends Activity {
 
 
 
-    protected void loadProfile() {
-        if (
-                loading
-                        || userId.isEmpty()
-        ) {
-            return;
-        }
+    protected void loadProfile() { loadProfile(false); }
 
-        setLoading(true);
-
-        featureRuntime.execute(() -> {
-            HttpURLConnection connection = null;
-
-            try {
-                URL url =
-                        new URL(
-                                PROFILE_URL
-                                        + "?id="
-                                        + Uri.encode(
-                                        userId
-                                )
-                                        + "&_="
-                                        + System
-                                        .currentTimeMillis()
-                        );
-
-                connection =
-                        CustomerApiClient.open(this, url.toString());
-
-                connection.setConnectTimeout(
-                        TIMEOUT_MS
-                );
-
-                connection.setReadTimeout(
-                        TIMEOUT_MS
-                );
-
-                connection.setRequestProperty(
-                        "Accept",
-                        "application/json"
-                );
-
-                String body =
-                        readStream(
-                                connection
-                                        .getInputStream()
-                        );
-
-                JSONObject response =
-                        new JSONObject(body);
-
-                if (
-                        !response.optBoolean(
-                                "success",
-                                false
-                        )
-                ) {
-                    throw new IllegalStateException(
-                            response.optString(
-                                    "message",
-                                    "Profil tidak dapat dimuat."
-                            )
-                    );
-                }
-
-                JSONObject user =
-                        response.optJSONObject(
-                                "user"
-                        );
-
-                if (user == null) {
-                    throw new IllegalStateException(
-                            "Data profil kosong"
-                    );
-                }
-
-                mainHandler.post(() -> {
-                    applyUser(user);
-                    setLoading(false);
-                });
-
-            } catch (Exception error) {
-                if (CustomerAsyncError.isCancellation(error) || featureRuntime.isDestroyed()) return;
-                mainHandler.post(() -> {
-                    setLoading(false);
-
-                    toast(
-                            CustomerAsyncError.userMessage(error, "Gagal memuat profil")
-                    );
-                });
-
-            } finally {
-                if (connection != null) {
-                    connection.disconnect();
-                }
-            }
+    protected void loadProfile(boolean force) {
+        if(loading||userId.isEmpty())return;
+        JSONObject cached=CustomerProfileCache.cached(this);
+        if(cached!=null && !profileEditMode)applyUser(cached);
+        setLoading(cached==null);
+        final java.lang.ref.WeakReference<ProfileActivityScreenCore> weak=new java.lang.ref.WeakReference<>(this);
+        CustomerProfileCache.fetch(getApplicationContext(),force,user->{
+            ProfileActivityScreenCore screen=weak.get();
+            if(screen==null||screen.isFinishing()||screen.isDestroyed())return;
+            if(user!=null && !screen.profileEditMode)screen.applyUser(user);
+            screen.setLoading(false);
+            if(user==null)screen.toast("Profil belum dapat dimuat. Periksa koneksi internet.");
         });
     }
 
@@ -1572,12 +1490,7 @@ class ProfileActivityScreenCore extends Activity {
                 phone
         );
 
-        address = first(
-                user.optString(
-                        "delivery_address"
-                ),
-                address
-        );
+        if(user.has("delivery_address"))address=user.optString("delivery_address","").trim();
 
         photoUrl = first(
                 user.optString(
@@ -1590,13 +1503,13 @@ class ProfileActivityScreenCore extends Activity {
         deliveryLat =
                 user.optDouble(
                         "delivery_lat",
-                        deliveryLat
+                        0
                 );
 
         deliveryLng =
                 user.optDouble(
                         "delivery_lng",
-                        deliveryLng
+                        0
                 );
         DeliveryAddressGate.update(this,address,deliveryLat,deliveryLng);
 
@@ -2042,6 +1955,7 @@ class ProfileActivityScreenCore extends Activity {
                     pendingPhotoWebp = null;
 
                     if (user != null) {
+                        CustomerProfileCache.put(getApplicationContext(),user);
                         applyUser(user);
                     }
 

@@ -21,10 +21,15 @@ public final class TransivaHttpRepository {
     }
     private TransivaHttpRepository() { }
     public static JSONObject getJson(Context context, String url, int timeoutMs) throws Exception {
-        return request(context, "GET", url, null, timeoutMs, 1, null);
+        return measuredRead(context, url, timeoutMs, 1);
     }
     public static JSONObject getJsonOnce(Context context, String url, int timeoutMs) throws Exception {
-        return request(context, "GET", url, null, timeoutMs, 0, null);
+        return measuredRead(context, url, timeoutMs, 0);
+    }
+    private static JSONObject measuredRead(Context context, String url, int timeoutMs, int retries) throws Exception {
+        long started = SystemClock.elapsedRealtime(); boolean success = false;
+        try { JSONObject result = request(context, "GET", url, null, timeoutMs, retries, null); success = true; return result; }
+        finally { try { CustomerPerformanceMetrics.load(context, CustomerPerformanceMetrics.readCategory(url), started, success); } catch (Throwable ignored) { } }
     }
     public static JSONObject postJson(Context context, String url, JSONObject body, int timeoutMs) throws Exception {
         return request(context, "POST", url, body, timeoutMs, 0, null);

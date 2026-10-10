@@ -59,10 +59,10 @@ public final class CustomerProfileCache {
         JSONObject cached=cached(app);long age=System.currentTimeMillis()-app.getSharedPreferences(PREF,Context.MODE_PRIVATE).getLong("saved",0);
         final long before;
         synchronized(CustomerProfileCache.class){
-            if(!force && cached!=null && age>=0 && age<FRESH_MS){if(callback!=null)MAIN.post(()->callback.done(cached(app)));return;}
+            if(!force && cached!=null && age>=0 && age<FRESH_MS){if(callback!=null)MAIN.post(()->callback.done(k.equals(key(app))?cached(app):null));return;}
             List<Callback> waiting=FLIGHTS.get(k);
             if(waiting!=null){if(callback!=null)waiting.add(callback);return;}
-            if(!force&&System.currentTimeMillis()<(RETRY.containsKey(k)?RETRY.get(k):0L)){if(callback!=null)MAIN.post(()->callback.done(cached(app)));return;}
+            if(!force&&System.currentTimeMillis()<(RETRY.containsKey(k)?RETRY.get(k):0L)){if(callback!=null)MAIN.post(()->callback.done(k.equals(key(app))?cached(app):null));return;}
             waiting=new ArrayList<>();if(callback!=null)waiting.add(callback);FLIGHTS.put(k,waiting);before=revision;
         }
         try {

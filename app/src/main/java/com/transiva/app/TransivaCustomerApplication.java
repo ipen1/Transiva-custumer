@@ -19,6 +19,7 @@ public class TransivaCustomerApplication extends Application implements Applicat
     @Override public void onCreate() {
         super.onCreate();
         instance = this;
+        CustomerPerformanceMetrics.install();
         CustomerStartupManager.installCritical(this);
         TransivaCrashReporter.user(this);
         registerActivityLifecycleCallbacks(this);
@@ -27,6 +28,7 @@ public class TransivaCustomerApplication extends Application implements Applicat
 
     @Override public void onActivityResumed(Activity activity) {
         currentActivity = new WeakReference<>(activity);
+        CustomerPerformanceMetrics.resumed(activity);
         TransivaCrashReporter.screen(activity);
         CustomerAnalytics.screen(activity, activity.getClass().getSimpleName());
         TransivaCrashReporter.user(activity);

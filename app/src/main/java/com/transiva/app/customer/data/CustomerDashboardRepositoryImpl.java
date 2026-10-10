@@ -49,7 +49,9 @@ public final class CustomerDashboardRepositoryImpl
     ) throws Exception {
         // Coordinators run in the general pool; leaf reads use their own bounded pool.
         // One shared deadline prevents six endpoint waits from accumulating.
-        long deadline = SystemClock.elapsedRealtime() + LOAD_BUDGET_MS;
+        long measurementStarted = SystemClock.elapsedRealtime();
+        boolean loaded = false;
+        long deadline = measurementStarted + LOAD_BUDGET_MS;
         List<Future<?>> tasks = new ArrayList<>();
         try {
             Future<Double> balanceTask = DashboardReadExecutor.submit(() -> loadBalance(username));
@@ -78,8 +80,10 @@ public final class CustomerDashboardRepositoryImpl
             String currentId = first(session.getId(), session.getUserId());
             if (!Integer.toString(userId).equals(currentId)) throw new InterruptedException("Account changed");
             DashboardStateCache.put(context, state, Integer.toString(userId));
+            loaded = true;
             return state;
         } finally {
+            try { com.transiva.app.CustomerPerformanceMetrics.load(context, "dashboard", measurementStarted, loaded); } catch (Throwable ignored) { }
             for (Future<?> task : tasks) if (!task.isDone()) task.cancel(true);
         }
     }

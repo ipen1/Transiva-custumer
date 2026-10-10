@@ -10,7 +10,46 @@ permissions:
   contents: read
 
 jobs:
+  backend-reliability:
+    runs-on: ubuntu-24.04
+    services:
+      mariadb:
+        image: mariadb:11.4
+        env:
+          MARIADB_ROOT_PASSWORD: integration-only
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=5s --health-timeout=5s --health-retries=20
+    steps:
+      - uses: actions/checkout@v6
+      - name: Verify backend test source fingerprints
+        run: python3 tools/reliability/verify_sources.py
+      - name: Install PHP database extension
+        run: sudo apt-get update && sudo apt-get install -y php-cli php-mysql
+      - name: Test production escrow helper with controlled failures
+        run: |
+          set -euo pipefail
+          php -n tools/reliability/settlement_mock.php | tee settlement-helper.log
+      - name: Test real TransSend settlement and worker SQL
+        env:
+          TEST_DB_PASSWORD: integration-only
+        run: |
+          set -euo pipefail
+          php tools/reliability/transaction_integration.php | tee transaction-integration.log
+      - name: Upload transaction report
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: transaction-integration-report
+          path: |
+            transaction-integration.log
+            settlement-helper.log
+          if-no-files-found: warn
+
   build:
+    needs: backend-reliability
     runs-on: ubuntu-24.04
 
     steps:
@@ -41,6 +80,15 @@ jobs:
       # run both concrete variant tasks explicitly.
       - name: Run Customer Regression Tests
         run: gradle :app:testDirectDebugUnitTest :app:testPlayDebugUnitTest
+
+      - name: Test real profile cache concurrency and session isolation
+        shell: bash
+        run: |
+          set -euo pipefail
+          JSON_JAR=$(find "$HOME/.gradle/caches" -path '*/org.json/json/20240303/*/json-20240303.jar' -print -quit)
+          test -f "$JSON_JAR"
+          export JSON_JAR
+          python3 tools/reliability/profile_cache_regression.py | tee profile-cache-regression.log
 
       - name: Verify Regression Tests Actually Ran
         shell: bash
@@ -79,6 +127,7 @@ jobs:
           path: |
             app/build/test-results/
             app/build/reports/tests/
+            profile-cache-regression.log
           if-no-files-found: warn
 
       # Direct = APK for your own server/distribution.

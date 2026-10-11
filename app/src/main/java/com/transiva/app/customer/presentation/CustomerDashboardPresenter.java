@@ -28,6 +28,8 @@ public final class CustomerDashboardPresenter {
         this.view = view;
     }
 
+    public boolean isLoading() { return loading; }
+
     public void load(String username, int userId) {
         request(username, userId, true);
     }

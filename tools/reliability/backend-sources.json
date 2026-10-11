@@ -1,8 +1,10 @@
 {
   "complete_pickup_with_otp.php": "53f91f1ceb046ae4a33fce0aceb6449dd54cc48f5cc6a490b6fc7d769a48fffe",
+  "customer_profile_helper.php": "60f045eefa869b1471da146d5b9542b9a6ad0587c8976ecbe31273e7d3c579b9",
   "driver_dispatch_helper.php": "81ebb84277070cc151b8fa069f72207e18180a1cf9a2f9cdd56a8711f8e904a9",
   "driver_offline_nudge_helper.php": "01d91f047b9a47277c7da3db9d97d9b07f2dfbff7709f4ce1adb1ae12f1b24e4",
   "driver_update_unified_status.php": "d7e53d599777fbf80b33b26156d713fe2b30e1de0b1872886385ab591c28637e",
+  "get_customer_profile.php": "273ccfb569093e48348e8944b0d725dac292e8f3c1774460dc41f816c6537ef5",
   "order_notification_outbox.php": "33ff0b0b256d8b635d5fd1a2a583f8360c241293c124caecfda442c3568df7ae",
   "order_reliability_helper.php": "b9c370a19959afed2d8b480aecc1ddff3852197be1db3d2e191473d82195c3cc",
   "payment_upgrade_helper.php": "dc710505fc35756fa2aae4dda4190f01834bf8d6d3fd6532de49d4628b1c35c5",

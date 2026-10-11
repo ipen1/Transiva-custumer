@@ -28,6 +28,8 @@ jobs:
         run: python3 tools/reliability/verify_sources.py
       - name: Install PHP database extension
         run: sudo apt-get update && sudo apt-get install -y php-cli php-mysql
+      - name: Test profile schema compatibility
+        run: python3 tools/reliability/profile_server_regression.py
       - name: Test production escrow helper with controlled failures
         run: |
           set -euo pipefail
@@ -116,8 +118,8 @@ jobs:
           echo "Play regression tests executed:   $PLAY_COUNT"
           echo "Total regression tests executed:  $TOTAL_COUNT"
 
-          test "$DIRECT_COUNT" -ge 39
-          test "$PLAY_COUNT" -ge 39
+          test "$DIRECT_COUNT" -ge 46
+          test "$PLAY_COUNT" -ge 46
 
       - name: Upload Regression Reports
         if: always()

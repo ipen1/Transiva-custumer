@@ -1,4 +1,4 @@
-# Mengukur keandalan 2.5.29 pada HP nyata
+# Mengukur keandalan 2.5.30 pada HP nyata
 
 ## Data yang sudah ditambahkan
 
@@ -34,4 +34,4 @@ Untuk cache benar-benar dingin, gunakan fresh install atau bersihkan cache aplik
 
 Target awal yang diusulkan, bukan syarat resmi Google: pada jaringan normal cold startup menuju dashboard p95 <=3 detik, read profil/layanan p95 <=2 detik, dan tidak ada crash/ANR/ketidaksesuaian saldo yang teramati dalam skenario pengujian. Sesuaikan target setelah baseline perangkat dan jaringan diukur. Memori harus stabil pada sesi panjang, tidak terus tumbuh setiap masuk/keluar layar.
 
-Hitung median/p95 per perangkat dan kategori; jangan gabungkan HP cepat dan HP lambat untuk menyembunyikan regresi. Bandingkan 2.5.28 vs 2.5.29 pada perangkat, kondisi cache dan jaringan yang sama. Jangan memberikan penilaian performa numerik sebelum data tersedia.
+Hitung median/p95 per perangkat dan kategori; jangan gabungkan HP cepat dan HP lambat untuk menyembunyikan regresi. Bandingkan 2.5.29 vs 2.5.30 pada perangkat, kondisi cache dan jaringan yang sama. Jangan memberikan penilaian performa numerik sebelum data tersedia.

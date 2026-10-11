@@ -46,6 +46,8 @@ import java.util.Date;
 import java.util.List;
 import java.util.Locale;
 class CustomerHistoryActivityScreenCore extends Activity {
+    protected CustomerPullRefreshLayout pullRefresh;
+
 
 
 
@@ -208,8 +210,9 @@ class CustomerHistoryActivityScreenCore extends Activity {
         scroll.setFillViewport(true);
         scroll.setClipToPadding(false);
 
+        pullRefresh = new CustomerPullRefreshLayout(this, scroll, () -> loadHistory(true), () -> loading||userId<=0);
         shell.addView(
-                scroll,
+                pullRefresh,
                 new LinearLayout.LayoutParams(-1, 0, 1)
         );
 
@@ -327,7 +330,7 @@ class CustomerHistoryActivityScreenCore extends Activity {
         );
 
         refresh.setOnClickListener(
-                view -> loadHistory()
+                view -> { if(pullRefresh!=null)pullRefresh.requestRefresh(); else loadHistory(); }
         );
 
         row.addView(
@@ -2275,6 +2278,8 @@ class CustomerHistoryActivityScreenCore extends Activity {
                 JSONArray array =
                         response.optJSONArray("orders");
 
+                if(!response.optBoolean("success",false)||array==null)throw new IllegalStateException("Data belum dapat diperbarui.");
+
                 List<JSONObject> fresh =
                         new ArrayList<>();
 
@@ -2304,6 +2309,7 @@ class CustomerHistoryActivityScreenCore extends Activity {
                     allOrders.addAll(fresh);
 
                     loading = false;
+                    if(pullRefresh!=null)pullRefresh.finish(true);
                     progressBar.setVisibility(View.GONE);
 
                     renderOrders();
@@ -2312,6 +2318,8 @@ class CustomerHistoryActivityScreenCore extends Activity {
             } catch (Exception error) {
                 featureRuntime.post(mainHandler, () -> {
                     loading = false;
+                    boolean pulled=pullRefresh!=null&&pullRefresh.isRefreshing();
+                    if(pullRefresh!=null)pullRefresh.finish(false);
                     progressBar.setVisibility(View.GONE);
 
                     renderOrders();

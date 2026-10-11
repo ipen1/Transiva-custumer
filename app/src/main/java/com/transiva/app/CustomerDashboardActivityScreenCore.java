@@ -63,6 +63,8 @@ import java.util.List;
 import java.util.Locale;
 class CustomerDashboardActivityScreenCore extends Activity
         implements CustomerDashboardContract.View {
+    protected CustomerPullRefreshLayout pullRefresh;
+
 
 
 
@@ -309,8 +311,9 @@ class CustomerDashboardActivityScreenCore extends Activity
         scroll.setFillViewport(true);
         scroll.setClipToPadding(false);
 
+        pullRefresh = new CustomerPullRefreshLayout(this, scroll, () -> { if(presenter!=null)presenter.load(username,userId); }, () -> presenter==null||presenter.isLoading());
         shell.addView(
-                scroll,
+                pullRefresh,
                 new LinearLayout.LayoutParams(-1, 0, 1)
         );
 
@@ -2672,7 +2675,7 @@ class CustomerDashboardActivityScreenCore extends Activity
     public void showLoading(boolean visible) {
         if (loading != null) {
             loading.setVisibility(
-                    visible
+                    visible && !(pullRefresh!=null&&pullRefresh.isRefreshing())
                             ? View.VISIBLE
                             : View.GONE
             );
@@ -2690,6 +2693,7 @@ class CustomerDashboardActivityScreenCore extends Activity
         SessionManager liveSession = new SessionManager(this);
         String liveId = first(liveSession.getId(), liveSession.getUserId(), "0");
         if (!liveSession.isLoggedIn() || !Integer.toString(userId).equals(liveId)) return;
+        if(pullRefresh!=null)pullRefresh.finish(true);
         currentBalance = state.balance;
         renderBalance();
 
@@ -2753,6 +2757,7 @@ class CustomerDashboardActivityScreenCore extends Activity
 
     @Override
     public void showError(String message) {
+        if(pullRefresh!=null && pullRefresh.isRefreshing()){pullRefresh.finish(false);return;}
         // Keep the last successful render; a failed read must not erase the active order.
 
         Toast.makeText(

@@ -13,6 +13,10 @@ import java.security.MessageDigest;
 /** Account/session scoped profile snapshots. Never used to authorize payments. */
 public final class CustomerProfileCache {
     public interface Callback { void done(JSONObject profile); }
+    private static final class FreshCallback implements Callback {
+        final Callback target; FreshCallback(Callback target){this.target=target;}
+        public void done(JSONObject profile){target.done(profile);}
+    }
     private static final String PREF="customer_profile_cache_v28";
     private static final long FRESH_MS=120000L, MAX_AGE_MS=86400000L;
     private static final Handler MAIN=new Handler(Looper.getMainLooper());
@@ -61,16 +65,16 @@ public final class CustomerProfileCache {
         synchronized(CustomerProfileCache.class){
             if(!force && cached!=null && age>=0 && age<FRESH_MS){if(callback!=null)MAIN.post(()->callback.done(k.equals(key(app))?cached(app):null));return;}
             List<Callback> waiting=FLIGHTS.get(k);
-            if(waiting!=null){if(callback!=null)waiting.add(callback);return;}
+            if(waiting!=null){if(callback!=null)waiting.add(force?new FreshCallback(callback):callback);return;}
             if(!force&&System.currentTimeMillis()<(RETRY.containsKey(k)?RETRY.get(k):0L)){if(callback!=null)MAIN.post(()->callback.done(k.equals(key(app))?cached(app):null));return;}
-            waiting=new ArrayList<>();if(callback!=null)waiting.add(callback);FLIGHTS.put(k,waiting);before=revision;
+            waiting=new ArrayList<>();if(callback!=null)waiting.add(force?new FreshCallback(callback):callback);FLIGHTS.put(k,waiting);before=revision;
         }
         try {
             DashboardReadExecutor.submit(()->{
                 JSONObject result=null;
                 try{
                     if(k.equals(key(app))){
-                        JSONObject response=TransivaHttpRepository.getJsonOnce(app,ApiConfig.server("get_customer_profile.php"),5000);
+                        JSONObject response=TransivaHttpRepository.getJson(app,ApiConfig.server("get_customer_profile.php"),5000);
                         if(response.optBoolean("success",false))result=response.optJSONObject("user");
                     }
                 }catch(Exception ignored){}
@@ -89,7 +93,7 @@ public final class CustomerProfileCache {
                     if(result==null)RETRY.put(k,System.currentTimeMillis()+15000L);else RETRY.remove(k);
                 }
             }
-            if(callbacks!=null)for(Callback cb:callbacks){try{cb.done(answer==null?null:new JSONObject(answer.toString()));}catch(Exception ignored){}}
+            if(callbacks!=null)for(Callback cb:callbacks){try{cb.done(answer==null||(cb instanceof FreshCallback&&result==null)?null:new JSONObject(answer.toString()));}catch(Exception ignored){}}
         });
     }
 }

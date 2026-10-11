@@ -31,6 +31,8 @@ import java.util.Date;
 import java.util.List;
 import java.util.Locale;
 class CustomerChatActivityScreenCore extends Activity {
+    protected CustomerPullRefreshLayout pullRefresh;
+
 
 
     protected final CustomerLifecycleNetworkScope networkScope =
@@ -151,8 +153,9 @@ class CustomerChatActivityScreenCore extends Activity {
         scroll.setFillViewport(true);
         scroll.setClipToPadding(false);
 
+        pullRefresh = new CustomerPullRefreshLayout(this, scroll, () -> loadConversations(), () -> loading||userId<=0);
         shell.addView(
-                scroll,
+                pullRefresh,
                 new LinearLayout.LayoutParams(
                         -1,
                         0,
@@ -308,7 +311,7 @@ class CustomerChatActivityScreenCore extends Activity {
         );
 
         refresh.setOnClickListener(
-                view -> loadConversations()
+                view -> { if(pullRefresh!=null)pullRefresh.requestRefresh(); else loadConversations(); }
         );
 
         row.addView(
@@ -576,11 +579,9 @@ class CustomerChatActivityScreenCore extends Activity {
         }
 
         loading = true;
-        progress.setVisibility(
-                View.VISIBLE
-        );
+        progress.setVisibility(pullRefresh!=null&&pullRefresh.isRefreshing()?View.GONE:View.VISIBLE);
 
-        render();
+        if(conversations.isEmpty())render();
 
         networkScope.newThread(() -> {
             try {
@@ -607,6 +608,8 @@ class CustomerChatActivityScreenCore extends Activity {
                         response.optJSONArray(
                                 "conversations"
                         );
+
+                if(!response.optBoolean("success",false)||array==null)throw new IllegalStateException("Data belum dapat diperbarui.");
 
                 List<JSONObject> fresh =
                         new ArrayList<>();
@@ -639,6 +642,7 @@ class CustomerChatActivityScreenCore extends Activity {
                     );
 
                     loading = false;
+                    if(pullRefresh!=null)pullRefresh.finish(true);
 
                     progress.setVisibility(
                             View.GONE
@@ -650,6 +654,8 @@ class CustomerChatActivityScreenCore extends Activity {
             } catch (Exception error) {
                 mainHandler.post(() -> {
                     loading = false;
+                    boolean pulled=pullRefresh!=null&&pullRefresh.isRefreshing();
+                    if(pullRefresh!=null)pullRefresh.finish(false);
 
                     progress.setVisibility(
                             View.GONE
@@ -657,7 +663,7 @@ class CustomerChatActivityScreenCore extends Activity {
 
                     render();
 
-                    toast(
+                    if(!pulled)toast(
                             "Gagal memuat daftar pesan"
                     );
                 });

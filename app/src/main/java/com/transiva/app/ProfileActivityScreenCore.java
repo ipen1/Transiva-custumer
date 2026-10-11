@@ -55,6 +55,10 @@ import java.nio.charset.StandardCharsets;
 import java.util.Locale;
 import java.util.List;
 class ProfileActivityScreenCore extends Activity {
+    protected CustomerPullRefreshLayout pullRefresh;
+    private boolean profileFetching;
+    private TextView profileStatus;
+
 
 
 
@@ -261,8 +265,9 @@ class ProfileActivityScreenCore extends Activity {
         scroll.setFillViewport(true);
         scroll.setClipToPadding(false);
 
+        pullRefresh = new CustomerPullRefreshLayout(this, scroll, () -> loadProfile(true), () -> loading||profileFetching||profileEditMode||userId.isEmpty());
         shell.addView(
-                scroll,
+                pullRefresh,
                 new LinearLayout.LayoutParams(
                         -1,
                         0,
@@ -293,6 +298,9 @@ class ProfileActivityScreenCore extends Activity {
         );
 
         buildHeader(root);
+        profileStatus=text("Menyiapkan profil…",12,"#64748B",false);
+        profileStatus.setPadding(dp(6),0,dp(6),dp(8));
+        root.addView(profileStatus);
         buildIdentityCard(root);
         buildFormCard(root);
         buildSecurityCard(root);
@@ -395,7 +403,7 @@ class ProfileActivityScreenCore extends Activity {
         );
 
         refresh.setOnClickListener(
-                view -> loadProfile(true)
+                view -> { if(pullRefresh!=null)pullRefresh.requestRefresh(); else loadProfile(true); }
         );
 
         row.addView(
@@ -1454,17 +1462,29 @@ class ProfileActivityScreenCore extends Activity {
     protected void loadProfile() { loadProfile(false); }
 
     protected void loadProfile(boolean force) {
-        if(loading||userId.isEmpty())return;
+        if(loading||profileFetching||userId.isEmpty())return;
         JSONObject cached=CustomerProfileCache.cached(this);
         if(cached!=null && !profileEditMode)applyUser(cached);
-        setLoading(cached==null);
+        profileFetching=true;
+        if(profileStatus!=null){profileStatus.setText(cached==null?"Menyiapkan profil…":"Memperbarui profil…");profileStatus.setVisibility(View.VISIBLE);}
+        setLoading(true);
+        if(progress!=null && (cached!=null||(pullRefresh!=null&&pullRefresh.isRefreshing())))progress.setVisibility(View.GONE);
         final java.lang.ref.WeakReference<ProfileActivityScreenCore> weak=new java.lang.ref.WeakReference<>(this);
+        final String requestedUser=userId;
         CustomerProfileCache.fetch(getApplicationContext(),force,user->{
             ProfileActivityScreenCore screen=weak.get();
             if(screen==null||screen.isFinishing()||screen.isDestroyed())return;
-            if(user!=null && !screen.profileEditMode)screen.applyUser(user);
+            screen.profileFetching=false;
             screen.setLoading(false);
-            if(user==null)screen.toast("Profil belum dapat dimuat. Periksa koneksi internet.");
+            SessionManager liveSession=new SessionManager(screen);
+            String live=first(liveSession.getId(),liveSession.getUserId());
+            if(!requestedUser.equals(live)){if(screen.pullRefresh!=null)screen.pullRefresh.finish(false);return;}
+            if(user!=null && !screen.profileEditMode)screen.applyUser(user);
+            if(screen.pullRefresh!=null)screen.pullRefresh.finish(user!=null);
+            if(screen.profileStatus!=null){
+                screen.profileStatus.setText("Profil belum diperbarui. Tarik ke bawah untuk mencoba lagi.");
+                screen.profileStatus.setVisibility(user==null?View.VISIBLE:View.GONE);
+            }
         });
     }
 

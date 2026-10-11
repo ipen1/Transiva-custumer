@@ -45,6 +45,8 @@ import java.util.List;
 import java.util.Locale;
 import java.util.UUID;
 class CustomerBalanceHistoryActivityScreenCore extends Activity {
+    protected CustomerPullRefreshLayout pullRefresh;
+
 
 
 
@@ -186,8 +188,9 @@ class CustomerBalanceHistoryActivityScreenCore extends Activity {
         scroll.setFillViewport(true);
         scroll.setClipToPadding(false);
 
+        pullRefresh = new CustomerPullRefreshLayout(this, scroll, () -> loadWallet(), () -> loadingData||userId<=0);
         shell.addView(
-                scroll,
+                pullRefresh,
                 new LinearLayout.LayoutParams(
                         -1,
                         0,
@@ -319,7 +322,7 @@ class CustomerBalanceHistoryActivityScreenCore extends Activity {
         );
 
         refresh.setOnClickListener(
-                view -> loadWallet()
+                view -> { if(pullRefresh!=null)pullRefresh.requestRefresh(); else loadWallet(); }
         );
 
         row.addView(
@@ -891,6 +894,7 @@ class CustomerBalanceHistoryActivityScreenCore extends Activity {
 
         loadingData = true;
         setLoading(true);
+        if(pullRefresh!=null&&pullRefresh.isRefreshing()&&loading!=null)loading.setVisibility(View.GONE);
 
         final int requestedDays=periodDays;
         featureRuntime.execute(() -> {
@@ -930,10 +934,7 @@ class CustomerBalanceHistoryActivityScreenCore extends Activity {
                 }
 
                 int balance =
-                        response.optInt(
-                                "balance",
-                                0
-                        );
+                        response.getInt("balance");
 
                 int income =
                         response.optInt(
@@ -958,6 +959,8 @@ class CustomerBalanceHistoryActivityScreenCore extends Activity {
                                 "transactions"
                         );
 
+                if(array==null)throw new IllegalStateException("Daftar transaksi belum dapat diperbarui.");
+
                 List<JSONObject> fresh =
                         new ArrayList<>();
 
@@ -980,6 +983,7 @@ class CustomerBalanceHistoryActivityScreenCore extends Activity {
                     loadingData = false;
                     setLoading(false);
                     if(requestedDays!=periodDays){loadWallet();return;}
+                    if(pullRefresh!=null)pullRefresh.finish(true);
 
                     displayedBalance=balance;
                     balanceText.setText(balanceHidden?"Rp ••••••":rupiah(balance));
@@ -1009,7 +1013,9 @@ class CustomerBalanceHistoryActivityScreenCore extends Activity {
                     loadingData = false;
                     setLoading(false);
 
-                    toast(
+                    boolean pulled=pullRefresh!=null&&pullRefresh.isRefreshing();
+                    if(pullRefresh!=null)pullRefresh.finish(false);
+                    if(!pulled)toast(
                             first(
                                     error.getMessage(),
                                     "Gagal memuat data transaksi"

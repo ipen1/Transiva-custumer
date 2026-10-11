@@ -153,10 +153,13 @@ class CustomerLiveDriverActivityScreenCore extends Activity {
         topLp.setMargins(dp(76), dp(18), dp(16), 0);
         page.addView(top, topLp);
 
-        driverText = text("Live Driver • Native Map", 15, "#FFFFFF", true);
+        driverText = text("Posisi driver", 15, "#FFFFFF", true);
         statusText = text("Menghubungkan lokasi driver...", 12, "#D7E8FF", false);
         top.addView(driverText);
-        top.addView(statusText);
+        statusText.setPadding(dp(10), dp(8), dp(10), dp(8));
+        statusText.setBackground(round("#163D64", dp(12)));
+        LinearLayout.LayoutParams statusLp = new LinearLayout.LayoutParams(-1, -2);
+        statusLp.topMargin = dp(6); top.addView(statusText, statusLp);
 
         LinearLayout bottom = new LinearLayout(this);
         bottom.setOrientation(LinearLayout.VERTICAL);
@@ -393,10 +396,12 @@ class CustomerLiveDriverActivityScreenCore extends Activity {
         driverText.setText(
                 ("car".equals(driverType) ? "🚘 " : "🏍️ ")
                         + driverName
-                        + " • Native Live"
+                        + " • Lokasi langsung"
         );
 
         statusText.setText(statusLabel());
+        statusText.setTextColor(Color.parseColor(OrderStatusPresentation.textColor(status)));
+        statusText.setBackground(round(OrderStatusPresentation.backgroundColor(status), dp(12)));
         speedText.setText(String.valueOf(
                 Math.max(0, (int) Math.round(speedKmh))
         ));
@@ -539,19 +544,7 @@ class CustomerLiveDriverActivityScreenCore extends Activity {
     }
 
     private String statusLabel() {
-        if ("arrived_pickup".equals(status)) {
-            return driverName + " sudah tiba di titik penjemputan";
-        }
-        if ("on_delivery".equals(status)) {
-            return driverName + " sedang menuju titik pengantaran";
-        }
-        if ("arrived_delivery".equals(status)) {
-            return driverName + " sudah tiba di titik pengantaran";
-        }
-        if (ended(status)) {
-            return "Perjalanan telah selesai";
-        }
-        return driverName + " sedang menuju titik penjemputan";
+        return OrderStatusPresentation.label(status, driverType);
     }
 
     private String resolveDriverType(

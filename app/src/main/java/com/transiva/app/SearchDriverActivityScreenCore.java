@@ -148,6 +148,8 @@ class SearchDriverActivityScreenCore extends Activity {
         getUserLocationThenStart();
     }
 
+    private PremiumOrderStatusView searchStatus;
+
     protected void buildLayout() {
         FrameLayout page = new FrameLayout(this);
         pageRoot = page;
@@ -177,8 +179,12 @@ class SearchDriverActivityScreenCore extends Activity {
         subtitleText.setGravity(Gravity.CENTER);
         root.addView(subtitleText, new LinearLayout.LayoutParams(-1, -2));
 
+        searchStatus = new PremiumOrderStatusView(this, true);
+        searchStatus.bind(null, "Mencari driver terdekat", "Pesanan sedang diproses");
+        LinearLayout.LayoutParams searchStatusLp = new LinearLayout.LayoutParams(-1, -2);
+        searchStatusLp.topMargin = dp(16); root.addView(searchStatus, searchStatusLp);
         radarView = new RadarView(this);
-        LinearLayout.LayoutParams radarLp = new LinearLayout.LayoutParams(dp(310), dp(310));
+        LinearLayout.LayoutParams radarLp = new LinearLayout.LayoutParams(dp(Math.max(180, Math.min(310, getResources().getConfiguration().screenWidthDp - 48))), dp(Math.max(180, Math.min(310, getResources().getConfiguration().screenWidthDp - 48))));
         radarLp.setMargins(0, dp(20), 0, dp(10));
         root.addView(radarView, radarLp);
 
@@ -614,6 +620,14 @@ class SearchDriverActivityScreenCore extends Activity {
                     if (radarView != null) radarView.setOfferedDriver(finalCurrentOffer);
                 });
 
+                final JSONObject statusOrder = new JSONObject(order.toString());
+                statusOrder.put("status", status);
+                if (statusOrder.optString("order_id").isEmpty()) statusOrder.put("order_id", activeOrderId);
+                if (statusOrder.optString("order_type").isEmpty()) statusOrder.put("order_type", res.optString("order_type"));
+                featureRuntime.post(mainHandler, () -> {
+                    if (!isFinishing() && !isDestroyed() && searchStatus != null)
+                        searchStatus.bind(statusOrder, "", "Pesanan sedang diproses");
+                });
                 String orderType = firstNonEmpty(order.optString("order_type", ""), res.optString("order_type", "")).trim().toLowerCase(Locale.US);
                 cachedDriverType = normalizeDriverType(firstNonEmpty(
                         order.optString("driver_type", ""),

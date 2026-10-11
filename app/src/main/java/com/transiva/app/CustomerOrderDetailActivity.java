@@ -147,21 +147,11 @@ public class CustomerOrderDetailActivity extends Activity {
         String statusRaw = order.optString("status", "").toLowerCase(Locale.US);
         String status = OrderStatusPresentation.label(statusRaw, service);
 
-        LinearLayout hero = card(24);
-        LinearLayout heroTop = new LinearLayout(this);
-        heroTop.setGravity(Gravity.CENTER_VERTICAL);
-        TextView serviceText = text(service, 25, Color.parseColor("#0B477D"), true);
-        heroTop.addView(serviceText, new LinearLayout.LayoutParams(0, -2, 1));
-        TextView icon = text(serviceIcon(service), 30, Color.parseColor("#167DF5"), false);
-        heroTop.addView(icon);
-        hero.addView(heroTop);
-        TextView orderId = text("Order #" + first(order.optString("order_id"), order.optString("id"), "-"), 12, Color.parseColor("#7B8CA2"), false);
-        LinearLayout.LayoutParams oidLp = new LinearLayout.LayoutParams(-1, -2); oidLp.setMargins(0, dp(4), 0, 0); hero.addView(orderId, oidLp);
-        TextView badge = text(status, 13, statusTextColor(statusRaw), true);
-        badge.setPadding(dp(13), dp(7), dp(13), dp(7));
-        badge.setBackground(round(statusBackground(statusRaw), 99));
-        LinearLayout.LayoutParams blp = new LinearLayout.LayoutParams(-2, -2); blp.setMargins(0, dp(12), 0, 0); hero.addView(badge, blp);
-        addCard(hero);
+        PremiumOrderStatusView hero = new PremiumOrderStatusView(this, false);
+        hero.bind(order, "", "Status terakhir pesanan");
+        hero.setAction(v -> refreshOrder());
+        LinearLayout.LayoutParams heroLp = new LinearLayout.LayoutParams(-1, -2);
+        heroLp.bottomMargin = dp(14); body.addView(hero, heroLp);
 
         LinearLayout timeline = card(24);
         timeline.addView(sectionHeader("Order Timeline", "Tahapan perjalanan pesanan secara ringkas"));
@@ -303,16 +293,22 @@ public class CustomerOrderDetailActivity extends Activity {
         String type = first(order.optString("order_type"), order.optString("service_type"), "").toLowerCase(Locale.US);
         String[] keys; String[] labels;
         if (type.contains("food")) {
-            keys = new String[]{"pending","merchant_confirmed","driver_accepted","arrived_pickup","on_delivery","arrived_delivery","finished"};
+            keys = new String[]{"pending","merchant_accepted","driver_accepted","arrived_pickup","on_delivery","arrived_delivery","finished"};
             labels = new String[]{"Pesanan dibuat","Merchant menerima","Driver menerima","Driver tiba di merchant","Pesanan diantar","Driver tiba di tujuan","Pesanan selesai"};
         } else {
             keys = new String[]{"pending","driver_accepted","arrived_pickup","on_delivery","arrived_delivery","finished"};
             labels = new String[]{"Pesanan dibuat","Driver menerima","Driver tiba di titik jemput","Perjalanan dimulai","Driver tiba di tujuan","Pesanan selesai"};
         }
-        int current = timelineIndex(currentStatus, keys);
+        String normalized = CustomerOrderState.normalize(currentStatus);
+        int current = timelineIndex(normalized, keys);
+        if (CustomerOrderState.isCanceled(normalized) || PremiumOrderStatusView.step(normalized) < 0) {
+            TextView stopped = text(OrderStatusPresentation.label(normalized, type), 14,
+                    Color.parseColor(OrderStatusPresentation.textColor(normalized)), true);
+            stopped.setPadding(0, dp(10), 0, dp(10)); box.addView(stopped); return box;
+        }
         for (int i=0;i<labels.length;i++) {
-            boolean done = i < current || isFinishedStatus(currentStatus);
-            boolean active = i == current && !isFinishedStatus(currentStatus);
+            boolean done = i < current || CustomerOrderState.isFinished(normalized);
+            boolean active = i == current && !CustomerOrderState.isFinished(normalized);
             String bullet = done ? "✓" : (active ? "●" : "○");
             String suffix = i == 0 ? "  •  " + first(order.optString("created_at"), "Waktu tidak tersedia") : (active ? "  •  Status saat ini" : "");
             TextView row = text(bullet + "  " + labels[i] + suffix, 14, Color.parseColor(done ? "#047857" : active ? "#0B7CFF" : "#94A3B8"), done || active);

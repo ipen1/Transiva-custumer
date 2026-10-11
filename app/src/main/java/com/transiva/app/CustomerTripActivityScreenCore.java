@@ -75,6 +75,7 @@ class CustomerTripActivityScreenCore extends Activity {
     };
 
     protected TransivaGoogleMapView mapView;
+    private PremiumOrderStatusView tripStatus;
     protected TextView statusText;
     protected TextView driverNameText;
     protected TextView driverTypeText;
@@ -259,12 +260,19 @@ class CustomerTripActivityScreenCore extends Activity {
         head.setGravity(Gravity.CENTER_VERTICAL);
         card.addView(head, new LinearLayout.LayoutParams(-1, -2));
 
-        TextView title = text("Driver Ditemukan", 18, "#0B3A78", true);
+        TextView title = text("Perjalanan Anda", 18, "#0B3A78", true);
         head.addView(title, new LinearLayout.LayoutParams(0, -2, 1));
 
-        Button close = smallButton("×", "#FEE2E2", "#DC2626", "#FECACA");
-        head.addView(close, new LinearLayout.LayoutParams(dp(42), dp(42)));
+        Button close = smallButton("‹", "#EDF5FF", "#1268D5", "#DCEBFF");
+        close.setContentDescription("Kembali ke beranda");
+        head.addView(close, new LinearLayout.LayoutParams(dp(48), dp(48)));
         close.setOnClickListener(v -> goToHome());
+
+        tripStatus = new PremiumOrderStatusView(this, true);
+        tripStatus.bind(null, "Menyiapkan perjalanan", "Lihat posisi di peta  ↓");
+        tripStatus.setAction(v -> openLiveDriver());
+        LinearLayout.LayoutParams statusLp = new LinearLayout.LayoutParams(-1, -2);
+        statusLp.topMargin = dp(12); card.addView(tripStatus, statusLp);
 
         LinearLayout driverBox = new LinearLayout(this);
         driverBox.setOrientation(LinearLayout.HORIZONTAL);
@@ -296,18 +304,19 @@ class CustomerTripActivityScreenCore extends Activity {
         info.addView(driverPlateText);
         vehiclePhotoView=new ImageView(this);vehiclePhotoView.setScaleType(ImageView.ScaleType.CENTER_CROP);vehiclePhotoView.setBackground(round("#EAF4FF",dp(12)));vehiclePhotoView.setClipToOutline(true);vehiclePhotoView.setVisibility(View.GONE);driverBox.addView(vehiclePhotoView,new LinearLayout.LayoutParams(dp(58),dp(48)));
 
-        statusText = text("Menghubungkan lokasi driver...", 13, "#334155", true);
+        statusText = text("Menghubungkan lokasi driver...", 12, "#536B83", false);
         statusText.setPadding(dp(4), dp(10), dp(4), dp(8));
         card.addView(statusText, new LinearLayout.LayoutParams(-1, -2));
 
         waitingView=new SmartWaitingTextView(this); card.addView(waitingView,new LinearLayout.LayoutParams(-1,-2));
         paymentInfoText = text("", 13, "#0B3A78", true); paymentInfoText.setPadding(dp(12),dp(9),dp(12),dp(9)); paymentInfoText.setVisibility(View.GONE); card.addView(paymentInfoText,new LinearLayout.LayoutParams(-1,-2));
-        receivedButton = smallButton("✅ Terima Pesanan", "#DCFCE7", "#047857", "#86EFAC"); receivedButton.setVisibility(View.GONE); receivedButton.setOnClickListener(v -> sendCustomerAction("confirm_received")); LinearLayout.LayoutParams rlp=new LinearLayout.LayoutParams(-1,dp(50)); rlp.setMargins(0,dp(8),0,0); card.addView(receivedButton,rlp);
+        receivedButton = smallButton("✅ Terima Pesanan", "#DCFCE7", "#047857", "#86EFAC"); receivedButton.setVisibility(View.GONE); receivedButton.setOnClickListener(v -> sendCustomerAction("confirm_received")); receivedButton.setMinHeight(dp(50)); LinearLayout.LayoutParams rlp=new LinearLayout.LayoutParams(-1,-2); rlp.setMargins(0,dp(8),0,0); card.addView(receivedButton,rlp);
         LinearLayout priceActions=new LinearLayout(this); priceActions.setOrientation(LinearLayout.HORIZONTAL); priceActions.setVisibility(View.GONE); priceActions.setTag("price_actions");
-        approvePriceButton=smallButton("Setujui Harga", "#DBEAFE", "#1D4ED8", "#93C5FD"); approvePriceButton.setOnClickListener(v->confirmPriceChange()); priceActions.addView(approvePriceButton,new LinearLayout.LayoutParams(0,dp(48),1));
-        rejectPriceButton=smallButton("Tolak", "#FEE2E2", "#B91C1C", "#FCA5A5"); rejectPriceButton.setOnClickListener(v->sendCustomerAction("reject_price")); LinearLayout.LayoutParams rej=new LinearLayout.LayoutParams(0,dp(48),1); rej.setMargins(dp(8),0,0,0); priceActions.addView(rejectPriceButton,rej); LinearLayout.LayoutParams palp=new LinearLayout.LayoutParams(-1,-2); palp.setMargins(0,dp(8),0,0); card.addView(priceActions,palp);
+        approvePriceButton=smallButton("Setujui Harga", "#DBEAFE", "#1D4ED8", "#93C5FD"); approvePriceButton.setMinHeight(dp(48)); approvePriceButton.setOnClickListener(v->confirmPriceChange()); priceActions.addView(approvePriceButton,new LinearLayout.LayoutParams(0,-2,1));
+        rejectPriceButton=smallButton("Tolak", "#FEE2E2", "#B91C1C", "#FCA5A5"); rejectPriceButton.setMinHeight(dp(48)); rejectPriceButton.setOnClickListener(v->sendCustomerAction("reject_price")); LinearLayout.LayoutParams rej=new LinearLayout.LayoutParams(0,-2,1); rej.setMargins(dp(8),0,0,0); priceActions.addView(rejectPriceButton,rej); LinearLayout.LayoutParams palp=new LinearLayout.LayoutParams(-1,-2); palp.setMargins(0,dp(8),0,0); card.addView(priceActions,palp);
 
         mapView = new TransivaGoogleMapView(this, TransivaGoogleMapView.Mode.TRIP);
+        mapView.setBackground(round("#EDF4FC", dp(18))); mapView.setClipToOutline(true);
         LinearLayout.LayoutParams mlp = new LinearLayout.LayoutParams(-1, dp(getResources().getConfiguration().screenHeightDp<640?210:260));
         mlp.setMargins(0, dp(4), 0, dp(10));
         card.addView(mapView, mlp);
@@ -323,20 +332,23 @@ class CustomerTripActivityScreenCore extends Activity {
         tripInfoText.setPadding(dp(4), 0, dp(4), dp(8));
         card.addView(tripInfoText, new LinearLayout.LayoutParams(-1, -2));
 
-        Button liveBtn = outlineButton("📍 Pusatkan Peta");
+        Button liveBtn = outlineButton("Pusatkan peta"); liveBtn.setMinHeight(dp(48));
         liveBtn.setTextColor(Color.parseColor("#FFFFFF"));
         liveBtn.setBackground(roundStroke("#0B7CFF", "#0B7CFF", dp(18), 1));
-        LinearLayout.LayoutParams liveLp = new LinearLayout.LayoutParams(-1, dp(50));
+        LinearLayout.LayoutParams liveLp = new LinearLayout.LayoutParams(-1, -2);
         liveLp.setMargins(0, 0, 0, dp(8));
         card.addView(liveBtn, liveLp);
         liveBtn.setOnClickListener(v -> openLiveDriver());
 
         LinearLayout safetyRow = new LinearLayout(this);
         safetyRow.setOrientation(LinearLayout.HORIZONTAL);
-        Button shareBtn = outlineButton("🔗 Bagikan Trip");
-        Button sosBtn = outlineButton("🆘 SOS");
-        safetyRow.addView(shareBtn, new LinearLayout.LayoutParams(0, dp(48), 1));
-        LinearLayout.LayoutParams sosLp = new LinearLayout.LayoutParams(0, dp(48), 1); sosLp.setMargins(dp(8),0,0,0);
+        if (getResources().getConfiguration().screenWidthDp < 360
+                || getResources().getConfiguration().fontScale > 1.15f) safetyRow.setOrientation(LinearLayout.VERTICAL);
+        Button shareBtn = outlineButton("Bagikan trip"); shareBtn.setMinHeight(dp(48));
+        Button sosBtn = outlineButton("SOS • Bantuan"); sosBtn.setMinHeight(dp(48));
+        boolean stackSafety = safetyRow.getOrientation() == LinearLayout.VERTICAL;
+        safetyRow.addView(shareBtn, new LinearLayout.LayoutParams(stackSafety ? -1 : 0, -2, stackSafety ? 0 : 1));
+        LinearLayout.LayoutParams sosLp = new LinearLayout.LayoutParams(stackSafety ? -1 : 0, -2, stackSafety ? 0 : 1); sosLp.setMargins(stackSafety ? 0 : dp(8),stackSafety ? dp(8) : 0,0,0);
         safetyRow.addView(sosBtn, sosLp);
         LinearLayout.LayoutParams safetyLp = new LinearLayout.LayoutParams(-1, -2); safetyLp.setMargins(0,0,0,dp(8)); card.addView(safetyRow, safetyLp);
         shareBtn.setOnClickListener(v -> shareTrip());
@@ -398,6 +410,7 @@ class CustomerTripActivityScreenCore extends Activity {
                     if (res.optBoolean("success", false)) {
                         handleStatusResponse(res);
                     } else if (statusText != null) {
+                        statusText.setVisibility(View.VISIBLE);
                         statusText.setText(firstNonEmpty(res.optString("message", ""), "Menunggu status order..."));
                     }
                 });
@@ -408,7 +421,7 @@ class CustomerTripActivityScreenCore extends Activity {
                 featureRuntime.post(mainHandler, () -> {
                     if (generation != trackingGeneration.get() || isFinishing() || isDestroyed()) return;
                     setLoading(false);
-                    if (statusText != null) statusText.setText("Koneksi tracking belum stabil. Mencoba lagi...");
+                    if (statusText != null) { statusText.setVisibility(View.VISIBLE); statusText.setText("Koneksi tracking belum stabil. Mencoba lagi..."); }
                 });
             } finally {
                 trackingRequestInFlight.set(false);
@@ -447,6 +460,15 @@ class CustomerTripActivityScreenCore extends Activity {
         loadTripPhoto(vehiclePhotoView,firstNonEmpty(driver.optString("vehicle_photo"),order.optString("vehicle_photo")),true);
         lastDriverName = driverName;
         lastStatus = status;
+        if (tripStatus != null) {
+            try {
+                JSONObject visualOrder = new JSONObject(order.toString());
+                visualOrder.put("status", status); visualOrder.put("driver_name", driverName);
+                if (visualOrder.optString("order_id").isEmpty()) visualOrder.put("order_id", orderId);
+                if (visualOrder.optString("order_type").isEmpty()) visualOrder.put("order_type", res.optString("order_type"));
+                tripStatus.bind(visualOrder, "", "Lihat posisi di peta  ↓");
+            } catch (org.json.JSONException ignored) { }
+        }
         CustomerOrderBreadcrumbs.state(orderId, status, orderSource);
 
         double pLat = firstValidCoordPart(
@@ -498,7 +520,10 @@ class CustomerTripActivityScreenCore extends Activity {
             if ("ready".equals(merchantStatus)) merchantLine = "🍽️ Pesanan sudah siap diambil dari merchant";
             else if ("preparing".equals(merchantStatus)) merchantLine = "🍳 Merchant sedang menyiapkan pesanan" + (cookMinutes > 0 ? (" • estimasi " + cookMinutes + " menit") : "");
             else if ("merchant_accepted".equals(merchantStatus)) merchantLine = "✅ Merchant menerima pesanan" + (cookMinutes > 0 ? (" • estimasi " + cookMinutes + " menit") : "");
-            if (!merchantLine.isEmpty()) statusText.setText(statusText.getText() + "\n" + merchantLine);
+            if (!merchantLine.isEmpty()) {
+                statusText.setText((statusText.getText().length() > 0 ? statusText.getText() + "\n" : "") + merchantLine);
+                statusText.setVisibility(View.VISIBLE);
+            }
         }
 
         agreedServerRoute=order.optJSONObject("server_route");
@@ -610,7 +635,7 @@ class CustomerTripActivityScreenCore extends Activity {
         String line=(nonCash?"💳 TransPay • sudah dibayar":"💵 Tunai • bayar ke driver")+(price>0?" • "+rupiah(price):"");
         String proposal=CustomerOrderChangeState.summary(order);
         if(!proposal.isEmpty()) line+="\n"+proposal;
-        if(extensionTravelling && statusText!=null)statusText.setText("Dalam perjalanan ke tujuan tambahan");
+        if(extensionTravelling && statusText!=null){statusText.setText("Dalam perjalanan ke tujuan tambahan");statusText.setVisibility(View.VISIBLE);}
         if(approvePriceButton!=null)approvePriceButton.setText(destinationRequestId>0?"Setujui Tujuan & Biaya":"Setujui Harga");
         paymentInfoText.setText(line); paymentInfoText.setVisibility(View.VISIBLE); paymentInfoText.setBackground(round("#EFF6FF",dp(14)));
         receivedButton.setVisibility(CustomerOrderChangeState.canReceive(order) ? View.VISIBLE:View.GONE);
@@ -713,30 +738,10 @@ class CustomerTripActivityScreenCore extends Activity {
     }
 
     protected void setStatusText(String status, String driverName, boolean hasLocation) {
-        String s = firstNonEmpty(status, "").trim().toLowerCase(Locale.US);
-        String name = firstNonEmpty(driverName, "Driver");
-        String line;
-
-        if ("driver_accepted".equals(s) || "accepted".equals(s) || "assigned".equals(s)
-                || "driver_assigned".equals(s) || "taken".equals(s) || "taken_by_driver".equals(s)) {
-            line = "🤝 " + name + " menerima pesananmu • sedang menuju titik jemput";
-        } else if ("arrived_pickup".equals(s) || "arrived".equals(s)) {
-            line = "📍 " + name + " sudah tiba di titik penjemputan";
-        } else if ("picked_up".equals(s) || "on_trip".equals(s) || "on_delivery".equals(s)
-                || "in_progress".equals(s) || "ongoing".equals(s) || "started".equals(s)) {
-            line = "🛵 Perjalanan dimulai • " + name + " sedang menuju tujuan";
-        } else if ("arrived_delivery".equals(s)) {
-            line = "🏁 Sampai tujuan • " + name + " sudah tiba di lokasi pengantaran";
-        } else if (isFinishedStatus(s)) {
-            line = "✨ Pesanan selesai • terima kasih sudah Transivin bareng kami";
-        } else {
-            line = "🚦 " + OrderStatusPresentation.label(s, "");
-        }
-
-        if (!hasLocation && !isFinishedStatus(s)) {
-            line += "\n🛰️ Lokasi driver sedang diperbarui";
-        }
-        statusText.setText(line);
+        // The shared hero owns the status title and explanation. Keep tracking health separate.
+        boolean waitingForLocation = !hasLocation && !isFinishedStatus(status);
+        statusText.setText(waitingForLocation ? "Lokasi driver sedang diperbarui…" : "");
+        statusText.setVisibility(waitingForLocation ? View.VISIBLE : View.GONE);
     }
 
     protected String popupText(String status) {
@@ -881,6 +886,7 @@ class CustomerTripActivityScreenCore extends Activity {
                     goHomeAfterFinished();
                     return;
                 }
+                statusText.setVisibility(View.VISIBLE);
                 statusText.setText("✅ Order selesai\nKembali ke dashboard dalam " + finishSeconds + " detik...");
                 finishSeconds--;
                 mainHandler.postDelayed(this, 1000);

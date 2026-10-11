@@ -92,6 +92,7 @@ class CustomerDashboardActivityScreenCore extends Activity
     protected TextView locationText;
     protected TextView clusterText;
     protected TextView balanceText;
+    private PremiumOrderStatusView premiumOrder;
     protected TextView orderText;
     protected TextView orderHint;
     private SmartWaitingTextView dashboardWaiting;
@@ -2195,122 +2196,17 @@ class CustomerDashboardActivityScreenCore extends Activity
 
 
     private void buildOrderSection() {
-        FrameLayout card = new FrameLayout(this);
-        orderCard = card;
-
-        card.setBackground(
-                Shape.roundStroke(
-                        "#FFFFFF",
-                        "#EDF2F7",
-                        dp(17),
-                        1
-                )
-        );
-
-        card.setElevation(dp(1));
-        card.setMinimumHeight(dp(72));
-
-        LinearLayout.LayoutParams cardLp =
-                new LinearLayout.LayoutParams(
-                        -1,
-                        -2
-                );
-
-        cardLp.setMargins(
-                0,
-                0,
-                0,
-                dp(6)
-        );
-
-        content.addView(card, cardLp);
-
-        ImageView illustration =
-                new ImageView(this);
-
-        illustration.setImageResource(
-                drawable("img_order_empty")
-        );
-
-        illustration.setScaleType(
-                ImageView.ScaleType.CENTER_INSIDE
-        );
-
-        FrameLayout.LayoutParams artLp =
-                new FrameLayout.LayoutParams(
-                        dp(58),
-                        -1
-                );
-
-        artLp.gravity = Gravity.END;
-        card.addView(illustration, artLp);
-
-        LinearLayout box = new LinearLayout(this);
-        box.setOrientation(LinearLayout.VERTICAL);
-
-        box.setPadding(
-                dp(12),
-                dp(7),
-                dp(62),
-                dp(7)
-        );
-
-        card.addView(
-                box,
-                new FrameLayout.LayoutParams(-1, -1)
-        );
-
-        box.addView(
-                text(
-                        "Status Pesanan",
-                        13,
-                        "#0B3A78",
-                        true
-                )
-        );
-
-        orderText = text(
-                "Belum ada pesanan aktif · Mulai pesan ›",
-                10,
-                "#718096",
-                false
-        );
-
-        LinearLayout.LayoutParams orderLp =
-                new LinearLayout.LayoutParams(-1, -2);
-
-        orderLp.setMargins(
-                0,
-                dp(3),
-                0,
-                0
-        );
-
-        box.addView(orderText, orderLp);
-
-        orderHint = text(
-                "",
-                1,
-                "#8AA0B8",
-                false
-        );
-        orderHint.setVisibility(View.GONE);
-
-        LinearLayout.LayoutParams hintLp =
-                new LinearLayout.LayoutParams(-1, -2);
-
-        hintLp.setMargins(
-                0,
-                dp(2),
-                0,
-                0
-        );
-
-        box.addView(orderHint, hintLp);
-        dashboardWaiting=new SmartWaitingTextView(this); box.addView(dashboardWaiting,new LinearLayout.LayoutParams(-1,-2));
-
-        card.setClickable(true);
-        card.setOnClickListener(v -> openActiveOrder());
+        orderCard = new FrameLayout(this);
+        premiumOrder = new PremiumOrderStatusView(this, true);
+        premiumOrder.setAction(v -> openActiveOrder());
+        orderCard.addView(premiumOrder, new FrameLayout.LayoutParams(-1, -2));
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, -2);
+        lp.setMargins(0, dp(4), 0, dp(10)); content.addView(orderCard, lp);
+        // Keep inherited references compatible; presentation now belongs to the shared card.
+        orderText = text("", 12, "#64748B", false);
+        orderHint = text("", 12, "#64748B", false);
+        dashboardWaiting = new SmartWaitingTextView(this);
+        premiumOrder.addView(dashboardWaiting, new LinearLayout.LayoutParams(-1, -2));
     }
 
     private void openActiveOrder() {
@@ -2707,15 +2603,10 @@ class CustomerDashboardActivityScreenCore extends Activity
         activeOrderJson = state.activeOrder;
         if(dashboardWaiting!=null)dashboardWaiting.bind(activeOrderJson==null||!isActiveOrderText(activeOrderText)?null:activeOrderJson.optJSONObject("smart_waiting"),activeOrderJson==null?"":activeOrderJson.optString("status"));
         boolean hasActiveOrder = isActiveOrderText(activeOrderText);
-        orderText.setText(hasActiveOrder
-                ? activeOrderText
-                : "Belum ada pesanan aktif · Mulai pesan ›");
-
-        if (orderCard != null) {
-            orderCard.setBackground(Shape.roundStroke(
-                    state.activeOrder != null ? "#F0F7FF" : "#FFFFFF",
-                    state.activeOrder != null ? "#9CCBFF" : "#EDF2F7", dp(17), 1));
-        }
+        if (premiumOrder != null) premiumOrder.bind(
+                hasActiveOrder ? activeOrderJson : null,
+                hasActiveOrder ? activeOrderText : "Belum ada pesanan aktif",
+                hasActiveOrder ? "Pantau pesanan Anda  ›" : "Lihat pusat pesanan  ›");
 
         renderGrowthState(state);
 

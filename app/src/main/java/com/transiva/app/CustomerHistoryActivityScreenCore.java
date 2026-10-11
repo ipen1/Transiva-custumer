@@ -1175,8 +1175,8 @@ class CustomerHistoryActivityScreenCore extends Activity {
         );
 
         badge.setGravity(Gravity.CENTER);
-        badge.setMaxWidth(dp(145));
-        badge.setMaxLines(2);
+        badge.setTextSize(12);
+        badge.setGravity(Gravity.START | Gravity.CENTER_VERTICAL);
 
         badge.setPadding(
                 dp(9),
@@ -1192,9 +1192,9 @@ class CustomerHistoryActivityScreenCore extends Activity {
                 )
         );
 
-        top.addView(badge);
-
         card.addView(top);
+        LinearLayout.LayoutParams badgeLp = new LinearLayout.LayoutParams(-1, -2);
+        badgeLp.topMargin = dp(10); card.addView(badge, badgeLp);
 
         // Khusus TransSend: OTP ditampilkan kepada customer, bukan tombol konfirmasi terima.
         String deliveryOtp = order.optString("delivery_otp", "").trim();

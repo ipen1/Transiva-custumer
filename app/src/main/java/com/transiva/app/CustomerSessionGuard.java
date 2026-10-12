@@ -15,4 +15,11 @@ public final class CustomerSessionGuard {
         SessionManager s=new SessionManager(c);String id=s.getId();if(id==null||id.isEmpty())id=s.getUserId();
         return CustomerReadSafetyRules.sameSession(account,token,id,s.getToken()==null?"":s.getToken(),s.isLoggedIn());
     }
+    /** Pin the captured bearer so an account switch cannot retarget a money request. */
+    public void authorize(Context c, java.net.HttpURLConnection connection) throws java.io.IOException {
+        if (!matches(c) || token.isEmpty() || connection == null
+                || !NetworkSafetyRules.maySendCredentials(connection.getURL().toString()))
+            throw new java.io.InterruptedIOException("Session changed");
+        connection.setRequestProperty("Authorization", "Bearer " + token.trim());
+    }
 }

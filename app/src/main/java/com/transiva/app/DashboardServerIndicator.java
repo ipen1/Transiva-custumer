@@ -19,37 +19,14 @@ import java.util.concurrent.Future;
 
 /** Shared bottom-nav indicator. Owner lifecycle prevents requests from hidden tabs. */
 public final class DashboardServerIndicator extends FrameLayout {
-    private static final String URL_TEXT = "https://transiva.my.id/server/customer_connection_status.php";
     private final Activity owner;
     private boolean registered;
     private final Application.ActivityLifecycleCallbacks lifecycle;
-    private final Handler main = new Handler(Looper.getMainLooper());
-    private final Object lock = new Object();
     private final View square;
-    private volatile boolean active;
-    private volatile long generation;
-    private HttpURLConnection connection;
-    private Future<?> request;
-    private boolean busy;
-    private String message = "Menghubungkan ke server Transiva";
-    private TransivaNetworkMonitor.State networkState;
-    private final Runnable poll = this::check;
-    private final Runnable deadline = () -> {
-        if (!active || !busy) return;
-        cancelRequest(); show("#EF4444", "Koneksi server terputus • pemeriksaan timeout");
-        main.postDelayed(poll, 15000L);
-    };
-    private final TransivaNetworkMonitor.Listener networkListener = state -> main.post(() -> {
-        if (!active) return;
-        TransivaNetworkMonitor.State previous = networkState; networkState = state;
-        if (state == TransivaNetworkMonitor.State.OFFLINE) {
-            cancelRequest(); main.removeCallbacks(poll);
-            show("#EF4444", "Terputus • perangkat tidak memiliki koneksi internet");
-            main.postDelayed(poll, 15000L);
-        } else if (previous == TransivaNetworkMonitor.State.OFFLINE || previous == null) {
-            cancelRequest(); check();
-        }
-    });
+    private boolean active;
+    private String message="Menghubungkan ke server Transiva";
+    private final CustomerServerConnectionMonitor monitor=CustomerServerConnectionMonitor.shared();
+    private final CustomerServerConnectionMonitor.Listener statusListener=this::show;
 
     public DashboardServerIndicator(Context context) {
         super(context);
@@ -74,21 +51,15 @@ public final class DashboardServerIndicator extends FrameLayout {
         setFocusable(true); show("#FBBF24", message);
         setOnClickListener(v -> {
             Toast.makeText(getContext(), message, Toast.LENGTH_SHORT).show();
-            if (active && !busy) check();
+            if (active) monitor.refresh();
         });
     }
 
     public void start() {
-        if (active) return;
-        active = true; networkState = null;
-        TransivaNetworkMonitor.install(getContext());
-        networkState = TransivaNetworkMonitor.state();
-        TransivaNetworkMonitor.addListener(networkListener);
-        check();
+        if(active)return; active=true; monitor.subscribe(getContext(),statusListener);
     }
     public void stop() {
-        active = false; TransivaNetworkMonitor.removeListener(networkListener);
-        main.removeCallbacksAndMessages(null); cancelRequest(); networkState = null;
+        if(!active)return; active=false; monitor.unsubscribe(statusListener);
     }
     @Override protected void onAttachedToWindow() {
         super.onAttachedToWindow();
@@ -104,55 +75,6 @@ public final class DashboardServerIndicator extends FrameLayout {
     }
     @Override protected void onDetachedFromWindow() { stop(); unregister(); super.onDetachedFromWindow(); }
 
-    private void check() {
-        if (!active || busy) return;
-        main.removeCallbacks(poll);
-        if (!TransivaNetworkMonitor.isOnline()) {
-            show("#EF4444", "Terputus • perangkat tidak memiliki koneksi internet");
-            main.postDelayed(poll, 15000L); return;
-        }
-        busy = true; final long token = ++generation;
-        show("#FBBF24", "Menghubungkan ke server Transiva");
-        main.postDelayed(deadline, 12000L);
-        request = TransivaNetworkExecutor.execute(() -> {
-            boolean healthy = false; HttpURLConnection candidate = null;
-            try {
-                candidate = (HttpURLConnection) new URL(URL_TEXT).openConnection();
-                candidate.setConnectTimeout(5000); candidate.setReadTimeout(5000);
-                candidate.setInstanceFollowRedirects(false); candidate.setUseCaches(false);
-                candidate.setRequestProperty("Accept", "application/json");
-                candidate.setRequestProperty("Cache-Control", "no-cache, no-store");
-                synchronized (lock) {
-                    if (!active || token != generation) return;
-                    connection = candidate;
-                }
-                int code = candidate.getResponseCode();
-                if (code == 200) {
-                    JSONObject response = new JSONObject(BoundedResponseReader.read(candidate.getInputStream(), 4096, 5000));
-                    healthy = response.optBoolean("success", false)
-                            && "transiva-customer-connection".equals(response.optString("service"));
-                }
-            } catch (Exception ignored) {
-                // An unreachable health probe is a connection state, not an application crash.
-            } finally {
-                if (candidate != null) candidate.disconnect();
-                synchronized (lock) { if (connection == candidate) connection = null; }
-            }
-            final boolean result = healthy;
-            main.post(() -> complete(token, result));
-        }, () -> main.post(() -> complete(token, false)));
-    }
-    private void complete(long token, boolean healthy) {
-        if (!active || token != generation || !busy) return;
-        busy = false; request = null; main.removeCallbacks(deadline);
-        show(healthy ? "#22C55E" : "#EF4444", healthy ? "Terhubung ke server Transiva" : "Terputus • server belum dapat dihubungi");
-        main.postDelayed(poll, healthy ? 30000L : 15000L);
-    }
-    private void cancelRequest() {
-        ++generation; busy = false; main.removeCallbacks(deadline);
-        Future<?> pending = request; request = null; if (pending != null) pending.cancel(true);
-        synchronized (lock) { if (connection != null) { connection.disconnect(); connection = null; } }
-    }
     private void show(String color, String nextMessage) {
         GradientDrawable shape = new GradientDrawable(); shape.setColor(Color.parseColor(color));
         shape.setCornerRadius(dp(2)); shape.setStroke(dp(1), 0xD9FFFFFF); square.setBackground(shape);

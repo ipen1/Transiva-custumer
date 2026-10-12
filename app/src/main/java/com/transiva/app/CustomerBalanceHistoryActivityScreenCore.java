@@ -97,6 +97,8 @@ class CustomerBalanceHistoryActivityScreenCore extends Activity {
     private TextView periodText;
     private String lastListSignature="";
     protected boolean loadingData;
+    private boolean operationBusy;
+    private boolean pendingPrompted;
 
     @Override
     protected void onCreate(
@@ -124,6 +126,7 @@ class CustomerBalanceHistoryActivityScreenCore extends Activity {
         super.onResume();
         featureRuntime.onResume();
         CustomerAppSettings.apply(this);
+        if (!pendingPrompted) { pendingPrompted=true; showPendingOperation(); }
 
         if (
                 content != null
@@ -886,7 +889,7 @@ class CustomerBalanceHistoryActivityScreenCore extends Activity {
     private void executeSession(Runnable work) {
         CustomerSessionGuard session=CustomerSessionGuard.capture(this);
         featureRuntime.execute(() -> { operationSession.set(session);try{work.run();}finally{operationSession.remove();} },
-                () -> featureRuntime.post(mainHandler,() -> {if(!isFinishing()&&!isDestroyed()&&session.matches(this)){setLoading(false);toast("Aplikasi sedang sibuk. Coba kembali sebentar lagi.");}}));
+                () -> featureRuntime.post(mainHandler,() -> {if(!isFinishing()&&!isDestroyed()&&session.matches(this)){operationBusy=false;setLoading(false);toast("Aplikasi sedang sibuk. Coba kembali sebentar lagi.");}}));
     }
     private void postSession(Runnable result) {
         CustomerSessionGuard tagged=operationSession.get();
@@ -1073,6 +1076,7 @@ class CustomerBalanceHistoryActivityScreenCore extends Activity {
     }
 
     protected void showTransferDialog() {
+        if (operationBusy || showPendingOperation()) return;
         LinearLayout form =
                 dialogForm();
 
@@ -1203,7 +1207,8 @@ class CustomerBalanceHistoryActivityScreenCore extends Activity {
             int amount,
             String note
     ) {
-        setLoading(true);
+        if (operationBusy || showPendingOperation()) return;
+        operationBusy=true; setLoading(true);
 
         executeSession(() -> {
             try {
@@ -1243,7 +1248,7 @@ class CustomerBalanceHistoryActivityScreenCore extends Activity {
                         );
 
                 postSession(() -> {
-                    setLoading(false);
+                    operationBusy=false; setLoading(false);
 
                     if (
                             !response.optBoolean(
@@ -1272,7 +1277,7 @@ class CustomerBalanceHistoryActivityScreenCore extends Activity {
 
             } catch (Exception error) {
                 postSession(() -> {
-                    setLoading(false);
+                    operationBusy=false; setLoading(false);
 
                     showInfo(
                             "Gagal Membuat Detail",
@@ -1403,144 +1408,16 @@ class CustomerBalanceHistoryActivityScreenCore extends Activity {
                 .show();
     }
 
-    protected void submitTransfer(
-            String recipient,
-            int amount,
-            String note,
-            String quoteToken,
-            String requestId
-    ) {
-        if (
-                quoteToken == null
-                        || quoteToken.trim()
-                        .isEmpty()
-        ) {
-            showInfo(
-                    "Kirim Dana",
-                    "Detail transfer tidak valid. Silakan ulangi."
-            );
-
-            return;
+    protected void submitTransfer(String recipient, int amount, String note, String quoteToken, String requestId) {
+        if (operationBusy || showPendingOperation()) return;
+        if (quoteToken == null || quoteToken.trim().isEmpty() || requestId == null || requestId.isEmpty()) {
+            showInfo("Kirim Dana", "Detail transfer tidak valid. Silakan ulangi."); return;
         }
-
-        setLoading(true);
-
-        executeSession(() -> {
-            try {
-                JSONObject request =
-                        new JSONObject();
-
-                request.put(
-                        "user_id",
-                        userId
-                );
-
-                request.put(
-                        "username",
-                        username
-                );
-
-                request.put(
-                        "recipient",
-                        recipient
-                );
-
-                request.put(
-                        "amount",
-                        amount
-                );
-
-                request.put(
-                        "note",
-                        note
-                );
-
-                request.put(
-                        "quote_token",
-                        quoteToken
-                );
-
-                request.put(
-                        "request_id",
-                        requestId
-                );
-
-                JSONObject response =
-                        postJson(
-                                TRANSFER_URL,
-                                request
-                        );
-
-                postSession(() -> {
-                    setLoading(false);
-
-                    if (
-                            response.optBoolean(
-                                    "success",
-                                    false
-                            )
-                    ) {
-                        int fee =
-                                response.optInt(
-                                        "fee",
-                                        0
-                                );
-
-                        int total =
-                                response.optInt(
-                                        "total_debit",
-                                        amount + fee
-                                );
-
-                        showInfo(
-                                "Kirim Dana Berhasil",
-                                response.optString(
-                                        "message",
-                                        "Dana berhasil dikirim."
-                                )
-                                        + "\n\nBiaya: "
-                                        + (
-                                        fee == 0
-                                                ? "Gratis"
-                                                : rupiah(fee)
-                                )
-                                        + "\nTotal dipotong: "
-                                        + rupiah(total)
-                                        + "\nSisa kuota gratis: "
-                                        + response.optInt(
-                                        "free_remaining",
-                                        0
-                                )
-                                        + " kali"
-                        );
-
-                        loadWallet();
-
-                    } else {
-                        showInfo(
-                                "Kirim Dana Gagal",
-                                response.optString(
-                                        "message",
-                                        "Transfer tidak dapat diproses."
-                                )
-                        );
-                    }
-                });
-
-            } catch (Exception error) {
-                postSession(() -> {
-                    setLoading(false);
-
-                    showInfo(
-                            "Kirim Dana Gagal",
-                            first(
-                                    error.getMessage(),
-                                    "Periksa koneksi internet."
-                            )
-                    );
-                });
-            }
-        });
+        try {
+            JSONObject payload = new JSONObject().put("recipient", recipient).put("amount", amount)
+                    .put("note", note).put("quote_token", quoteToken).put("request_id", requestId);
+            sendWalletOperation(walletJournal().begin("transfer", payload));
+        } catch (Exception error) { showInfo("Kirim Dana", first(error.getMessage(), "Operasi belum dapat disiapkan.")); }
     }
 
     protected void installRupiahFormatting(
@@ -1624,6 +1501,7 @@ class CustomerBalanceHistoryActivityScreenCore extends Activity {
     }
 
     protected void showWithdrawDialog() {
+        if (operationBusy || showPendingOperation()) return;
         LinearLayout form =
                 dialogForm();
 
@@ -1769,102 +1647,71 @@ class CustomerBalanceHistoryActivityScreenCore extends Activity {
 
 
 
-    protected void submitWithdraw(
-            int amount,
-            String bank,
-            String accountName,
-            String accountNumber,
-            String note
-    ) {
-        setLoading(true);
+    protected void submitWithdraw(int amount, String bank, String accountName, String accountNumber, String note) {
+        if (operationBusy || showPendingOperation()) return;
+        try {
+            JSONObject payload = new JSONObject().put("amount", amount).put("bank_name", bank)
+                    .put("account_name", accountName).put("account_number", accountNumber).put("note", note);
+            sendWalletOperation(walletJournal().begin("withdraw", payload));
+        } catch (Exception error) { showInfo("Withdraw", first(error.getMessage(), "Operasi belum dapat disiapkan.")); }
+    }
 
+    private CustomerWalletOperationJournal walletJournal() {
+        return new CustomerWalletOperationJournal(this, Integer.toString(userId));
+    }
+    private boolean showPendingOperation() {
+        try {
+            JSONObject operation = walletJournal().pending();
+            if (operation == null) return false;
+            if (!operationBusy && !isFinishing() && !isDestroyed()) {
+                new TransivaAlertDialogBuilder(this).setTitle("Periksa hasil transaksi")
+                        .setMessage("Ada operasi wallet yang hasilnya belum terkonfirmasi. Periksa operasi yang sama sebelum membuat transaksi baru.")
+                        .setPositiveButton("Periksa hasil", (dialog, which) -> sendWalletOperation(operation))
+                        .setNegativeButton("Nanti", null).show();
+            }
+            return true;
+        } catch (Exception error) {
+            showInfo("Wallet", "Penanda operasi belum dapat dibaca. Hubungi bantuan sebelum membuat transaksi baru.");
+            return true;
+        }
+    }
+    private void sendWalletOperation(JSONObject operation) {
+        if (operationBusy) return;
+        final String action = operation.optString("action");
+        final String id = operation.optString("id");
+        final JSONObject payload = operation.optJSONObject("payload");
+        if (payload == null || id.isEmpty() || !("transfer".equals(action) || "withdraw".equals(action))) {
+            showInfo("Wallet", "Data operasi tidak valid. Hubungi bantuan."); return;
+        }
+        final CustomerWalletOperationJournal journal = walletJournal();
+        try { journal.prepareSend(id); }
+        catch (Exception error) { showInfo("Wallet", first(error.getMessage(), "Operasi belum dapat disimpan.")); return; }
+        operationBusy=true; setLoading(true);
         executeSession(() -> {
             try {
-                JSONObject request =
-                        new JSONObject();
-
-                request.put(
-                        "user_id",
-                        userId
-                );
-
-                request.put(
-                        "username",
-                        username
-                );
-
-                request.put(
-                        "amount",
-                        amount
-                );
-
-                request.put(
-                        "bank_name",
-                        bank
-                );
-
-                request.put(
-                        "account_name",
-                        accountName
-                );
-
-                request.put(
-                        "account_number",
-                        accountNumber
-                );
-
-                request.put(
-                        "note",
-                        note
-                );
-
-                JSONObject response =
-                        postJson(
-                                WITHDRAW_URL,
-                                request
-                        );
-
+                JSONObject response = postJson("transfer".equals(action) ? TRANSFER_URL : WITHDRAW_URL, payload);
+                boolean success = response.optBoolean("success", false);
+                boolean rejected = "rejected".equals(response.optString("operation_state"));
+                // Also persists completion when the Activity has closed; session is checked by postJson.
+                if (success || rejected) journal.resolve(id);
                 postSession(() -> {
-                    setLoading(false);
-
-                    if (
-                            response.optBoolean(
-                                    "success",
-                                    false
-                            )
-                    ) {
-                        showInfo(
-                                "Withdraw Diajukan",
-                                response.optString(
-                                        "message",
-                                        "Pengajuan withdraw berhasil dibuat."
-                                )
-                        );
-
+                    operationBusy=false; setLoading(false);
+                    if (success) {
+                        showInfo("transfer".equals(action) ? "Kirim Dana Berhasil" : "Withdraw Diajukan",
+                                response.optString("message", "Operasi berhasil.") + "\nReferensi: " + response.optString("reference", id));
                         loadWallet();
-
+                    } else if (rejected) {
+                        showInfo("Operasi Tidak Diproses", response.optString("message", "Operasi dibatalkan tanpa perubahan saldo."));
+                        loadWallet();
                     } else {
-                        showInfo(
-                                "Withdraw Gagal",
-                                response.optString(
-                                        "message",
-                                        "Withdraw tidak dapat diproses."
-                                )
-                        );
+                        showInfo("Hasil Belum Terkonfirmasi", response.optString("message", "Periksa koneksi Anda.")
+                                + "\nBuka Kirim Dana atau Withdraw untuk memeriksa operasi yang sama.");
                     }
                 });
-
             } catch (Exception error) {
                 postSession(() -> {
-                    setLoading(false);
-
-                    showInfo(
-                            "Withdraw Gagal",
-                            first(
-                                    error.getMessage(),
-                                    "Periksa koneksi internet."
-                            )
-                    );
+                    operationBusy=false; setLoading(false);
+                    showInfo("Hasil Belum Terkonfirmasi", "Jaringan atau respons belum memastikan hasil transaksi. ID operasi tetap disimpan. Buka Kirim Dana atau Withdraw untuk memeriksa kembali.");
                 });
             }
         });
@@ -1876,7 +1723,9 @@ class CustomerBalanceHistoryActivityScreenCore extends Activity {
         if(!session.matches(this))throw new java.io.InterruptedIOException("Session changed");
         HttpURLConnection connection=CustomerApiClient.open(this,endpoint);
         try {
-            connection.setRequestProperty("Idempotency-Key",ApiSecurity.idempotencyKey("wallet-withdraw"));
+            session.authorize(this, connection);
+            String idempotency = payload.optString("idempotency_key", "");
+            if (!idempotency.isEmpty()) connection.setRequestProperty("Idempotency-Key", idempotency);
             connection.setConnectTimeout(25000);connection.setReadTimeout(25000);connection.setRequestMethod("POST");connection.setDoOutput(true);
             connection.setRequestProperty("Content-Type","application/json; charset=UTF-8");
             byte[] bytes=payload.toString().getBytes(StandardCharsets.UTF_8);connection.setFixedLengthStreamingMode(bytes.length);
@@ -2028,7 +1877,7 @@ class CustomerBalanceHistoryActivityScreenCore extends Activity {
     ) {
         if (loading != null) {
             loading.setVisibility(
-                    show
+                    (show || operationBusy)
                             ? View.VISIBLE
                             : View.GONE
             );

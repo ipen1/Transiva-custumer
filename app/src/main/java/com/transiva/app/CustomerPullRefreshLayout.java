@@ -26,7 +26,9 @@ public final class CustomerPullRefreshLayout extends FrameLayout {
     private boolean dragging,blocked,refreshing;
     private final int slop;
     private final Runnable reset = () -> { if(!refreshing)hide(); };
-    private final Runnable timeout = () -> finish(false);
+    private Runnable timeoutAction = () -> { };
+    private final Runnable timeout = () -> { try { timeoutAction.run(); } finally { finish(false); } };
+    public void setTimeoutAction(Runnable action) { timeoutAction = action == null ? () -> { } : action; }
     public CustomerPullRefreshLayout(Activity activity,ScrollView child,Runnable action,Busy busy) {
         super(activity);this.scroll=child;this.action=action;this.busy=busy;
         slop=ViewConfiguration.get(activity).getScaledTouchSlop();

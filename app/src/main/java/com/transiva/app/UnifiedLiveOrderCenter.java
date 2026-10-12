@@ -34,6 +34,10 @@ public final class UnifiedLiveOrderCenter {
     private static final Handler MAIN = new Handler(Looper.getMainLooper());
     private static final CopyOnWriteArraySet<Listener> LISTENERS = new CopyOnWriteArraySet<>();
     private static volatile List<Order> memory = Collections.emptyList();
+    private static String memoryOwner = "";
+    private static long memoryAt;
+    private static final java.util.concurrent.atomic.AtomicLong REQUEST = new java.util.concurrent.atomic.AtomicLong();
+    private static volatile Context cacheContext;
 
     private UnifiedLiveOrderCenter() { }
 
@@ -60,37 +64,46 @@ public final class UnifiedLiveOrderCenter {
 
     public static void addListener(Listener l) { if (l != null) { LISTENERS.add(l); l.onOrdersChanged(snapshot()); } }
     public static void removeListener(Listener l) { if (l != null) LISTENERS.remove(l); }
-    public static List<Order> snapshot() { return new ArrayList<>(memory); }
+    public static synchronized List<Order> snapshot() {
+        Context c=cacheContext; if(c==null)c=TransivaCustomerApplication.appContext();
+        if(c==null)return Collections.emptyList();
+        CustomerSessionGuard identity=CustomerSessionGuard.capture(c);
+        if(!CustomerReadSafetyRules.fresh(identity.account,memoryOwner,memoryAt,System.currentTimeMillis(),CACHE_MAX_AGE_MS))return Collections.emptyList();
+        return new ArrayList<>(memory);
+    }
 
     /** Fetches from server even when local active_order_id is missing. */
     public static void refresh(Context context, Callback cb) {
-        final Context app = context.getApplicationContext();
-        if (!TransivaNetworkMonitor.isOnline()) {
-            List<Order> cached = readCache(app, true);
-            deliver(cb, cached, true, new IllegalStateException("offline"));
-            return;
+        final Context app=context.getApplicationContext();cacheContext=app;
+        final CustomerSessionGuard identity=CustomerSessionGuard.capture(app);
+        final long sequence=REQUEST.incrementAndGet();
+        if(identity.account.isEmpty()) { MAIN.post(() -> {if(cb!=null&&CustomerSessionGuard.capture(app).account.isEmpty())cb.onResult(Collections.emptyList(),true,new IllegalStateException("Session unavailable"));}); return; }
+        if(!TransivaNetworkMonitor.isOnline()) {
+            long saved=app.getSharedPreferences(PREF,Context.MODE_PRIVATE).getLong(KEY_AT,0);
+            deliver(app,identity,sequence,cb,readCache(app,identity.account),saved,true,new IllegalStateException("offline"));return;
         }
         TransivaNetworkExecutor.execute(() -> {
-            List<Order> result = new ArrayList<>(); Throwable error = null;
+            List<Order> result=new ArrayList<>();Throwable error=null;long saved=0;HttpURLConnection connection=null;
             try {
-                HttpURLConnection c = CustomerApiClient.open(app, URL + "?_=" + System.currentTimeMillis());
-                c.setRequestMethod("GET"); c.setConnectTimeout(12000); c.setReadTimeout(12000); c.setUseCaches(false);
-                c.setRequestProperty("Accept", "application/json");
-                int code = c.getResponseCode();
-                InputStream in = code >= 200 && code < 400 ? c.getInputStream() : c.getErrorStream();
-                String body = read(in); c.disconnect();
-                JSONObject root = body.trim().isEmpty() ? new JSONObject() : new JSONObject(body);
-                if (!root.optBoolean("success", false)) throw new IllegalStateException(root.optString("message", "active orders failed"));
-                JSONArray a = root.optJSONArray("orders");
-                if (a != null) for (int i=0;i<a.length();i++) {
-                    JSONObject o=a.optJSONObject(i); if(o==null) continue;
-                    Order order=new Order(o); if(!order.id.isEmpty() && !CustomerOrderState.isEnded(order.status)) result.add(order);
+                if(!identity.matches(app))return;
+                connection=CustomerApiClient.open(app,URL+"?_="+System.currentTimeMillis());
+                connection.setRequestMethod("GET");connection.setConnectTimeout(12000);connection.setReadTimeout(12000);
+                int code=connection.getResponseCode();
+                String body=BoundedResponseReader.read(code>=200&&code<300?connection.getInputStream():connection.getErrorStream(),2*1024*1024,12000);
+                if(!identity.matches(app))return;
+                CustomerApiClient.handleSessionResponse(app,code,body);
+                JSONObject root=new JSONObject(body);JSONArray orders=root.optJSONArray("orders");
+                if(code!=200||!root.optBoolean("success",false)||orders==null)throw new IllegalStateException("Active orders unavailable");
+                for(int i=0;i<orders.length();i++) {
+                    JSONObject raw=orders.optJSONObject(i);if(raw==null)continue;
+                    String owner=raw.optString("user_id","");if(!owner.isEmpty()&&!owner.equals(identity.account))continue;
+                    Order order=new Order(raw);if(!order.id.isEmpty()&&!CustomerOrderState.isEnded(order.status))result.add(order);
                 }
-                sort(result); writeCache(app, result);
-            } catch (Throwable t) { error=t; result=readCache(app, true); }
-            final List<Order> out=result; final Throwable err=error;
-            MAIN.post(() -> { setMemory(out); if(cb!=null) cb.onResult(snapshot(), err!=null, err); });
-        });
+                sort(result);saved=System.currentTimeMillis();
+            } catch(Exception e) {error=e;saved=app.getSharedPreferences(PREF,Context.MODE_PRIVATE).getLong(KEY_AT,0);result=readCache(app,identity.account);}
+            finally {if(connection!=null)connection.disconnect();}
+            deliver(app,identity,sequence,cb,result,saved,error!=null,error);
+        }, () -> deliver(app,identity,sequence,cb,readCache(app,identity.account),app.getSharedPreferences(PREF,Context.MODE_PRIVATE).getLong(KEY_AT,0),true,new IllegalStateException("Network queue busy")));
     }
 
     public static Order primary(List<Order> orders) {
@@ -118,18 +131,36 @@ public final class UnifiedLiveOrderCenter {
     }
 
     public static void clear(Context context) {
-        memory=Collections.emptyList();
-        context.getSharedPreferences(PREF,Context.MODE_PRIVATE).edit().clear().apply();
-        notifyListeners();
+        synchronized(UnifiedLiveOrderCenter.class) {
+            REQUEST.incrementAndGet();memory=Collections.emptyList();memoryOwner="";memoryAt=0;
+            context.getSharedPreferences(PREF,Context.MODE_PRIVATE).edit().clear().apply();
+        }
+        MAIN.post(UnifiedLiveOrderCenter::notifyListeners);
     }
-
-    private static void setMemory(List<Order> list) { memory=Collections.unmodifiableList(new ArrayList<>(list)); notifyListeners(); }
-    private static void notifyListeners(){ for(Listener l:LISTENERS) try{l.onOrdersChanged(snapshot());}catch(Throwable ignored){} }
-    private static void deliver(Callback cb,List<Order> list,boolean cache,Throwable e){ MAIN.post(()->{setMemory(list);if(cb!=null)cb.onResult(snapshot(),cache,e);}); }
+    private static void notifyListeners(){for(Listener l:LISTENERS)try{l.onOrdersChanged(snapshot());}catch(Exception ignored){}}
+    private static void deliver(Context app,CustomerSessionGuard identity,long sequence,Callback cb,List<Order> orders,long saved,boolean cache,Throwable error) {
+        MAIN.post(() -> {
+            if(!identity.matches(app))return;
+            if(sequence!=REQUEST.get()){if(cb!=null)cb.onResult(snapshot(),true,new IllegalStateException("Newer request in progress"));return;}
+            synchronized(UnifiedLiveOrderCenter.class) {
+                if(!identity.matches(app)||sequence!=REQUEST.get())return;
+                if(!cache)writeCache(app,identity.account,orders,saved);
+                memory=Collections.unmodifiableList(new ArrayList<>(orders));memoryOwner=identity.account;memoryAt=saved;
+            }
+            notifyListeners();if(cb!=null)cb.onResult(snapshot(),cache,error);
+        });
+    }
     private static void sort(List<Order> list){ list.sort((a,b)->{int ar=CustomerOrderState.rank(a.status),br=CustomerOrderState.rank(b.status); if((ar>=20)!=(br>=20))return ar>=20?-1:1; return b.createdAt.compareTo(a.createdAt);}); }
-    private static void writeCache(Context c,List<Order> list){ JSONArray a=new JSONArray();for(Order o:list)a.put(o.raw);c.getSharedPreferences(PREF,Context.MODE_PRIVATE).edit().putString(KEY_JSON,a.toString()).putLong(KEY_AT,System.currentTimeMillis()).apply(); }
-    private static List<Order> readCache(Context c,boolean allowStale){ List<Order> out=new ArrayList<>(); try{SharedPreferences p=c.getSharedPreferences(PREF,Context.MODE_PRIVATE);long age=System.currentTimeMillis()-p.getLong(KEY_AT,0L);if(!allowStale&&age>CACHE_MAX_AGE_MS)return out;JSONArray a=new JSONArray(p.getString(KEY_JSON,"[]"));for(int i=0;i<a.length();i++){JSONObject o=a.optJSONObject(i);if(o!=null){Order x=new Order(o);if(!CustomerOrderState.isEnded(x.status))out.add(x);}}sort(out);}catch(Throwable ignored){} return out; }
-    private static String read(InputStream in)throws Exception{if(in==null)return"";BufferedReader r=new BufferedReader(new InputStreamReader(in,StandardCharsets.UTF_8));StringBuilder b=new StringBuilder();String l;while((l=r.readLine())!=null)b.append(l);r.close();return b.toString();}
+    private static void writeCache(Context c,String owner,List<Order> orders,long saved){
+        JSONArray json=new JSONArray();for(Order o:orders)json.put(o.raw);
+        c.getSharedPreferences(PREF,Context.MODE_PRIVATE).edit().putString("owner",owner).putString(KEY_JSON,json.toString()).putLong(KEY_AT,saved).apply();
+    }
+    private static List<Order> readCache(Context c,String owner){
+        List<Order> result=new ArrayList<>();SharedPreferences prefs=c.getSharedPreferences(PREF,Context.MODE_PRIVATE);
+        if(!CustomerReadSafetyRules.fresh(owner,prefs.getString("owner",""),prefs.getLong(KEY_AT,0),System.currentTimeMillis(),CACHE_MAX_AGE_MS))return result;
+        try{JSONArray json=new JSONArray(prefs.getString(KEY_JSON,"[]"));for(int i=0;i<json.length();i++){JSONObject raw=json.optJSONObject(i);if(raw!=null){Order o=new Order(raw);if(!CustomerOrderState.isEnded(o.status))result.add(o);}}sort(result);}catch(Exception ignored){}
+        return result;
+    }
     private static String normalizeDriverType(String s){String n=s==null?"":s.toLowerCase();return(n.contains("car")||n.contains("mobil"))?"car":"motor";}
     private static String readableService(String s){String n=s==null?"":s.toLowerCase();if(n.contains("food"))return"TransFood";if(n.contains("pickup")||n.contains("send"))return"TransSend";if(n.contains("car")||n.contains("mobil"))return"TransCar";return"TransRide";}
     private static String first(String...v){if(v!=null)for(String x:v)if(x!=null&&!x.trim().isEmpty()&&!"null".equalsIgnoreCase(x.trim()))return x.trim();return"";}

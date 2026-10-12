@@ -156,6 +156,7 @@ class CustomerHistoryActivityScreenCore extends Activity {
 
     @Override
     protected void onDestroy() {
+        cancelHistoryRead();
         featureRuntime.destroy();
         activityVisible = false;
         mainHandler.removeCallbacksAndMessages(null);
@@ -211,6 +212,7 @@ class CustomerHistoryActivityScreenCore extends Activity {
         scroll.setClipToPadding(false);
 
         pullRefresh = new CustomerPullRefreshLayout(this, scroll, () -> loadHistory(true), () -> loading||userId<=0);
+        pullRefresh.setTimeoutAction(() -> {cancelHistoryRead();renderOrders();});
         shell.addView(
                 pullRefresh,
                 new LinearLayout.LayoutParams(-1, 0, 1)
@@ -857,7 +859,7 @@ class CustomerHistoryActivityScreenCore extends Activity {
         listBox.removeAllViews();
         updateSummary();
 
-        if (loading) {
+        if (loading && allOrders.isEmpty()) {
             addInfoState(
                     "Memuat aktivitas...",
                     "Data pesanan sedang diperbarui."
@@ -2240,98 +2242,30 @@ class CustomerHistoryActivityScreenCore extends Activity {
         loadHistory(false);
     }
 
+    private CustomerCancelableRead historyRead;
+    private long historyGeneration;
+    private void cancelHistoryRead() {++historyGeneration;if(historyRead!=null)historyRead.cancel();historyRead=null;loading=false;if(progressBar!=null)progressBar.setVisibility(View.GONE);}
+    private void postHistory(CustomerCancelableRead request,long generation,Runnable result) {
+        featureRuntime.post(mainHandler,() -> {
+            if(isFinishing()||isDestroyed()||historyRead!=request||generation!=historyGeneration)return;
+            if(!request.current()){cancelHistoryRead();if(pullRefresh!=null)pullRefresh.finish(false);return;}result.run();
+        });
+    }
     protected void loadHistory(boolean silent) {
-        if (loading) {
-            return;
-        }
-
-        if (userId <= 0) {
-            toast(
-                    "Sesi pengguna tidak ditemukan. Silakan login ulang."
-            );
-            renderOrders();
-            return;
-        }
-
-        loading = true;
-        if (!silent) {
-            progressBar.setVisibility(View.VISIBLE);
-            renderOrders();
-        }
-
-        featureRuntime.newThread(() -> {
+        if(loading||userId<=0)return;
+        if(!Integer.toString(userId).equals(CustomerSessionGuard.capture(this).account))return;
+        loading=true;if(!silent){progressBar.setVisibility(View.VISIBLE);renderOrders();}
+        final long generation=++historyGeneration;final CustomerCancelableRead request=new CustomerCancelableRead(this);historyRead=request;
+        request.start(() -> {
             try {
-                String endpoint =
-                        BASE_URL
-                                + "server/get_user_orders.php?user_id="
-                                + Uri.encode(
-                                String.valueOf(userId)
-                        )
-                                + "&username="
-                                + Uri.encode(username)
-                                + "&_="
-                                + System.currentTimeMillis();
-
-                JSONObject response =
-                        getJson(endpoint);
-
-                JSONArray array =
-                        response.optJSONArray("orders");
-
-                if(!response.optBoolean("success",false)||array==null)throw new IllegalStateException("Data belum dapat diperbarui.");
-
-                List<JSONObject> fresh =
-                        new ArrayList<>();
-
-                if (
-                        response.optBoolean(
-                                "success",
-                                false
-                        )
-                                && array != null
-                ) {
-                    for (
-                            int i = 0;
-                            i < array.length();
-                            i++
-                    ) {
-                        JSONObject order =
-                                array.optJSONObject(i);
-
-                        if (order != null) {
-                            fresh.add(order);
-                        }
-                    }
-                }
-
-                featureRuntime.post(mainHandler, () -> {
-                    allOrders.clear();
-                    allOrders.addAll(fresh);
-
-                    loading = false;
-                    if(pullRefresh!=null)pullRefresh.finish(true);
-                    progressBar.setVisibility(View.GONE);
-
-                    renderOrders();
-                });
-
-            } catch (Exception error) {
-                featureRuntime.post(mainHandler, () -> {
-                    loading = false;
-                    boolean pulled=pullRefresh!=null&&pullRefresh.isRefreshing();
-                    if(pullRefresh!=null)pullRefresh.finish(false);
-                    progressBar.setVisibility(View.GONE);
-
-                    renderOrders();
-
-                    if (!silent) {
-                        toast(
-                                "Gagal memuat aktivitas. Periksa koneksi."
-                        );
-                    }
-                });
-            }
-        }).start();
+                JSONObject response=request.read(BASE_URL+"server/get_user_orders.php?user_id="+userId+"&username="+Uri.encode(username)+"&_="+System.currentTimeMillis(),null,20000);
+                JSONArray array=response.optJSONArray("orders");if(!response.optBoolean("success",false)||array==null)throw new IllegalStateException("Data belum dapat diperbarui");
+                List<JSONObject> fresh=new ArrayList<>();for(int i=0;i<array.length();i++){JSONObject item=array.optJSONObject(i);if(item!=null)fresh.add(item);}
+                postHistory(request,generation,() -> {allOrders.clear();allOrders.addAll(fresh);loading=false;historyRead=null;
+                    progressBar.setVisibility(View.GONE);if(pullRefresh!=null)pullRefresh.finish(true);renderOrders();});
+            }catch(Exception error){postHistory(request,generation,() -> {loading=false;historyRead=null;progressBar.setVisibility(View.GONE);
+                if(pullRefresh!=null)pullRefresh.finish(false);renderOrders();if(!silent)toast("Gagal memuat aktivitas. Periksa koneksi.");});}
+        }, () -> postHistory(request,generation,() -> {cancelHistoryRead();if(pullRefresh!=null)pullRefresh.finish(false);}), () -> {if(!isFinishing()&&!isDestroyed()&&historyRead==request&&historyGeneration==generation){cancelHistoryRead();if(pullRefresh!=null)pullRefresh.finish(false);}});
     }
 
     protected JSONObject getJson(String endpoint) throws Exception {

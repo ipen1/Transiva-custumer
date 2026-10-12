@@ -41,6 +41,10 @@ public final class CustomerProfileCache {
         if(!k.equals(p.getString("owner",""))||age<0||age>MAX_AGE_MS)return null;
         try{return new JSONObject(p.getString("json",""));}catch(Exception e){return null;}
     }
+    public static boolean isFresh(Context c) {
+        long saved=c.getSharedPreferences(PREF,Context.MODE_PRIVATE).getLong("saved",0);
+        return cached(c)!=null && saved>0 && System.currentTimeMillis()>=saved && System.currentTimeMillis()-saved<FRESH_MS;
+    }
     public static synchronized void clear(Context c) {
         revision++; RETRY.clear();c.getSharedPreferences(PREF,Context.MODE_PRIVATE).edit().clear().apply();
     }

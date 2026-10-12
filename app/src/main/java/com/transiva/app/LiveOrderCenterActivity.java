@@ -67,7 +67,7 @@ public class LiveOrderCenterActivity extends Activity implements UnifiedLiveOrde
         UnifiedLiveOrderCenter.refresh(this, (orders, cached, error) -> {
             if (closed()) return;
             refreshing = false; loaded = true; loading.setVisibility(View.GONE); refreshButton.setEnabled(true);
-            info.setText(error != null ? "Koneksi belum stabil • data terakhir" : "Status terbaru dari server");
+            info.setText(error != null ? "Offline • cache valid maksimal 10 menit" : "Status terbaru dari server");
             render(orders);
         });
     }

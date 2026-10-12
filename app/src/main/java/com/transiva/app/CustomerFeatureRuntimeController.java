@@ -18,6 +18,7 @@ public final class CustomerFeatureRuntimeController {
     public void onResume() { CustomerRealtimeCoordinator.enter(role); }
     public void onPause() { CustomerRealtimeCoordinator.leave(role); }
     public Future<?> execute(Runnable task) { return networkScope.execute(task); }
+    public Future<?> execute(Runnable task,Runnable rejected) { return networkScope.execute(task,rejected); }
     public Thread newThread(Runnable task) { return networkScope.newThread(task); }
     public Thread newThread(Runnable task, String name) { return networkScope.newThread(task, name); }
     public boolean post(Handler handler, Runnable task) { return networkScope.post(handler, task); }

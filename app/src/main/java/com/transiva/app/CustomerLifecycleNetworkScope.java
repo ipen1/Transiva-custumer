@@ -16,7 +16,8 @@ public final class CustomerLifecycleNetworkScope {
     private final Set<Future<?>> futures = ConcurrentHashMap.newKeySet();
     private final Set<Thread> threads = ConcurrentHashMap.newKeySet();
 
-    public Future<?> execute(Runnable task) {
+    public Future<?> execute(Runnable task) { return execute(task, null); }
+    public Future<?> execute(Runnable task, Runnable rejected) {
         if (task == null || destroyed.get()) return null;
         final Future<?>[] holder = new Future<?>[1];
         Future<?> future = TransivaNetworkExecutor.execute(() -> {
@@ -27,7 +28,7 @@ public final class CustomerLifecycleNetworkScope {
                 Future<?> f = holder[0];
                 if (f != null) futures.remove(f);
             }
-        });
+        }, () -> { if(!destroyed.get() && rejected!=null)rejected.run(); });
         holder[0] = future;
         if (future != null) {
             if (destroyed.get()) future.cancel(true);

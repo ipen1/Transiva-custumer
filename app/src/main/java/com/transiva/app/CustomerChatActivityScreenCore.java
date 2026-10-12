@@ -154,6 +154,7 @@ class CustomerChatActivityScreenCore extends Activity {
         scroll.setClipToPadding(false);
 
         pullRefresh = new CustomerPullRefreshLayout(this, scroll, () -> loadConversations(), () -> loading||userId<=0);
+        pullRefresh.setTimeoutAction(this::cancelConversations);
         shell.addView(
                 pullRefresh,
                 new LinearLayout.LayoutParams(
@@ -565,110 +566,46 @@ class CustomerChatActivityScreenCore extends Activity {
         return button;
     }
 
+    private CustomerCancelableRead conversationRead;
+    private long conversationGeneration;
+    private void cancelConversations() {
+        ++conversationGeneration; if(conversationRead!=null)conversationRead.cancel();conversationRead=null;
+        loading=false;if(progress!=null)progress.setVisibility(View.GONE);render();
+    }
+    private void postConversations(CustomerCancelableRead request,long generation,Runnable result) {
+        networkScope.post(mainHandler, () -> {
+            if(isFinishing()||isDestroyed()||conversationRead!=request||generation!=conversationGeneration)return;
+            if(!request.current()){cancelConversations();conversations.clear();render();if(pullRefresh!=null)pullRefresh.finish(false);return;}
+            result.run();
+        });
+    }
     protected void loadConversations() {
-        if (loading) {
-            return;
-        }
-
-        if (userId <= 0) {
-            toast(
-                    "Sesi pengguna tidak ditemukan"
-            );
-
-            return;
-        }
-
-        loading = true;
-        progress.setVisibility(pullRefresh!=null&&pullRefresh.isRefreshing()?View.GONE:View.VISIBLE);
-
+        if(loading)return;
+        if(userId<=0){toast("Sesi pengguna tidak ditemukan");return;}
+        CustomerSessionGuard session=CustomerSessionGuard.capture(this);
+        if(!Integer.toString(userId).equals(session.account))return;
+        loading=true;progress.setVisibility(pullRefresh!=null&&pullRefresh.isRefreshing()?View.GONE:View.VISIBLE);
         if(conversations.isEmpty())render();
-
-        networkScope.newThread(() -> {
+        final long generation=++conversationGeneration;
+        final CustomerCancelableRead request=new CustomerCancelableRead(this);conversationRead=request;
+        request.start(() -> {
             try {
-                String endpoint =
-                        CONVERSATIONS_URL
-                                + "?user_id="
-                                + URLEncoder.encode(
-                                        String.valueOf(
-                                                userId
-                                        ),
-                                        StandardCharsets
-                                                .UTF_8
-                                                .name()
-                                )
-                                + "&_="
-                                + System.currentTimeMillis();
-
-                JSONObject response =
-                        CustomerMessageApi.get(
-                                endpoint
-                        );
-
-                JSONArray array =
-                        response.optJSONArray(
-                                "conversations"
-                        );
-
-                if(!response.optBoolean("success",false)||array==null)throw new IllegalStateException("Data belum dapat diperbarui.");
-
-                List<JSONObject> fresh =
-                        new ArrayList<>();
-
-                if (
-                        response.optBoolean(
-                                "success",
-                                false
-                        )
-                                && array != null
-                ) {
-                    for (
-                            int i = 0;
-                            i < array.length();
-                            i++
-                    ) {
-                        JSONObject item =
-                                array.optJSONObject(i);
-
-                        if (item != null) {
-                            fresh.add(item);
-                        }
-                    }
-                }
-
-                mainHandler.post(() -> {
-                    conversations.clear();
-                    conversations.addAll(
-                            fresh
-                    );
-
-                    loading = false;
-                    if(pullRefresh!=null)pullRefresh.finish(true);
-
-                    progress.setVisibility(
-                            View.GONE
-                    );
-
-                    render();
+                JSONObject response=request.read(CONVERSATIONS_URL+"?user_id="+userId+"&_="+System.currentTimeMillis(),null,20000);
+                JSONArray array=response.optJSONArray("conversations");
+                if(!response.optBoolean("success",false)||array==null)throw new IllegalStateException("Data belum dapat diperbarui");
+                List<JSONObject> fresh=new ArrayList<>();for(int i=0;i<array.length();i++){JSONObject item=array.optJSONObject(i);if(item!=null)fresh.add(item);}
+                postConversations(request,generation,() -> {
+                    conversations.clear();conversations.addAll(fresh);loading=false;conversationRead=null;
+                    progress.setVisibility(View.GONE);if(pullRefresh!=null)pullRefresh.finish(true);render();
                 });
-
-            } catch (Exception error) {
-                mainHandler.post(() -> {
-                    loading = false;
-                    boolean pulled=pullRefresh!=null&&pullRefresh.isRefreshing();
-                    if(pullRefresh!=null)pullRefresh.finish(false);
-
-                    progress.setVisibility(
-                            View.GONE
-                    );
-
-                    render();
-
-                    if(!pulled)toast(
-                            "Gagal memuat daftar pesan"
-                    );
-                });
-            }
-        }).start();
+            } catch(Exception error) {postConversations(request,generation,() -> {
+                loading=false;conversationRead=null;progress.setVisibility(View.GONE);
+                boolean pulled=pullRefresh!=null&&pullRefresh.isRefreshing();if(pullRefresh!=null)pullRefresh.finish(false);
+                render();if(!pulled)toast("Gagal memuat daftar pesan");
+            });}
+        }, () -> postConversations(request,generation,() -> {
+            cancelConversations();if(pullRefresh!=null)pullRefresh.finish(false);
+        }), () -> {if(!isFinishing()&&!isDestroyed()&&conversationRead==request&&conversationGeneration==generation){cancelConversations();if(pullRefresh!=null)pullRefresh.finish(false);}});
     }
 
     protected void render() {
@@ -678,7 +615,7 @@ class CustomerChatActivityScreenCore extends Activity {
 
         listBox.removeAllViews();
 
-        if (loading) {
+        if (loading && conversations.isEmpty()) {
             addState(
                     "Memuat percakapan...",
                     "Daftar pesan sedang diperbarui."
@@ -1820,6 +1757,7 @@ class CustomerChatActivityScreenCore extends Activity {
 
     @Override
     protected void onDestroy() {
+        cancelConversations();
         networkScope.destroy();
         super.onDestroy();
     }

@@ -266,6 +266,7 @@ class ProfileActivityScreenCore extends Activity {
         scroll.setClipToPadding(false);
 
         pullRefresh = new CustomerPullRefreshLayout(this, scroll, () -> loadProfile(true), () -> loading||profileFetching||profileEditMode||userId.isEmpty());
+        pullRefresh.setTimeoutAction(this::cancelProfileRead);
         shell.addView(
                 pullRefresh,
                 new LinearLayout.LayoutParams(
@@ -1461,31 +1462,35 @@ class ProfileActivityScreenCore extends Activity {
 
     protected void loadProfile() { loadProfile(false); }
 
+    private CustomerCancelableRead profileRead;
+    private long profileGeneration;
+    private void cancelProfileRead(){++profileGeneration;if(profileRead!=null)profileRead.cancel();profileRead=null;profileFetching=false;setLoading(false);}
+    private void postProfile(CustomerCancelableRead request,long generation,Runnable result){
+        featureRuntime.post(mainHandler,() -> {
+            if(isFinishing()||isDestroyed()||profileRead!=request||generation!=profileGeneration)return;
+            if(!request.current()){cancelProfileRead();if(pullRefresh!=null)pullRefresh.finish(false);return;}result.run();
+        });
+    }
     protected void loadProfile(boolean force) {
         if(loading||profileFetching||userId.isEmpty())return;
-        JSONObject cached=CustomerProfileCache.cached(this);
-        if(cached!=null && !profileEditMode)applyUser(cached);
-        profileFetching=true;
+        if(!userId.equals(CustomerSessionGuard.capture(this).account))return;
+        JSONObject cached=CustomerProfileCache.cached(this);if(cached!=null&&!profileEditMode)applyUser(cached);
+        if(!force&&CustomerProfileCache.isFresh(this)){if(profileStatus!=null)profileStatus.setVisibility(View.GONE);return;}
+        profileFetching=true;setLoading(true);
         if(profileStatus!=null){profileStatus.setText(cached==null?"Menyiapkan profil…":"Memperbarui profil…");profileStatus.setVisibility(View.VISIBLE);}
-        setLoading(true);
-        if(progress!=null && (cached!=null||(pullRefresh!=null&&pullRefresh.isRefreshing())))progress.setVisibility(View.GONE);
-        final java.lang.ref.WeakReference<ProfileActivityScreenCore> weak=new java.lang.ref.WeakReference<>(this);
-        final String requestedUser=userId;
-        CustomerProfileCache.fetch(getApplicationContext(),force,user->{
-            ProfileActivityScreenCore screen=weak.get();
-            if(screen==null||screen.isFinishing()||screen.isDestroyed())return;
-            screen.profileFetching=false;
-            screen.setLoading(false);
-            SessionManager liveSession=new SessionManager(screen);
-            String live=first(liveSession.getId(),liveSession.getUserId());
-            if(!requestedUser.equals(live)){if(screen.pullRefresh!=null)screen.pullRefresh.finish(false);return;}
-            if(user!=null && !screen.profileEditMode)screen.applyUser(user);
-            if(screen.pullRefresh!=null)screen.pullRefresh.finish(user!=null);
-            if(screen.profileStatus!=null){
-                screen.profileStatus.setText("Profil belum diperbarui. Tarik ke bawah untuk mencoba lagi.");
-                screen.profileStatus.setVisibility(user==null?View.VISIBLE:View.GONE);
-            }
-        });
+        if(progress!=null&&(cached!=null||(pullRefresh!=null&&pullRefresh.isRefreshing())))progress.setVisibility(View.GONE);
+        final long generation=++profileGeneration;final CustomerCancelableRead request=new CustomerCancelableRead(this);profileRead=request;
+        request.start(() -> {
+            try {
+                JSONObject response=request.read(ApiConfig.server("get_customer_profile.php"),null,5000);
+                JSONObject user=response.optJSONObject("user");
+                if(!response.optBoolean("success",false)||user==null||!userId.equals(user.optString("id")))throw new IllegalStateException("Profil belum diperbarui");
+                postProfile(request,generation,() -> {profileFetching=false;profileRead=null;setLoading(false);
+                    CustomerProfileCache.put(this,user);if(!profileEditMode)applyUser(user);
+                    if(pullRefresh!=null)pullRefresh.finish(true);if(profileStatus!=null)profileStatus.setVisibility(View.GONE);});
+            }catch(Exception error){postProfile(request,generation,() -> {profileFetching=false;profileRead=null;setLoading(false);
+                if(pullRefresh!=null)pullRefresh.finish(false);if(profileStatus!=null){profileStatus.setText("Profil belum diperbarui. Tarik ke bawah untuk mencoba lagi.");profileStatus.setVisibility(View.VISIBLE);}});}
+        }, () -> postProfile(request,generation,() -> {cancelProfileRead();if(pullRefresh!=null)pullRefresh.finish(false);}), () -> {if(!isFinishing()&&!isDestroyed()&&profileRead==request&&profileGeneration==generation){cancelProfileRead();if(pullRefresh!=null)pullRefresh.finish(false);}});
     }
 
     protected void applyUser(
@@ -2764,6 +2769,7 @@ class ProfileActivityScreenCore extends Activity {
 
     @Override
     protected void onDestroy() {
+        cancelProfileRead();
         featureRuntime.destroy();
         mainHandler.removeCallbacksAndMessages(null);
         super.onDestroy();

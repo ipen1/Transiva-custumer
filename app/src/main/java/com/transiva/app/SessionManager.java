@@ -153,6 +153,7 @@ public class SessionManager {
 
             e.apply();
 
+            if (!sameAccount) UnifiedLiveOrderCenter.clear(appContext);
             syncLegacyFlagsAfterLogin(role);
 
             return true;
@@ -240,6 +241,7 @@ public class SessionManager {
 
     public void forceLogout(String reason) {
         try {
+            UnifiedLiveOrderCenter.clear(appContext);
             CustomerChatNotificationPoller.stop();
             CustomerProfileCache.clear(appContext);
             appContext.getSharedPreferences("delivery_address_gate_v2",Context.MODE_PRIVATE).edit().clear().apply();

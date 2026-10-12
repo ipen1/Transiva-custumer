@@ -313,6 +313,7 @@ class CustomerDashboardActivityScreenCore extends Activity
         scroll.setClipToPadding(false);
 
         pullRefresh = new CustomerPullRefreshLayout(this, scroll, () -> { if(presenter!=null)presenter.load(username,userId); }, () -> presenter==null||presenter.isLoading());
+        pullRefresh.setTimeoutAction(() -> {if(presenter!=null)presenter.cancelLoad();});
         shell.addView(
                 pullRefresh,
                 new LinearLayout.LayoutParams(-1, 0, 1)

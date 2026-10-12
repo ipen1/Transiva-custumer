@@ -189,6 +189,7 @@ class CustomerBalanceHistoryActivityScreenCore extends Activity {
         scroll.setClipToPadding(false);
 
         pullRefresh = new CustomerPullRefreshLayout(this, scroll, () -> loadWallet(), () -> loadingData||userId<=0);
+        pullRefresh.setTimeoutAction(this::cancelWalletRead);
         shell.addView(
                 pullRefresh,
                 new LinearLayout.LayoutParams(
@@ -879,151 +880,63 @@ class CustomerBalanceHistoryActivityScreenCore extends Activity {
         );
     }
 
+    private CustomerCancelableRead walletRead;
+    private long walletGeneration;
+    private final ThreadLocal<CustomerSessionGuard> operationSession=new ThreadLocal<>();
+    private void executeSession(Runnable work) {
+        CustomerSessionGuard session=CustomerSessionGuard.capture(this);
+        featureRuntime.execute(() -> { operationSession.set(session);try{work.run();}finally{operationSession.remove();} },
+                () -> featureRuntime.post(mainHandler,() -> {if(!isFinishing()&&!isDestroyed()&&session.matches(this)){setLoading(false);toast("Aplikasi sedang sibuk. Coba kembali sebentar lagi.");}}));
+    }
+    private void postSession(Runnable result) {
+        CustomerSessionGuard tagged=operationSession.get();
+        final CustomerSessionGuard session=tagged==null?CustomerSessionGuard.capture(this):tagged;
+        featureRuntime.post(mainHandler, () -> {
+            if(!isFinishing()&&!isDestroyed()&&Integer.toString(userId).equals(session.account)&&session.matches(this))result.run();
+        });
+    }
+    private void cancelWalletRead() {
+        ++walletGeneration;if(walletRead!=null)walletRead.cancel();walletRead=null;loadingData=false;setLoading(false);
+    }
+    private void postWallet(CustomerCancelableRead request,long generation,Runnable result) {
+        featureRuntime.post(mainHandler, () -> {
+            if(isFinishing()||isDestroyed()||walletRead!=request||generation!=walletGeneration)return;
+            if(!request.current()){cancelWalletRead();if(pullRefresh!=null)pullRefresh.finish(false);return;}result.run();
+        });
+    }
     protected void loadWallet() {
-        if (loadingData) {
-            return;
-        }
-
-        if (
-                userId <= 0
-                        && username.isEmpty()
-        ) {
-            toast("Sesi pengguna tidak ditemukan");
-            return;
-        }
-
-        loadingData = true;
-        setLoading(true);
+        if(loadingData)return;
+        CustomerSessionGuard session=CustomerSessionGuard.capture(this);
+        if(userId<=0||!Integer.toString(userId).equals(session.account))return;
+        loadingData=true;setLoading(true);
         if(pullRefresh!=null&&pullRefresh.isRefreshing()&&loading!=null)loading.setVisibility(View.GONE);
-
-        final int requestedDays=periodDays;
-        featureRuntime.execute(() -> {
+        final int requestedDays=periodDays;final long generation=++walletGeneration;
+        final CustomerCancelableRead request=new CustomerCancelableRead(this);walletRead=request;
+        request.start(() -> {
             try {
-                JSONObject request =
-                        new JSONObject();
-
-                request.put(
-                        "user_id",
-                        userId
-                );
-
-                request.put(
-                        "username",
-                        username
-                );
-
-                request.put("days",requestedDays);
-                JSONObject response =
-                        postJson(
-                                SUMMARY_URL,
-                                request
-                        );
-
-                if (
-                        !response.optBoolean(
-                                "success",
-                                false
-                        )
-                ) {
-                    throw new IllegalStateException(
-                            response.optString(
-                                    "message",
-                                    "Gagal memuat transaksi"
-                            )
-                    );
-                }
-
-                int balance =
-                        response.getInt("balance");
-
-                int income =
-                        response.optInt(
-                                "income",
-                                0
-                        );
-
-                int expense =
-                        response.optInt(
-                                "expense",
-                                0
-                        );
-
-                int pending =
-                        response.optInt(
-                                "pending",
-                                0
-                        );
-
-                JSONArray array =
-                        response.optJSONArray(
-                                "transactions"
-                        );
-
-                if(array==null)throw new IllegalStateException("Daftar transaksi belum dapat diperbarui.");
-
-                List<JSONObject> fresh =
-                        new ArrayList<>();
-
-                if (array != null) {
-                    for (
-                            int i = 0;
-                            i < array.length();
-                            i++
-                    ) {
-                        JSONObject item =
-                                array.optJSONObject(i);
-
-                        if (item != null) {
-                            fresh.add(item);
-                        }
-                    }
-                }
-
-                mainHandler.post(() -> {
-                    loadingData = false;
-                    setLoading(false);
+                JSONObject payload=new JSONObject().put("user_id",userId).put("username",username).put("days",requestedDays);
+                JSONObject response=request.read(SUMMARY_URL,payload,20000);JSONArray array=response.optJSONArray("transactions");
+                if(!response.optBoolean("success",false)||array==null)throw new IllegalStateException("Gagal memuat transaksi");
+                final int balance=response.getInt("balance"),income=response.optInt("income"),expense=response.optInt("expense"),pending=response.optInt("pending");
+                List<JSONObject> fresh=new ArrayList<>();for(int i=0;i<array.length();i++){JSONObject item=array.optJSONObject(i);if(item!=null)fresh.add(item);}
+                postWallet(request,generation,() -> {
+                    loadingData=false;walletRead=null;setLoading(false);
                     if(requestedDays!=periodDays){loadWallet();return;}
-                    if(pullRefresh!=null)pullRefresh.finish(true);
-
-                    displayedBalance=balance;
-                    balanceText.setText(balanceHidden?"Rp ••••••":rupiah(balance));
-
-                    incomeText.setText(
-                            "+" + rupiah(income)
-                    );
-
-                    expenseText.setText(
-                            "-" + rupiah(expense)
-                    );
-
-                    pendingText.setText(
-                            rupiah(pending)
-                    );
-
-                    String signature=fresh.toString();
-                    if(!signature.equals(lastListSignature)){
+                    displayedBalance=balance;balanceText.setText(balanceHidden?"Rp ••••••":rupiah(balance));
+                    incomeText.setText("+"+rupiah(income));expenseText.setText("-"+rupiah(expense));pendingText.setText(rupiah(pending));
+                    String signature=fresh.toString();if(!signature.equals(lastListSignature)){
                         int savedY=historyScroll==null?0:historyScroll.getScrollY();lastListSignature=signature;
                         transactions.clear();transactions.addAll(fresh);renderTransactions();
-                        if(historyScroll!=null)historyScroll.post(()->historyScroll.scrollTo(0,savedY));
+                        if(historyScroll!=null)historyScroll.post(() -> {if(!isFinishing()&&!isDestroyed())historyScroll.scrollTo(0,savedY);});
                     }
+                    if(pullRefresh!=null)pullRefresh.finish(true);
                 });
-
-            } catch (Exception error) {
-                mainHandler.post(() -> {
-                    loadingData = false;
-                    setLoading(false);
-
-                    boolean pulled=pullRefresh!=null&&pullRefresh.isRefreshing();
-                    if(pullRefresh!=null)pullRefresh.finish(false);
-                    if(!pulled)toast(
-                            first(
-                                    error.getMessage(),
-                                    "Gagal memuat data transaksi"
-                            )
-                    );
-                });
-            }
-        });
+            } catch(Exception error){postWallet(request,generation,() -> {
+                loadingData=false;walletRead=null;setLoading(false);
+                boolean pulled=pullRefresh!=null&&pullRefresh.isRefreshing();if(pullRefresh!=null)pullRefresh.finish(false);
+                if(!pulled)toast("Gagal memuat transaksi. Periksa koneksi.");
+            });}
+        }, () -> postWallet(request,generation,() -> {cancelWalletRead();if(pullRefresh!=null)pullRefresh.finish(false);}), () -> {if(!isFinishing()&&!isDestroyed()&&walletRead==request&&walletGeneration==generation){cancelWalletRead();if(pullRefresh!=null)pullRefresh.finish(false);}});
     }
 
     protected void renderTransactions() {
@@ -1292,7 +1205,7 @@ class CustomerBalanceHistoryActivityScreenCore extends Activity {
     ) {
         setLoading(true);
 
-        featureRuntime.execute(() -> {
+        executeSession(() -> {
             try {
                 JSONObject request =
                         new JSONObject();
@@ -1329,7 +1242,7 @@ class CustomerBalanceHistoryActivityScreenCore extends Activity {
                                 request
                         );
 
-                mainHandler.post(() -> {
+                postSession(() -> {
                     setLoading(false);
 
                     if (
@@ -1358,7 +1271,7 @@ class CustomerBalanceHistoryActivityScreenCore extends Activity {
                 });
 
             } catch (Exception error) {
-                mainHandler.post(() -> {
+                postSession(() -> {
                     setLoading(false);
 
                     showInfo(
@@ -1512,7 +1425,7 @@ class CustomerBalanceHistoryActivityScreenCore extends Activity {
 
         setLoading(true);
 
-        featureRuntime.execute(() -> {
+        executeSession(() -> {
             try {
                 JSONObject request =
                         new JSONObject();
@@ -1558,7 +1471,7 @@ class CustomerBalanceHistoryActivityScreenCore extends Activity {
                                 request
                         );
 
-                mainHandler.post(() -> {
+                postSession(() -> {
                     setLoading(false);
 
                     if (
@@ -1615,7 +1528,7 @@ class CustomerBalanceHistoryActivityScreenCore extends Activity {
                 });
 
             } catch (Exception error) {
-                mainHandler.post(() -> {
+                postSession(() -> {
                     setLoading(false);
 
                     showInfo(
@@ -1865,7 +1778,7 @@ class CustomerBalanceHistoryActivityScreenCore extends Activity {
     ) {
         setLoading(true);
 
-        featureRuntime.execute(() -> {
+        executeSession(() -> {
             try {
                 JSONObject request =
                         new JSONObject();
@@ -1911,7 +1824,7 @@ class CustomerBalanceHistoryActivityScreenCore extends Activity {
                                 request
                         );
 
-                mainHandler.post(() -> {
+                postSession(() -> {
                     setLoading(false);
 
                     if (
@@ -1942,7 +1855,7 @@ class CustomerBalanceHistoryActivityScreenCore extends Activity {
                 });
 
             } catch (Exception error) {
-                mainHandler.post(() -> {
+                postSession(() -> {
                     setLoading(false);
 
                     showInfo(
@@ -1957,89 +1870,23 @@ class CustomerBalanceHistoryActivityScreenCore extends Activity {
         });
     }
 
-    protected JSONObject postJson(
-            String endpoint,
-            JSONObject request
-    ) throws Exception {
-        HttpURLConnection connection =
-                CustomerApiClient.open(this, endpoint);
-        connection.setRequestProperty("Idempotency-Key", ApiSecurity.idempotencyKey("wallet-withdraw"));
-
-        connection.setConnectTimeout(25000);
-        connection.setReadTimeout(25000);
-        connection.setRequestMethod("POST");
-        connection.setDoOutput(true);
-
-        connection.setRequestProperty(
-                "Content-Type",
-                "application/json; charset=UTF-8"
-        );
-
-        connection.setRequestProperty(
-                "Accept",
-                "application/json"
-        );
-
-        byte[] body =
-                request.toString()
-                        .getBytes(
-                                StandardCharsets.UTF_8
-                        );
-
-        connection.setFixedLengthStreamingMode(
-                body.length
-        );
-
-        try (
-                OutputStream output =
-                        connection.getOutputStream()
-        ) {
-            output.write(body);
-        }
-
-        int code =
-                connection.getResponseCode();
-
-        InputStream input =
-                code >= 200 && code < 400
-                        ? connection.getInputStream()
-                        : connection.getErrorStream();
-
-        StringBuilder response =
-                new StringBuilder();
-
-        try (
-                BufferedReader reader =
-                        new BufferedReader(
-                                new InputStreamReader(
-                                        input,
-                                        StandardCharsets.UTF_8
-                                )
-                        )
-        ) {
-            String line;
-
-            while (
-                    (line = reader.readLine())
-                            != null
-            ) {
-                response.append(line);
-            }
-        }
-
-        String rawResponse = response.toString();
-        CustomerApiClient.handleSessionResponse(this, code, rawResponse);
-        connection.disconnect();
-
-        if (response.length() == 0) {
-            throw new IllegalStateException(
-                    "Respons server kosong"
-            );
-        }
-
-        return new JSONObject(
-                response.toString()
-        );
+    protected JSONObject postJson(String endpoint, JSONObject payload) throws Exception {
+        CustomerSessionGuard tagged=operationSession.get();
+        CustomerSessionGuard session=tagged==null?CustomerSessionGuard.capture(this):tagged;
+        if(!session.matches(this))throw new java.io.InterruptedIOException("Session changed");
+        HttpURLConnection connection=CustomerApiClient.open(this,endpoint);
+        try {
+            connection.setRequestProperty("Idempotency-Key",ApiSecurity.idempotencyKey("wallet-withdraw"));
+            connection.setConnectTimeout(25000);connection.setReadTimeout(25000);connection.setRequestMethod("POST");connection.setDoOutput(true);
+            connection.setRequestProperty("Content-Type","application/json; charset=UTF-8");
+            byte[] bytes=payload.toString().getBytes(StandardCharsets.UTF_8);connection.setFixedLengthStreamingMode(bytes.length);
+            try(OutputStream output=connection.getOutputStream()){output.write(bytes);}
+            int code=connection.getResponseCode();
+            String response=BoundedResponseReader.read(code>=200&&code<400?connection.getInputStream():connection.getErrorStream(),4*1024*1024,25000);
+            if(!session.matches(this))throw new java.io.InterruptedIOException("Session changed");
+            CustomerApiClient.handleSessionResponse(this,code,response);
+            if(response.isEmpty())throw new IllegalStateException("Respons server kosong");return new JSONObject(response);
+        } finally {connection.disconnect();}
     }
 
     protected View buildBottomNavigation() {
@@ -2353,6 +2200,7 @@ class CustomerBalanceHistoryActivityScreenCore extends Activity {
 
     @Override
     protected void onDestroy() {
+        cancelWalletRead();
         featureRuntime.destroy();
         mainHandler.removeCallbacksAndMessages(null);
         super.onDestroy();

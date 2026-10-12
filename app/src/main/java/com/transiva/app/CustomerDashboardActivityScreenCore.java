@@ -213,6 +213,7 @@ class CustomerDashboardActivityScreenCore extends Activity
     protected void onResume() {
         super.onResume();
         featureRuntime.onResume();
+        if (serverIndicator != null) serverIndicator.start();
         orderStatusVisible=true;uiHandler.removeCallbacks(orderStatusRefresh);uiHandler.postDelayed(orderStatusRefresh,5000L);
         DeliveryAddressGate.prefetch(this);
 
@@ -244,6 +245,7 @@ class CustomerDashboardActivityScreenCore extends Activity
 
     @Override
     protected void onPause() {
+        if (serverIndicator != null) serverIndicator.stop();
         orderStatusVisible=false;uiHandler.removeCallbacks(orderStatusRefresh);
         stopPromoAutoSlide();
         featureRuntime.onPause();
@@ -252,6 +254,7 @@ class CustomerDashboardActivityScreenCore extends Activity
 
     @Override
     protected void onDestroy() {
+        if (serverIndicator != null) serverIndicator.stop();
         orderStatusVisible=false;uiHandler.removeCallbacks(orderStatusRefresh);
         if (dashboardController != null) dashboardController.onDestroy();
         featureRuntime.destroy();
@@ -373,6 +376,8 @@ class CustomerDashboardActivityScreenCore extends Activity
         return page;
     }
 
+    private DashboardServerIndicator serverIndicator;
+
     protected void buildHeader() {
         LinearLayout header = new LinearLayout(this);
         header.setOrientation(LinearLayout.VERTICAL);
@@ -397,7 +402,14 @@ class CustomerDashboardActivityScreenCore extends Activity
         topRow.addView(identity, new LinearLayout.LayoutParams(0, -2, 1));
 
         greetingText = text(CustomerDashboardFormatters.timeGreeting(), 11, "#EAF4FF", false);
-        identity.addView(greetingText);
+        LinearLayout greetingRow = new LinearLayout(this);
+        greetingRow.setGravity(Gravity.CENTER_VERTICAL);
+        greetingRow.addView(greetingText, new LinearLayout.LayoutParams(0, -2, 1));
+        serverIndicator = new DashboardServerIndicator(this);
+        LinearLayout.LayoutParams connectionLp = new LinearLayout.LayoutParams(dp(28), dp(24));
+        connectionLp.setMargins(dp(5), 0, dp(6), 0);
+        greetingRow.addView(serverIndicator, connectionLp);
+        identity.addView(greetingRow, new LinearLayout.LayoutParams(-1, -2));
 
         TextView name = text(CustomerDashboardFormatters.displayName(username) + " 👋", 20, "#FFFFFF", true);
         LinearLayout.LayoutParams nameLp = new LinearLayout.LayoutParams(-1, -2);

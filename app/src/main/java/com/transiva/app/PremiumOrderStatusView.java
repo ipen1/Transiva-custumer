@@ -25,8 +25,8 @@ public final class PremiumOrderStatusView extends LinearLayout {
 
     public PremiumOrderStatusView(Context context, boolean compact) {
         super(context); this.compact = compact;
-        setOrientation(VERTICAL); setPadding(dp(16), dp(16), dp(16), dp(14));
-        setBackground(surface("#FFFFFF", "#DCE8F6", 22)); setElevation(dp(2));
+        setOrientation(VERTICAL); setPadding(dp(12), dp(10), dp(12), dp(10));
+        setBackground(surface("#FFFFFF", "#DCE8F6", 16)); setElevation(dp(1));
         LinearLayout header = new LinearLayout(context); header.setGravity(Gravity.CENTER_VERTICAL);
         emblemFrame = new android.widget.FrameLayout(context);
         emblem = label("T", 18, "#FFFFFF", true); emblem.setGravity(Gravity.CENTER);
@@ -40,29 +40,37 @@ public final class PremiumOrderStatusView extends LinearLayout {
         serviceIcon.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
         emblemFrame.addView(serviceIcon, new android.widget.FrameLayout.LayoutParams(-1, -1));
         emblem.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
-        header.addView(emblemFrame, new LayoutParams(dp(46), dp(46)));
+        header.addView(emblemFrame, new LayoutParams(dp(32), dp(32)));
         LinearLayout headings = new LinearLayout(context); headings.setOrientation(VERTICAL);
-        service = label("Status pesanan", 16, "#123B65", true);
+        service = label("Status pesanan", 14, "#123B65", true);
         reference = label("Semua perjalanan dalam satu tempat", 11, "#64748B", false);
+        reference.setSingleLine(true); reference.setEllipsize(android.text.TextUtils.TruncateAt.END);
         headings.addView(service); headings.addView(reference);
         LayoutParams hlp = new LayoutParams(0, -2, 1); hlp.setMargins(dp(10), 0, 0, 0);
-        header.addView(headings, hlp); addView(header);
-        status = label("Belum ada pesanan aktif", 16, "#1268D5", true);
-        status.setPadding(dp(12), dp(10), dp(12), dp(10));
-        addView(status, spaced(12));
-        description = label("", 12, "#536B83", false); addView(description, spaced(8));
+        header.addView(headings, hlp);
+        action = label(compact ? "›" : "", compact ? 24 : 12, "#1268D5", true);
+        action.setGravity(Gravity.CENTER); action.setMinHeight(dp(48));
+        action.setPadding(dp(6), dp(4), dp(6), dp(4));
+        if (compact) header.addView(action, new LayoutParams(dp(48), -2));
+        addView(header);
+        status = label("Belum ada pesanan aktif", 13, "#1268D5", true);
+        status.setPadding(dp(9), dp(7), dp(9), dp(7));
+        addView(status, spaced(6));
+        description = label("", 12, "#536B83", false); addView(description, spaced(5));
         segments = new LinearLayout(context); segments.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
-        addView(segments, spaced(12));
-        stage = label("", 11, "#64748B", false); addView(stage, spaced(6));
+        addView(segments, spaced(7));
+        stage = label("", 11, "#64748B", false); addView(stage, spaced(0)); stage.setVisibility(GONE);
         route = new LinearLayout(context); route.setOrientation(VERTICAL);
-        route.setPadding(dp(12), dp(10), dp(12), dp(10)); route.setBackground(surface("#F5F9FF", "#EAF0F8", 14));
-        addView(route, spaced(12));
-        action = label("Lihat pesanan  ›", 13, "#1268D5", true);
-        action.setGravity(Gravity.CENTER_VERTICAL); action.setMinHeight(dp(48));
-        action.setPadding(dp(12), dp(8), dp(12), dp(8));
-        action.setBackground(new RippleDrawable(ColorStateList.valueOf(Color.parseColor("#D1E5FF")),
-                surface("#EDF5FF", "#DCEBFF", 14), null));
-        addView(action, spaced(12)); bind(null, "", "Mulai pesan  ›");
+        route.setPadding(dp(9), dp(7), dp(9), dp(7)); route.setBackground(surface("#F5F9FF", "#EAF0F8", 14));
+        addView(route, spaced(7));
+        if (!compact) {
+            action.setGravity(Gravity.CENTER_VERTICAL);
+            action.setPadding(dp(9), dp(4), dp(9), dp(4));
+            action.setBackground(new RippleDrawable(ColorStateList.valueOf(Color.parseColor("#D1E5FF")),
+                    surface("#EDF5FF", "#DCEBFF", 12), null));
+            addView(action, spaced(7));
+        }
+        bind(null, "", "Mulai pesan  ›");
     }
 
     public void bind(JSONObject order, String fallback, String actionText) {
@@ -72,29 +80,36 @@ public final class PremiumOrderStatusView extends LinearLayout {
         String raw = empty ? "" : order.optString("status");
         String type = empty ? "" : first(order.optString("order_type"), order.optString("service_type"), order.optString("service_name"));
         String name = empty ? "Status pesanan" : new UnifiedLiveOrderCenter.Order(order).title();
-        service.setText(name);
+        service.setText(empty && compact ? first(fallback, "Belum ada pesanan aktif") : name);
         String iconType = (type + " " + name).toLowerCase(java.util.Locale.ROOT);
         String resource = iconType.contains("food") ? "ic_service_food_premium" : iconType.contains("shop") ? "ic_service_shop_premium"
                 : iconType.contains("car") ? "ic_service_car_premium" : iconType.contains("send") || iconType.contains("pickup") ? "ic_service_send_premium"
                 : iconType.contains("ride") || iconType.contains("motor") ? "ic_service_ride_premium" : "";
         int iconId = resource.isEmpty() ? 0 : getResources().getIdentifier(resource, "drawable", getContext().getPackageName());
         serviceIcon.setVisibility(iconId == 0 ? GONE : VISIBLE); emblem.setVisibility(iconId == 0 ? VISIBLE : GONE);
-        if (iconId != 0) serviceIcon.setImageResource(iconId);
-        reference.setText(empty ? "Pantau pesanan Anda di sini" : "Order #" + first(order.optString("order_id"), order.optString("id_order"), order.optString("id"), "—"));
+        if (iconId != 0) { serviceIcon.setImageResource(iconId); emblemFrame.setBackground(surface("#EDF5FF", "", 10)); }
+        String fullId = empty ? "" : first(order.optString("order_id"), order.optString("id_order"), order.optString("id"));
+        String shortId = fullId.length() > 14 ? fullId.substring(0, 10) + "…" + fullId.substring(fullId.length() - 4) : fullId;
+        String driver = empty ? "" : first(order.optString("driver_name"), order.optString("driver"), order.optString("driver_username"));
+        reference.setText(empty ? "Ketuk untuk melihat pesanan" : compact ? (driver.isEmpty() ? "Pantau perkembangan pesanan" : "Driver: " + driver) : (driver.isEmpty() ? "Order #" + shortId : "Driver: " + driver + " • #" + shortId));
+        reference.setContentDescription(empty ? "Belum ada pesanan aktif" : "Order " + fullId + (driver.isEmpty() ? "" : ", driver " + driver));
+        status.setVisibility(empty && compact ? GONE : VISIBLE);
         status.setText(empty ? first(fallback, "Belum ada pesanan aktif") : OrderStatusPresentation.label(raw, type));
         status.setTextColor(Color.parseColor(empty ? "#123B65" : OrderStatusPresentation.textColor(raw)));
         status.setBackground(surface(empty ? "#F1F6FC" : OrderStatusPresentation.backgroundColor(raw), "", 14));
         description.setText(empty ? "Pesan layanan favorit Anda, lalu pantau perkembangannya di sini."
                 : OrderStatusPresentation.description(order));
-        description.setVisibility(compact && empty ? GONE : VISIBLE);
+        description.setVisibility(GONE);
         bindProgress(raw);
-        segments.setVisibility(empty ? GONE : segments.getVisibility()); stage.setVisibility(empty ? GONE : stage.getVisibility());
+        segments.setVisibility(empty ? GONE : segments.getVisibility()); stage.setVisibility(GONE);
         route.removeAllViews(); route.setVisibility(empty || compact ? GONE : VISIBLE);
         if (!empty && !compact) {
             addRoute(type.toLowerCase(java.util.Locale.ROOT).contains("food") ? "MERCHANT / JEMPUT" : "TITIK JEMPUT", first(order.optString("pickup_address"), order.optString("pickup_location"), "Lokasi jemput belum tersedia"), "#0B7CFF");
             addRoute("TUJUAN", first(order.optString("delivery_address"), order.optString("destination_address"), "Tujuan belum tersedia"), "#18A578");
         }
-        action.setText(actionText);
+        action.setText(compact ? "›" : actionText);
+        action.setContentDescription(actionText);
+        if (compact) setContentDescription(service.getText() + ". " + (empty ? "" : status.getText()) + ". " + actionText);
         status.setContentDescription("Status pesanan: " + status.getText());
         CustomerAppSettings.applyToView(getContext(), this);
     }
@@ -106,17 +121,20 @@ public final class PremiumOrderStatusView extends LinearLayout {
         progressStatus = normalized;
         segments.removeAllViews(); int current = step(raw);
         segments.setVisibility(current < 0 ? GONE : VISIBLE);
-        stage.setVisibility(current < 0 ? GONE : VISIBLE);
+        stage.setVisibility(GONE);
         if (current < 0) return;
         String[] captions = {"Menunggu konfirmasi / driver", "Driver menuju titik jemput", "Driver tiba di titik jemput", "Menuju lokasi tujuan", "Sudah tiba di tujuan", "Pesanan selesai"};
         for (int i = 0; i < 6; i++) {
             View segment = new View(getContext());
             segment.setBackground(surface(i <= current ? OrderStatusPresentation.dotColor(raw) : "#E6EEF8", "", 4));
-            LayoutParams lp = new LayoutParams(0, dp(4), 1); if (i > 0) lp.setMargins(dp(4), 0, 0, 0);
+            LayoutParams lp = new LayoutParams(0, dp(3), 1); if (i > 0) lp.setMargins(dp(4), 0, 0, 0);
             segments.addView(segment, lp);
         }
         stage.setText(captions[current]);
     }
+
+    /** Embed status into the trip surface without another nested card. */
+    public void setEmbedded() { setBackground(null); setElevation(0); setPadding(0, 0, 0, 0); }
 
     public void setAction(View.OnClickListener listener) { action.setOnClickListener(listener); setOnClickListener(listener); }
     public static int step(String raw) {
@@ -134,8 +152,16 @@ public final class PremiumOrderStatusView extends LinearLayout {
         LinearLayout row = new LinearLayout(getContext()); row.setGravity(Gravity.TOP);
         TextView dot = label("●", 12, color, true); row.addView(dot, new LayoutParams(dp(20), -2));
         LinearLayout copy = new LinearLayout(getContext()); copy.setOrientation(VERTICAL);
-        copy.addView(label(title, 10, "#6C8198", true)); copy.addView(label(address, 12, "#294661", false));
-        row.addView(copy, new LayoutParams(0, -2, 1)); route.addView(row, spaced(route.getChildCount() == 0 ? 0 : 10));
+        copy.addView(label(title, 9, "#6C8198", true));
+        TextView addressView = label(address, 11, "#294661", false);
+        addressView.setMaxLines(2); addressView.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        addressView.setContentDescription(title + ": " + address + ". Ketuk untuk memperluas alamat");
+        addressView.setOnClickListener(v -> {
+            boolean expanded = addressView.getMaxLines() > 2;
+            addressView.setMaxLines(expanded ? 2 : Integer.MAX_VALUE);
+            addressView.setEllipsize(expanded ? android.text.TextUtils.TruncateAt.END : null);
+        }); copy.addView(addressView);
+        row.addView(copy, new LayoutParams(0, -2, 1)); route.addView(row, spaced(route.getChildCount() == 0 ? 0 : 6));
     }
     private TextView label(String value, int size, String color, boolean bold) {
         TextView v = new TextView(getContext()); v.setText(value); v.setTextSize(size);

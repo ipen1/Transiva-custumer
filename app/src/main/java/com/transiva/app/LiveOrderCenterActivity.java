@@ -37,23 +37,16 @@ public class LiveOrderCenterActivity extends Activity implements UnifiedLiveOrde
         ScrollView scroll = new ScrollView(this); scroll.setFillViewport(true);
         scroll.setClipToPadding(false); scroll.setBackgroundColor(Color.parseColor("#F3F7FD"));
         LinearLayout root = new LinearLayout(this); root.setOrientation(LinearLayout.VERTICAL);
-        root.setPadding(dp(16), dp(16), dp(16), dp(30));
+        root.setPadding(dp(14), dp(8), dp(14), dp(20));
         scroll.addView(root, new ScrollView.LayoutParams(-1, -2));
         LinearLayout nav = new LinearLayout(this); nav.setGravity(Gravity.CENTER_VERTICAL);
         TextView back = text("‹", 30, "#123B65", true); back.setGravity(Gravity.CENTER);
         back.setContentDescription("Kembali"); back.setOnClickListener(v -> finish());
         nav.addView(back, new LinearLayout.LayoutParams(dp(48), dp(48)));
-        TextView title = text("Pesanan aktif", 23, "#123B65", true);
+        TextView title = text("Pesanan aktif", 19, "#123B65", true);
         nav.addView(title, new LinearLayout.LayoutParams(0, -2, 1)); root.addView(nav);
-        LinearLayout intro = new LinearLayout(this); intro.setOrientation(LinearLayout.VERTICAL);
-        intro.setPadding(dp(16), dp(18), dp(16), dp(18));
-        GradientDrawable gradient = new GradientDrawable(GradientDrawable.Orientation.TL_BR,
-                new int[]{Color.parseColor("#075DDF"), Color.parseColor("#199BF3")});
-        gradient.setCornerRadius(dp(22)); intro.setBackground(gradient);
-        intro.addView(text("SETIAP PESANAN, TERPANTAU", 10, "#DBEDFF", true));
-        count = text("Perjalanan Anda", 21, "#FFFFFF", true); count.setPadding(0, dp(8), 0, dp(6));
-        intro.addView(count); intro.addView(text("Lihat perkembangan dan lanjutkan perjalanan dari sini.", 13, "#E6F3FF", false));
-        root.addView(intro, margin(12));
+        count = text("Memeriksa pesanan aktif…", 12, "#64748B", false);
+        root.addView(count, margin(2));
         LinearLayout sync = new LinearLayout(this); sync.setGravity(Gravity.CENTER_VERTICAL);
         loading = new ProgressBar(this); loading.setIndeterminate(true);
         sync.addView(loading, new LinearLayout.LayoutParams(dp(18), dp(18)));
@@ -84,7 +77,7 @@ public class LiveOrderCenterActivity extends Activity implements UnifiedLiveOrde
     private void render(List<UnifiedLiveOrderCenter.Order> orders) {
         if (closed()) return;
         int size = orders == null ? 0 : orders.size();
-        count.setText(size == 0 ? "Siap untuk perjalanan berikutnya" : size + " pesanan sedang aktif");
+        count.setText(size == 0 ? "Semua pesanan Anda dalam satu tempat" : size + " pesanan aktif • pilih untuk membuka");
         StringBuilder key = new StringBuilder(); key.append(loaded).append('|');
         if (orders != null) for (UnifiedLiveOrderCenter.Order order : orders) key.append(order.raw.toString()).append('\n');
         if (key.toString().equals(rendered)) return; rendered = key.toString();
@@ -99,7 +92,7 @@ public class LiveOrderCenterActivity extends Activity implements UnifiedLiveOrde
             card.setAction(v -> {
                 UnifiedLiveOrderCenter.persistLegacyActiveOrder(this, order);
                 startActivity(UnifiedLiveOrderCenter.routeIntent(this, order));
-            }); list.addView(card, margin(12));
+            }); list.addView(card, margin(8));
         }
         CustomerAppSettings.applyToView(this, list);
     }

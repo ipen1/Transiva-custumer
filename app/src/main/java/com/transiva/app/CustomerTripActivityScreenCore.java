@@ -250,8 +250,8 @@ class CustomerTripActivityScreenCore extends Activity {
 
         LinearLayout card = new LinearLayout(this);
         card.setOrientation(LinearLayout.VERTICAL);
-        card.setPadding(dp(14), dp(14), dp(14), dp(14));
-        card.setBackground(roundStroke("#FAFCFF", "#D7E6F8", dp(24), 1));
+        card.setPadding(dp(12), dp(8), dp(12), dp(12));
+        card.setBackground(roundStroke("#FAFCFF", "#D7E6F8", dp(18), 1));
         card.setElevation(dp(2));
         android.widget.ScrollView tripScroll=new android.widget.ScrollView(this);tripScroll.setFillViewport(true);tripScroll.setClipToPadding(false);root.addView(tripScroll,new LinearLayout.LayoutParams(-1,-1));tripScroll.addView(card,new android.widget.ScrollView.LayoutParams(-1,-2));
 
@@ -260,7 +260,7 @@ class CustomerTripActivityScreenCore extends Activity {
         head.setGravity(Gravity.CENTER_VERTICAL);
         card.addView(head, new LinearLayout.LayoutParams(-1, -2));
 
-        TextView title = text("Perjalanan Anda", 18, "#0B3A78", true);
+        TextView title = text("Perjalanan Anda", 15, "#0B3A78", true);
         head.addView(title, new LinearLayout.LayoutParams(0, -2, 1));
 
         Button close = smallButton("‹", "#EDF5FF", "#1268D5", "#DCEBFF");
@@ -269,18 +269,19 @@ class CustomerTripActivityScreenCore extends Activity {
         close.setOnClickListener(v -> goToHome());
 
         tripStatus = new PremiumOrderStatusView(this, true);
+        tripStatus.setEmbedded();
         tripStatus.bind(null, "Menyiapkan perjalanan", "Lihat posisi di peta  ↓");
         tripStatus.setAction(v -> openLiveDriver());
         LinearLayout.LayoutParams statusLp = new LinearLayout.LayoutParams(-1, -2);
-        statusLp.topMargin = dp(12); card.addView(tripStatus, statusLp);
+        statusLp.topMargin = dp(4); card.addView(tripStatus, statusLp);
 
         LinearLayout driverBox = new LinearLayout(this);
         driverBox.setOrientation(LinearLayout.HORIZONTAL);
         driverBox.setGravity(Gravity.CENTER_VERTICAL);
-        driverBox.setPadding(dp(10), dp(10), dp(10), dp(10));
+        driverBox.setPadding(dp(8), dp(7), dp(8), dp(7));
         driverBox.setBackground(roundStroke("#FFFFFF", "#E2E8F0", dp(18), 1));
         LinearLayout.LayoutParams dlp = new LinearLayout.LayoutParams(-1, -2);
-        dlp.setMargins(0, dp(12), 0, 0);
+        dlp.setMargins(0, dp(8), 0, 0);
         card.addView(driverBox, dlp);
 
         driverPhotoView = new ImageView(this);
@@ -288,7 +289,7 @@ class CustomerTripActivityScreenCore extends Activity {
         driverPhotoView.setImageResource(android.R.drawable.ic_menu_myplaces);
         driverPhotoView.setBackground(round("#EAF4FF", dp(16)));
         driverPhotoView.setClipToOutline(true);
-        driverBox.addView(driverPhotoView, new LinearLayout.LayoutParams(dp(52), dp(52)));
+        driverBox.addView(driverPhotoView, new LinearLayout.LayoutParams(dp(40), dp(40)));
 
         LinearLayout info = new LinearLayout(this);
         info.setOrientation(LinearLayout.VERTICAL);
@@ -296,20 +297,20 @@ class CustomerTripActivityScreenCore extends Activity {
         ilp.setMargins(dp(10), 0, 0, 0);
         driverBox.addView(info, ilp);
 
-        driverNameText = text("Driver", 15, "#0B3A78", true);
-        driverTypeText = text("🏍️ Motor / Bike", 12, "#2563EB", true);
-        driverPlateText = text("🔢 Plat: -", 12, "#64748B", false);
+        driverNameText = text("Driver", 13, "#0B3A78", true);
+        driverTypeText = text("🏍️ Motor / Bike", 11, "#2563EB", true);
+        driverPlateText = text("🔢 Plat: -", 11, "#64748B", false);
         info.addView(driverNameText);
         info.addView(driverTypeText);
         info.addView(driverPlateText);
         vehiclePhotoView=new ImageView(this);vehiclePhotoView.setScaleType(ImageView.ScaleType.CENTER_CROP);vehiclePhotoView.setBackground(round("#EAF4FF",dp(12)));vehiclePhotoView.setClipToOutline(true);vehiclePhotoView.setVisibility(View.GONE);driverBox.addView(vehiclePhotoView,new LinearLayout.LayoutParams(dp(58),dp(48)));
 
         statusText = text("Menghubungkan lokasi driver...", 12, "#536B83", false);
-        statusText.setPadding(dp(4), dp(10), dp(4), dp(8));
+        statusText.setPadding(dp(2), dp(5), dp(2), dp(5));
         card.addView(statusText, new LinearLayout.LayoutParams(-1, -2));
 
         waitingView=new SmartWaitingTextView(this); card.addView(waitingView,new LinearLayout.LayoutParams(-1,-2));
-        paymentInfoText = text("", 13, "#0B3A78", true); paymentInfoText.setPadding(dp(12),dp(9),dp(12),dp(9)); paymentInfoText.setVisibility(View.GONE); card.addView(paymentInfoText,new LinearLayout.LayoutParams(-1,-2));
+        paymentInfoText = text("", 12, "#0B3A78", true); paymentInfoText.setPadding(dp(10),dp(7),dp(10),dp(7)); paymentInfoText.setVisibility(View.GONE); card.addView(paymentInfoText,new LinearLayout.LayoutParams(-1,-2));
         receivedButton = smallButton("✅ Terima Pesanan", "#DCFCE7", "#047857", "#86EFAC"); receivedButton.setVisibility(View.GONE); receivedButton.setOnClickListener(v -> sendCustomerAction("confirm_received")); receivedButton.setMinHeight(dp(50)); LinearLayout.LayoutParams rlp=new LinearLayout.LayoutParams(-1,-2); rlp.setMargins(0,dp(8),0,0); card.addView(receivedButton,rlp);
         LinearLayout priceActions=new LinearLayout(this); priceActions.setOrientation(LinearLayout.HORIZONTAL); priceActions.setVisibility(View.GONE); priceActions.setTag("price_actions");
         approvePriceButton=smallButton("Setujui Harga", "#DBEAFE", "#1D4ED8", "#93C5FD"); approvePriceButton.setMinHeight(dp(48)); approvePriceButton.setOnClickListener(v->confirmPriceChange()); priceActions.addView(approvePriceButton,new LinearLayout.LayoutParams(0,-2,1));

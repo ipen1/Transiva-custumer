@@ -16,13 +16,13 @@ public final class SmartWaitingTextView extends LinearLayout {
     private final TextView title, clock, detail;
     private final Runnable tick=new Runnable(){public void run(){render();if(isAttachedToWindow()&&!terminal&&state!=null&&state.optJSONObject("active")!=null)postDelayed(this,1000);}};
     public SmartWaitingTextView(Context context){
-        super(context);setOrientation(VERTICAL);setPadding(dp(12),dp(10),dp(12),dp(10));
+        super(context);setOrientation(VERTICAL);setPadding(dp(9),dp(6),dp(9),dp(6));
         GradientDrawable bg=new GradientDrawable();bg.setColor(0xFFEAF4FF);bg.setCornerRadius(dp(14));bg.setStroke(dp(1),0xFFD4E7FF);setBackground(bg);
-        title=label(context,11,0xFF52708F);clock=label(context,20,0xFF1267C8);clock.setTypeface(null,android.graphics.Typeface.BOLD);detail=label(context,11,0xFF365572);
+        title=label(context,10,0xFF52708F);clock=label(context,14,0xFF1267C8);clock.setTypeface(null,android.graphics.Typeface.BOLD);detail=label(context,11,0xFF365572);
         addView(title,new LayoutParams(-1,-2));addView(clock,new LayoutParams(-1,-2));addView(detail,new LayoutParams(-1,-2));setVisibility(GONE);
     }
     private int dp(int n){return Math.round(n*getResources().getDisplayMetrics().density);}
-    private TextView label(Context c,int size,int color){TextView v=new TextView(c);v.setTextSize(size);v.setTextColor(color);v.setIncludeFontPadding(false);v.setPadding(0,dp(2),0,dp(2));return v;}
+    private TextView label(Context c,int size,int color){TextView v=new TextView(c);v.setTextSize(size);v.setTextColor(color);v.setIncludeFontPadding(false);v.setPadding(0,dp(1),0,dp(1));return v;}
     public void bind(JSONObject value){bind(value,value==null?"":value.optString("order_status"));}
     public void bind(JSONObject value,String status){state=value;sampledAt=SystemClock.elapsedRealtime();String s=status==null?"":status.toLowerCase(Locale.US);terminal=s.equals("finished")||s.equals("completed")||s.equals("canceled")||s.equals("cancelled")||s.equals("cancel");removeCallbacks(tick);if(s.startsWith("cancel")){state=null;}render();if(isAttachedToWindow()&&!terminal&&state!=null&&state.optJSONObject("active")!=null)postDelayed(tick,1000);}
     @Override protected void onAttachedToWindow(){super.onAttachedToWindow();removeCallbacks(tick);post(tick);}

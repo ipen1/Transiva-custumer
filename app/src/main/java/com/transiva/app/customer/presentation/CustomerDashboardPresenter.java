@@ -19,6 +19,7 @@ public final class CustomerDashboardPresenter {
     private static final long MIN_REFRESH_MS = 12000L;
     private final Handler main = new Handler(Looper.getMainLooper());
     private volatile boolean loading;
+    private long generation;
 
     public CustomerDashboardPresenter(
             CustomerDashboardRepository repository,
@@ -42,6 +43,7 @@ public final class CustomerDashboardPresenter {
 
     private void request(String username, int userId, boolean visibleLoading) {
         if (loading || view == null) return;
+        final long requestGeneration=++generation;
         loading = true;
         if (visibleLoading) view.showLoading(true);
 
@@ -50,6 +52,7 @@ public final class CustomerDashboardPresenter {
             try {
                 DashboardState state = repository.load(username, userId);
                 main.post(() -> {
+                    if(requestGeneration!=generation||view==null)return;
                     loading = false;
                     lastSuccessAt = SystemClock.elapsedRealtime();
                     if (view == null) return;
@@ -58,6 +61,7 @@ public final class CustomerDashboardPresenter {
                 });
             } catch (Exception error) {
                 main.post(() -> {
+                    if(requestGeneration!=generation||view==null)return;
                     loading = false;
                     if (view == null) return;
                     view.showLoading(false);
@@ -65,6 +69,7 @@ public final class CustomerDashboardPresenter {
                 });
             }
         }, () -> main.post(() -> {
+            if(requestGeneration!=generation||view==null)return;
             loading = false;
             if (view != null) { view.showLoading(false); view.showError("Aplikasi sedang sibuk. Coba muat ulang sebentar lagi."); }
         }));
@@ -77,8 +82,13 @@ public final class CustomerDashboardPresenter {
         }
     }
 
+    public void cancelLoad() {
+        ++generation;Future<?> task=currentTask;currentTask=null;if(task!=null)task.cancel(true);
+        loading=false;if(view!=null)view.showLoading(false);
+    }
     public void destroy() {
         view = null;
+        cancelLoad();
         Future<?> task = currentTask;
         if (task != null) task.cancel(true);
         currentTask = null;

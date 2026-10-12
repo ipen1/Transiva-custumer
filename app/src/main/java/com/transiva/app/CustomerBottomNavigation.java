@@ -45,6 +45,23 @@ public final class CustomerBottomNavigation {
         add(nav, item(activity, "Akun", "ic_nav2_profile", ProfileActivity.class,
                 CustomerPageTransition.PROFILE, activeIndex, false, dark));
 
+        // Dedicated connection slot keeps all five destinations unobstructed.
+        LinearLayout connectionSlot = new LinearLayout(activity);
+        connectionSlot.setOrientation(LinearLayout.VERTICAL);
+        connectionSlot.setGravity(Gravity.CENTER);
+        DashboardServerIndicator indicator = new DashboardServerIndicator(activity);
+        connectionSlot.addView(indicator, new LinearLayout.LayoutParams(dp(activity, 26), dp(activity, 26)));
+        TextView connectionLabel = new TextView(activity);
+        connectionLabel.setText("Server"); connectionLabel.setTextSize(8);
+        connectionLabel.setTextColor(Color.parseColor(dark ? "#BFD5EC" : "#60738A"));
+        connectionLabel.setGravity(Gravity.CENTER); connectionLabel.setSingleLine(true);
+        connectionSlot.addView(connectionLabel, new LinearLayout.LayoutParams(-1, -2));
+        connectionLabel.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+        connectionSlot.setOnClickListener(v -> indicator.performClick());
+        LinearLayout.LayoutParams statusLp = new LinearLayout.LayoutParams(dp(activity, 34), -1);
+        statusLp.setMargins(dp(activity, 2), 0, 0, 0);
+        nav.addView(connectionSlot, statusLp);
+
         nav.setAlpha(0f);
         nav.setTranslationY(dp(activity, 12));
         nav.animate()

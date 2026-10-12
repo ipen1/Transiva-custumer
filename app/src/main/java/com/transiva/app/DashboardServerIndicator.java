@@ -1,6 +1,9 @@
 package com.transiva.app;
 
 import android.content.Context;
+import android.app.Activity;
+import android.app.Application;
+import android.os.Bundle;
 import android.graphics.Color;
 import android.graphics.drawable.GradientDrawable;
 import android.os.Handler;
@@ -14,9 +17,12 @@ import java.net.HttpURLConnection;
 import java.net.URL;
 import java.util.concurrent.Future;
 
-/** Dashboard-only server reachability. Internet availability alone never means green. */
+/** Shared bottom-nav indicator. Owner lifecycle prevents requests from hidden tabs. */
 public final class DashboardServerIndicator extends FrameLayout {
     private static final String URL_TEXT = "https://transiva.my.id/server/customer_connection_status.php";
+    private final Activity owner;
+    private boolean registered;
+    private final Application.ActivityLifecycleCallbacks lifecycle;
     private final Handler main = new Handler(Looper.getMainLooper());
     private final Object lock = new Object();
     private final View square;
@@ -47,6 +53,18 @@ public final class DashboardServerIndicator extends FrameLayout {
 
     public DashboardServerIndicator(Context context) {
         super(context);
+        owner = context instanceof Activity ? (Activity) context : null;
+        lifecycle = new Application.ActivityLifecycleCallbacks() {
+            @Override public void onActivityResumed(Activity activity) { if (activity == owner) start(); }
+            @Override public void onActivityPaused(Activity activity) { if (activity == owner) stop(); }
+            @Override public void onActivityStopped(Activity activity) { if (activity == owner) stop(); }
+            @Override public void onActivityDestroyed(Activity activity) {
+                if (activity == owner) { stop(); unregister(); }
+            }
+            @Override public void onActivityCreated(Activity activity, Bundle state) { }
+            @Override public void onActivityStarted(Activity activity) { }
+            @Override public void onActivitySaveInstanceState(Activity activity, Bundle state) { }
+        };
         GradientDrawable surface = new GradientDrawable(); surface.setColor(0x24FFFFFF);
         surface.setCornerRadius(dp(7)); surface.setStroke(dp(1), 0x50FFFFFF); setBackground(surface);
         square = new View(context);
@@ -72,7 +90,19 @@ public final class DashboardServerIndicator extends FrameLayout {
         active = false; TransivaNetworkMonitor.removeListener(networkListener);
         main.removeCallbacksAndMessages(null); cancelRequest(); networkState = null;
     }
-    @Override protected void onDetachedFromWindow() { stop(); super.onDetachedFromWindow(); }
+    @Override protected void onAttachedToWindow() {
+        super.onAttachedToWindow();
+        if (owner != null && !registered) {
+            owner.getApplication().registerActivityLifecycleCallbacks(lifecycle); registered = true;
+        }
+        start();
+    }
+    private void unregister() {
+        if (owner != null && registered) {
+            owner.getApplication().unregisterActivityLifecycleCallbacks(lifecycle); registered = false;
+        }
+    }
+    @Override protected void onDetachedFromWindow() { stop(); unregister(); super.onDetachedFromWindow(); }
 
     private void check() {
         if (!active || busy) return;

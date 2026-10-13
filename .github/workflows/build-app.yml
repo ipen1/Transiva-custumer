@@ -27,7 +27,19 @@ jobs:
       - name: Verify backend test source fingerprints
         run: python3 tools/reliability/verify_sources.py
       - name: Install PHP database extension
-        run: sudo apt-get update && sudo apt-get install -y php-cli php-mysql
+        run: sudo apt-get update && sudo apt-get install -y php-cli php-mysql php-mbstring
+      - name: Test chat failure and pagination fixtures
+        run: php -n tools/reliability/chat_fixture_regression.php tools/reliability/chat-server
+      - name: Test deployed chat endpoints and pagination with real SQL
+        env:
+          TEST_DB_PASSWORD: integration-only
+        run: python3 tools/reliability/chat_server_regression.py
+      - name: Test final wallet receipts, notification delivery, and alarm retries
+        run: |
+          set -euo pipefail
+          python3 tools/reliability/wallet_final_regression.py tools/reliability/wallet-server | tee wallet-final.log
+          php -n tools/reliability/wallet_notification_regression.php tools/reliability/wallet-server | tee wallet-notification.log
+          php -n tools/reliability/wallet_alert_regression.php tools/reliability/wallet-server | tee wallet-alert.log
       - name: Test profile schema compatibility
         run: python3 tools/reliability/profile_server_regression.py
       - name: Test production escrow helper with controlled failures
@@ -48,6 +60,9 @@ jobs:
           path: |
             transaction-integration.log
             settlement-helper.log
+            wallet-final.log
+            wallet-notification.log
+            wallet-alert.log
           if-no-files-found: warn
 
   build:
@@ -83,6 +98,15 @@ jobs:
       - name: Run Customer Regression Tests
         run: gradle :app:testDirectDebugUnitTest :app:testPlayDebugUnitTest
 
+      - name: Test chat callbacks, saturation recovery, durable sends, and wallet runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          JSON_JAR=$(find "$HOME/.gradle/caches" -path '*/org.json/json/20240303/*/json-20240303.jar' -print -quit)
+          test -f "$JSON_JAR"
+          export JSON_JAR
+          python3 tools/reliability/wallet_runtime_regression.py | tee wallet-runtime.log
+          python3 tools/reliability/chat_runtime_regression.py | tee chat-runtime.log
       - name: Test real profile cache concurrency and session isolation
         shell: bash
         run: |
@@ -130,6 +154,8 @@ jobs:
             app/build/test-results/
             app/build/reports/tests/
             profile-cache-regression.log
+            wallet-runtime.log
+            chat-runtime.log
           if-no-files-found: warn
 
       # Direct = APK for your own server/distribution.

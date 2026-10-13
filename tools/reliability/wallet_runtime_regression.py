@@ -8,10 +8,11 @@ import subprocess
 import tempfile
 root = Path(__file__).resolve().parent
 production = root.parents[1] / 'app/src/main/java/com/transiva/app'
-names = ['CustomerWalletOperationJournal', 'CustomerServerConnectionMonitor', 'CustomerSessionGuard', 'CustomerReadSafetyRules', 'NetworkSafetyRules', 'BoundedResponseReader']
+names = ['CustomerWalletOperationJournal', 'CustomerServerConnectionMonitor', 'CustomerSessionGuard', 'CustomerReadSafetyRules', 'NetworkSafetyRules', 'BoundedResponseReader', 'CustomerWalletCoordinator', 'CustomerWalletTransport']
 json_jar = os.environ['JSON_JAR']
 with tempfile.TemporaryDirectory(prefix='transiva-wallet-runtime-') as directory:
     subprocess.run([os.environ.get('JAVAC_BIN', 'javac'), '-cp', json_jar, '-d', directory,
                     *map(str, (root / 'wallet-fixtures').rglob('*.java')),
                     *[str(production / (name + '.java')) for name in names]], check=True)
     subprocess.run([os.environ.get('JAVA_BIN', 'java'), '-cp', directory + os.pathsep + json_jar, 'com.transiva.app.WalletRuntimeCheck'], check=True)
+    subprocess.run([os.environ.get('JAVA_BIN', 'java'), '-cp', directory + os.pathsep + json_jar, 'com.transiva.app.WalletCoordinatorCheck'], check=True)

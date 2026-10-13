@@ -16,3 +16,8 @@ class TransivaNetworkMonitor {
  static void addListener(Listener l){listeners.add(l);}static void removeListener(Listener l){listeners.remove(l);}
  static void update(State s){state=s;for(Listener l:new HashSet<>(listeners))l.onNetworkChanged(s);}
 }
+
+class CustomerApiClient {
+ static java.net.HttpURLConnection open(Context c,String url)throws Exception{throw new AssertionError("Real network forbidden in fixture");}
+ static boolean handleSessionResponse(Context c,int code,String body){return false;}
+}

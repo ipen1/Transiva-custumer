@@ -3,7 +3,10 @@ import android.content.Context;import org.json.JSONObject;import java.net.*;
 public class WalletRuntimeCheck {
  static int checks;static void check(boolean ok,String name){if(!ok)throw new AssertionError(name);checks++;System.out.println("PASS "+name);}
  public static void main(String[] args)throws Exception {
-  Context context=new Context();CustomerWalletOperationJournal a=new CustomerWalletOperationJournal(context,"1");
+  Context context=new Context();android.os.Looper.markMain(true);boolean forbidden=false;
+  try{new CustomerWalletOperationJournal(context,"1");}catch(IllegalStateException expected){forbidden=true;}
+  check(forbidden,"journal construction and disk reads forbidden on UI thread");android.os.Looper.markMain(false);
+  CustomerWalletOperationJournal a=new CustomerWalletOperationJournal(context,"1");
   JSONObject original=new JSONObject().put("amount",10000);JSONObject op=a.begin("withdraw",original);String id=op.getString("id");
   check(id.equals(op.getJSONObject("payload").getString("idempotency_key"))&&"1".equals(op.getJSONObject("payload").getString("operation_owner_id")),"intent gets stable key and authenticated owner");
   original.put("amount",999);check(a.pending().getJSONObject("payload").getInt("amount")==10000,"persisted request immutable after UI edits");

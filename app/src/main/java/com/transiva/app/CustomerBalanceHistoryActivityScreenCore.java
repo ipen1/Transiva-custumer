@@ -126,7 +126,7 @@ class CustomerBalanceHistoryActivityScreenCore extends Activity {
         super.onResume();
         featureRuntime.onResume();
         CustomerAppSettings.apply(this);
-        if (!pendingPrompted) { pendingPrompted=true; showPendingOperation(); }
+        if (!pendingPrompted) { pendingPrompted=true; inspectWalletPending(null); }
 
         if (
                 content != null
@@ -895,7 +895,9 @@ class CustomerBalanceHistoryActivityScreenCore extends Activity {
         CustomerSessionGuard tagged=operationSession.get();
         final CustomerSessionGuard session=tagged==null?CustomerSessionGuard.capture(this):tagged;
         featureRuntime.post(mainHandler, () -> {
-            if(!isFinishing()&&!isDestroyed()&&Integer.toString(userId).equals(session.account)&&session.matches(this))result.run();
+            if(isFinishing()||isDestroyed())return;
+            if(!Integer.toString(userId).equals(session.account)||!session.matches(this)){operationBusy=false;setLoading(false);return;}
+            result.run();
         });
     }
     private void cancelWalletRead() {
@@ -1075,8 +1077,9 @@ class CustomerBalanceHistoryActivityScreenCore extends Activity {
         );
     }
 
-    protected void showTransferDialog() {
-        if (operationBusy || showPendingOperation()) return;
+    protected void showTransferDialog() { inspectWalletPending(this::showTransferForm); }
+
+    private void showTransferForm() {
         LinearLayout form =
                 dialogForm();
 
@@ -1207,7 +1210,7 @@ class CustomerBalanceHistoryActivityScreenCore extends Activity {
             int amount,
             String note
     ) {
-        if (operationBusy || showPendingOperation()) return;
+        if (operationBusy) return;
         operationBusy=true; setLoading(true);
 
         executeSession(() -> {
@@ -1409,15 +1412,17 @@ class CustomerBalanceHistoryActivityScreenCore extends Activity {
     }
 
     protected void submitTransfer(String recipient, int amount, String note, String quoteToken, String requestId) {
-        if (operationBusy || showPendingOperation()) return;
+        if (operationBusy) return;
         if (quoteToken == null || quoteToken.trim().isEmpty() || requestId == null || requestId.isEmpty()) {
             showInfo("Kirim Dana", "Detail transfer tidak valid. Silakan ulangi."); return;
         }
         try {
-            JSONObject payload = new JSONObject().put("recipient", recipient).put("amount", amount)
-                    .put("note", note).put("quote_token", quoteToken).put("request_id", requestId);
-            sendWalletOperation(walletJournal().begin("transfer", payload));
-        } catch (Exception error) { showInfo("Kirim Dana", first(error.getMessage(), "Operasi belum dapat disiapkan.")); }
+            JSONObject payload=new JSONObject().put("recipient",recipient).put("amount",amount)
+                    .put("note",note).put("quote_token",quoteToken).put("request_id",requestId);
+            operationBusy=true;setLoading(true);
+            CustomerSessionGuard guard=CustomerSessionGuard.capture(this);
+            walletCoordinator().start("transfer",payload,walletCallback(guard,null));
+        } catch(Exception error){operationBusy=false;setLoading(false);showInfo("Kirim Dana", "Operasi belum dapat disiapkan.");}
     }
 
     protected void installRupiahFormatting(
@@ -1500,8 +1505,9 @@ class CustomerBalanceHistoryActivityScreenCore extends Activity {
         );
     }
 
-    protected void showWithdrawDialog() {
-        if (operationBusy || showPendingOperation()) return;
+    protected void showWithdrawDialog() { inspectWalletPending(this::showWithdrawForm); }
+
+    private void showWithdrawForm() {
         LinearLayout form =
                 dialogForm();
 
@@ -1648,73 +1654,71 @@ class CustomerBalanceHistoryActivityScreenCore extends Activity {
 
 
     protected void submitWithdraw(int amount, String bank, String accountName, String accountNumber, String note) {
-        if (operationBusy || showPendingOperation()) return;
+        if(operationBusy)return;
         try {
-            JSONObject payload = new JSONObject().put("amount", amount).put("bank_name", bank)
-                    .put("account_name", accountName).put("account_number", accountNumber).put("note", note);
-            sendWalletOperation(walletJournal().begin("withdraw", payload));
-        } catch (Exception error) { showInfo("Withdraw", first(error.getMessage(), "Operasi belum dapat disiapkan.")); }
+            JSONObject payload=new JSONObject().put("amount",amount).put("bank_name",bank)
+                    .put("account_name",accountName).put("account_number",accountNumber).put("note",note);
+            operationBusy=true;setLoading(true);
+            CustomerSessionGuard guard=CustomerSessionGuard.capture(this);
+            walletCoordinator().start("withdraw",payload,walletCallback(guard,null));
+        }catch(Exception error){operationBusy=false;setLoading(false);showInfo("Withdraw","Operasi belum dapat disiapkan.");}
     }
 
-    private CustomerWalletOperationJournal walletJournal() {
-        return new CustomerWalletOperationJournal(this, Integer.toString(userId));
+    private CustomerWalletCoordinator walletCoordinator(){
+        return new CustomerWalletCoordinator(getApplicationContext(),Integer.toString(userId));
     }
-    private boolean showPendingOperation() {
-        try {
-            JSONObject operation = walletJournal().pending();
-            if (operation == null) return false;
-            if (!operationBusy && !isFinishing() && !isDestroyed()) {
-                new TransivaAlertDialogBuilder(this).setTitle("Periksa hasil transaksi")
-                        .setMessage("Ada operasi wallet yang hasilnya belum terkonfirmasi. Periksa operasi yang sama sebelum membuat transaksi baru.")
-                        .setPositiveButton("Periksa hasil", (dialog, which) -> sendWalletOperation(operation))
-                        .setNegativeButton("Nanti", null).show();
-            }
-            return true;
-        } catch (Exception error) {
-            showInfo("Wallet", "Penanda operasi belum dapat dibaca. Hubungi bantuan sebelum membuat transaksi baru.");
-            return true;
-        }
+    private void inspectWalletPending(Runnable whenEmpty){
+        if(operationBusy)return;
+        operationBusy=true;setLoading(true);
+        CustomerSessionGuard guard=CustomerSessionGuard.capture(this);
+        walletCoordinator().inspect(walletCallback(guard,whenEmpty));
     }
-    private void sendWalletOperation(JSONObject operation) {
-        if (operationBusy) return;
-        final String action = operation.optString("action");
-        final String id = operation.optString("id");
-        final JSONObject payload = operation.optJSONObject("payload");
-        if (payload == null || id.isEmpty() || !("transfer".equals(action) || "withdraw".equals(action))) {
-            showInfo("Wallet", "Data operasi tidak valid. Hubungi bantuan."); return;
-        }
-        final CustomerWalletOperationJournal journal = walletJournal();
-        try { journal.prepareSend(id); }
-        catch (Exception error) { showInfo("Wallet", first(error.getMessage(), "Operasi belum dapat disimpan.")); return; }
-        operationBusy=true; setLoading(true);
-        executeSession(() -> {
-            try {
-                JSONObject response = postJson("transfer".equals(action) ? TRANSFER_URL : WITHDRAW_URL, payload);
-                boolean success = response.optBoolean("success", false);
-                boolean rejected = "rejected".equals(response.optString("operation_state"));
-                // Also persists completion when the Activity has closed; session is checked by postJson.
-                if (success || rejected) journal.resolve(id);
-                postSession(() -> {
-                    operationBusy=false; setLoading(false);
-                    if (success) {
-                        showInfo("transfer".equals(action) ? "Kirim Dana Berhasil" : "Withdraw Diajukan",
-                                response.optString("message", "Operasi berhasil.") + "\nReferensi: " + response.optString("reference", id));
-                        loadWallet();
-                    } else if (rejected) {
-                        showInfo("Operasi Tidak Diproses", response.optString("message", "Operasi dibatalkan tanpa perubahan saldo."));
-                        loadWallet();
-                    } else {
-                        showInfo("Hasil Belum Terkonfirmasi", response.optString("message", "Periksa koneksi Anda.")
-                                + "\nBuka Kirim Dana atau Withdraw untuk memeriksa operasi yang sama.");
-                    }
-                });
-            } catch (Exception error) {
-                postSession(() -> {
-                    operationBusy=false; setLoading(false);
-                    showInfo("Hasil Belum Terkonfirmasi", "Jaringan atau respons belum memastikan hasil transaksi. ID operasi tetap disimpan. Buka Kirim Dana atau Withdraw untuk memeriksa kembali.");
-                });
+    private CustomerWalletCoordinator.Callback walletCallback(CustomerSessionGuard guard,Runnable whenEmpty){
+        return result -> featureRuntime.post(mainHandler,()->{
+            if(isFinishing()||isDestroyed())return;
+            operationBusy=false;setLoading(false);
+            if(!Integer.toString(userId).equals(guard.account)||!guard.matches(this))return;
+            if("pending".equals(result.state)) {
+                if(result.operation==null){if(whenEmpty!=null)whenEmpty.run();}
+                else showPendingWallet(result.operation);
+            } else if("succeeded".equals(result.state)||"rejected".equals(result.state)) {
+                JSONObject receipt=result.receipt;
+                showInfo("succeeded".equals(result.state)?("transfer".equals(result.operation.optString("action"))?"Kirim Dana Berhasil":"Withdraw Diajukan"):"Operasi Tidak Diproses",
+                        result.message+"\nID: "+receipt.optString("operation_id")
+                        +(receipt.optString("reference").isEmpty()?"":"\nReferensi: "+receipt.optString("reference")));
+                loadWallet();
+            } else if("not_found".equals(result.state)&&result.operation!=null) {
+                showConfirmWalletResend(result.operation);
+            } else if("processing".equals(result.state)) {
+                showInfo("Operasi Masih Diproses","Belum ada hasil final. ID tetap disimpan. Periksa status kembali nanti.");
+            } else {
+                showInfo("busy".equals(result.state)?"Wallet Sedang Sibuk":"Hasil Belum Terkonfirmasi",result.message);
             }
         });
+    }
+    private void showPendingWallet(JSONObject operation){
+        new TransivaAlertDialogBuilder(this).setTitle("Periksa status transaksi")
+                .setMessage("Ada operasi wallet yang belum terkonfirmasi. Tombol ini hanya membaca status dan tidak mengirim ulang transaksi.\nID: "+operation.optString("id"))
+                .setPositiveButton("Periksa status",(dialog,which)->checkWalletStatus(operation))
+                .setNegativeButton("Nanti",null).show();
+    }
+    private void checkWalletStatus(JSONObject operation){
+        if(operationBusy)return;
+        operationBusy=true;setLoading(true);
+        CustomerSessionGuard guard=CustomerSessionGuard.capture(this);
+        walletCoordinator().check(operation,walletCallback(guard,null));
+    }
+    private void showConfirmWalletResend(JSONObject operation){
+        JSONObject payload=operation.optJSONObject("payload");
+        String amount=payload==null?"":rupiah(payload.optInt("amount"));
+        new TransivaAlertDialogBuilder(this).setTitle("Hasil belum ditemukan")
+                .setMessage("Server belum memiliki hasil terkonfirmasi untuk operasi "+amount+" ini. Request sebelumnya mungkin masih berjalan. Jika Anda ingin mengirim ulang, ID dan data operasi tetap sama.\nID: "+operation.optString("id"))
+                .setPositiveButton("Kirim ulang ID sama",(dialog,which)->{
+                    if(operationBusy)return;
+                    operationBusy=true;setLoading(true);
+                    CustomerSessionGuard guard=CustomerSessionGuard.capture(this);
+                    walletCoordinator().retry(operation,walletCallback(guard,null));
+                }).setNegativeButton("Nanti",null).show();
     }
 
     protected JSONObject postJson(String endpoint, JSONObject payload) throws Exception {

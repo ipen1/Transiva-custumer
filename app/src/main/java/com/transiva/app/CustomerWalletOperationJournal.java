@@ -11,16 +11,21 @@ final class CustomerWalletOperationJournal {
     private final SharedPreferences preferences;
     private final String account;
     CustomerWalletOperationJournal(Context context, String account) {
+        backgroundOnly();
         if (account == null || !account.matches("[0-9]+") || "0".equals(account))
             throw new IllegalStateException("Sesi wallet tidak valid");
         this.account = account;
         preferences = context.getApplicationContext().getSharedPreferences("transiva_wallet_operation_" + account, Context.MODE_PRIVATE);
     }
-    JSONObject pending() throws Exception { synchronized (LOCK) {
+    private static void backgroundOnly() {
+        android.os.Looper current=android.os.Looper.myLooper();
+        if(current!=null&&current==android.os.Looper.getMainLooper())throw new IllegalStateException("Wallet journal requires background execution");
+    }
+    JSONObject pending() throws Exception { backgroundOnly(); synchronized (LOCK) {
         String raw = preferences.getString("pending", "");
         return raw == null || raw.isEmpty() ? null : new JSONObject(raw);
     } }
-    JSONObject begin(String action, JSONObject payload) throws Exception { synchronized (LOCK) {
+    JSONObject begin(String action, JSONObject payload) throws Exception { backgroundOnly(); synchronized (LOCK) {
         if (pending() != null) throw new IllegalStateException("Periksa hasil operasi sebelumnya terlebih dahulu.");
         String id = "transfer".equals(action) ? payload.optString("request_id") : "cwd-" + UUID.randomUUID();
         if (id.isEmpty()) throw new IllegalStateException("ID operasi tidak valid");
@@ -31,13 +36,13 @@ final class CustomerWalletOperationJournal {
             throw new IllegalStateException("Operasi belum dapat disimpan. Tidak ada dana yang dikirim.");
         return operation;
     } }
-    void prepareSend(String id) throws Exception { synchronized (LOCK) {
+    void prepareSend(String id) throws Exception { backgroundOnly(); synchronized (LOCK) {
         JSONObject current = pending();
         if (current == null || !id.equals(current.optString("id"))
                 || !preferences.edit().putString("pending", current.toString()).commit())
             throw new IllegalStateException("Operasi belum tersimpan. Periksa penyimpanan perangkat.");
     } }
-    void resolve(String id) throws Exception { synchronized (LOCK) {
+    void resolve(String id) throws Exception { backgroundOnly(); synchronized (LOCK) {
         JSONObject current = pending();
         if (current != null && id.equals(current.optString("id"))
                 && !preferences.edit().remove("pending").commit()) {

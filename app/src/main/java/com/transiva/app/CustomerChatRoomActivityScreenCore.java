@@ -94,6 +94,59 @@ class CustomerChatRoomActivityScreenCore extends Activity {
     protected CustomerChatStabilityController chatStability;
     protected final CustomerFeatureRuntimeController featureRuntime = new CustomerFeatureRuntimeController(CustomerRealtimeCoordinator.Role.CHAT);
 
+    private CustomerChatRequestGate chatRequests;
+    private Button olderMessagesButton, retryMessageButton;
+    private int oldestId;
+    private boolean hasOlderMessages;
+    private final java.util.HashSet<Integer> displayedMessageIds=new java.util.HashSet<>();
+    private CustomerChatSendJournal sendJournal() throws Exception {
+        return new CustomerChatSendJournal(getApplicationContext(),chatRequests.session(),
+                roomId+":"+orderSource+":"+orderDbId);
+    }
+    private JSONObject sendPayload(JSONObject payload) throws Exception {
+        CustomerChatSendJournal journal=sendJournal();
+        JSONObject operation=journal.begin(payload);
+        JSONObject result=CustomerMessageApi.post(SEND_CHAT_URL,operation,chatRequests.session());
+        String id=operation.optString("client_message_id");
+        if(result.optBoolean("success") && id.equals(result.optString("client_message_id")))journal.resolve(id);
+        else if(result.optBoolean("success"))throw new IllegalStateException("Hasil pesan belum terkonfirmasi. Pastikan server chat sudah diperbarui.");
+        // These responses prove the endpoint refused the request before inserting a message.
+        else if(!result.optBoolean("success") && ("CHAT_ENDED".equals(result.optString("code"))
+                || "DRIVER_NOT_ASSIGNED".equals(result.optString("code"))
+                || "EMPTY_MESSAGE".equals(result.optString("code")) || "MESSAGE_TOO_LONG".equals(result.optString("code"))))journal.resolve(id);
+        return result;
+    }
+    private void refreshPendingMessage() {
+        chatRequests.execute("pending-read",() -> {
+            try { boolean pending=sendJournal().pending()!=null;
+                chatRequests.post(mainHandler,() -> retryMessageButton.setVisibility(pending?View.VISIBLE:View.GONE));
+            }catch(Exception ignored) { }
+        },null);
+    }
+    private void retryPendingMessage() {
+        if(sending||uploading)return;
+        sending=true;sendButton.setEnabled(false);retryMessageButton.setEnabled(false);
+        chatRequests.execute("send",() -> {
+            try {
+                JSONObject operation=sendJournal().pending();
+                final String retriedMessage=operation==null?"":operation.optString("message");
+                if(operation!=null) {
+                    JSONObject result=sendPayload(operation);
+                    if(!result.optBoolean("success"))throw new IllegalStateException(result.optString("message","Pesan belum terkonfirmasi"));
+                }
+                chatRequests.post(mainHandler,() -> {resetSendControls();if(input.getText().toString().trim().equals(retriedMessage))input.setText("");refreshPendingMessage();loadMessages(false);});
+            }catch(Exception error){chatRequests.post(mainHandler,() -> {resetSendControls();refreshPendingMessage();toast(first(error.getMessage(),"Pesan masih tertunda"));});}
+        },() -> chatRequests.post(mainHandler,() -> {resetSendControls();toast("Antrean penuh. Pesan tetap tersimpan; coba kembali.");}));
+    }
+    private void resetSendControls() {
+        sending=false;sendButton.setEnabled(!readOnly&&!uploading&&!sending);sendButton.setText(readOnly?"Selesai":"Kirim");
+        retryMessageButton.setEnabled(true);
+    }
+    private void rejectMedia() {
+        uploading=false;progress.setVisibility(loading?View.VISIBLE:View.GONE);
+        attachButton.setEnabled(!readOnly);sendButton.setEnabled(!readOnly&&!sending);voiceButton.setEnabled(!readOnly);
+        voiceButton.setText("🎙");toast("Antrean penuh. Coba kirim kembali.");
+    }
     protected LinearLayout messagesBox;
     protected ScrollView messagesScroll;
     protected TextView participantText;
@@ -131,6 +184,7 @@ class CustomerChatRoomActivityScreenCore extends Activity {
     };
 
     protected int lastId;
+    private int lastReadThrough;
     protected boolean firstLoad = true;
     protected final SparseArray<TextView> receiptViews = new SparseArray<>();
 
@@ -146,7 +200,7 @@ class CustomerChatRoomActivityScreenCore extends Activity {
                     if (!destroyed && !readOnly && chatVisible && hasWindowFocus()) {
                         loadMessages(false);
 
-                        mainHandler.postDelayed(
+                        chatRequests.postDelayed(mainHandler,
                                 this,
                                 CustomerPerformanceManager.polling(CustomerChatRoomActivityScreenCore.this, REFRESH_MS)
                         );
@@ -169,6 +223,8 @@ class CustomerChatRoomActivityScreenCore extends Activity {
         );
 
         readIntent();
+        CustomerMessageApi.initialize(this);
+        chatRequests=new CustomerChatRequestGate(this,featureRuntime,() -> !destroyed&&!isFinishing()&&!isDestroyed());
         setContentView(buildScreen());
         CustomerResponsiveUi.apply(this);
         CustomerAppSettings.apply(this);
@@ -215,10 +271,11 @@ class CustomerChatRoomActivityScreenCore extends Activity {
         }
 
         applyReadOnlyState();
+        refreshPendingMessage();
         loadMessages(true);
 
         if (!readOnly) {
-            mainHandler.postDelayed(
+            chatRequests.postDelayed(mainHandler,
                     refreshRunnable,
                     REFRESH_MS
             );
@@ -447,6 +504,12 @@ class CustomerChatRoomActivityScreenCore extends Activity {
         root.addView(header);
         root.addView(new ActiveCallBanner(this),new LinearLayout.LayoutParams(-1,-2));
 
+        olderMessagesButton=new Button(this);olderMessagesButton.setAllCaps(false);
+        olderMessagesButton.setText("Muat pesan sebelumnya");olderMessagesButton.setVisibility(View.GONE);
+        olderMessagesButton.setOnClickListener(v -> loadOlderMessages());root.addView(olderMessagesButton,new LinearLayout.LayoutParams(-1,-2));
+        retryMessageButton=new Button(this);retryMessageButton.setAllCaps(false);
+        retryMessageButton.setText("Kirim ulang pesan tertunda");retryMessageButton.setVisibility(View.GONE);
+        retryMessageButton.setOnClickListener(v -> retryPendingMessage());root.addView(retryMessageButton,new LinearLayout.LayoutParams(-1,-2));
         messagesScroll = new ScrollView(this);
         messagesScroll.setFillViewport(true);
 
@@ -827,7 +890,7 @@ class CustomerChatRoomActivityScreenCore extends Activity {
         attachButton.setEnabled(false);
         sendButton.setEnabled(false);
 
-        featureRuntime.execute(() -> {
+        chatRequests.execute("media",() -> {
             try {
                 ChatImageProcessor.ImagePayload payload =
                         ChatImageProcessor.fromUri(
@@ -835,18 +898,18 @@ class CustomerChatRoomActivityScreenCore extends Activity {
                                 sourceUri
                         );
 
-                mainHandler.post(() -> {
+                chatRequests.post(mainHandler,() -> {
                     uploading = false;
                     progress.setVisibility(View.GONE);
                     uploadPhoto(payload);
                 });
 
             } catch (Exception error) {
-                mainHandler.post(() -> {
+                chatRequests.post(mainHandler,() -> {
                     uploading = false;
                     progress.setVisibility(View.GONE);
-                    attachButton.setEnabled(true);
-                    sendButton.setEnabled(true);
+                    attachButton.setEnabled(!readOnly);
+                    sendButton.setEnabled(!readOnly&&!uploading&&!sending);
 
                     showMessage(
                             "Foto gagal diproses",
@@ -858,7 +921,7 @@ class CustomerChatRoomActivityScreenCore extends Activity {
                     );
                 });
             }
-        });
+        }, () -> chatRequests.post(mainHandler,() -> {rejectMedia();}));
     }
 
     protected void processCameraFile(
@@ -877,7 +940,7 @@ class CustomerChatRoomActivityScreenCore extends Activity {
         attachButton.setEnabled(false);
         sendButton.setEnabled(false);
 
-        featureRuntime.execute(() -> {
+        chatRequests.execute("media",() -> {
             java.io.File file =
                     new java.io.File(filePath);
 
@@ -885,7 +948,7 @@ class CustomerChatRoomActivityScreenCore extends Activity {
                 ChatImageProcessor.ImagePayload payload =
                         ChatImageProcessor.fromFile(file);
 
-                mainHandler.post(() -> {
+                chatRequests.post(mainHandler,() -> {
                     uploading = false;
                     progress.setVisibility(View.GONE);
                     uploadPhoto(payload);
@@ -897,11 +960,11 @@ class CustomerChatRoomActivityScreenCore extends Activity {
                 });
 
             } catch (Exception error) {
-                mainHandler.post(() -> {
+                chatRequests.post(mainHandler,() -> {
                     uploading = false;
                     progress.setVisibility(View.GONE);
-                    attachButton.setEnabled(true);
-                    sendButton.setEnabled(true);
+                    attachButton.setEnabled(!readOnly);
+                    sendButton.setEnabled(!readOnly&&!uploading&&!sending);
 
                     showMessage(
                             "Foto gagal diproses",
@@ -913,7 +976,7 @@ class CustomerChatRoomActivityScreenCore extends Activity {
                     );
                 });
             }
-        });
+        }, () -> chatRequests.post(mainHandler,() -> {rejectMedia();}));
     }
 
 
@@ -940,20 +1003,20 @@ class CustomerChatRoomActivityScreenCore extends Activity {
 
         scrollBottom();
 
-        featureRuntime.execute(() -> {
+        chatRequests.execute("media",() -> {
             try {
                 JSONObject response =
                         CustomerMessageApi.uploadImagePair(
                                 UPLOAD_IMAGE_URL,
                                 roomId,
                                 "customer",
-                                payload
+                                payload,chatRequests.session()
                         );
 
-                mainHandler.post(() -> {
+                chatRequests.post(mainHandler,() -> {
                     uploading = false;
-                    attachButton.setEnabled(true);
-                    sendButton.setEnabled(true);
+                    attachButton.setEnabled(!readOnly);
+                    sendButton.setEnabled(!readOnly&&!uploading&&!sending);
 
                     if (
                             response.optBoolean(
@@ -988,10 +1051,10 @@ class CustomerChatRoomActivityScreenCore extends Activity {
                 });
 
             } catch (Exception error) {
-                mainHandler.post(() -> {
+                chatRequests.post(mainHandler,() -> {
                     uploading = false;
-                    attachButton.setEnabled(true);
-                    sendButton.setEnabled(true);
+                    attachButton.setEnabled(!readOnly);
+                    sendButton.setEnabled(!readOnly&&!uploading&&!sending);
 
                     pendingBubble.markFailed(
                             first(
@@ -1003,7 +1066,7 @@ class CustomerChatRoomActivityScreenCore extends Activity {
                     cleanupCameraFile();
                 });
             }
-        });
+        }, () -> chatRequests.post(mainHandler,() -> {pendingBubble.markFailed("Antrean penuh. Coba kembali.");rejectMedia();}));
     }
 
     protected void refreshMessagesAfterUpload(
@@ -1015,7 +1078,7 @@ class CustomerChatRoomActivityScreenCore extends Activity {
         }
 
         if (loading && attempt < 12) {
-            mainHandler.postDelayed(
+            chatRequests.postDelayed(mainHandler,
                     () -> refreshMessagesAfterUpload(
                             pendingBubble,
                             attempt + 1
@@ -1038,7 +1101,7 @@ class CustomerChatRoomActivityScreenCore extends Activity {
          * Fallback kedua. Ini mengatasi kondisi last_id server baru belum
          * terbaca pada request pertama setelah upload.
          */
-        mainHandler.postDelayed(
+        chatRequests.postDelayed(mainHandler,
                 () -> {
                     if (!loading) {
                         loadMessages(false);
@@ -1343,25 +1406,25 @@ class CustomerChatRoomActivityScreenCore extends Activity {
         if (readOnly || uploading || file == null) return;
         uploading = true;
         voiceButton.setEnabled(false);
-        featureRuntime.execute(() -> {
+        chatRequests.execute("media",() -> {
             try {
                 JSONObject upload = CustomerMessageApi.uploadVoice(
-                        UPLOAD_VOICE_URL, roomId, "customer", file, durationMs);
+                        UPLOAD_VOICE_URL, roomId, "customer", file, durationMs,chatRequests.session());
                 if (!upload.optBoolean("success", false)) throw new IllegalStateException(upload.optString("message", "Upload voice note gagal"));
                 String audioUrl = upload.optString("url", upload.optString("audio_url", ""));
                 JSONObject payload = new JSONObject();
                 payload.put("room_id", roomId); payload.put("sender_type", "customer");
                 payload.put("order_id", orderId); payload.put("order_db_id", orderDbId); payload.put("source", orderSource); payload.put("message", ChatVoiceNote.encode(audioUrl, durationMs));
-                JSONObject sent = CustomerMessageApi.post(SEND_CHAT_URL, payload);
-                mainHandler.post(() -> {
+                JSONObject sent = sendPayload(payload);
+                chatRequests.post(mainHandler,() -> {
                     uploading = false; voiceButton.setEnabled(!readOnly); voiceButton.setText("🎙");
-                    if (sent.optBoolean("success", false)) loadMessages(false);
+                    refreshPendingMessage();if (sent.optBoolean("success", false)) loadMessages(false);
                     else toast(sent.optString("message", "Voice note gagal dikirim"));
                 });
             } catch (Exception e) {
-                mainHandler.post(() -> { uploading = false; voiceButton.setEnabled(!readOnly); voiceButton.setText("🎙"); statusText.setText("Voice note pending • jaringan"); toast(first(e.getMessage(), "Voice note gagal dikirim")); });
+                chatRequests.post(mainHandler,() -> { uploading = false; voiceButton.setEnabled(!readOnly); voiceButton.setText("🎙"); refreshPendingMessage();statusText.setText("Voice note pending • jaringan"); toast(first(e.getMessage(), "Voice note gagal dikirim")); });
             } finally { file.delete(); }
-        });
+        }, () -> chatRequests.post(mainHandler,() -> {rejectMedia();file.delete();}));
     }
 
     protected String absoluteVoiceContent(String content) {
@@ -1385,63 +1448,42 @@ class CustomerChatRoomActivityScreenCore extends Activity {
         void markNetworkPending() { state.setText("Pending • jaringan"); }
     }
 
-    protected void loadMessages(
-            boolean showLoading
-    ) {
-        if (loading) {
-            return;
-        }
-
-        loading = true;
-
-        if (showLoading) {
-            progress.setVisibility(View.VISIBLE);
-        }
-
-        int requestedLastId = 0;
-
-        featureRuntime.execute(() -> {
+    protected void loadMessages(boolean showLoading) { loadMessagePage(firstLoad?"latest":"newer",showLoading); }
+    private void loadOlderMessages() { if(hasOlderMessages&&oldestId>0)loadMessagePage("older",false); }
+    private void loadMessagePage(String mode,boolean showLoading) {
+        if(loading||!chatRequests.current())return;
+        loading=true;olderMessagesButton.setEnabled(false);
+        if(showLoading)progress.setVisibility(View.VISIBLE);
+        final int cursor="older".equals(mode)?oldestId:lastId;
+        final String receipts=receiptIdQuery();
+        chatRequests.execute("read",() -> {
             try {
-                String endpoint =
-                        GET_CHAT_URL
-                                + "?room_id="
-                                + URLEncoder.encode(
-                                roomId,
-                                StandardCharsets.UTF_8.name()
-                        )
-                                + "&source=" + URLEncoder.encode(orderSource, StandardCharsets.UTF_8.name())
-                                + "&order_id=" + URLEncoder.encode(orderId, StandardCharsets.UTF_8.name())
-                                + "&order_db_id=" + URLEncoder.encode(orderDbId, StandardCharsets.UTF_8.name())
-;
-
-                if (requestedLastId > 0) {
-                    endpoint +=
-                            "&last_id="
-                                    + requestedLastId;
-                }
-
-                JSONObject response =
-                        CustomerMessageApi.get(endpoint);
-
-                mainHandler.post(() -> {
-                    loading = false;
-                    progress.setVisibility(View.GONE);
-
-                    handleResponse(
-                            response,
-                            firstLoad
-                    );
+                String endpoint=GET_CHAT_URL+"?room_id="+URLEncoder.encode(roomId,"UTF-8")
+                        +"&source="+URLEncoder.encode(orderSource,"UTF-8")+"&order_id="+URLEncoder.encode(orderId,"UTF-8")
+                        +"&order_db_id="+URLEncoder.encode(orderDbId,"UTF-8")+"&page_mode="+mode+"&limit=60"
+                        +("older".equals(mode)?"&before_id=":"&last_id=")+cursor+"&receipt_ids="+receipts;
+                JSONObject response=CustomerMessageApi.get(endpoint,chatRequests.session());
+                chatRequests.post(mainHandler,() -> {
+                    loading=false;progress.setVisibility(View.GONE);olderMessagesButton.setEnabled(true);
+                    handleResponse(response,"latest".equals(mode));
+                    if(response.optBoolean("success")&&"newer".equals(mode)&&response.optBoolean("has_more"))
+                        chatRequests.postDelayed(mainHandler,() -> loadMessages(false),50L);
                 });
-
-            } catch (Exception error) {
-                final String reason = first(error.getMessage(), "Respons chat tidak dapat dibaca");
-                mainHandler.post(() -> {
-                    loading = false;
-                    progress.setVisibility(View.GONE);
-                    statusText.setText(reason);
-                });
-            }
-        });
+            }catch(Exception error){chatRequests.post(mainHandler,() -> {
+                loading=false;progress.setVisibility(View.GONE);olderMessagesButton.setEnabled(true);
+                statusText.setText(first(error.getMessage(),"Chat belum dapat diperbarui"));
+            });}
+        },() -> chatRequests.post(mainHandler,() -> {
+            loading=false;progress.setVisibility(View.GONE);olderMessagesButton.setEnabled(true);
+            statusText.setText("Antrean penuh. Coba kembali sebentar lagi.");
+        }));
+    }
+    private String receiptIdQuery() {
+        StringBuilder ids=new StringBuilder();
+        for(int i=Math.max(0,receiptViews.size()-100);i<receiptViews.size();i++) {
+            if(ids.length()>0)ids.append(',');ids.append(receiptViews.keyAt(i));
+        }
+        return ids.toString();
     }
 
     protected void handleResponse(
@@ -1521,58 +1563,38 @@ class CustomerChatRoomActivityScreenCore extends Activity {
             return;
         }
 
-        if (reset) {
-            messagesBox.removeAllViews();
-            receiptViews.clear();
+        boolean older="older".equals(response.optString("page_mode"));
+        int oldHeight=messagesBox.getHeight(),oldScroll=messagesScroll.getScrollY();
+        boolean nearBottom=oldHeight-oldScroll-messagesScroll.getHeight()<dp(100);
+        if(reset){messagesBox.removeAllViews();receiptViews.clear();displayedMessageIds.clear();lastId=0;oldestId=0;}
+        if(!reset&&displayedMessageIds.isEmpty()&&array.length()>0)messagesBox.removeAllViews();
+        boolean added=false;int insertion=0;
+        for(int i=0;i<array.length();i++) {
+            JSONObject message=array.optJSONObject(i);if(message==null)continue;
+            int id=message.optInt("id");if(id<=0)continue;
+            if(!displayedMessageIds.add(id)){updateReceipt(message);continue;}
+            lastId=Math.max(lastId,id);oldestId=oldestId==0?id:Math.min(oldestId,id);
+            int count=messagesBox.getChildCount();addBubble(message,!reset&&!older);
+            if(older&&messagesBox.getChildCount()>count){View bubble=messagesBox.getChildAt(count);messagesBox.removeView(bubble);messagesBox.addView(bubble,insertion++);}
+            added=true;
         }
-
-        boolean added = false;
-
-        for (
-                int i = 0;
-                i < array.length();
-                i++
-        ) {
-            JSONObject message =
-                    array.optJSONObject(i);
-
-            if (message == null) {
-                continue;
-            }
-
-            int id = message.optInt("id", 0);
-
-            if (!reset && id <= lastId) {
-                updateReceipt(message);
-                continue;
-            }
-
-            if (id > lastId) {
-                lastId = id;
-            }
-
-            addBubble(message, !firstLoad);
-            added = true;
+        JSONArray receipts=response.optJSONArray("receipt_updates");
+        if(receipts!=null)for(int i=0;i<receipts.length();i++){JSONObject item=receipts.optJSONObject(i);if(item!=null)updateReceipt(item);}
+        if(reset&&array.length()==0)addSystemMessage("Belum ada pesan pada percakapan ini.");
+        if(reset||older)hasOlderMessages=response.optBoolean("has_more_older",false);
+        olderMessagesButton.setVisibility(hasOlderMessages?View.VISIBLE:View.GONE);
+        firstLoad=false;
+        if(older&&added){
+            final android.view.ViewTreeObserver observer=messagesBox.getViewTreeObserver();
+            observer.addOnGlobalLayoutListener(new android.view.ViewTreeObserver.OnGlobalLayoutListener(){
+                public void onGlobalLayout(){
+                    if(messagesBox.getViewTreeObserver().isAlive())messagesBox.getViewTreeObserver().removeOnGlobalLayoutListener(this);
+                    if(chatRequests.current())messagesScroll.scrollTo(0,oldScroll+messagesBox.getHeight()-oldHeight);
+                }
+            });
         }
-
-        if (
-                reset
-                        && array.length() == 0
-        ) {
-            addSystemMessage(
-                    "Belum ada pesan pada percakapan ini."
-            );
-        }
-
-        firstLoad = false;
-
-        if (added || reset) {
-            scrollBottom();
-        }
-
-        if (lastId > 0) {
-            scheduleMessagesReadThrough(lastId);
-        }
+        else if(reset||(added&&nearBottom))scrollBottom();
+        if(lastId>0)scheduleMessagesReadThrough(lastId);
     }
 
     protected boolean isChatActuallyVisible() {
@@ -1601,7 +1623,7 @@ class CustomerChatRoomActivityScreenCore extends Activity {
     }
 
     protected void scheduleMessagesReadThrough(int readThroughId) {
-        if (readThroughId <= 0 || readOnly || destroyed) return;
+        if (readThroughId <= lastReadThrough || readOnly || destroyed) return;
 
         pendingReadThroughId = Math.max(pendingReadThroughId, readThroughId);
         mainHandler.removeCallbacks(readReceiptRunnable);
@@ -1612,7 +1634,7 @@ class CustomerChatRoomActivityScreenCore extends Activity {
                 ? SystemClock.elapsedRealtime() - focusedSinceElapsedMs
                 : 0L;
         long delay = Math.max(0L, MIN_READ_VISIBILITY_MS - focusedFor);
-        mainHandler.postDelayed(readReceiptRunnable, delay);
+        chatRequests.postDelayed(mainHandler,readReceiptRunnable, delay);
     }
 
     protected void sendReadReceiptNow(int readThroughId) {
@@ -1624,9 +1646,9 @@ class CustomerChatRoomActivityScreenCore extends Activity {
                 SystemClock.elapsedRealtime() - focusedSinceElapsedMs
         );
 
-        featureRuntime.execute(() -> {
+        chatRequests.execute("receipt",() -> {
             try {
-                if (generation != readVisibilityGeneration || !isChatActuallyVisible()) return;
+                if (generation != readVisibilityGeneration || !chatVisible) return;
 
                 String endpoint = GET_CHAT_URL
                         + "?room_id=" + URLEncoder.encode(roomId, StandardCharsets.UTF_8.name())
@@ -1634,29 +1656,29 @@ class CustomerChatRoomActivityScreenCore extends Activity {
                         + "&mark_read=1"
                         + "&read_source=chat_room_foreground_v2"
                         + "&visible_ms=" + visibleMs
-                        + "&read_through_id=" + readThroughId;
+                        + "&read_through_id=" + readThroughId + "&page_mode=newer&last_id="+readThroughId;
 
-                JSONObject result = CustomerMessageApi.get(endpoint);
+                JSONObject result = CustomerMessageApi.get(endpoint,chatRequests.session());
                 if (result.optBoolean("success", false)) {
-                    if (pendingReadThroughId <= readThroughId) {
-                        pendingReadThroughId = 0;
-                    }
-                    mainHandler.postDelayed(() -> {
-                        if (!destroyed && chatVisible) loadMessages(false);
-                    }, 250L);
+                    chatRequests.post(mainHandler,() -> {
+                        if(generation!=readVisibilityGeneration)return;
+                        lastReadThrough=Math.max(lastReadThrough,readThroughId);
+                        if(pendingReadThroughId<=readThroughId)pendingReadThroughId=0;
+                        if(chatVisible)loadMessages(false);
+                    });
                 } else {
-                    mainHandler.postDelayed(
+                    chatRequests.postDelayed(mainHandler,
                             () -> scheduleMessagesReadThrough(readThroughId),
                             800L
                     );
                 }
             } catch (Exception ignored) {
-                mainHandler.postDelayed(
+                chatRequests.postDelayed(mainHandler,
                         () -> scheduleMessagesReadThrough(readThroughId),
                         1200L
                 );
             }
-        });
+        }, () -> chatRequests.post(mainHandler,() -> {scheduleMessagesReadThrough(readThroughId);}));
     }
 
     @Override
@@ -2015,7 +2037,7 @@ class CustomerChatRoomActivityScreenCore extends Activity {
         final String fixed =
                 CustomerChatRoomFormatter.absoluteUrl(imageUrl);
 
-        featureRuntime.execute(() -> {
+        chatRequests.execute("image",() -> {
             Bitmap bitmap = null;
             HttpURLConnection connection = null;
 
@@ -2023,6 +2045,7 @@ class CustomerChatRoomActivityScreenCore extends Activity {
                 connection =
                         CustomerApiClient.open(this, fixed);
 
+                chatRequests.session().authorize(getApplicationContext(),connection);
                 connection.setConnectTimeout(25000);
                 connection.setReadTimeout(45000);
                 connection.setUseCaches(true);
@@ -2046,7 +2069,8 @@ class CustomerChatRoomActivityScreenCore extends Activity {
 
             Bitmap finalBitmap = bitmap;
 
-            mainHandler.post(() -> {
+            chatRequests.post(mainHandler,() -> {
+                if(!dialog.isShowing())return;
                 loadingHd.setVisibility(View.GONE);
 
                 if (finalBitmap != null) {
@@ -2054,7 +2078,7 @@ class CustomerChatRoomActivityScreenCore extends Activity {
                             finalBitmap
                     );
 
-                    mainHandler.postDelayed(
+                    chatRequests.postDelayed(mainHandler,
                             () -> hint.animate()
                                     .alpha(0f)
                                     .setDuration(350)
@@ -2073,7 +2097,7 @@ class CustomerChatRoomActivityScreenCore extends Activity {
                     );
                 }
             });
-        });
+        }, () -> chatRequests.post(mainHandler,() -> {loadingHd.setVisibility(View.GONE);}));
     }
 
     protected void addSystemMessage(
@@ -2118,7 +2142,7 @@ class CustomerChatRoomActivityScreenCore extends Activity {
 
 
     private void sendMessage() {
-        if (readOnly || sending) return;
+        if (readOnly || sending || uploading || !chatRequests.current()) return;
 
         String message = input.getText().toString().trim();
         if (message.isEmpty()) return;
@@ -2139,7 +2163,7 @@ class CustomerChatRoomActivityScreenCore extends Activity {
         final PendingText pending = addPendingText(originalMessage);
         input.setText("");
 
-        featureRuntime.execute(() -> {
+        chatRequests.execute("send",() -> {
             try {
                 JSONObject payload = new JSONObject();
                 payload.put("room_id", roomId);
@@ -2147,21 +2171,19 @@ class CustomerChatRoomActivityScreenCore extends Activity {
                 payload.put("message", originalMessage);
                 payload.put("order_id", orderId); payload.put("order_db_id", orderDbId); payload.put("source", orderSource);
 
-                JSONObject response = CustomerMessageApi.post(
-                        SEND_CHAT_URL,
-                        payload
-                );
+                JSONObject response = sendPayload(payload);
 
-                mainHandler.post(() -> {
+                chatRequests.post(mainHandler,() -> {
+                    refreshPendingMessage();
                     if (response.optBoolean("success", false)) {
                         sending = false;
-                        sendButton.setEnabled(true);
+                        sendButton.setEnabled(!readOnly&&!uploading&&!sending);
                         sendButton.setText("Kirim");
                         if (pending != null) messagesBox.removeView(pending.root);
                         loadMessages(false);
                     } else {
                         sending = false;
-                        sendButton.setEnabled(true);
+                        sendButton.setEnabled(!readOnly&&!uploading&&!sending);
                         sendButton.setText("Kirim");
 
                         if (pending != null) {
@@ -2188,9 +2210,10 @@ class CustomerChatRoomActivityScreenCore extends Activity {
 
             } catch (Exception error) {
                 final String reason = first(error.getMessage(), "Pesan gagal dikirim");
-                mainHandler.post(() -> {
+                chatRequests.post(mainHandler,() -> {
+                    refreshPendingMessage();
                     sending = false;
-                    sendButton.setEnabled(true);
+                    sendButton.setEnabled(!readOnly&&!uploading&&!sending);
                     sendButton.setText("Kirim");
                     if (pending != null) messagesBox.removeView(pending.root);
                     input.setText(originalMessage);
@@ -2198,74 +2221,11 @@ class CustomerChatRoomActivityScreenCore extends Activity {
                     showMessage("Pesan belum terkirim", reason, false);
                 });
             }
-        });
-    }
-
-    private void verifyDelivered(String originalMessage) {
-        featureRuntime.execute(() -> {
-            boolean delivered = false;
-
-            try {
-                String endpoint = GET_CHAT_URL
-                        + "?room_id="
-                        + URLEncoder.encode(
-                                roomId,
-                                StandardCharsets.UTF_8.name()
-                        )
-                        + "&source=" + URLEncoder.encode(orderSource, StandardCharsets.UTF_8.name())
-                        + "&order_id=" + URLEncoder.encode(orderId, StandardCharsets.UTF_8.name())
-                        + "&order_db_id=" + URLEncoder.encode(orderDbId, StandardCharsets.UTF_8.name());
-
-                JSONObject response = CustomerMessageApi.get(endpoint);
-                JSONArray array = response.optJSONArray("messages");
-
-                if (array != null) {
-                    for (
-                            int i = array.length() - 1;
-                            i >= 0 && i >= array.length() - 12;
-                            i--
-                    ) {
-                        JSONObject item = array.optJSONObject(i);
-                        if (item == null) continue;
-
-                        if (
-                                "customer".equalsIgnoreCase(
-                                        item.optString("sender_type", "")
-                                )
-                                        && originalMessage.equals(
-                                        item.optString("message", "")
-                                )
-                        ) {
-                            delivered = true;
-                            break;
-                        }
-                    }
-                }
-            } catch (Exception ignored) {
-            }
-
-            final boolean found = delivered;
-            mainHandler.post(() -> {
-                sending = false;
-                sendButton.setEnabled(true);
-                sendButton.setText("Kirim");
-
-                if (found) {
-                    input.setText("");
-                    loadMessages(false);
-                } else {
-                    showMessage(
-                            "Pesan belum terkirim",
-                            "Koneksi bermasalah. Coba lagi.",
-                            false
-                    );
-                }
-            });
-        });
+        }, () -> chatRequests.post(mainHandler,() -> {resetSendControls();if(pending!=null)messagesBox.removeView(pending.root);input.setText(originalMessage);toast("Antrean penuh. Coba kirim kembali.");}));
     }
 
     private void scrollBottom() {
-        mainHandler.postDelayed(
+        chatRequests.postDelayed(mainHandler,
                 () -> {
                     try {
                         messagesScroll.fullScroll(
@@ -2432,7 +2392,7 @@ class CustomerChatRoomActivityScreenCore extends Activity {
             if (lastId > 0) {
                 scheduleMessagesReadThrough(lastId);
             }
-            mainHandler.postDelayed(refreshRunnable, CustomerPerformanceManager.polling(this, REFRESH_MS));
+            chatRequests.postDelayed(mainHandler,refreshRunnable, CustomerPerformanceManager.polling(this, REFRESH_MS));
         }
     }
 
@@ -2453,6 +2413,7 @@ class CustomerChatRoomActivityScreenCore extends Activity {
     @Override
     protected void onDestroy() {
         if (chatStability != null) chatStability.destroy();
+        if(chatRequests!=null)chatRequests.close();
         featureRuntime.destroy();
         ChatVoiceNote.release(this);
         destroyed = true;

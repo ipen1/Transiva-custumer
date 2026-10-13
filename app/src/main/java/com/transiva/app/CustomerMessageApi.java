@@ -36,21 +36,40 @@ public final class CustomerMessageApi {
 
     public static JSONObject get(String endpoint)
             throws Exception {
-        return request("GET", endpoint, null);
+        return request("GET", endpoint, null, null);
     }
 
     public static JSONObject post(
             String endpoint,
             JSONObject body
     ) throws Exception {
-        return request("POST", endpoint, body);
+        return request("POST", endpoint, body, null);
     }
 
+    public static JSONObject get(String endpoint, CustomerSessionGuard session) throws Exception {
+        return request("GET", endpoint, null, session);
+    }
+    public static JSONObject post(String endpoint, JSONObject body, CustomerSessionGuard session) throws Exception {
+        return request("POST", endpoint, body, session);
+    }
+    private static void authorize(HttpURLConnection connection, CustomerSessionGuard session) throws Exception {
+        if(session!=null)session.authorize(appContext,connection);
+    }
+    private static JSONObject checkedResponse(HttpURLConnection connection, CustomerSessionGuard session) throws Exception {
+        JSONObject result=readResponse(connection);
+        if(session!=null&&!session.matches(appContext))throw new java.io.InterruptedIOException("Session changed");
+        if(appContext!=null)CustomerApiClient.handleSessionResponse(appContext,connection.getResponseCode(),result.toString());
+        return result;
+    }
+    public static JSONObject uploadImagePair(String endpoint, String roomId, String senderType,
+            ChatImageProcessor.ImagePayload payload) throws Exception {
+        return uploadImagePair(endpoint,roomId,senderType,payload,null);
+    }
     public static JSONObject uploadImagePair(
             String endpoint,
             String roomId,
             String senderType,
-            ChatImageProcessor.ImagePayload payload
+            ChatImageProcessor.ImagePayload payload, CustomerSessionGuard session
     ) throws Exception {
         if (
                 payload == null
@@ -72,6 +91,8 @@ public final class CustomerMessageApi {
             connection =
                     CustomerApiClient.open(appContext, endpoint);
 
+            authorize(connection, session);
+            connection.setInstanceFollowRedirects(false);
             connection.setRequestMethod("POST");
             connection.setConnectTimeout(TIMEOUT_MS);
             connection.setReadTimeout(TIMEOUT_MS);
@@ -137,7 +158,7 @@ public final class CustomerMessageApi {
                 output.flush();
             }
 
-            return readResponse(connection);
+            return checkedResponse(connection, session);
 
         } finally {
             if (connection != null) {
@@ -146,17 +167,23 @@ public final class CustomerMessageApi {
         }
     }
 
+    public static JSONObject uploadVoice(String endpoint, String roomId, String senderType,
+            File file, long durationMs) throws Exception {
+        return uploadVoice(endpoint,roomId,senderType,file,durationMs,null);
+    }
     public static JSONObject uploadVoice(
             String endpoint,
             String roomId,
             String senderType,
             File file,
-            long durationMs
+            long durationMs, CustomerSessionGuard session
     ) throws Exception {
         String boundary = "----TransivaVoice" + System.currentTimeMillis();
         HttpURLConnection connection = null;
         try {
             connection = CustomerApiClient.open(appContext, endpoint);
+            authorize(connection, session);
+            connection.setInstanceFollowRedirects(false);
             connection.setRequestMethod("POST");
             connection.setConnectTimeout(TIMEOUT_MS);
             connection.setReadTimeout(TIMEOUT_MS);
@@ -172,7 +199,7 @@ public final class CustomerMessageApi {
                 output.write(("--" + boundary + "--\r\n").getBytes(StandardCharsets.UTF_8));
                 output.flush();
             }
-            return readResponse(connection);
+            return checkedResponse(connection, session);
         } finally { if (connection != null) connection.disconnect(); }
     }
 
@@ -185,7 +212,7 @@ public final class CustomerMessageApi {
     private static JSONObject request(
             String method,
             String endpoint,
-            JSONObject body
+            JSONObject body, CustomerSessionGuard session
     ) throws Exception {
         HttpURLConnection connection = null;
 
@@ -193,6 +220,8 @@ public final class CustomerMessageApi {
             connection =
                     CustomerApiClient.open(appContext, endpoint);
 
+            authorize(connection, session);
+            connection.setInstanceFollowRedirects(false);
             connection.setRequestMethod(method);
             connection.setConnectTimeout(TIMEOUT_MS);
             connection.setReadTimeout(TIMEOUT_MS);
@@ -230,7 +259,7 @@ public final class CustomerMessageApi {
                 }
             }
 
-            return readResponse(connection);
+            return checkedResponse(connection, session);
 
         } finally {
             if (connection != null) {
@@ -255,24 +284,7 @@ public final class CustomerMessageApi {
             );
         }
 
-        BufferedReader reader =
-                new BufferedReader(
-                        new InputStreamReader(
-                                stream,
-                                StandardCharsets.UTF_8
-                        )
-                );
-
-        StringBuilder raw = new StringBuilder();
-        String line;
-
-        while ((line = reader.readLine()) != null) {
-            raw.append(line);
-        }
-
-        reader.close();
-
-        String body = raw.toString().trim();
+        String body=BoundedResponseReader.read(stream,4*1024*1024,TIMEOUT_MS).trim();
 
         if (body.isEmpty()) {
             throw new IllegalStateException(

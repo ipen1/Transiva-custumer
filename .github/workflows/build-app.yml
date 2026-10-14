@@ -34,6 +34,10 @@ jobs:
         env:
           TEST_DB_PASSWORD: integration-only
         run: python3 tools/reliability/chat_server_regression.py
+      - name: Test photo and voice retries, chat outbox, search, and order support
+        env:
+          TEST_DB_PASSWORD: integration-only
+        run: python3 tools/reliability/chat_upgrade_regression.py
       - name: Test final wallet receipts, notification delivery, and alarm retries
         run: |
           set -euo pipefail
@@ -93,6 +97,9 @@ jobs:
           test -s app/transiva-release.jks
 
       # The project has two distribution flavors: direct and play.
+      - name: Android API compatibility lint
+        run: gradle :app:lintDirectDebug :app:lintPlayDebug
+
       # testDebugUnitTest is ambiguous after flavors are enabled, therefore
       # run both concrete variant tasks explicitly.
       - name: Run Customer Regression Tests
@@ -107,6 +114,7 @@ jobs:
           export JSON_JAR
           python3 tools/reliability/wallet_runtime_regression.py | tee wallet-runtime.log
           python3 tools/reliability/chat_runtime_regression.py | tee chat-runtime.log
+          python3 tools/reliability/pending_chat_runtime_regression.py | tee pending-chat-runtime.log
       - name: Test real profile cache concurrency and session isolation
         shell: bash
         run: |

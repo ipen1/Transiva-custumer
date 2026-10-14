@@ -35,3 +35,18 @@ Untuk cache benar-benar dingin, gunakan fresh install atau bersihkan cache aplik
 Target awal yang diusulkan, bukan syarat resmi Google: pada jaringan normal cold startup menuju dashboard p95 <=3 detik, read profil/layanan p95 <=2 detik, dan tidak ada crash/ANR/ketidaksesuaian saldo yang teramati dalam skenario pengujian. Sesuaikan target setelah baseline perangkat dan jaringan diukur. Memori harus stabil pada sesi panjang, tidak terus tumbuh setiap masuk/keluar layar.
 
 Hitung median/p95 per perangkat dan kategori; jangan gabungkan HP cepat dan HP lambat untuk menyembunyikan regresi. Bandingkan 2.5.29 vs 2.5.30 pada perangkat, kondisi cache dan jaringan yang sama. Jangan memberikan penilaian performa numerik sebelum data tersedia.
+
+## Matriks pengujian 2.5.34
+
+Jalankan pada HP Android 6/API 23, HP RAM 2–3 GB, HP utama Anda, dan Android terbaru yang tersedia. Tidak ada perangkat nyata yang terhubung di lingkungan pengerjaan; angka startup, RAM, crash, ANR, dan panggilan belum diukur.
+
+1. `bash tools/performance/capture_device.sh hasil-hp` untuk 10 startup tanpa menghapus data login. Ringkas dengan `python3 tools/performance/summarize_startup.py hasil-hp/startup.csv`.
+2. Buka dashboard, chat, dan peta satu per satu. Ambil snapshot: `bash tools/performance/capture_session.sh hasil-hp dashboard`, lalu ganti fase menjadi `chat` dan `maps`.
+3. Kirim teks/foto/voice saat jaringan normal, lalu uji offline dan pulih. Tutup aplikasi, buka kembali, buka **Pesan tertunda**, lihat foto/putar voice, lalu retry. Pastikan pesan muncul satu kali. Jangan menghapus data aplikasi karena antrean tersimpan di data internal.
+4. Saat pesan A sedang dikirim, ketik B; buat request A gagal. Pastikan B tetap ada. Cari pesan lama dan ketuk hasilnya; pastikan melompat ke pesan yang benar.
+5. Uji keluhan dari order milik sendiri, nomor order otomatis, foto bukti opsional, dan admin dapat membaca rincian/link bukti.
+6. Uji panggilan biasa dan video: foreground, tekan Home, kembali ke chatroom, kembali ke panggilan, lalu akhiri. Ambil fase `call_foreground`, `call_home`, `call_chatroom`; catat audio/video tetap tersambung atau tidak, notifikasi, dan waktu pemulihan.
+7. Gunakan aplikasi 30–60 menit, ulangi buka/tutup halaman. Ambil `after_30min`; bandingkan TOTAL PSS dan jumlah frame lambat dengan baseline HP yang sama. Periksa crash/ANR lewat Crashlytics dan Android vitals; snapshot exit-info bukan pengganti pemantauan crash lengkap.
+8. Catat hasil aktual di `device-results.csv`, beserta versi 2.5.34 dan kondisi jaringan. Simpan per perangkat; jangan menggabungkan hasil HP berbeda menjadi satu angka performa.
+
+Script tidak mengubah pengaturan jaringan atau menghapus data. Untuk jaringan lambat gunakan throttling emulator/proxy tester atau pengaturan manual pada HP pengujian. Jangan menulis nomor telepon, alamat, OTP, token, atau isi percakapan dalam laporan performa.

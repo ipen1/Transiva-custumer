@@ -1,5 +1,6 @@
 <?php
 declare(strict_types=1);
+require_once __DIR__ . "/chat_notification_helper.php";
 
 function chat_delivery_hash(string $room, string $sender, string $message): string {
     return hash('sha256',json_encode([$room,$sender,$message],JSON_UNESCAPED_UNICODE|JSON_THROW_ON_ERROR));
@@ -34,12 +35,18 @@ function chat_delivery_require_storage(mysqli $conn): void {
     mysqli_free_result($result);if(!$unique)throw new RuntimeException('Constraint unik ID chat belum dipasang.');
 }
 /** Reserve a unique client ID and insert its message in the same transaction. */
-function chat_delivery_send(mysqli $conn,int $user,string $client,string $room,string $sender,string $message): array {
+function chat_delivery_send(mysqli $conn,int $user,string $client,string $room,string $sender,string $message,?array $order=null): array {
     chat_delivery_validate_id($client);
-    if($client==='') { // Existing driver/customer versions remain compatible.
-        $stmt=chat_delivery_prepare($conn,'INSERT INTO chat_messages(room_id,sender_type,message,created_at,is_read,read_at) VALUES(?,?,?,NOW(),0,NULL)');
-        mysqli_stmt_bind_param($stmt,'sss',$room,$sender,$message);chat_delivery_execute($stmt);
-        $id=(int)mysqli_insert_id($conn);mysqli_stmt_close($stmt);return ['id'=>$id,'replayed'=>false];
+    if($order!==null)chat_notification_require_storage($conn);
+    if($client==='') { // Legacy sends still receive atomic notification intents.
+        if(!mysqli_begin_transaction($conn))throw new RuntimeException('CHAT_TRANSACTION');
+        try{
+            $stmt=chat_delivery_prepare($conn,'INSERT INTO chat_messages(room_id,sender_type,message,created_at,is_read,read_at) VALUES(?,?,?,NOW(),0,NULL)');
+            mysqli_stmt_bind_param($stmt,'sss',$room,$sender,$message);chat_delivery_execute($stmt);
+            $id=(int)mysqli_insert_id($conn);mysqli_stmt_close($stmt);
+            if($order!==null)chat_notification_enqueue($conn,$order,$room,$sender,$id,$message);
+            if(!mysqli_commit($conn))throw new RuntimeException('CHAT_COMMIT');return ['id'=>$id,'replayed'=>false];
+        }catch(Throwable $e){mysqli_rollback($conn);throw $e;}
     }
     chat_delivery_require_storage($conn);$hash=chat_delivery_hash($room,$sender,$message);
     if(!mysqli_begin_transaction($conn))throw new RuntimeException('Transaksi chat belum dimulai.');
@@ -55,6 +62,7 @@ function chat_delivery_send(mysqli $conn,int $user,string $client,string $room,s
             mysqli_stmt_bind_param($stmt,'iis',$id,$user,$client);chat_delivery_execute($stmt);
             if(mysqli_stmt_affected_rows($stmt)!==1)throw new RuntimeException('Receipt pesan gagal disimpan.');mysqli_stmt_close($stmt);
         }
+        if(!$replayed&&$order!==null)chat_notification_enqueue($conn,$order,$room,$sender,$id,$message);
         if(!mysqli_commit($conn))throw new RuntimeException('Hasil pesan belum terkonfirmasi.');
         return ['id'=>$id,'replayed'=>$replayed];
     }catch(Throwable $error){try{mysqli_rollback($conn);}catch(Throwable $ignored){}throw $error;}

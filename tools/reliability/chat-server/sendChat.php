@@ -28,93 +28,10 @@ if(chat_ended($status))chat_out(false,'Percakapan order ini telah berakhir.',['e
 if(trim((string)($order['driver']??''))==='')chat_out(false,'Chat tersedia setelah driver menerima pesanan.',[],409,'DRIVER_NOT_ASSIGNED');
 p0_rate_limit($conn,'chat_send',(int)$auth['id'].'|'.p0_client_ip(),80,60);
 try {
-    $delivery=chat_delivery_send($conn,(int)$auth['id'],$client,$room,$sender,$msg);$id=$delivery['id'];
+    $delivery=chat_delivery_send($conn,(int)$auth['id'],$client,$room,$sender,$msg,$order);$id=$delivery['id'];
     if($delivery['replayed'])chat_out(true,'Pesan sudah terkirim.',['client_message_id'=>$client,'replayed'=>true,'chat'=>['id'=>$id,'room_id'=>$room],'status'=>$status]);
 }catch(InvalidArgumentException $error){chat_out(false,$error->getMessage(),[],409,'CHAT_ID_CONFLICT');}
 catch(Throwable $error){error_log('CHAT_SEND_UNCONFIRMED');chat_out(false,'Hasil pesan belum terkonfirmasi. Kirim ulang pesan yang sama.',[],503,'CHAT_SEND_UNCONFIRMED');}
 if(($order['_source']??'')==='orders' && native_column_exists($conn,'orders','room_id')){$u=mysqli_prepare($conn,'UPDATE orders SET room_id=? WHERE id=?');if($u){$oid=(int)$order['id'];mysqli_stmt_bind_param($u,'si',$room,$oid);mysqli_stmt_execute($u);mysqli_stmt_close($u);}}
 
-/*
- * Real-time chat notification.
- * Pesan tetap sukses walaupun FCM gagal: database adalah source of truth dan
- * poller Android tetap menjadi fallback. FCM hanya jalur realtime.
- */
-$fcmResult=['success'=>false];$recipientRole=$sender==='customer'?'driver':'customer';$recipientToken='';
-try {
-$recipientToken='';
-$recipientRole=$sender==='customer'?'driver':'customer';
-
-if($sender==='customer'){
-    $driverUsername=trim((string)($order['driver']??''));
-    if($driverUsername!==''){
-        $q=mysqli_prepare($conn,"SELECT fcm_token FROM users WHERE username=? AND role='driver' LIMIT 1");
-        if($q){
-            mysqli_stmt_bind_param($q,'s',$driverUsername);
-            mysqli_stmt_execute($q);
-            $rr=mysqli_fetch_assoc(mysqli_stmt_get_result($q));
-            mysqli_stmt_close($q);
-            $recipientToken=trim((string)($rr['fcm_token']??''));
-        }
-    }
-}else{
-    $customerId=(int)($order['user_id']??0);
-    if($customerId>0){
-        $q=mysqli_prepare($conn,"SELECT fcm_token FROM users WHERE id=? AND role='customer' LIMIT 1");
-        if($q){
-            mysqli_stmt_bind_param($q,'i',$customerId);
-            mysqli_stmt_execute($q);
-            $rr=mysqli_fetch_assoc(mysqli_stmt_get_result($q));
-            mysqli_stmt_close($q);
-            $recipientToken=trim((string)($rr['fcm_token']??''));
-        }
-    }
-}
-
-$preview=$msg;
-if(strpos($msg,'[[IMAGE]]')===0 || strpos($msg,'[[IMAGE2]]')===0){
-    $preview='📷 Mengirim sebuah foto';
-}elseif(strpos($msg,'[[VOICE]]')===0 || strpos($msg,'[[VOICE2]]')===0){
-    $preview='🎤 Mengirim pesan suara';
-}
-if(mb_strlen($preview,'UTF-8')>180) $preview=mb_substr($preview,0,177,'UTF-8').'...';
-
-$pushTitle=$sender==='customer'?'💬 Pesan dari Customer':'💬 Pesan dari Driver';
-$fcmResult=['success'=>false,'error_code'=>'EMPTY_FCM_TOKEN','message'=>'Token FCM penerima kosong'];
-
-if($recipientToken!==''){
-    $fcmResult=send_fcm_notification($recipientToken,$pushTitle,$preview,[
-        'type'=>'chat_message',
-        'event'=>'chat_message',
-        'screen'=>'chat',
-        'sender_role'=>$sender,
-        'recipient_role'=>$recipientRole,
-        'order_id'=>$canonical,
-        'order_db_id'=>(string)($order['id']??''),
-        'order_source'=>(string)($order['_source']??$source),
-        'source'=>(string)($order['_source']??$source),
-        'room_id'=>$room,
-        'chat_id'=>(string)$id,
-        'priority'=>'high',
-        'sound'=>'default'
-    ]);
-}
-
-if(empty($fcmResult['success'])){
-    error_log('CHAT FCM: '.json_encode([
-        'chat_id'=>$id,
-        'recipient_role'=>$recipientRole,
-        'has_token'=>$recipientToken!=='' ? 1 : 0,
-        'http_code'=>$fcmResult['http_code']??0,
-        'error_code'=>$fcmResult['error_code']??'',
-        'response'=>$fcmResult['response']??($fcmResult['message']??'')
-    ],JSON_UNESCAPED_UNICODE));
-}
-
-
-}catch(Throwable $error){error_log('CHAT_POST_COMMIT_NOTIFICATION_FAILED');}
-chat_out(true,'Pesan terkirim.',['client_message_id'=>$client,'replayed'=>false,'chat'=>['id'=>$id,'room_id'=>$room,'sender_type'=>$sender,'message'=>$msg,'created_at'=>date('Y-m-d H:i:s'),'is_read'=>0],'status'=>$status,'fcm'=>[
-    'success'=>(bool)($fcmResult['success']??false),
-    'error_code'=>(string)($fcmResult['error_code']??''),
-    'recipient_role'=>$recipientRole,
-    'token_available'=>$recipientToken!==''
-]]);
+chat_out(true,'Pesan terkirim.',['client_message_id'=>$client,'replayed'=>false,'chat'=>['id'=>$id,'room_id'=>$room,'sender_type'=>$sender,'message'=>$msg,'created_at'=>date('Y-m-d H:i:s'),'is_read'=>0],'status'=>$status,'notification_queued'=>true]);

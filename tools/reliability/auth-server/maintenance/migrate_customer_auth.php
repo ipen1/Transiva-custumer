@@ -29,5 +29,6 @@ try{
     foreach(array_keys($defs) as $col){$idx='uq_'.$col;if(!$conn->query("SHOW INDEX FROM users WHERE Key_name='$idx'")->num_rows)$conn->query("ALTER TABLE users ADD UNIQUE INDEX `$idx` (`$col`)");}
     $conn->query("CREATE TABLE IF NOT EXISTS customer_registration_receipts(operation_id VARCHAR(100) CHARACTER SET ascii COLLATE ascii_bin PRIMARY KEY, request_hash CHAR(64) CHARACTER SET ascii NOT NULL,password_proof VARCHAR(255) NOT NULL,response_json MEDIUMTEXT NULL,created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP) ENGINE=InnoDB");
     $conn->query("CREATE TABLE IF NOT EXISTS customer_email_challenges(user_id INT NOT NULL PRIMARY KEY,email VARCHAR(254) NOT NULL,otp_hash VARCHAR(255) NULL,expires_at DATETIME NULL,resend_after DATETIME NULL,attempts INT NOT NULL DEFAULT 0,proof_hash CHAR(64) NULL,proof_expires_at DATETIME NULL,consumed_at DATETIME NULL) ENGINE=InnoDB");
+    if(!$conn->query("SHOW COLUMNS FROM customer_registration_receipts LIKE 'password_proof'")->num_rows)$conn->query("ALTER TABLE customer_registration_receipts ADD COLUMN password_proof VARCHAR(255) NULL");
     echo "PASS customer auth schema installed.\n";
 }catch(Throwable $ex){fwrite(STDERR,'FAIL '.$ex->getMessage()."\n");exit(1);}

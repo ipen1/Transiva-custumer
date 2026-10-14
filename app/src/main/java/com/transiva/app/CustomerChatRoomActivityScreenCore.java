@@ -1947,67 +1947,8 @@ class CustomerChatRoomActivityScreenCore extends Activity {
         final String fixed =
                 CustomerChatRoomFormatter.absoluteUrl(imageUrl);
 
-        chatRequests.execute("image",() -> {
-            Bitmap bitmap = null;
-            HttpURLConnection connection = null;
-
-            try {
-                connection =
-                        CustomerApiClient.open(this, fixed);
-
-                chatRequests.session().authorize(getApplicationContext(),connection);
-                connection.setConnectTimeout(25000);
-                connection.setReadTimeout(45000);
-                connection.setUseCaches(true);
-
-                try (
-                        InputStream stream =
-                                connection.getInputStream()
-                ) {
-                    bitmap =
-                            BitmapFactory.decodeStream(
-                                    stream
-                            );
-                }
-
-            } catch (Exception ignored) {
-            } finally {
-                if (connection != null) {
-                    connection.disconnect();
-                }
-            }
-
-            Bitmap finalBitmap = bitmap;
-
-            chatRequests.post(mainHandler,() -> {
-                if(!dialog.isShowing())return;
-                loadingHd.setVisibility(View.GONE);
-
-                if (finalBitmap != null) {
-                    zoomImage.setImageBitmap(
-                            finalBitmap
-                    );
-
-                    chatRequests.postDelayed(mainHandler,
-                            () -> hint.animate()
-                                    .alpha(0f)
-                                    .setDuration(350)
-                                    .start(),
-                            1800
-                    );
-
-                } else {
-                    zoomImage.setImageResource(
-                            android.R.drawable
-                                    .ic_menu_report_image
-                    );
-
-                    toast(
-                            "Gambar HD tidak dapat dimuat"
-                    );
-                }
-            });
-        }, () -> chatRequests.post(mainHandler,() -> {loadingHd.setVisibility(View.GONE);}));
+        loadingHd.setVisibility(View.GONE);
+        RemoteImageLoader.loadPreserveScale(zoomImage, fixed, android.R.drawable.ic_menu_report_image);
     }
 
     protected void addSystemMessage(

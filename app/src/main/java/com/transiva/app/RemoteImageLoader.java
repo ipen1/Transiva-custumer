@@ -18,7 +18,12 @@ public final class RemoteImageLoader {
     public static void loadPreserveScale(ImageView view, String url, int fallback) { load(view, url, fallback, false); }
     private static void load(ImageView view, String url, int fallback, boolean crop) {
         if (view == null) return;
-        String clean = url == null ? "" : url.trim();
+        String clean = ImageUrlResolver.resolve(url);
+        Context app = view.getContext().getApplicationContext();
+        CustomerSessionGuard session=CustomerSessionGuard.capture(app);
+        boolean privateMedia=clean.contains("/view_chat_image.php")||clean.contains("/uploads/chat/");
+        String namespace=AuthRequestJson.sha256(new SessionManager(app).getUserId()+":"+new SessionManager(app).getToken());
+        if(privateMedia && session.account.isEmpty()){view.setImageDrawable(null);return;}
         Object binding = new Object();
         view.setTag(binding); // Also invalidate a previous request when the new URL is empty.
         if (crop) view.setScaleType(ImageView.ScaleType.CENTER_CROP);
@@ -26,10 +31,9 @@ public final class RemoteImageLoader {
         if (clean.isEmpty()) return;
         boolean smallHeap = Runtime.getRuntime().maxMemory() <= 128L * 1024L * 1024L;
         int edge = crop ? (smallHeap ? 512 : 1024) : (smallHeap ? 1024 : 2048);
-        String cacheKey = clean + "#sample=" + edge;
+        String cacheKey = namespace + ":" + clean + "#sample=" + edge;
         Bitmap memory = ImageMemoryDiskCache.getMemory(cacheKey);
-        if (memory != null) { view.setImageBitmap(memory); return; }
-        Context app = view.getContext().getApplicationContext();
+        if (memory != null) { if(!privateMedia||session.matches(app))view.setImageBitmap(memory); return; }
         WeakReference<ImageView> target = new WeakReference<>(view);
         try {
             TransivaImageExecutor.execute(() -> {
@@ -37,7 +41,7 @@ public final class RemoteImageLoader {
                 HttpURLConnection c = null; File temporary = null;
                 try {
                     Bitmap cached = ImageMemoryDiskCache.getDisk(app, cacheKey);
-                    if (cached != null) { post(target, binding, cached); return; }
+                    if (cached != null) { post(target, binding, cached, app, session, privateMedia); return; }
                     URL endpoint = new URL(clean);
                     if (!"https".equalsIgnoreCase(endpoint.getProtocol())) return;
                     long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(15);
@@ -50,9 +54,10 @@ public final class RemoteImageLoader {
                         c.setInstanceFollowRedirects(false);
                         // Re-evaluate the origin for every redirect, never forward credentials to a CDN.
                         CustomerApiClient.applySecurity(app, c);
+                        if(privateMedia)session.authorize(app,c);
                         c.setConnectTimeout((int)Math.min(7000L,left));
                         c.setReadTimeout((int)Math.min(8000L,left));
-                        c.setUseCaches(true); c.setRequestProperty("Accept", "image/*");
+                        c.setUseCaches(false); c.setRequestProperty("Accept", "image/*");
                         code = c.getResponseCode();
                         if (code != 301 && code != 302 && code != 303 && code != 307 && code != 308) break;
                         String location = c.getHeaderField("Location");
@@ -80,8 +85,9 @@ public final class RemoteImageLoader {
                     options.inJustDecodeBounds = false;
                     Bitmap bitmap = BitmapFactory.decodeFile(temporary.getAbsolutePath(), options);
                     if (bitmap == null) return;
+                    if(privateMedia&&!session.matches(app))return;
                     ImageMemoryDiskCache.put(app, cacheKey, bitmap);
-                    post(target, binding, bitmap);
+                    post(target, binding, bitmap, app, session, privateMedia);
                 } catch (Exception ignored) {
                 } catch (OutOfMemoryError lowMemory) {
                     ImageMemoryDiskCache.clearMemory();
@@ -92,11 +98,12 @@ public final class RemoteImageLoader {
             });
         } catch (java.util.concurrent.RejectedExecutionException busy) { /* Keep placeholder. */ }
     }
-    private static void post(WeakReference<ImageView> target, Object binding, Bitmap bitmap) {
+    private static void post(WeakReference<ImageView> target, Object binding, Bitmap bitmap, Context app, CustomerSessionGuard session, boolean privateMedia) {
         ImageView view = target.get();
         if (view == null) return;
         view.post(() -> {
             ImageView current = target.get();
+            if (privateMedia&&!session.matches(app))return;
             if (current != null && current.getTag() == binding && !bitmap.isRecycled()) current.setImageBitmap(bitmap);
         });
     }

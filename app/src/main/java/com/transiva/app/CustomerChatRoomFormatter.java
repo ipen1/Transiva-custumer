@@ -30,12 +30,6 @@ public final class CustomerChatRoomFormatter {
         return value;
     }
     public static String absoluteUrl(String value) {
-        String path = value == null ? "" : value.trim().replace("\\", "/");
-        // Never allow cleartext media URLs in the customer UI.
-        if (path.startsWith("http://transiva.my.id/")) path = "https://transiva.my.id/" + path.substring("http://transiva.my.id/".length());
-        if (path.startsWith("https://")) return path;
-        if (path.startsWith("http://")) return "";
-        if (path.startsWith("/")) return "https://transiva.my.id" + path;
-        return "https://transiva.my.id/" + path;
+        return ImageUrlResolver.resolve(value);
     }
 }

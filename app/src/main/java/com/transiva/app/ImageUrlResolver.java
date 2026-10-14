@@ -8,6 +8,11 @@ public final class ImageUrlResolver {
         if (raw == null) return "";
         String v = raw.trim().replace("\\", "/");
         if (v.isEmpty() || "null".equalsIgnoreCase(v)) return "";
+        String legacy="server/uploads/chat/";
+        int at=v.indexOf(legacy);
+        if(at>=0 && (v.startsWith(legacy)||v.startsWith("/"+legacy)||v.startsWith("https://transiva.my.id/")||v.startsWith("http://transiva.my.id/"))){
+            try{return ApiConfig.server("view_chat_image.php")+"?file="+java.net.URLEncoder.encode(v.substring(at+legacy.length()),"UTF-8");}catch(Exception e){return "";}
+        }
         if (v.startsWith("http://transiva.my.id/")) {
             return "https://transiva.my.id/" + v.substring("http://transiva.my.id/".length());
         }

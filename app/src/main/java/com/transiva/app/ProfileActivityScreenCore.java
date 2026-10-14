@@ -305,6 +305,10 @@ class ProfileActivityScreenCore extends Activity {
         buildIdentityCard(root);
         buildFormCard(root);
         buildSecurityCard(root);
+        root.addView(settingsRow("✉", "Verifikasi email", "Kelola verifikasi email akun Anda", v -> {
+            if(emailVerified){toast("Email sudah terverifikasi.");return;}
+            CustomerEmailVerification.show(this, () -> {CustomerProfileCache.clear(this);loadProfile(true);});
+        }));
 
         shell.addView(
                 buildBottomNavigation(),
@@ -644,6 +648,10 @@ class ProfileActivityScreenCore extends Activity {
                 );
 
         badges.addView(emailBadge);
+        emailBadge.setOnClickListener(v -> {
+            if(emailVerified){toast("Email sudah terverifikasi.");return;}
+            CustomerEmailVerification.show(this, () -> { CustomerProfileCache.clear(this); loadProfile(true); });
+        });
 
         roleView =
                 badge(

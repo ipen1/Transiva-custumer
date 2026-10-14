@@ -7,7 +7,7 @@ php=os.getenv('PHP_BIN','php');php_args=json.loads(os.getenv('TEST_PHP_ARGS','[]
 with tempfile.TemporaryDirectory(prefix='transiva-chat-sql-') as directory:
  p=Path(directory);env=dict(os.environ,CHAT_TEST_DB='transiva_chat_test_'+uuid.uuid4().hex)
  def put(name,content): (p/name).write_text(content)
- for name in ['getChat.php','sendChat.php','chat_security_helper.php','chat_page_helper.php','chat_delivery_helper.php','get_customer_conversations.php']:
+ for name in ['getChat.php','sendChat.php','chat_security_helper.php','chat_page_helper.php','chat_delivery_helper.php','get_customer_conversations.php','chat_notification_helper.php']:
   shutil.copy2(source/name,p/name)
  put('config.php',r'''<?php mysqli_report(MYSQLI_REPORT_ERROR|MYSQLI_REPORT_STRICT);
 $db=getenv('CHAT_TEST_DB');if(!preg_match('/^transiva_chat_test_[a-f0-9]{32}$/D',$db))throw new RuntimeException('Disposable DB required');
@@ -22,6 +22,7 @@ function native_column_exists($c,$t,$n){$t=$c->real_escape_string($t);$n=$c->rea
  put('p0_security_helper.php',"<?php require_once __DIR__.'/native_auth.php';function p0_require_customer($c){return native_require_user($c);}function p0_rate_limit(...$a){}function p0_client_ip(){return 'fixture';}")
  put('send_fcm.php',"<?php function send_fcm_notification(...$a){if(getenv('CHAT_TEST_FCM_FAIL'))throw new RuntimeException('injected FCM error');return ['success'=>true];}")
  put('request.php',r'''<?php
+register_shutdown_function(function(){if($e=error_get_last())fwrite(STDERR,json_encode($e));});
 $_GET=json_decode(getenv('CHAT_TEST_GET')?:'{}',true);$_SERVER['REQUEST_METHOD']=getenv('CHAT_TEST_METHOD')?:'GET';
 class ChatInputStream{public $context;private $offset=0;function stream_open($p,$m,$o,&$opened){return true;}function stream_read($n){$s=substr(getenv('CHAT_TEST_PAYLOAD')?:'{}',$this->offset,$n);$this->offset+=strlen($s);return $s;}function stream_eof(){return $this->offset>=strlen(getenv('CHAT_TEST_PAYLOAD')?:'{}');}function stream_stat(){return [];}function url_stat($p,$f){return [];} }
 if($_SERVER['REQUEST_METHOD']==='POST'){stream_wrapper_unregister('php');stream_wrapper_register('php',ChatInputStream::class);}
@@ -49,6 +50,7 @@ require __DIR__.'/'.getenv('CHAT_TEST_ENDPOINT');
   checks+=1;print('PASS',name)
  try:
   sql("CREATE TABLE users(id INT PRIMARY KEY,username VARCHAR(60),role VARCHAR(20),fcm_token VARCHAR(50)) ENGINE=InnoDB")
+  sql("CREATE TABLE order_notification_outbox(id BIGINT AUTO_INCREMENT PRIMARY KEY,event_key VARCHAR(190) UNIQUE,kind VARCHAR(32),payload_json LONGTEXT,status VARCHAR(16) DEFAULT 'pending',attempts INT DEFAULT 0) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4")
   sql("INSERT INTO users VALUES(1,'customer','customer','c'),(2,'driver','driver','d')")
   sql("CREATE TABLE orders(id INT PRIMARY KEY,user_id INT,order_id VARCHAR(60),room_id VARCHAR(100),status VARCHAR(40),driver VARCHAR(60),created_at DATETIME,updated_at DATETIME,order_type VARCHAR(20)) ENGINE=InnoDB")
   sql("INSERT INTO orders VALUES(1,1,'A','ROOM-A','driver_accepted','driver',NOW(),NOW(),'ride'),(2,2,'B','ROOM-B','driver_accepted','driver',NOW(),NOW(),'ride')")

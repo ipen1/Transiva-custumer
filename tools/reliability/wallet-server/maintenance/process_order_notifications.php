@@ -8,6 +8,7 @@ require_once dirname(__DIR__).'/send_fcm.php';
 require_once dirname(__DIR__).'/driver_dispatch_helper.php';
 require_once dirname(__DIR__).'/worker_reliability_helper.php';
 require_once dirname(__DIR__).'/customer_wallet_notification_helper.php';
+require_once dirname(__DIR__).'/chat_notification_helper.php';
 mysqli_report(MYSQLI_REPORT_ERROR|MYSQLI_REPORT_STRICT);
 $lock=mysqli_query($conn,"SELECT GET_LOCK('transiva_outbox_worker_v28',0) AS acquired");
 if((int)(mysqli_fetch_assoc($lock)['acquired']??0)!==1)exit;
@@ -35,6 +36,8 @@ for($i=0;$i<200 && microtime(true)<$deadline;$i++){
             if(($expired && $expired<=time()) || !worker_offer_is_current($conn,$p['data']??[])){mysqli_query($conn,"UPDATE order_notification_outbox SET status='expired',payload_json='{}' WHERE id=$id");continue;}
             $result=send_fcm_notification($p['token'],$p['title'],$p['body'],$p['data']);
             if(!is_array($result)||empty($result['success']))throw new RuntimeException('FCM_DELIVERY_FAILED');
+        }elseif($job['kind']==='chat_fcm'){
+            chat_notification_deliver($conn,$p);
         }elseif($job['kind']==='wallet_fcm'){
             $delivery=customer_wallet_deliver_notification($conn,$p);
             if($delivery==='unavailable'){

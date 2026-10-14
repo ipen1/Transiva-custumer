@@ -81,6 +81,12 @@ class LoginActivityScreenCore extends FragmentActivity {
     private String authSessionToken="";
     private TextView stepLabel,usernameLabel,passwordLabel,previous;
     private FrameLayout loginPasswordBox;
+    private LinearLayout loginIdentityCard;
+    private ImageView loginAvatar;
+    private TextView loginInitial,loginIdentityName;
+    private AuthPublicRequest previewRequest;
+    private AuthPublicRequest googleSignupLookup;
+    private long previewGeneration;
     private String googleSignupUsername="",googleSignupPhone="";
     protected boolean loading;
     protected boolean passwordVisible;
@@ -104,7 +110,7 @@ class LoginActivityScreenCore extends FragmentActivity {
         setContentView(buildScreen());
         CustomerResponsiveUi.apply(this);
         passwordInput.setSaveEnabled(false);
-        if(savedInstanceState!=null){usernameInput.setText(savedInstanceState.getString("login_username",""));loginStep=savedInstanceState.getInt("login_step",0);updateLoginStep();}
+        if(savedInstanceState!=null){usernameInput.setText(savedInstanceState.getString("login_username",""));loginStep=0;updateLoginStep();if(savedInstanceState.getInt("login_step",0)==1)authScope.post(mainHandler,this::loadLoginPreview);}
         if(getIntent().getBooleanExtra("start_google",false))authScope.post(mainHandler,this::startGoogleLogin);
 
         try {
@@ -125,7 +131,7 @@ class LoginActivityScreenCore extends FragmentActivity {
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
         root.setGravity(Gravity.CENTER_HORIZONTAL);
-        root.setPadding(dp(18), dp(18), dp(18), dp(24));
+        root.setPadding(dp(16), dp(12), dp(16), dp(18));
         scroll.addView(root, new ScrollView.LayoutParams(-1, -2));
 
         ImageView logo = new ImageView(this);
@@ -137,32 +143,32 @@ class LoginActivityScreenCore extends FragmentActivity {
         logo.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
 
         LinearLayout.LayoutParams logoLp =
-                new LinearLayout.LayoutParams(dp(190), dp(80));
+                new LinearLayout.LayoutParams(dp(140), dp(52));
         logoLp.setMargins(0, dp(6), 0, dp(5));
         root.addView(logo, logoLp);
 
         TextView title = text(
-                "Masuk Transiva", 27, "#123F7A", true);
+                "Masuk Transiva", 23, "#123F7A", true);
         title.setGravity(Gravity.CENTER);
         root.addView(title);
 
         TextView subtitle = text(
-                "Masuk untuk mulai menggunakan layanan Transiva",
-                14,
+                "Selamat datang kembali di Transiva",
+                13,
                 "#667085",
                 false
         );
         subtitle.setGravity(Gravity.CENTER);
-        subtitle.setPadding(0, dp(7), 0, dp(18));
+        subtitle.setPadding(0, dp(5), 0, dp(14));
         root.addView(subtitle);
 
         LinearLayout card = new LinearLayout(this);
         card.setOrientation(LinearLayout.VERTICAL);
         card.setPadding(dp(18), dp(20), dp(18), dp(20));
         card.setBackground(
-                roundStroke("#FFFFFF", "#E5EBF3", dp(24), 1));
-        card.setElevation(dp(5));
-        root.addView(card, new LinearLayout.LayoutParams(Math.min(dp(480),getResources().getDisplayMetrics().widthPixels-dp(36)), -2));
+                roundStroke("#FFFFFF", "#E5EBF3", dp(22), 1));
+        card.setElevation(dp(2));
+        root.addView(card, new LinearLayout.LayoutParams(Math.min(dp(440),getResources().getDisplayMetrics().widthPixels-dp(32)), -2));
 
         messageText = text("", 12, "#B91C1C", true);
         messageText.setVisibility(View.GONE);
@@ -184,9 +190,15 @@ class LoginActivityScreenCore extends FragmentActivity {
         );
         card.addView(usernameInput, fieldLayout());
 
+        loginIdentityCard=new LinearLayout(this);loginIdentityCard.setOrientation(LinearLayout.VERTICAL);loginIdentityCard.setGravity(Gravity.CENTER);loginIdentityCard.setPadding(dp(12),dp(14),dp(12),dp(14));loginIdentityCard.setBackground(round("#F3F7FD",dp(16)));
+        LinearLayout.LayoutParams identityLp=new LinearLayout.LayoutParams(-1,-2);identityLp.bottomMargin=dp(12);card.addView(loginIdentityCard,identityLp);
+        FrameLayout circle=new FrameLayout(this);circle.setBackground(avatarOval("#DDEBFF"));loginIdentityCard.addView(circle,new LinearLayout.LayoutParams(dp(76),dp(76)));
+        loginInitial=text("",25,"#1676ED",true);loginInitial.setGravity(Gravity.CENTER);loginInitial.setBackground(avatarOval("#FFFFFF"));FrameLayout.LayoutParams initialLp=new FrameLayout.LayoutParams(dp(68),dp(68),Gravity.CENTER);circle.addView(loginInitial,initialLp);
+        loginAvatar=new ImageView(this);loginAvatar.setBackground(avatarOval("#00FFFFFF"));loginAvatar.setClipToOutline(true);loginAvatar.setScaleType(ImageView.ScaleType.CENTER_CROP);loginAvatar.setContentDescription("Foto profil akun");circle.addView(loginAvatar,new FrameLayout.LayoutParams(dp(68),dp(68),Gravity.CENTER));
+        loginIdentityName=text("",16,"#123F7A",true);loginIdentityName.setGravity(Gravity.CENTER);loginIdentityName.setPadding(0,dp(9),0,0);loginIdentityCard.addView(loginIdentityName,new LinearLayout.LayoutParams(-1,-2));
         passwordLabel=label("Kata Sandi");card.addView(passwordLabel);
 
-        FrameLayout passwordBox = new FrameLayout(this);loginPasswordBox=passwordBox;passwordBox.setMinimumHeight(dp(56));
+        FrameLayout passwordBox = new FrameLayout(this);loginPasswordBox=passwordBox;passwordBox.setMinimumHeight(dp(48));
 
         passwordInput = input(
                 "Masukkan Kata Sandi",
@@ -216,7 +228,7 @@ class LoginActivityScreenCore extends FragmentActivity {
         loginButton = new Button(this);
         loginButton.setText("Masuk →");
         loginButton.setAllCaps(false);
-        loginButton.setTextSize(17);loginButton.setMinHeight(dp(54));
+        loginButton.setTextSize(15);loginButton.setMinHeight(dp(48));loginButton.setStateListAnimator(null);
         loginButton.setTextColor(Color.WHITE);
         loginButton.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
         loginButton.setBackground(
@@ -227,7 +239,7 @@ class LoginActivityScreenCore extends FragmentActivity {
         loginLp.setMargins(0, dp(8), 0, dp(14));
         card.addView(loginButton, loginLp);
         previous=text("← Ubah nama pengguna",14,"#1685F2",true);previous.setPadding(0,dp(8),0,dp(16));card.addView(previous);
-        previous.setOnClickListener(v->{if(!loading){loginStep=0;updateLoginStep();}});
+        previous.setOnClickListener(v->{if(!loading)returnToUsername();});
         updateLoginStep();
 
         TextView or = text("atau", 12, "#94A3B8", false);
@@ -239,7 +251,7 @@ class LoginActivityScreenCore extends FragmentActivity {
         googleButton = new Button(this);
         googleButton.setText("G   Lanjutkan dengan Google");
         googleButton.setAllCaps(false);
-        googleButton.setTextSize(15);googleButton.setMinHeight(dp(52));
+        googleButton.setTextSize(14);googleButton.setMinHeight(dp(48));googleButton.setStateListAnimator(null);
         googleButton.setTextColor(Color.parseColor("#17324D"));
         googleButton.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
         googleButton.setBackground(roundStroke("#FFFFFF", "#D7E2EF", dp(17), 1));
@@ -288,7 +300,7 @@ class LoginActivityScreenCore extends FragmentActivity {
 
         loginButton.setOnClickListener(v -> {
             if(loading)return;
-            if(loginStep==0){if(usernameInput.getText().toString().trim().isEmpty()){usernameInput.setError("Isi nama pengguna");return;}loginStep=1;updateLoginStep();passwordInput.requestFocus();}else attemptLogin();
+            if(loginStep==0)loadLoginPreview();else attemptLogin();
         });
         usernameInput.setImeOptions(EditorInfo.IME_ACTION_NEXT);
         usernameInput.setOnEditorActionListener((v,id,event)->{if(id==EditorInfo.IME_ACTION_NEXT){loginButton.performClick();return true;}return false;});
@@ -1080,7 +1092,7 @@ class LoginActivityScreenCore extends FragmentActivity {
     ) {
         EditText field = new EditText(this);
         field.setSingleLine(true);
-        field.setTextSize(16);field.setMinimumHeight(dp(56));
+        field.setTextSize(15);field.setMinimumHeight(dp(48));
         field.setTextColor(Color.parseColor("#1F2937"));
         field.setHintTextColor(Color.parseColor("#98A2B3"));
         field.setHint(hint);
@@ -1105,7 +1117,7 @@ class LoginActivityScreenCore extends FragmentActivity {
     private LinearLayout.LayoutParams fieldLayout() {
         LinearLayout.LayoutParams lp =
                 new LinearLayout.LayoutParams(-1, -2);
-        lp.setMargins(0, 0, 0, dp(13));
+        lp.setMargins(0, 0, 0, dp(9));
         return lp;
     }
 
@@ -1258,29 +1270,70 @@ class LoginActivityScreenCore extends FragmentActivity {
     }
     private void updateLoginStep(){
         boolean password=loginStep==1;
+        loginIdentityCard.setVisibility(password?View.VISIBLE:View.GONE);
         usernameInput.setVisibility(password?View.GONE:View.VISIBLE);usernameLabel.setVisibility(password?View.GONE:View.VISIBLE);
         passwordLabel.setVisibility(password?View.VISIBLE:View.GONE);loginPasswordBox.setVisibility(password?View.VISIBLE:View.GONE);previous.setVisibility(password?View.VISIBLE:View.GONE);
         stepLabel.setText(password?"LANGKAH 2 DARI 2 • KATA SANDI":"LANGKAH 1 DARI 2 • IDENTITAS");
         loginButton.setText(password?"Masuk →":"Lanjut →");
+    }
+    private static String normalizeAuthPhone(String value){String p=value.replaceAll("\\D","");if(p.startsWith("0062"))p=p.substring(2);if(p.startsWith("0"))p=p.substring(1);return p.isEmpty()?"":p.startsWith("62")?p:"62"+p;}
+    private GradientDrawable avatarOval(String color){GradientDrawable shape=new GradientDrawable();shape.setShape(GradientDrawable.OVAL);shape.setColor(Color.parseColor(color));return shape;}
+    private void cancelLoginPreview(){previewGeneration++;if(previewRequest!=null)previewRequest.cancel();previewRequest=null;}
+    private void returnToUsername(){cancelLoginPreview();passwordInput.setText("");loginAvatar.setTag(new Object());loginAvatar.setImageDrawable(null);loginInitial.setText("");loginIdentityName.setText("");loginStep=0;updateLoginStep();clearMessage();usernameInput.requestFocus();}
+    private void loadLoginPreview(){
+        if(loading||authScope.isDestroyed())return;
+        final String name=usernameInput.getText().toString().trim();
+        if(name.isEmpty()){usernameInput.setError("Isi nama pengguna");return;}
+        clearMessage();cancelLoginPreview();final long generation=previewGeneration;
+        authSessionToken=safe(new SessionManager(this).getToken());setLoading(true);loginButton.setText("Memeriksa akun…");
+        JSONObject body=new JSONObject();try{body.put("username",name);}catch(Exception ignored){}
+        AuthPublicRequest request=new AuthPublicRequest();previewRequest=request;
+        request.start(this,"customer_login_preview.php",body,response->{
+            if(authScope.isDestroyed()||isFinishing()||previewRequest!=request||generation!=previewGeneration||!name.equals(usernameInput.getText().toString().trim()))return;
+            previewRequest=null;setLoading(false);
+            if(!authSessionToken.equals(safe(new SessionManager(this).getToken())))return;
+            if(!response.optBoolean("success")){showMessage(response.optString("message","Akun belum dapat diperiksa."),false);return;}
+            if(!response.optBoolean("found")){showMessage(response.optString("message","Nama pengguna belum terdaftar."),false);return;}
+            JSONObject profile=response.optJSONObject("profile");if(profile==null){showMessage("Data akun belum lengkap. Coba kembali.",false);return;}
+            String shown=profile.optString("username",name);loginIdentityName.setText("@"+shown);loginInitial.setText(shown.isEmpty()?"T":shown.substring(0,1).toUpperCase(Locale.US));
+            String photo=ImageUrlResolver.resolve(profile.optString("photo",""));loginAvatar.setTag(new Object());loginAvatar.setImageDrawable(null);
+            if(!photo.isEmpty())RemoteImageLoader.loadCenterCrop(loginAvatar,photo,0);
+            loginStep=1;updateLoginStep();passwordInput.requestFocus();
+        });
     }
     private void showGoogleRegistration(String token){
         LinearLayout box=new LinearLayout(this);box.setOrientation(1);box.setPadding(dp(24),dp(12),dp(24),dp(12));
         EditText name=input("Nama pengguna",InputType.TYPE_CLASS_TEXT,false);
         EditText phone=input("Nomor HP",InputType.TYPE_CLASS_PHONE,false);box.addView(name,fieldLayout());box.addView(phone,fieldLayout());
         AlertDialog dialog=new AlertDialog.Builder(this).setTitle("Lengkapi akun Google").setMessage("Email Google Anda sudah diverifikasi. Lengkapi identitas untuk mulai menggunakan Transiva.").setView(box).setNegativeButton("Batal",null).setPositiveButton("Buat akun",null).create();
+        dialog.setOnDismissListener(d->{if(googleSignupLookup!=null)googleSignupLookup.cancel();googleSignupLookup=null;});
         dialog.setOnShowListener(d->dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v->{
-            String u=name.getText().toString().trim().toLowerCase(Locale.US),p=phone.getText().toString().replaceAll("\\D","");
+            final String u=name.getText().toString().trim().toLowerCase(Locale.US);
+            final String p=normalizeAuthPhone(phone.getText().toString());
             if(!u.matches("[a-z0-9_.-]{3,30}")){name.setError("Nama pengguna 3–30 karakter");return;}
-            if(p.startsWith("0"))p=p.substring(1);if(!p.startsWith("62"))p="62"+p;
             if(!p.matches("62[0-9]{9,13}")){phone.setError("Nomor HP tidak valid");return;}
-            googleSignupUsername=u;googleSignupPhone=p;dialog.dismiss();loginWithGoogleToken(token);
+            JSONObject fields=new JSONObject(),body=new JSONObject();try{fields.put("username",u);fields.put("phone",p);body.put("fields",fields);}catch(Exception ignored){}
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setEnabled(false);
+            AuthPublicRequest request=new AuthPublicRequest();googleSignupLookup=request;
+            request.start(this,"customer_auth_check.php",body,response->{
+                if(authScope.isDestroyed()||isFinishing()||!dialog.isShowing()||googleSignupLookup!=request)return;
+                googleSignupLookup=null;dialog.getButton(AlertDialog.BUTTON_POSITIVE).setEnabled(true);
+                if(!response.optBoolean("success")){Toast.makeText(this,response.optString("message","Data belum dapat diperiksa."),Toast.LENGTH_LONG).show();return;}
+                JSONObject result=response.optJSONObject("fields"),un=result==null?null:result.optJSONObject("username"),ph=result==null?null:result.optJSONObject("phone");
+                boolean nameOk=un!=null&&un.optBoolean("available"),phoneOk=ph!=null&&ph.optBoolean("available");
+                if(!nameOk)name.setError(un==null?"Data belum diperiksa.":un.optString("message"));
+                if(!phoneOk)phone.setError(ph==null?"Data belum diperiksa.":ph.optString("message"));
+                if(!nameOk||!phoneOk)return;
+                if(!u.equals(name.getText().toString().trim().toLowerCase(Locale.US))||!p.equals(normalizeAuthPhone(phone.getText().toString()))){Toast.makeText(this,"Data berubah. Tekan Buat akun untuk memeriksa lagi.",Toast.LENGTH_SHORT).show();return;}
+                googleSignupUsername=u;googleSignupPhone=p;dialog.dismiss();loginWithGoogleToken(token);
+            });
         }));dialog.show();
     }
     private void runAuthNetwork(Runnable work){authScope.execute(work,()->postAuth(()->{setLoading(false);showMessage("Antrean jaringan penuh. Coba kembali sebentar lagi.",false);}));}
     private void postAuth(Runnable result){authScope.post(mainHandler,()->{if(!isFinishing()&&authSessionToken.equals(safe(new SessionManager(this).getToken())))result.run();});}
-    @Override public void onBackPressed(){if(loginStep==1&&!loading){loginStep=0;updateLoginStep();}else super.onBackPressed();}
+    @Override public void onBackPressed(){if(previewRequest!=null){cancelLoginPreview();setLoading(false);return;}if(loginStep==1&&!loading)returnToUsername();else super.onBackPressed();}
     @Override protected void onSaveInstanceState(Bundle state){state.putString("login_username",usernameInput.getText().toString());state.putInt("login_step",loginStep);super.onSaveInstanceState(state);}
-    @Override protected void onDestroy(){authScope.destroy();mainHandler.removeCallbacksAndMessages(null);super.onDestroy();}
+    @Override protected void onDestroy(){if(loginAvatar!=null){loginAvatar.setTag(new Object());loginAvatar.setImageDrawable(null);}if(googleSignupLookup!=null)googleSignupLookup.cancel();cancelLoginPreview();authScope.destroy();mainHandler.removeCallbacksAndMessages(null);super.onDestroy();}
     private static String safe(String v) { return v == null ? "" : v; }
 
 }

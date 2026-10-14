@@ -151,7 +151,7 @@ public final class CustomerResourceUpdateManager {
             c = (HttpURLConnection) CustomerApiClient.open(app, url);
             c.setConnectTimeout(15000); c.setReadTimeout(30000); c.setUseCaches(false);
             if (c.getResponseCode() < 200 || c.getResponseCode() >= 300) throw new Exception("download");
-            long declared = c.getContentLengthLong();
+            long declared = CustomerApi23Compat.contentLength(c);
             if (expectedSize > 0 && declared > 0 && expectedSize != declared) throw new Exception("size");
             try (InputStream in = new BufferedInputStream(c.getInputStream());
                  FileOutputStream fos = new FileOutputStream(out)) {

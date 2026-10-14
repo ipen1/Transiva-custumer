@@ -150,7 +150,7 @@ public final class UnifiedLiveOrderCenter {
             notifyListeners();if(cb!=null)cb.onResult(snapshot(),cache,error);
         });
     }
-    private static void sort(List<Order> list){ list.sort((a,b)->{int ar=CustomerOrderState.rank(a.status),br=CustomerOrderState.rank(b.status); if((ar>=20)!=(br>=20))return ar>=20?-1:1; return b.createdAt.compareTo(a.createdAt);}); }
+    private static void sort(List<Order> list){ java.util.Collections.sort(list,(a,b)->{int ar=CustomerOrderState.rank(a.status),br=CustomerOrderState.rank(b.status); if((ar>=20)!=(br>=20))return ar>=20?-1:1; return b.createdAt.compareTo(a.createdAt);}); }
     private static void writeCache(Context c,String owner,List<Order> orders,long saved){
         JSONArray json=new JSONArray();for(Order o:orders)json.put(o.raw);
         c.getSharedPreferences(PREF,Context.MODE_PRIVATE).edit().putString("owner",owner).putString(KEY_JSON,json.toString()).putLong(KEY_AT,saved).apply();

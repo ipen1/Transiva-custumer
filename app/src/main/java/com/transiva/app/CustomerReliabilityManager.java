@@ -31,14 +31,16 @@ public final class CustomerReliabilityManager implements Application.ActivityLif
         if (cm == null) return;
         online = isOnline(cm);
         try {
-            cm.registerDefaultNetworkCallback(new ConnectivityManager.NetworkCallback() {
-                @Override public void onAvailable(Network network) { update(true); }
+            ConnectivityManager.NetworkCallback callback=new ConnectivityManager.NetworkCallback() {
+                @Override public void onAvailable(Network network) { update(isOnline(cm)); }
                 @Override public void onLost(Network network) { update(isOnline(cm)); }
                 @Override public void onCapabilitiesChanged(Network n, NetworkCapabilities c) {
-                    update(c != null && c.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
-                            && c.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED));
+                    update(isOnline(cm));
                 }
-            });
+            };
+            if(android.os.Build.VERSION.SDK_INT>=24)cm.registerDefaultNetworkCallback(callback);
+            else cm.registerNetworkCallback(new android.net.NetworkRequest.Builder()
+                    .addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET).build(),callback);
         } catch (Exception ignored) { }
     }
 

@@ -374,7 +374,7 @@ class CustomerTripActivityScreenCore extends Activity {
         final String url=value.startsWith("https://")||value.startsWith("http://")?value:BASE_URL+(value.startsWith("/")?value.substring(1):value);
         featureRuntime.execute(()->{java.net.HttpURLConnection connection=null;try{
             connection=(java.net.HttpURLConnection)new java.net.URL(url).openConnection();connection.setConnectTimeout(5000);connection.setReadTimeout(5000);
-            if(connection.getContentLengthLong()>5*1024*1024)return;
+            if(CustomerApi23Compat.contentLength(connection)>5*1024*1024)return;
             try(java.io.InputStream input=connection.getInputStream()){
                 android.graphics.BitmapFactory.Options options=new android.graphics.BitmapFactory.Options();options.inSampleSize=4;
                 final Bitmap bitmap=android.graphics.BitmapFactory.decodeStream(input,null,options);

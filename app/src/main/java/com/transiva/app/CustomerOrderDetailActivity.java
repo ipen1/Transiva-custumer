@@ -277,6 +277,12 @@ public class CustomerOrderDetailActivity extends Activity {
         }
         addCard(actionBox);
 
+        Button support=outline("Ajukan Keluhan untuk Pesanan Ini");
+        support.setOnClickListener(v->{android.content.Intent intent=new android.content.Intent(this,CustomerSupportActivity.class);
+            intent.putExtra("order_id",first(order.optString("order_id"),order.optString("id")));
+            intent.putExtra("order_db_id",order.optString("id"));intent.putExtra("source",isPickupOrder()?"pickup_orders":"orders");startActivity(intent);});
+        body.addView(support,buttonLp());
+
         if (isFinishedStatus(statusRaw)) {
             addReviewCard();
             addTipCard();

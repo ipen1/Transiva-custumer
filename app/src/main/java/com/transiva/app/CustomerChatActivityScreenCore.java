@@ -187,6 +187,7 @@ class CustomerChatActivityScreenCore extends Activity {
         );
 
         buildHeader();
+        Button pendingCenter=new Button(this);pendingCenter.setAllCaps(false);pendingCenter.setText("Pesan tertunda");pendingCenter.setOnClickListener(v->CustomerPendingMessageCenter.open(this));content.addView(pendingCenter,new LinearLayout.LayoutParams(-1,-2));
         buildInfoCard();
         buildTabs();
 

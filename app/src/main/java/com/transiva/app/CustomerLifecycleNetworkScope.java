@@ -13,8 +13,8 @@ import android.os.Handler;
  */
 public final class CustomerLifecycleNetworkScope {
     private final AtomicBoolean destroyed = new AtomicBoolean(false);
-    private final Set<Future<?>> futures = ConcurrentHashMap.newKeySet();
-    private final Set<Thread> threads = ConcurrentHashMap.newKeySet();
+    private final Set<Future<?>> futures = java.util.Collections.newSetFromMap(new ConcurrentHashMap<>());
+    private final Set<Thread> threads = java.util.Collections.newSetFromMap(new ConcurrentHashMap<>());
 
     public Future<?> execute(Runnable task) { return execute(task, null); }
     public Future<?> execute(Runnable task, Runnable rejected) {

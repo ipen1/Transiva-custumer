@@ -577,7 +577,7 @@ class RepeatFoodOrderActivityScreenCore extends FragmentActivity {
         TextView count = RepeatOrderUi.text(
                 this,
                 String.valueOf(
-                        quantities.getOrDefault(
+                        CustomerApi23Compat.getOrDefault(quantities,
                                 menuId,
                                 1
                         )
@@ -594,7 +594,7 @@ class RepeatFoodOrderActivityScreenCore extends FragmentActivity {
         minus.setOnClickListener(v -> {
             int value = Math.max(
                     0,
-                    quantities.getOrDefault(
+                    CustomerApi23Compat.getOrDefault(quantities,
                             menuId,
                             1
                     ) - 1
@@ -607,7 +607,7 @@ class RepeatFoodOrderActivityScreenCore extends FragmentActivity {
 
         plus.setOnClickListener(v -> {
             int value =
-                    quantities.getOrDefault(
+                    CustomerApi23Compat.getOrDefault(quantities,
                             menuId,
                             0
                     ) + 1;

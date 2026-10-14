@@ -45,15 +45,15 @@ public class TransShopStoreActivity extends Activity {
  add(info,text(money(item.optDouble("price",0)),16,true),6);
  if(item.has("stock")&&!item.isNull("stock")){TextView stock=text(limit(item)==0?"Stok habis":"Stok: "+item.optInt("stock"),12,true);stock.setTextColor(limit(item)==0?Color.rgb(180,55,55):green);add(info,stock,4);}
  add(card,head,0);
- View.OnClickListener detailClick=v->{Intent detail=new Intent(this,TransShopProductActivity.class);detail.putExtra("store_json",store.toString());detail.putExtra("product_json",item.toString());detail.putExtra("product_index",index);detail.putExtra("selected_quantity",quantities.getOrDefault(index,0));startActivityForResult(detail,PRODUCT_REQUEST);};
+ View.OnClickListener detailClick=v->{Intent detail=new Intent(this,TransShopProductActivity.class);detail.putExtra("store_json",store.toString());detail.putExtra("product_json",item.toString());detail.putExtra("product_index",index);detail.putExtra("selected_quantity",CustomerApi23Compat.getOrDefault(quantities,index,0));startActivityForResult(detail,PRODUCT_REQUEST);};
  head.setOnClickListener(detailClick);
  LinearLayout foot=new LinearLayout(this);foot.setGravity(Gravity.CENTER_VERTICAL);
  TextView see=text("Lihat detail produk ›",12,true);see.setTextColor(blue);see.setOnClickListener(detailClick);foot.addView(see,new LinearLayout.LayoutParams(0,dp(44),1));see.setGravity(Gravity.CENTER_VERTICAL);
  TextView minus=action("−",false),plus=action("+",true),qty=text("0",16,true);qty.setGravity(Gravity.CENTER);quantityLabels.put(index,qty);
  foot.addView(minus,new LinearLayout.LayoutParams(dp(40),dp(40)));foot.addView(qty,new LinearLayout.LayoutParams(dp(34),dp(40)));foot.addView(plus,new LinearLayout.LayoutParams(dp(40),dp(40)));
  add(card,foot,8);
- minus.setOnClickListener(v->{int q=Math.max(0,quantities.getOrDefault(index,0)-1);quantities.put(index,q);update();});
- plus.setOnClickListener(v->{int q=Math.min(limit(item),quantities.getOrDefault(index,0)+1);quantities.put(index,q);update();});
+ minus.setOnClickListener(v->{int q=Math.max(0,CustomerApi23Compat.getOrDefault(quantities,index,0)-1);quantities.put(index,q);update();});
+ plus.setOnClickListener(v->{int q=Math.min(limit(item),CustomerApi23Compat.getOrDefault(quantities,index,0)+1);quantities.put(index,q);update();});
  plus.setEnabled(limit(item)>0);plus.setAlpha(limit(item)>0?1f:.4f);
  add(products,card,10);
  }

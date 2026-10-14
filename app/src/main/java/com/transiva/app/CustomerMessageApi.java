@@ -203,6 +203,25 @@ public final class CustomerMessageApi {
         } finally { if (connection != null) connection.disconnect(); }
     }
 
+    static JSONObject uploadPendingMedia(String endpoint,JSONObject op,byte[] preview,byte[] media,CustomerSessionGuard session)throws Exception {
+        String boundary="----TransivaPending"+java.util.UUID.randomUUID();HttpURLConnection connection=null;
+        try{
+            connection=CustomerApiClient.open(appContext,endpoint);authorize(connection,session);
+            connection.setInstanceFollowRedirects(false);connection.setRequestMethod("POST");connection.setConnectTimeout(TIMEOUT_MS);connection.setReadTimeout(TIMEOUT_MS);
+            connection.setUseCaches(false);connection.setDoOutput(true);connection.setChunkedStreamingMode(8192);
+            connection.setRequestProperty("Content-Type","multipart/form-data; boundary="+boundary);
+            try(OutputStream output=connection.getOutputStream()){
+                for(String field:new String[]{"room_id","order_id","order_db_id","source","operation_id","duration_ms"})writeField(output,boundary,field,op.optString(field));
+                // Legacy voice endpoint validates this field; the server derives the actual sender.
+                writeField(output,boundary,"sender_type","customer");
+                if(preview!=null){writeFile(output,boundary,"preview_image","preview.webp","image/webp",preview);writeFile(output,boundary,"hd_image","hd.jpg","image/jpeg",media);}
+                else writeFile(output,boundary,"audio","voice.m4a","audio/mp4",media);
+                output.write(("--"+boundary+"--\r\n").getBytes(StandardCharsets.UTF_8));output.flush();
+            }
+            return checkedResponse(connection,session);
+        }finally{if(connection!=null)connection.disconnect();}
+    }
+
     private static byte[] readFile(File file) throws Exception {
         try (FileInputStream in = new FileInputStream(file); java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream()) {
             byte[] buffer = new byte[8192]; int n; while ((n = in.read(buffer)) > 0) out.write(buffer, 0, n); return out.toByteArray();

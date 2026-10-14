@@ -97,47 +97,35 @@ class CustomerChatRoomActivityScreenCore extends Activity {
     private CustomerChatRequestGate chatRequests;
     private Button olderMessagesButton, retryMessageButton;
     private int oldestId;
+    private boolean searchFocus;
+    private final android.util.SparseArray<View> messageViews=new android.util.SparseArray<>();
     private boolean hasOlderMessages;
     private final java.util.HashSet<Integer> displayedMessageIds=new java.util.HashSet<>();
     private CustomerChatSendJournal sendJournal() throws Exception {
         return new CustomerChatSendJournal(getApplicationContext(),chatRequests.session(),
                 roomId+":"+orderSource+":"+orderDbId);
     }
+    private JSONObject chatPayload() throws Exception {
+        return new JSONObject().put("room_id",roomId).put("order_id",orderId).put("order_db_id",orderDbId).put("source",orderSource).put("sender_type","customer");
+    }
+    private static final class ChatNotSavedException extends java.io.IOException { ChatNotSavedException(Exception cause){super(cause.getMessage(),cause);} }
     private JSONObject sendPayload(JSONObject payload) throws Exception {
-        CustomerChatSendJournal journal=sendJournal();
-        JSONObject operation=journal.begin(payload);
-        JSONObject result=CustomerMessageApi.post(SEND_CHAT_URL,operation,chatRequests.session());
-        String id=operation.optString("client_message_id");
-        if(result.optBoolean("success") && id.equals(result.optString("client_message_id")))journal.resolve(id);
-        else if(result.optBoolean("success"))throw new IllegalStateException("Hasil pesan belum terkonfirmasi. Pastikan server chat sudah diperbarui.");
-        // These responses prove the endpoint refused the request before inserting a message.
-        else if(!result.optBoolean("success") && ("CHAT_ENDED".equals(result.optString("code"))
-                || "DRIVER_NOT_ASSIGNED".equals(result.optString("code"))
-                || "EMPTY_MESSAGE".equals(result.optString("code")) || "MESSAGE_TOO_LONG".equals(result.optString("code"))))journal.resolve(id);
-        return result;
+        CustomerPendingChatStore store;JSONObject operation;try{store=new CustomerPendingChatStore(this,chatRequests.session());operation=store.enqueue(payload,"text",null,null,0);}catch(Exception e){throw new ChatNotSavedException(e);}
+        return store.dispatch(operation);
     }
     private void refreshPendingMessage() {
         chatRequests.execute("pending-read",() -> {
-            try { boolean pending=sendJournal().pending()!=null;
-                chatRequests.post(mainHandler,() -> retryMessageButton.setVisibility(pending?View.VISIBLE:View.GONE));
+            try {
+                // Import the previous version's single unresolved text/voice operation.
+                CustomerChatSendJournal old=sendJournal();JSONObject prior=old.pending();
+                CustomerPendingChatStore store=new CustomerPendingChatStore(this,chatRequests.session());
+                if(prior!=null){store.enqueue(prior,"text",null,null,0);old.resolve(prior.optString("client_message_id"));}
+                final int count=store.list().size();
+                chatRequests.post(mainHandler,() -> {retryMessageButton.setText("Pesan tertunda ("+count+")");retryMessageButton.setVisibility(View.VISIBLE);});
             }catch(Exception ignored) { }
         },null);
     }
-    private void retryPendingMessage() {
-        if(sending||uploading)return;
-        sending=true;sendButton.setEnabled(false);retryMessageButton.setEnabled(false);
-        chatRequests.execute("send",() -> {
-            try {
-                JSONObject operation=sendJournal().pending();
-                final String retriedMessage=operation==null?"":operation.optString("message");
-                if(operation!=null) {
-                    JSONObject result=sendPayload(operation);
-                    if(!result.optBoolean("success"))throw new IllegalStateException(result.optString("message","Pesan belum terkonfirmasi"));
-                }
-                chatRequests.post(mainHandler,() -> {resetSendControls();if(input.getText().toString().trim().equals(retriedMessage))input.setText("");refreshPendingMessage();loadMessages(false);});
-            }catch(Exception error){chatRequests.post(mainHandler,() -> {resetSendControls();refreshPendingMessage();toast(first(error.getMessage(),"Pesan masih tertunda"));});}
-        },() -> chatRequests.post(mainHandler,() -> {resetSendControls();toast("Antrean penuh. Pesan tetap tersimpan; coba kembali.");}));
-    }
+    private void retryPendingMessage() { CustomerPendingMessageCenter.open(this); }
     private void resetSendControls() {
         sending=false;sendButton.setEnabled(!readOnly&&!uploading&&!sending);sendButton.setText(readOnly?"Selesai":"Kirim");
         retryMessageButton.setEnabled(true);
@@ -504,11 +492,12 @@ class CustomerChatRoomActivityScreenCore extends Activity {
         root.addView(header);
         root.addView(new ActiveCallBanner(this),new LinearLayout.LayoutParams(-1,-2));
 
+        Button search=new Button(this);search.setAllCaps(false);search.setText("Cari dalam percakapan");search.setOnClickListener(v->openSearch());root.addView(search,new LinearLayout.LayoutParams(-1,-2));
         olderMessagesButton=new Button(this);olderMessagesButton.setAllCaps(false);
         olderMessagesButton.setText("Muat pesan sebelumnya");olderMessagesButton.setVisibility(View.GONE);
         olderMessagesButton.setOnClickListener(v -> loadOlderMessages());root.addView(olderMessagesButton,new LinearLayout.LayoutParams(-1,-2));
         retryMessageButton=new Button(this);retryMessageButton.setAllCaps(false);
-        retryMessageButton.setText("Kirim ulang pesan tertunda");retryMessageButton.setVisibility(View.GONE);
+        retryMessageButton.setText("Pesan tertunda");retryMessageButton.setVisibility(View.GONE);
         retryMessageButton.setOnClickListener(v -> retryPendingMessage());root.addView(retryMessageButton,new LinearLayout.LayoutParams(-1,-2));
         messagesScroll = new ScrollView(this);
         messagesScroll.setFillViewport(true);
@@ -983,91 +972,20 @@ class CustomerChatRoomActivityScreenCore extends Activity {
 
 
 
-    protected void uploadPhoto(
-            ChatImageProcessor.ImagePayload payload
-    ) {
-        if (
-                uploading
-                        || readOnly
-                        || payload == null
-        ) {
-            return;
-        }
-
-        uploading = true;
-        attachButton.setEnabled(false);
-        sendButton.setEnabled(false);
-
-        final PendingPhotoBubble pendingBubble =
-                addPendingPhotoBubble(payload);
-
-        scrollBottom();
-
-        chatRequests.execute("media",() -> {
-            try {
-                JSONObject response =
-                        CustomerMessageApi.uploadImagePair(
-                                UPLOAD_IMAGE_URL,
-                                roomId,
-                                "customer",
-                                payload,chatRequests.session()
-                        );
-
-                chatRequests.post(mainHandler,() -> {
-                    uploading = false;
-                    attachButton.setEnabled(!readOnly);
-                    sendButton.setEnabled(!readOnly&&!uploading&&!sending);
-
-                    if (
-                            response.optBoolean(
-                                    "success",
-                                    false
-                            )
-                    ) {
-                        pendingBubble.markSuccess();
-                        cleanupCameraFile();
-
-                        /*
-                         * Beri server/getChat.php sedikit waktu lalu ambil
-                         * pesan baru. Jika poller sedang bekerja, fungsi ini
-                         * menunggu sampai request sebelumnya selesai.
-                         */
-                        refreshMessagesAfterUpload(
-                                pendingBubble,
-                                0
-                        );
-
-                        return;
-                    }
-
-                    pendingBubble.markFailed(
-                            first(
-                                    response.optString(
-                                            "message"
-                                    ),
-                                    "Foto gagal dikirim"
-                            )
-                    );
-                });
-
-            } catch (Exception error) {
-                chatRequests.post(mainHandler,() -> {
-                    uploading = false;
-                    attachButton.setEnabled(!readOnly);
-                    sendButton.setEnabled(!readOnly&&!uploading&&!sending);
-
-                    pendingBubble.markFailed(
-                            first(
-                                    error.getMessage(),
-                                    "Periksa koneksi lalu coba lagi."
-                            )
-                    );
-
-                    cleanupCameraFile();
-                });
-            }
-        }, () -> chatRequests.post(mainHandler,() -> {pendingBubble.markFailed("Antrean penuh. Coba kembali.");rejectMedia();}));
+    protected void uploadPhoto(ChatImageProcessor.ImagePayload payload) {
+        if(uploading||readOnly||payload==null)return;
+        uploading=true;attachButton.setEnabled(false);sendButton.setEnabled(false);
+        chatRequests.execute("media",()->{
+            try{
+                CustomerPendingChatStore store=new CustomerPendingChatStore(this,chatRequests.session());
+                JSONObject operation=store.enqueue(chatPayload(),"image",payload.previewWebp,payload.hdJpeg,0);
+                JSONObject response=store.dispatch(operation);
+                chatRequests.post(mainHandler,()->{rejectMediaControls();refreshPendingMessage();if(response.optBoolean("success"))loadMessages(false);else toast(response.optString("message","Foto tersimpan sebagai pesan tertunda"));cleanupCameraFile();});
+            }catch(Exception e){chatRequests.post(mainHandler,()->{rejectMediaControls();refreshPendingMessage();toast(first(e.getMessage(),"Foto belum terkonfirmasi. Buka pesan tertunda."));});}
+        },()->chatRequests.post(mainHandler,()->{rejectMedia();}));
     }
+    private void rejectMediaControls(){uploading=false;attachButton.setEnabled(!readOnly);sendButton.setEnabled(!readOnly&&!sending);voiceButton.setEnabled(!readOnly);voiceButton.setText("🎙");}
+
 
     protected void refreshMessagesAfterUpload(
             PendingPhotoBubble pendingBubble,
@@ -1402,30 +1320,21 @@ class CustomerChatRoomActivityScreenCore extends Activity {
         });
     }
 
-    protected void uploadVoiceNote(File file, long durationMs) {
-        if (readOnly || uploading || file == null) return;
-        uploading = true;
-        voiceButton.setEnabled(false);
-        chatRequests.execute("media",() -> {
-            try {
-                JSONObject upload = CustomerMessageApi.uploadVoice(
-                        UPLOAD_VOICE_URL, roomId, "customer", file, durationMs,chatRequests.session());
-                if (!upload.optBoolean("success", false)) throw new IllegalStateException(upload.optString("message", "Upload voice note gagal"));
-                String audioUrl = upload.optString("url", upload.optString("audio_url", ""));
-                JSONObject payload = new JSONObject();
-                payload.put("room_id", roomId); payload.put("sender_type", "customer");
-                payload.put("order_id", orderId); payload.put("order_db_id", orderDbId); payload.put("source", orderSource); payload.put("message", ChatVoiceNote.encode(audioUrl, durationMs));
-                JSONObject sent = sendPayload(payload);
-                chatRequests.post(mainHandler,() -> {
-                    uploading = false; voiceButton.setEnabled(!readOnly); voiceButton.setText("🎙");
-                    refreshPendingMessage();if (sent.optBoolean("success", false)) loadMessages(false);
-                    else toast(sent.optString("message", "Voice note gagal dikirim"));
-                });
-            } catch (Exception e) {
-                chatRequests.post(mainHandler,() -> { uploading = false; voiceButton.setEnabled(!readOnly); voiceButton.setText("🎙"); refreshPendingMessage();statusText.setText("Voice note pending • jaringan"); toast(first(e.getMessage(), "Voice note gagal dikirim")); });
-            } finally { file.delete(); }
-        }, () -> chatRequests.post(mainHandler,() -> {rejectMedia();file.delete();}));
+    protected void uploadVoiceNote(File file,long durationMs) {
+        if(readOnly||uploading||file==null)return;
+        uploading=true;voiceButton.setEnabled(false);
+        chatRequests.execute("media",()->{
+            boolean saved=false;
+            try{
+                CustomerPendingChatStore store=new CustomerPendingChatStore(this,chatRequests.session());
+                JSONObject operation=store.enqueue(chatPayload(),"voice",null,CustomerPendingChatStore.read(file,12*1024*1024),durationMs);saved=true;
+                JSONObject response=store.dispatch(operation);
+                chatRequests.post(mainHandler,()->{rejectMediaControls();refreshPendingMessage();if(response.optBoolean("success"))loadMessages(false);else toast(response.optString("message","Voice tersimpan sebagai pesan tertunda"));});
+            }catch(Exception e){chatRequests.post(mainHandler,()->{rejectMediaControls();refreshPendingMessage();toast(first(e.getMessage(),"Voice belum terkonfirmasi. Buka pesan tertunda."));});}
+            finally{if(saved)file.delete();}
+        },()->chatRequests.post(mainHandler,()->rejectMedia()));
     }
+
 
     protected String absoluteVoiceContent(String content) {
         String url = ChatVoiceNote.voiceUrl(content);
@@ -1566,7 +1475,7 @@ class CustomerChatRoomActivityScreenCore extends Activity {
         boolean older="older".equals(response.optString("page_mode"));
         int oldHeight=messagesBox.getHeight(),oldScroll=messagesScroll.getScrollY();
         boolean nearBottom=oldHeight-oldScroll-messagesScroll.getHeight()<dp(100);
-        if(reset){messagesBox.removeAllViews();receiptViews.clear();displayedMessageIds.clear();lastId=0;oldestId=0;}
+        if(reset){messagesBox.removeAllViews();messageViews.clear();receiptViews.clear();displayedMessageIds.clear();lastId=0;oldestId=0;}
         if(!reset&&displayedMessageIds.isEmpty()&&array.length()>0)messagesBox.removeAllViews();
         boolean added=false;int insertion=0;
         for(int i=0;i<array.length();i++) {
@@ -1593,7 +1502,7 @@ class CustomerChatRoomActivityScreenCore extends Activity {
                 }
             });
         }
-        else if(reset||(added&&nearBottom))scrollBottom();
+        else if(!searchFocus&&(reset||(added&&nearBottom)))scrollBottom();
         if(lastId>0)scheduleMessagesReadThrough(lastId);
     }
 
@@ -1852,6 +1761,7 @@ class CustomerChatRoomActivityScreenCore extends Activity {
             if (mine) receiptViews.put(message.optInt("id", 0), timestamp);
         }
 
+        messageViews.put(message.optInt("id"),wrapper);
         if (animate) animateMessage(wrapper, mine);
     }
 
@@ -2190,8 +2100,7 @@ class CustomerChatRoomActivityScreenCore extends Activity {
                             messagesBox.removeView(pending.root);
                         }
 
-                        input.setText(originalMessage);
-                        input.setSelection(input.length());
+                        /* The original operation remains in the pending center; keep the new draft. */
 
                         String serverMessage = response.optString(
                                 "message",
@@ -2216,12 +2125,44 @@ class CustomerChatRoomActivityScreenCore extends Activity {
                     sendButton.setEnabled(!readOnly&&!uploading&&!sending);
                     sendButton.setText("Kirim");
                     if (pending != null) messagesBox.removeView(pending.root);
-                    input.setText(originalMessage);
-                    input.setSelection(input.length());
+                    if(error instanceof ChatNotSavedException && input.length()==0){input.setText(originalMessage);input.setSelection(input.length());}
                     showMessage("Pesan belum terkirim", reason, false);
                 });
             }
-        }, () -> chatRequests.post(mainHandler,() -> {resetSendControls();if(pending!=null)messagesBox.removeView(pending.root);input.setText(originalMessage);toast("Antrean penuh. Coba kirim kembali.");}));
+        }, () -> chatRequests.post(mainHandler,() -> {resetSendControls();if(pending!=null)messagesBox.removeView(pending.root);if(input.length()==0)input.setText(originalMessage);toast("Antrean penuh. Coba kirim kembali.");}));
+    }
+
+    private void openSearch(){
+        LinearLayout body=new LinearLayout(this);body.setOrientation(LinearLayout.VERTICAL);body.setPadding(dp(12),dp(8),dp(12),dp(8));
+        EditText query=new EditText(this);query.setSingleLine(true);query.setHint("Cari isi pesan (minimal 2 karakter)");body.addView(query);
+        Button find=new Button(this);find.setAllCaps(false);find.setText("Cari");body.addView(find);
+        ScrollView scroll=new ScrollView(this);LinearLayout results=new LinearLayout(this);results.setOrientation(LinearLayout.VERTICAL);scroll.addView(results);body.addView(scroll,new LinearLayout.LayoutParams(-1,dp(280)));
+        android.app.AlertDialog dialog=new android.app.AlertDialog.Builder(this).setTitle("Pencarian percakapan").setView(body).setPositiveButton("Tutup",null).create();dialog.show();
+        find.setOnClickListener(v->{String term=query.getText().toString().trim();if(term.length()<2){query.setError("Minimal 2 karakter");return;}results.removeAllViews();searchPage(term,0,results,dialog);});
+    }
+    private String searchEndpoint() throws Exception {return ApiConfig.server("search_chat.php")+"?room_id="+URLEncoder.encode(roomId,"UTF-8")+"&source="+URLEncoder.encode(orderSource,"UTF-8")+"&order_id="+URLEncoder.encode(orderId,"UTF-8")+"&order_db_id="+URLEncoder.encode(orderDbId,"UTF-8");}
+    private void searchPage(String term,int before,LinearLayout results,android.app.AlertDialog dialog){
+        chatRequests.execute("search",()->{
+            try{JSONObject response=CustomerMessageApi.get(searchEndpoint()+"&q="+URLEncoder.encode(term,"UTF-8")+"&before_id="+before,chatRequests.session());
+                chatRequests.post(mainHandler,()->{if(!dialog.isShowing())return;
+                    if(!response.optBoolean("success")){toast(response.optString("message"));return;}
+                    JSONArray rows=response.optJSONArray("results");if(rows==null||rows.length()==0){TextView empty=new TextView(this);empty.setText("Tidak ada hasil.");results.addView(empty);return;}
+                    for(int i=0;i<rows.length();i++){JSONObject row=rows.optJSONObject(i);if(row==null)continue;Button item=new Button(this);item.setAllCaps(false);item.setText(row.optString("created_at")+" • "+row.optString("sender_type")+"\n"+row.optString("message"));results.addView(item);item.setOnClickListener(v->{dialog.dismiss();jumpToMessage(row.optInt("id"));});}
+                    if(response.optBoolean("has_more")){Button more=new Button(this);more.setAllCaps(false);more.setText("Hasil berikutnya");results.addView(more);more.setOnClickListener(v->{results.removeView(more);searchPage(term,response.optInt("next_before_id"),results,dialog);});}
+                });
+            }catch(Exception e){chatRequests.post(mainHandler,()->toast("Pencarian belum tersedia. Coba kembali."));}
+        },()->chatRequests.post(mainHandler,()->toast("Antrean penuh. Coba kembali.")));
+    }
+    private void jumpToMessage(int id){
+        searchFocus=true;
+        chatRequests.execute("read",()->{
+            try{JSONObject response=CustomerMessageApi.get(searchEndpoint()+"&target_id="+id,chatRequests.session());
+                chatRequests.post(mainHandler,()->{if(!response.optBoolean("success")){searchFocus=false;toast(response.optString("message"));return;}
+                    handleResponse(response,true);
+                    chatRequests.postDelayed(mainHandler,()->{View target=messageViews.get(id);if(target!=null){messagesScroll.smoothScrollTo(0,target.getTop());target.setBackgroundColor(0xffe0efff);chatRequests.postDelayed(mainHandler,()->target.setBackgroundColor(android.graphics.Color.TRANSPARENT),2200);}searchFocus=false;},120);
+                });
+            }catch(Exception e){chatRequests.post(mainHandler,()->{searchFocus=false;toast("Pesan belum dapat dibuka.");});}
+        },()->chatRequests.post(mainHandler,()->{searchFocus=false;toast("Antrean penuh. Coba kembali.");}));
     }
 
     private void scrollBottom() {

@@ -28,6 +28,10 @@ jobs:
         run: python3 tools/reliability/verify_sources.py
       - name: Install PHP database extension
         run: sudo apt-get update && sudo apt-get install -y php-cli php-mysql php-mbstring
+      - name: Test auth receipts, one-time proofs, and network lifecycle
+        run: |
+          python3 tools/reliability/auth_fixture_regression.py
+          python3 tools/reliability/auth_android_regression.py
       - name: Test chat failure and pagination fixtures
         run: php -n tools/reliability/chat_fixture_regression.php tools/reliability/chat-server
       - name: Test deployed chat endpoints and pagination with real SQL

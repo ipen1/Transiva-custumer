@@ -10,6 +10,7 @@ class AuthStmt extends mysqli_stmt {
     function __construct(AuthFixture $db,string $sql){$this->db=$db;$this->sql=$sql;}
     function bind_param(string $types,mixed &...$vars):bool{$this->values=[];foreach($vars as &$v)$this->values[]=&$v;return true;}
     function execute(?array $params=null):bool{$this->rows=$this->db->run($this->sql,$params??$this->values);return true;}
+    #[\ReturnTypeWillChange] function close(){return true;}
     function get_result():mysqli_result|false{return new AuthRows($this->rows);}
 }
 class AuthFixture extends mysqli {

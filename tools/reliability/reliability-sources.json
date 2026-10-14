@@ -26,14 +26,18 @@
   "chat-server/upload_chat_voice.php": "3a3f7a4b53b7ae3378e215d37b1dedc477f93fb966482d64fbe533a68f0f3a30",
   "chat-server/maintenance/chat_media_upgrade.sql": "d2ff2606e944cc23c5fe77e2f42df027d8ec7ebdbf77e4df3b9efd699cea2daf",
   "wallet-server/chat_notification_helper.php": "c62030ac36a2a17e0cefe75dbea3f79cc9adb0e7f3e8bf439ca3d2bf3c06e634",
-  "auth-server/customer_registration_helper.php": "6916fa1ec5c9991826cb209aaaab33b84f3f16def6f53dcb8fe648a669d3ace7",
+  "auth-server/customer_registration_helper.php": "6b021545022790e8f660ac60105c83d283619678d96a42d2f3a55f5db3405ae8",
   "auth-server/sendEmailOtp.php": "25bfb71c199236e1805774ca43bde63095292e48dcfe0da580d47e16776dd765",
-  "auth-server/rate_limiter.php": "93c65797ee9857b87929020b28b14cd9fd7a1b16697b421103dc799422d6caf2",
+  "auth-server/rate_limiter.php": "72b86e04944007310cec30fb5fdf4f14ce70af60c7dec4c3f43345c21d53f80f",
   "auth-server/view_chat_image.php": "0aef0572a83f793e88f5bfef4d6aa7f694ae5845f2eda9db4229b4d61bd116aa",
   "auth-server/consumeEmailProof.php": "c7a58cf793c7be0998a2f8b04d401c02161353bc8664660e1a82498ddbc468ab",
   "auth-server/customer_email_helper.php": "fff15f42d9406fb1625571b3cf27f1ea0a47302836e6f6277b53ca24ff3f052f",
   "auth-server/verifyEmailOtp.php": "9f56da196653e665831a319f30d0c62ea7815d19f5f0d4bb40163b62a61bfdd0",
-  "auth-server/register.php": "0252f67bb7dd363ed131734deaa9e42203bc1b668cdd5d7ec883b247729dee93",
-  "auth-server/customer_google_login_native.php": "c8f789dcf846efd660eaee0d041d675b9e10ffd827eff7368996ab208556a3ea",
-  "auth-server/maintenance/migrate_customer_auth.php": "54ad5385b4682aa467f9b9e9acf90dab42272f9ef977f8b71a266ee35ad7ab81"
+  "auth-server/register.php": "c1e8cdd35d8f20c47993caa21ecaa230cba67f4c8cc1d6d4820c08d98b05ea9f",
+  "auth-server/customer_google_login_native.php": "749f48ef5e8e88ab0e26d30d7e22b28b90dfc80ad11cd704f768bcb7df7d5ae6",
+  "auth-server/maintenance/migrate_customer_auth.php": "7c6fdfb6429e4b36b442b16707fe7b7fbdd9caf1e769e8a8676bb81b22f771ea",
+  "auth-server/customer_auth_check.php": "6df2b1a14acab2439581164a832e6d36cb877105fa9dc8d67662664ae4680fe4",
+  "auth-server/customer_auth_lookup_helper.php": "ea1f619d641827c28de021ec402afa77f41e011ccba97b4e5a3b6bdf8d621f01",
+  "auth-server/customer_login_preview.php": "ba6360fd3d1c30e4878622a2797501c1a0febf490205a54f03ad67beddd77910",
+  "auth-server/maintenance/install_auth_2_6_1.sql": "8de591a2a56ba71f70e8dc8432a6c65e60440b63cc57bf2e03f2ec95fe90bd09"
 }

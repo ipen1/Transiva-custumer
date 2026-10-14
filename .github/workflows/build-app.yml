@@ -32,6 +32,12 @@ jobs:
         run: |
           python3 tools/reliability/auth_fixture_regression.py
           python3 tools/reliability/auth_android_regression.py
+          python3 tools/reliability/auth_lookup_regression.py
+          python3 tools/reliability/auth_lookup_android_regression.py
+      - name: Test auth schema and concurrent signup with real MariaDB
+        env:
+          TEST_DB_PASSWORD: integration-only
+        run: python3 tools/reliability/auth_mysql_regression.py
       - name: Test chat failure and pagination fixtures
         run: php -n tools/reliability/chat_fixture_regression.php tools/reliability/chat-server
       - name: Test deployed chat endpoints and pagination with real SQL

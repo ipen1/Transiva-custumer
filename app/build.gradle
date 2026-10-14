@@ -41,8 +41,8 @@ android {
         applicationId 'com.transiva.customer'
         minSdk 23
         targetSdk 36
-        versionCode 26
-        versionName '2.5.26'
+        versionCode 35
+        versionName '2.6.0'
     }
 
     signingConfigs {

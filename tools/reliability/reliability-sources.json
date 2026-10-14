@@ -19,11 +19,21 @@
   "chat-server/chat_notification_helper.php": "c62030ac36a2a17e0cefe75dbea3f79cc9adb0e7f3e8bf439ca3d2bf3c06e634",
   "chat-server/upload_chat_image.php": "dc4ace896cb3529928b2b07afd008d690a0461b76b75dc7def78bc04d079e5c1",
   "chat-server/chat_operation_status.php": "33ea7bebd401bf4dc2d4c37b06ff522ee5b21da9e9f57bdefda2ec5090416efe",
-  "chat-server/chat_media_helper.php": "a23f2cc272131fb8b24ca7cc6233dfc9166aecf70b83f2538c77c598b948c69d",
+  "chat-server/chat_media_helper.php": "5705773f134325ed904d024408ef86841bf33d9504723cb2a062b5509f116f83",
   "chat-server/customer_support_native.php": "ae42b32eb7732abd1495519c272eb1c535334494857f057aba1d68090e04aa78",
   "chat-server/customer_support_order_helper.php": "d006c98a806cf50da5e37c605d12b9ae7df20a57533c2bbc72c4ca3fa288490e",
   "chat-server/search_chat.php": "2b9fa064c745b0939c9ebe9ea052f18b4b1c406a775a3d853ede720a5d3ec42d",
   "chat-server/upload_chat_voice.php": "3a3f7a4b53b7ae3378e215d37b1dedc477f93fb966482d64fbe533a68f0f3a30",
   "chat-server/maintenance/chat_media_upgrade.sql": "d2ff2606e944cc23c5fe77e2f42df027d8ec7ebdbf77e4df3b9efd699cea2daf",
-  "wallet-server/chat_notification_helper.php": "c62030ac36a2a17e0cefe75dbea3f79cc9adb0e7f3e8bf439ca3d2bf3c06e634"
+  "wallet-server/chat_notification_helper.php": "c62030ac36a2a17e0cefe75dbea3f79cc9adb0e7f3e8bf439ca3d2bf3c06e634",
+  "auth-server/customer_registration_helper.php": "6916fa1ec5c9991826cb209aaaab33b84f3f16def6f53dcb8fe648a669d3ace7",
+  "auth-server/sendEmailOtp.php": "25bfb71c199236e1805774ca43bde63095292e48dcfe0da580d47e16776dd765",
+  "auth-server/rate_limiter.php": "93c65797ee9857b87929020b28b14cd9fd7a1b16697b421103dc799422d6caf2",
+  "auth-server/view_chat_image.php": "0aef0572a83f793e88f5bfef4d6aa7f694ae5845f2eda9db4229b4d61bd116aa",
+  "auth-server/consumeEmailProof.php": "c7a58cf793c7be0998a2f8b04d401c02161353bc8664660e1a82498ddbc468ab",
+  "auth-server/customer_email_helper.php": "fff15f42d9406fb1625571b3cf27f1ea0a47302836e6f6277b53ca24ff3f052f",
+  "auth-server/verifyEmailOtp.php": "9f56da196653e665831a319f30d0c62ea7815d19f5f0d4bb40163b62a61bfdd0",
+  "auth-server/register.php": "0252f67bb7dd363ed131734deaa9e42203bc1b668cdd5d7ec883b247729dee93",
+  "auth-server/customer_google_login_native.php": "c8f789dcf846efd660eaee0d041d675b9e10ffd827eff7368996ab208556a3ea",
+  "auth-server/maintenance/migrate_customer_auth.php": "54ad5385b4682aa467f9b9e9acf90dab42272f9ef977f8b71a266ee35ad7ab81"
 }

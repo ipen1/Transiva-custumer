@@ -46,7 +46,7 @@ function chat_media_send(mysqli $conn,array $auth,array $order,string $room,stri
             $dir=$kind==='voice'?dirname(__DIR__).'/uploads/chat_voice/'.date('Y/m'):__DIR__.'/uploads/chat/'.($i===0?'preview':'hd');
             if(!is_dir($dir)&&!mkdir($dir,0755,true)&&!is_dir($dir))throw new RuntimeException('MEDIA_DIRECTORY');
             if(!move_uploaded_file($f['tmp'],$dir.'/'.$name))throw new RuntimeException('MEDIA_MOVE');
-            $paths[]=$kind==='voice'?'https://transiva.my.id/server/play_chat_voice.php?file='.rawurlencode(date('Y/m').'/'.$name):'server/uploads/chat/'.($i===0?'preview':'hd').'/'.$name;
+            $paths[]=$kind==='voice'?'https://transiva.my.id/server/play_chat_voice.php?file='.rawurlencode(date('Y/m').'/'.$name):'server/view_chat_image.php?file='.rawurlencode(($i===0?'preview':'hd').'/'.$name);
         }
         $message=$kind==='voice'?'[[VOICE]]'.$paths[0].'|'.$duration:'[[IMAGE2]]'.$paths[0].'|'.$paths[1];
         $st=chat_delivery_prepare($conn,'INSERT INTO chat_messages(room_id,sender_type,message,created_at,is_read,read_at) VALUES(?,?,?,NOW(),0,NULL)');

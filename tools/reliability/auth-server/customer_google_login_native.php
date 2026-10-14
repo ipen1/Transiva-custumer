@@ -24,6 +24,7 @@ require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/device_security.php';
 require_once __DIR__ . '/native_auth.php';
 require_once __DIR__ . '/customer_registration_helper.php';
+require_once __DIR__ . '/customer_auth_lookup_helper.php';
 mysqli_report(MYSQLI_REPORT_ERROR|MYSQLI_REPORT_STRICT);
 require_once __DIR__ . '/transiva_push_helper.php';
 
@@ -266,6 +267,7 @@ try {
     mysqli_stmt_close($stmt);
 
     if (!$user) {
+        if(!cal_signup_ready($conn))cln_out(false,'Pendaftaran belum diaktifkan oleh admin. Silakan hubungi admin Transiva.',[],503,'AUTH_SCHEMA_REQUIRED');
         if(empty($in['signup_username']) || empty($in['signup_phone']))cln_out(false,'Lengkapi nama pengguna dan nomor HP untuk membuat akun Google.', ['email'=>$email],422,'GOOGLE_REGISTRATION_REQUIRED');
         $registration=['username'=>$in['signup_username'],'phone'=>$in['signup_phone'],'email'=>$email,
             'password'=>bin2hex(random_bytes(32)),'operation_id'=>'google-'.hash('sha256',$google['sub'].':'.$email.':'.strtolower(trim($in['signup_username'])).':'.cr_phone($in['signup_phone']))];

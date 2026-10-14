@@ -43,7 +43,7 @@ function transiva_rate_limit_bootstrap(): void
     if ($state === null || $ipState === null) {
         error_log('Transiva rate-limit storage unavailable for ' . $script);
         // Authentication/OTP must not silently lose brute-force protection.
-        if (preg_match('/(login|register|otp|password|pin|verifyemail|verification)/', $script)) {
+        if (preg_match('/(login|register|otp|password|pin|verifyemail|verification|auth_check)/', $script)) {
             http_response_code(503); header('Retry-After: 30');
             exit(json_encode(['success'=>false,'code'=>'SECURITY_TEMPORARILY_UNAVAILABLE',
                 'message'=>'Layanan keamanan sedang sibuk. Coba kembali sebentar lagi.']));
@@ -184,6 +184,8 @@ function transiva_rate_limit_stress_bypass(string $script = ''): bool
 
 function transiva_rate_limit_policy(string $script): array
 {
+    if($script==='customer_auth_check.php')return [90,60];
+    if($script==='customer_login_preview.php')return [20,60];
     // High-frequency polling/location endpoints: 12 requests/second average.
     if (preg_match('/(location|status|updates|poll|idle_drivers|unified_orders|background_order)/', $script)) {
         return [720, 60];

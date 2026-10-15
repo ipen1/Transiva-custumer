@@ -252,7 +252,9 @@ public class CustomerSettingsActivity extends Activity {
         labels.addView(text(title, 15, "#0B3A78", true)); labels.addView(text(subtitle, 11, "#64748B", false));
         row.addView(labels, new LinearLayout.LayoutParams(0, -2, 1));
         Switch toggle = new Switch(this); toggle.setChecked(checked); toggle.setOnCheckedChangeListener(listener);
-        row.addView(toggle); return row;
+        toggle.setContentDescription(title);
+        LinearLayout.LayoutParams toggleLp=new LinearLayout.LayoutParams(-2,-2);
+        toggleLp.setMarginStart(dp(12));row.addView(toggle,toggleLp);return row;
     }
 
     private void updateOverlayStatus() {

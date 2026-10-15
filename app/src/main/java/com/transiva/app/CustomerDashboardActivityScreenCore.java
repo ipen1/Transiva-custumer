@@ -2075,7 +2075,7 @@ class CustomerDashboardActivityScreenCore extends Activity
 
         for (int i = 0; i < items.length; i++) {
             LinearLayout.LayoutParams itemLp = new LinearLayout.LayoutParams(0, -2, 1f);
-            int gap = dp(4);
+            int gap = dp(2);
             if (i > 0) itemLp.leftMargin = gap;
             if (i < items.length - 1) itemLp.rightMargin = gap;
             row.addView(items[i], itemLp);
@@ -2116,7 +2116,7 @@ class CustomerDashboardActivityScreenCore extends Activity
         LinearLayout card = new LinearLayout(this);
         card.setOrientation(LinearLayout.VERTICAL);
         card.setGravity(Gravity.TOP | Gravity.CENTER_HORIZONTAL);
-        card.setPadding(dp(3), dp(4), dp(3), dp(4));
+        card.setPadding(dp(2), dp(4), dp(2), dp(4));
         card.setMinimumHeight(dp(72));
         card.setBackground(Shape.round("#00FFFFFF", dp(16)));
         card.setClickable(true);
@@ -2126,36 +2126,22 @@ class CustomerDashboardActivityScreenCore extends Activity
         int iconSize;
         switch (CustomerResponsiveUi.profile(this)) {
             case COMPACT:
-                iconSize = dp(42);
+                iconSize = dp(46);
                 break;
             case SMALL:
-                iconSize = dp(44);
-                break;
-            case TABLET:
                 iconSize = dp(48);
                 break;
+            case TABLET:
+                iconSize = dp(52);
+                break;
             default:
-                iconSize = dp(58);
+                iconSize = dp(62);
                 break;
         }
 
-        FrameLayout iconHolder = new FrameLayout(this);
-        iconHolder.setBackground(Shape.roundStroke("#F8FBFF", "#D9E8F7", dp(16), 1));
-        iconHolder.setPadding(0, 0, 0, 0);
-        CustomerAppSettings.preserveArtwork(iconHolder);
-        // Service artwork extends close to its edges. Never clip the actual bitmap to the frame.
-        iconHolder.setClipToOutline(false);
-        iconHolder.setElevation(dp(1));
-        card.addView(iconHolder, new LinearLayout.LayoutParams(iconSize, iconSize));
-
-        ImageView image = new ImageView(this);
-        image.setImageResource(drawable(icon));
-        image.setScaleType(ImageView.ScaleType.FIT_CENTER);
-        int inset = dp(2);
-        image.setPadding(inset, inset, inset, inset);
-        FrameLayout.LayoutParams imageLp = new FrameLayout.LayoutParams(-1, -1);
-        imageLp.gravity = Gravity.CENTER;
-        iconHolder.addView(image, imageLp);
+        CustomerServiceArtworkView artwork = new CustomerServiceArtworkView(this, drawable(icon), iconSize);
+        // AT_MOST width from the weighted menu column bounds the complete square tile.
+        card.addView(artwork, new LinearLayout.LayoutParams(-2, -2));
 
         TextView label = text(title, 9, "#0B3A78", true);
         label.setGravity(Gravity.CENTER);

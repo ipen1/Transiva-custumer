@@ -361,7 +361,7 @@ public class CustomerSettingsActivity extends Activity {
     }
     private void showLoading(boolean show) { if (progress != null) progress.setVisibility(show ? ProgressBar.VISIBLE : ProgressBar.GONE); }
     private void updateButton(boolean enabled) { disconnectButton.setEnabled(enabled && !deviceLoading); disconnectButton.setAlpha(disconnectButton.isEnabled() ? 1f : .55f); }
-    private LinearLayout card() { LinearLayout v = new LinearLayout(this); v.setOrientation(LinearLayout.VERTICAL); v.setPadding(dp(16), dp(16), dp(16), dp(16)); v.setBackground(round("#FFFFFF", 20)); v.setElevation(dp(2)); return v; }
+    private LinearLayout card() { LinearLayout v = new LinearLayout(this); v.setOrientation(LinearLayout.VERTICAL); v.setPadding(dp(16), dp(16), dp(16), dp(16)); GradientDrawable panel=round("#FFFFFF", 20);panel.setStroke(dp(1),Color.parseColor("#CEDCF0"));v.setBackground(panel); v.setElevation(dp(2)); return v; }
     private TextView sectionTitle(String s) { return text(s, 13, "#0B3A78", true); }
     private LinearLayout.LayoutParams marginTop(int top) { LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, -2); lp.setMargins(0, dp(top), 0, dp(8)); return lp; }
     private TextView divider() { TextView v = new TextView(this); v.setBackgroundColor(Color.parseColor("#E7EEF7")); v.setHeight(dp(1)); return v; }

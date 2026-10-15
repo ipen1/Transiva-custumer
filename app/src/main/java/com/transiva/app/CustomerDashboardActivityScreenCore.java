@@ -2143,14 +2143,15 @@ class CustomerDashboardActivityScreenCore extends Activity
         iconHolder.setBackground(Shape.roundStroke("#F8FBFF", "#D9E8F7", dp(16), 1));
         iconHolder.setPadding(0, 0, 0, 0);
         CustomerAppSettings.preserveArtwork(iconHolder);
-        iconHolder.setClipToOutline(true);
+        // Service artwork extends close to its edges. Never clip the actual bitmap to the frame.
+        iconHolder.setClipToOutline(false);
         iconHolder.setElevation(dp(1));
         card.addView(iconHolder, new LinearLayout.LayoutParams(iconSize, iconSize));
 
         ImageView image = new ImageView(this);
         image.setImageResource(drawable(icon));
-        image.setScaleType(ImageView.ScaleType.CENTER_CROP);
-        int inset = 0;
+        image.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        int inset = dp(2);
         image.setPadding(inset, inset, inset, inset);
         FrameLayout.LayoutParams imageLp = new FrameLayout.LayoutParams(-1, -1);
         imageLp.gravity = Gravity.CENTER;

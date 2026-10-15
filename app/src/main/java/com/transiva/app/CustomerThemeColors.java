@@ -4,6 +4,7 @@ package com.transiva.app;
 final class CustomerThemeColors {
     static final int PAGE=0xff091625, CARD=0xff122235, SOFT=0xff172b42, BORDER=0xff2d435c;
     static final int TEXT=0xffeef5ff, MUTED=0xffb8c8db, ACCENT=0xff78baff;
+    static final int LIGHT_PAGE=0xffeaf1fa, LIGHT_SOFT=0xffe3edfa;
     private CustomerThemeColors() { }
     static int r(int c){return c>>16&255;}static int g(int c){return c>>8&255;}static int b(int c){return c&255;}
     static int alpha(int c){return c>>>24;}
@@ -19,6 +20,20 @@ final class CustomerThemeColors {
         if(g(c)>r(c)+7 && g(c)>b(c)+3)return 0xff12382f; // positive
         if(r(c)>g(c)+4 && r(c)>b(c)+2)return 0xff40232d; // warning/error
         if(max-min<75)return depth<=2?PAGE:(min>235?CARD:SOFT);
+        return c;
+    }
+    /** Restrict light refinements to neutral blue surfaces; never alter semantic or brand fills. */
+    static int lightSurface(int c,int depth) {
+        if(alpha(c)!=255)return c;
+        if(c==0xfff5f8fd||c==0xfff4f8fd||c==0xfff5f9ff||c==0xfff4f8ff)return depth<=2?LIGHT_PAGE:LIGHT_SOFT;
+        if(c==0xfff8fbff||c==0xfff2f8ff||c==0xfff3f7ff||c==0xffeaf4ff)return LIGHT_SOFT;
+        return c;
+    }
+    static int lightText(int c,int bg) {
+        if(alpha(c)<180||luminance(bg)<.6||contrast(composite(c,bg),bg)>=4.5)return c;
+        int spread=Math.max(r(c),Math.max(g(c),b(c)))-Math.min(r(c),Math.min(g(c),b(c)));
+        if(spread<65)return contrast(0xff52647c,bg)>=4.5?0xff52647c:0xff123555;
+        if(b(c)>r(c)*1.3&&b(c)>g(c)*1.1)return 0xff0964d6;
         return c;
     }
     static int brand(int c) {

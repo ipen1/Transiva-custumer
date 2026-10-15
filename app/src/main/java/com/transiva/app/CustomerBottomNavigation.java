@@ -62,7 +62,7 @@ public final class CustomerBottomNavigation {
         connectionSlot.addView(indicator, new LinearLayout.LayoutParams(dp(activity, 26), dp(activity, 26)));
         TextView connectionLabel = new TextView(activity);
         connectionLabel.setText("Server"); connectionLabel.setTextSize(8);
-        connectionLabel.setTextColor(Color.parseColor(dark ? "#BFD5EC" : "#60738A"));
+        connectionLabel.setTextColor(Color.parseColor(dark ? "#BFD5EC" : "#52647C"));
         connectionLabel.setGravity(Gravity.CENTER); connectionLabel.setSingleLine(true);
         connectionSlot.addView(connectionLabel, new LinearLayout.LayoutParams(-1, -2));
         connectionLabel.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
@@ -97,7 +97,7 @@ public final class CustomerBottomNavigation {
             boolean dark
     ) {
         boolean active = index == activeIndex;
-        int inactiveText = Color.parseColor(dark ? "#D8E6F7" : "#60738A");
+        int inactiveText = Color.parseColor(dark ? "#D8E6F7" : "#52647C");
 
         LinearLayout item = new LinearLayout(activity);
         item.setOrientation(LinearLayout.VERTICAL);
@@ -155,7 +155,7 @@ public final class CustomerBottomNavigation {
         title.setText(label);
         title.setTextSize(center ? 9.5f : 9f);
         title.setTextColor(center ? Color.parseColor(active ? "#39A8FF" : (dark ? "#F4F9FF" : "#26384B"))
-                : Color.parseColor(active ? (dark ? "#78BAFF" : BLUE) : (dark ? "#D8E6F7" : "#60738A")));
+                : Color.parseColor(active ? (dark ? "#78BAFF" : BLUE) : (dark ? "#D8E6F7" : "#52647C")));
         title.setGravity(Gravity.CENTER);
         title.setSingleLine(true);
         if (active || center) title.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
@@ -189,10 +189,10 @@ public final class CustomerBottomNavigation {
                 GradientDrawable.Orientation.TOP_BOTTOM,
                 new int[]{
                         Color.parseColor(dark ? "#F2142940" : "#FFFFFFFF"),
-                        Color.parseColor(dark ? "#F208182B" : "#F7FBFF")
+                        Color.parseColor(dark ? "#F208182B" : "#EAF2FD")
                 }
         );
-        bg.setStroke(dp(activity, 1), Color.parseColor(dark ? "#355A83A8" : "#D7E8F8"));
+        bg.setStroke(dp(activity, 1), Color.parseColor(dark ? "#355A83A8" : "#C7D8EC"));
         bg.setCornerRadii(new float[]{
                 dp(activity, 22), dp(activity, 22),
                 dp(activity, 22), dp(activity, 22),

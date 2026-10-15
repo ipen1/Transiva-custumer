@@ -29,6 +29,29 @@ final class CustomerThemeDrawable {
         catch(RuntimeException ignored){return 0;}
         finally {b.recycle();}
     }
+    static void light(Drawable d,View host,int depth) {
+        if(d==null||d instanceof BitmapDrawable||d instanceof VectorDrawable)return;
+        if(d instanceof RippleDrawable){
+            RippleDrawable r=(RippleDrawable)d;
+            for(int i=0;i<r.getNumberOfLayers();i++)if(r.getId(i)!=android.R.id.mask)light(r.getDrawable(i),host,depth);
+        }else if(d instanceof InsetDrawable)light(((InsetDrawable)d).getDrawable(),host,depth);
+        else if(d instanceof LayerDrawable){LayerDrawable l=(LayerDrawable)d;for(int i=0;i<l.getNumberOfLayers();i++)light(l.getDrawable(i),host,depth);}
+        else if(d instanceof StateListDrawable){
+            int[] old=d.getState().clone();
+            int[][] states={{android.R.attr.state_enabled,android.R.attr.state_focused},{android.R.attr.state_enabled,android.R.attr.state_pressed},
+                {android.R.attr.state_enabled,android.R.attr.state_checked},{android.R.attr.state_enabled,android.R.attr.state_selected},{android.R.attr.state_enabled},{}};
+            for(int[] state:states){d.setState(state);Drawable current=d.getCurrent();if(current!=d)light(current,host,depth);}d.setState(old);
+        }else if(d instanceof ColorDrawable){
+            int before=sample(d),after=CustomerThemeColors.lightSurface(before,depth);
+            if(before!=after){d.setTintList(null);d.clearColorFilter();((ColorDrawable)d).setColor(after);}
+        }else if(d instanceof GradientDrawable){
+            GradientDrawable g=(GradientDrawable)d;
+            // Keep gradients intact, including branded blue headers and transparent overlays.
+            if(android.os.Build.VERSION.SDK_INT>=24&&g.getColors()!=null)return;
+            int before=sample(d),after=CustomerThemeColors.lightSurface(before,depth);
+            if(before!=after){d.setTintList(null);d.clearColorFilter();g.setColor(after);}
+        }
+    }
     static void dark(Drawable d,View host,int depth) {
         if(d==null)return;
         if(d instanceof BitmapDrawable || d instanceof VectorDrawable)return;

@@ -69,7 +69,7 @@ public final class CustomerAppSettings {
             boolean dark=isDarkMode(a);ACTIVITIES.put(a,dark);
             a.getWindow().setStatusBarColor(dark?0xff05101d:0xff0b7cff);
             a.getWindow().setNavigationBarColor(dark?0xff05101d:0xff071426);
-            a.getWindow().setBackgroundDrawable(new android.graphics.drawable.ColorDrawable(dark?DARK_PAGE:0xfff5f8fd));
+            a.getWindow().setBackgroundDrawable(new android.graphics.drawable.ColorDrawable(dark?DARK_PAGE:CustomerThemeColors.LIGHT_PAGE));
             View decor=a.getWindow().getDecorView();
             decor.setSystemUiVisibility(decor.getSystemUiVisibility()&~View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR);
             View root=a.findViewById(android.R.id.content);
@@ -101,6 +101,12 @@ public final class CustomerAppSettings {
         for(int i=0;i<colors.length;i++){int c=source.getColorForState(STATES[i],source.getDefaultColor());colors[i]=text?CustomerThemeColors.text(c,bg):CustomerThemeColors.brand(CustomerThemeColors.surface(c,depth));}
         return new ColorStateList(STATES,colors);
     }
+    private static ColorStateList lightText(ColorStateList source,int bg){
+        if(source==null)return null;
+        int[] colors=new int[STATES.length];boolean changed=false;
+        for(int i=0;i<colors.length;i++){int old=source.getColorForState(STATES[i],source.getDefaultColor());colors[i]=CustomerThemeColors.lightText(old,bg);changed|=old!=colors[i];}
+        return changed?new ColorStateList(STATES,colors):source;
+    }
     private static final class Snapshot {
         Drawable original;WeakReference<Drawable> applied=new WeakReference<>(null);
         boolean ready,dark;int sample,stateHash=Integer.MIN_VALUE,bgContext;
@@ -116,7 +122,7 @@ public final class CustomerAppSettings {
         if(tintChanged)s.tint=tint;
         if(changed||mode||tintChanged){
             Drawable copy=CustomerThemeDrawable.copy(s.original);
-            if(copy!=null){copy.setState(v.getDrawableState());if(dark)CustomerThemeDrawable.dark(copy,v,depth);
+            if(copy!=null){copy.setState(v.getDrawableState());if(dark)CustomerThemeDrawable.dark(copy,v,depth);else CustomerThemeDrawable.light(copy,v,depth);
                 int left=v.getPaddingLeft(),top=v.getPaddingTop(),right=v.getPaddingRight(),bottom=v.getPaddingBottom();
                 v.setBackground(copy);
                 if(left!=v.getPaddingLeft()||top!=v.getPaddingTop()||right!=v.getPaddingRight()||bottom!=v.getPaddingBottom())v.setPadding(left,top,right,bottom);
@@ -133,9 +139,9 @@ public final class CustomerAppSettings {
         if(v instanceof TextView){
             TextView t=(TextView)v;ColorStateList now=t.getTextColors();boolean fresh=!s.ready||now!=s.lastText;
             if(fresh)s.text=now;
-            if(fresh||mode||s.bgContext!=background){ColorStateList target=dark?mapped(s.text,background,true,depth):s.text;if(target!=null)t.setTextColor(target);s.lastText=t.getTextColors();}
+            if(fresh||mode||s.bgContext!=background){ColorStateList target=dark?mapped(s.text,background,true,depth):lightText(s.text,background);if(target!=null)t.setTextColor(target);s.lastText=t.getTextColors();}
             if(t instanceof EditText){ColorStateList hint=t.getHintTextColors();boolean newHint=!s.ready||hint!=s.lastHint;if(newHint)s.hint=hint;
-                if(newHint||mode||s.bgContext!=background){ColorStateList target=dark?mapped(s.hint,background,true,depth):s.hint;if(target!=null)t.setHintTextColor(target);s.lastHint=t.getHintTextColors();}}
+                if(newHint||mode||s.bgContext!=background){ColorStateList target=dark?mapped(s.hint,background,true,depth):lightText(s.hint,background);if(target!=null)t.setHintTextColor(target);s.lastHint=t.getHintTextColors();}}
         }
         if(v instanceof CompoundButton){
             CompoundButton button=(CompoundButton)v;ColorStateList now=button.getButtonTintList();boolean fresh=!s.ready||now!=s.lastButton;if(fresh)s.button=now;
@@ -144,8 +150,9 @@ public final class CustomerAppSettings {
         if(v instanceof Switch){Switch toggle=(Switch)v;
             boolean freshThumb=!s.ready||toggle.getThumbTintList()!=s.lastThumb, freshTrack=!s.ready||toggle.getTrackTintList()!=s.lastTrack;
             if(freshThumb)s.thumb=toggle.getThumbTintList();if(freshTrack)s.track=toggle.getTrackTintList();
-            if(mode||freshThumb||freshTrack){toggle.setThumbTintList(dark?ColorStateList.valueOf(0xffeef5ff):s.thumb);
-                toggle.setTrackTintList(dark?new ColorStateList(new int[][]{{android.R.attr.state_checked},{}},new int[]{0xff2388ed,0xff4b627b}):s.track);
+            if(!s.ready)CustomerSwitchStyle.install(toggle);
+            if(mode||freshThumb||freshTrack){toggle.setThumbTintList(CustomerSwitchStyle.thumb(dark));
+                toggle.setTrackTintList(CustomerSwitchStyle.track(dark));
                 s.lastThumb=toggle.getThumbTintList();s.lastTrack=toggle.getTrackTintList();}
         }
         if(v instanceof ProgressBar){ProgressBar p=(ProgressBar)v;

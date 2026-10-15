@@ -20,11 +20,14 @@ final class CustomerThemeDrawable {
     }
     static int sample(Drawable source) {
         if(source==null)return 0;
+        // Never resize or draw the live background: its callback/outline belongs to a View.
+        // In particular a window decoration must not be sampled at thumbnail dimensions.
+        Drawable probe=copy(source);
+        if(probe==null)return 0;
         Bitmap b=Bitmap.createBitmap(64,64,Bitmap.Config.ARGB_8888);
-        Rect before=new Rect(source.getBounds());
-        try {source.setBounds(0,0,64,64);source.draw(new Canvas(b));return b.getPixel(32,32);}
+        try {probe.setBounds(0,0,64,64);probe.draw(new Canvas(b));return b.getPixel(32,32);}
         catch(RuntimeException ignored){return 0;}
-        finally {source.setBounds(before);b.recycle();}
+        finally {b.recycle();}
     }
     static void dark(Drawable d,View host,int depth) {
         if(d==null)return;

@@ -37,10 +37,20 @@ public class TransivaAlertDialogBuilder extends AlertDialog.Builder {
     @Override
     public AlertDialog create() {
         final AlertDialog dialog = super.create();
-        dialog.setOnShowListener(d -> applyTransivaStyle(dialog));
+        // Do not consume OnShowListener: forms use it to validate without dismissing.
+        // Attach occurs before native AlertController has finished its first layout.
+        // Run once just before drawing, after caller OnShowListener customizations.
         Window themedWindow=dialog.getWindow();
         if(themedWindow!=null)themedWindow.getDecorView().addOnAttachStateChangeListener(new View.OnAttachStateChangeListener(){
-            @Override public void onViewAttachedToWindow(View view){CustomerAppSettings.applyToView(context,view);}
+            @Override public void onViewAttachedToWindow(View view){
+                view.getViewTreeObserver().addOnPreDrawListener(new android.view.ViewTreeObserver.OnPreDrawListener(){
+                    @Override public boolean onPreDraw(){
+                        if(view.getViewTreeObserver().isAlive())view.getViewTreeObserver().removeOnPreDrawListener(this);
+                        if(dialog.isShowing()){applyTransivaStyle(dialog);return false;}
+                        return true;
+                    }
+                });
+            }
             @Override public void onViewDetachedFromWindow(View view){}
         });
         return dialog;
@@ -51,15 +61,20 @@ public class TransivaAlertDialogBuilder extends AlertDialog.Builder {
             Window window = dialog.getWindow();
             if (window != null) {
                 GradientDrawable bg = new GradientDrawable();
-                bg.setColor(Color.WHITE);
+                bg.setColor(Color.TRANSPARENT);
                 bg.setCornerRadius(dp(20));
                 window.setBackgroundDrawable(bg);
                 window.addFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND);
                 WindowManager.LayoutParams lp = window.getAttributes();
                 lp.dimAmount = 0.58f;
                 window.setAttributes(lp);
-                window.setLayout((int) (context.getResources().getDisplayMetrics().widthPixels * 0.90f),
+                // Use the containing window, including split-screen, rather than physical display size.
+                android.graphics.Rect available=new android.graphics.Rect();
+                window.getDecorView().getWindowVisibleDisplayFrame(available);
+                int width=available.width()>0?available.width():context.getResources().getDisplayMetrics().widthPixels;
+                window.setLayout(Math.min(dp(560),Math.max(1,width-dp(32))),
                         WindowManager.LayoutParams.WRAP_CONTENT);
+                window.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
             }
 
             int titleId = context.getResources().getIdentifier("alertTitle", "id", "android");
@@ -86,9 +101,14 @@ public class TransivaAlertDialogBuilder extends AlertDialog.Builder {
             styleButton(positive, Color.rgb(22, 119, 255), Color.WHITE);
             styleButton(negative, Color.rgb(234, 244, 255), Color.rgb(11, 54, 117));
             styleButton(neutral, Color.rgb(242, 247, 255), Color.rgb(22, 119, 255));
-            if (window != null) CustomerAppSettings.applyToView(context,window.getDecorView());
-
             makeButtonsBalanced(positive, negative, neutral);
+            // Theme only dialog content. Replacing DecorView backgrounds can disturb native windows.
+            View content=dialog.findViewById(android.R.id.content);
+            if(content!=null){
+                GradientDrawable panel=new GradientDrawable();panel.setColor(Color.WHITE);panel.setCornerRadius(dp(20));
+                content.setBackground(panel);
+                CustomerAppSettings.applyToView(context,content);
+            }
         } catch (Throwable ignored) {
             // Styling must never break a business-critical confirmation dialog.
         }
@@ -106,8 +126,8 @@ public class TransivaAlertDialogBuilder extends AlertDialog.Builder {
         button.setAllCaps(false);
         button.setGravity(Gravity.CENTER);
         // Cegah teks tombol pecah per huruf seperti "Gun\nakan" / "Bata\nl".
-        button.setSingleLine(true);
-        button.setMaxLines(1);
+        button.setSingleLine(false);
+        button.setMaxLines(2);
         button.setEllipsize(TextUtils.TruncateAt.END);
         button.setMinWidth(0);
         button.setMinimumWidth(0);
@@ -134,13 +154,15 @@ public class TransivaAlertDialogBuilder extends AlertDialog.Builder {
 
         // Tiga tombol pada AlertDialog bawaan terlalu sempit di banyak device
         // (terutama font/display scale besar). Susun vertikal agar selalu terbaca utuh.
-        final boolean stack = visible >= 3;
+        final boolean stack = visible >= 3
+                || context.getResources().getConfiguration().fontScale > 1.15f
+                || context.getResources().getDisplayMetrics().widthPixels < dp(360);
         parent.setOrientation(stack ? LinearLayout.VERTICAL : LinearLayout.HORIZONTAL);
 
         for (Button b : buttons) {
             if (b == null || b.getVisibility() != View.VISIBLE || b.getParent() != parent) continue;
             LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(
-                    stack ? ViewGroup.LayoutParams.MATCH_PARENT : 0, dp(48));
+                    stack ? ViewGroup.LayoutParams.MATCH_PARENT : 0, ViewGroup.LayoutParams.WRAP_CONTENT);
             p.weight = stack ? 0f : 1f;
             p.setMargins(dp(6), dp(5), dp(6), 0);
             b.setLayoutParams(p);

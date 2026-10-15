@@ -76,7 +76,15 @@ public final class CustomerAppSettings {
             if(root!=null){watch(root);paint(root,dark,0,dark?DARK_PAGE:0xffffffff);}
         });
     }
-    public static void applyToView(Context c,View root){if(root!=null)onMain(()->{watch(root);paint(root,isDarkMode(c),0,isDarkMode(c)?DARK_PAGE:0xffffffff);});}
+    public static void applyToView(Context c,View root){
+        if(root==null)return;
+        onMain(()->{
+            // Callers may pass getRootView(). Keep the OS window/decor outside the theme engine.
+            View content=root.findViewById(android.R.id.content);
+            View target=content!=null?content:root;
+            watch(target);boolean dark=isDarkMode(c);paint(target,dark,0,dark?DARK_PAGE:0xffffffff);
+        });
+    }
     private static void onMain(Runnable r){if(Looper.myLooper()==Looper.getMainLooper())r.run();else MAIN.post(r);}
     private static void watch(View root){if(!ROOTS.containsKey(root)){Watcher w=new Watcher(root);ROOTS.put(root,w);root.getViewTreeObserver().addOnPreDrawListener(w);}}
     private static final class Watcher implements ViewTreeObserver.OnPreDrawListener {

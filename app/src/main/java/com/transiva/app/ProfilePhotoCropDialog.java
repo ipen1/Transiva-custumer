@@ -27,7 +27,7 @@ final class ProfilePhotoCropDialog extends Dialog {
     private boolean accepted;
     private CropView crop;
     ProfilePhotoCropDialog(Activity activity, Bitmap source, Result result, Runnable cancelled) {
-        super(activity); this.source = source; this.result = result; this.cancelled = cancelled;
+        super(activity, android.R.style.Theme_Material_Light_NoActionBar); this.source = source; this.result = result; this.cancelled = cancelled;
     }
     private int dp(int value) { return Math.round(value * getContext().getResources().getDisplayMetrics().density); }
     @Override protected void onCreate(Bundle state) {
@@ -49,10 +49,16 @@ final class ProfilePhotoCropDialog extends Dialog {
         save.setBackgroundTintList(android.content.res.ColorStateList.valueOf(Color.rgb(11, 124, 255)));
         save.setOnClickListener(v -> {
             if (accepted || crop.geometry.side <= 0) return;
-            Bitmap output = crop.exportBitmap(); accepted = true;
-            dismiss(); result.chosen(output);
+            try {
+                Bitmap output = crop.exportBitmap(); accepted = true;
+                dismiss(); result.chosen(output);
+            } catch (OutOfMemoryError | RuntimeException error) {
+                android.widget.Toast.makeText(getContext(), "Foto belum dapat diproses. Coba gunakan foto lain atau tutup aplikasi lain dahulu.", android.widget.Toast.LENGTH_LONG).show();
+            }
         });
         root.addView(save, new LinearLayout.LayoutParams(-1, dp(52)));
+        // This is a full-screen media editor, independent of floating AlertDialog sizing/theme.
+        CustomerAppSettings.preserveArtwork(root);
         setContentView(root); setCanceledOnTouchOutside(false);
         setOnDismissListener(d -> {
             if (source != null && !source.isRecycled()) source.recycle(); source = null;
@@ -66,6 +72,8 @@ final class ProfilePhotoCropDialog extends Dialog {
     @Override protected void onStart() {
         super.onStart(); Window window = getWindow();
         if (window != null) {
+            window.clearFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND);
+            window.setBackgroundDrawable(new android.graphics.drawable.ColorDrawable(Color.rgb(11, 24, 43)));
             window.setLayout(WindowManager.LayoutParams.MATCH_PARENT, WindowManager.LayoutParams.MATCH_PARENT);
             window.setStatusBarColor(Color.rgb(11, 24, 43)); window.setNavigationBarColor(Color.rgb(11, 24, 43));
         }

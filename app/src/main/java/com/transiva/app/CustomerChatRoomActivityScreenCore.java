@@ -1808,7 +1808,7 @@ class CustomerChatRoomActivityScreenCore extends Activity {
             String imageUrl
     ) {
         final Dialog dialog =
-                new Dialog(this);
+                new Dialog(this, android.R.style.Theme_Material_Light_NoActionBar);
 
         FrameLayout page =
                 new FrameLayout(this);
@@ -1913,6 +1913,7 @@ class CustomerChatRoomActivityScreenCore extends Activity {
 
         page.addView(close, closeLp);
 
+        CustomerAppSettings.preserveArtwork(page);
         dialog.setContentView(page);
 
         Window window = dialog.getWindow();

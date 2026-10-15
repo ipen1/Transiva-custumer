@@ -27,4 +27,18 @@ public class CustomerThemeColorsTest {
   assertEquals(CustomerThemeColors.CARD,CustomerThemeColors.surface(CustomerThemeColors.CARD,4));
   assertEquals(0xff000000,CustomerThemeColors.composite(0x00ffffff,0xff000000));
  }
+ @Test public void lightPaletteKeepsWhiteCardsAndSemanticBrandColors(){
+  assertEquals(CustomerThemeColors.LIGHT_PAGE,CustomerThemeColors.lightSurface(0xfff5f8fd,1));
+  assertEquals(CustomerThemeColors.LIGHT_SOFT,CustomerThemeColors.lightSurface(0xfff2f8ff,5));
+  for(int c:new int[]{0xffffffff,0xff0b7cff,0xffeafbf2,0xfffff4d6,0xfffff1f2,0x20ffffff})assertEquals(c,CustomerThemeColors.lightSurface(c,3));
+ }
+ @Test public void lightTextStrengthensNeutralAndBlueWithoutChangingSemanticColors(){
+  for(int bg:new int[]{CustomerThemeColors.LIGHT_PAGE,CustomerThemeColors.LIGHT_SOFT,0xffffffff}){
+   for(int fg:new int[]{0xff64748b,0xff718096,0xff0b7cff,0xff0b3a78})
+    assertTrue(CustomerThemeColors.contrast(CustomerThemeColors.lightText(fg,bg),bg)>=4.5);
+  }
+  assertEquals(0xff07864b,CustomerThemeColors.lightText(0xff07864b,0xffffffff));
+  assertEquals(0xffb91c1c,CustomerThemeColors.lightText(0xffb91c1c,0xffffffff));
+  assertEquals(0x80718096,CustomerThemeColors.lightText(0x80718096,0xffffffff));
+ }
 }

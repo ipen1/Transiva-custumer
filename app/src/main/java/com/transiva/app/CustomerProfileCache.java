@@ -60,6 +60,20 @@ public final class CustomerProfileCache {
         c.getSharedPreferences(PREF,Context.MODE_PRIVATE).edit().putString("owner",k).putString("json",safe.toString()).putLong("saved",System.currentTimeMillis()).apply();
         DeliveryAddressGate.storeProfile(c,id,safe);
     }
+    /** Called only after the authenticated proof-consumption endpoint acknowledges success. */
+    public static void confirmEmailVerified(Context c) {
+        try {
+            SessionManager session = new SessionManager(c);
+            JSONObject user = new JSONObject(session.getSessionJson().toString());
+            JSONObject snapshot = cached(c);
+            if (snapshot != null) {
+                java.util.Iterator<String> fields = snapshot.keys();
+                while (fields.hasNext()) { String field = fields.next(); user.put(field, snapshot.opt(field)); }
+            }
+            user.put("email_verified", 1);
+            if (session.saveUser(user)) put(c, user);
+        } catch (Exception ignored) { clear(c); }
+    }
     public static void warm(Context c) { fetch(c,false,null); }
     public static void fetch(Context context,boolean force,Callback callback) {
         final Context app=context.getApplicationContext(); final String k=key(app);

@@ -109,6 +109,30 @@ class CustomerDashboardActivityScreenCore extends Activity
     protected TextView referralCodeText;
     protected TextView referralStatText;
     protected TextView verificationText;
+    private boolean accountStatusVisible;
+    private final SharedPreferences.OnSharedPreferenceChangeListener accountStatusListener = (prefs, key) -> {
+        if (accountStatusVisible && (key == null || "raw_user".equals(key) || "json".equals(key)
+                || "owner".equals(key) || "logged_in".equals(key))) refreshVerificationBadge();
+    };
+    private final Runnable accountStatusRefresh = new Runnable() {
+        @Override public void run() {
+            if (!accountStatusVisible) return;
+            final CustomerSessionGuard owner = CustomerSessionGuard.capture(CustomerDashboardActivityScreenCore.this);
+            CustomerProfileCache.fetch(CustomerDashboardActivityScreenCore.this, true, profile -> {
+                if (accountStatusVisible && owner.matches(CustomerDashboardActivityScreenCore.this)) refreshVerificationBadge();
+            });
+            uiHandler.postDelayed(this, 30000L);
+        }
+    };
+    private void refreshVerificationBadge() {
+        if (verificationText == null || isFinishing() || isDestroyed()) return;
+        boolean verified = isVerifiedUser();
+        verificationText.setText(verified ? "✓ Akun terverifikasi" : "• Verifikasi akun");
+        verificationText.setBackground(Shape.roundStroke(verified ? "#1AFFFFFF" : "#26FFF4D6",
+                verified ? "#70FFFFFF" : "#FFFFD166", dp(13), 1));
+        verificationText.setContentDescription(verified ? "Akun terverifikasi" : "Verifikasi akun melalui menu Akun");
+    }
+
     protected TextView greetingText;
     protected double currentBalance;
     protected boolean balanceVisible = true;
@@ -213,6 +237,12 @@ class CustomerDashboardActivityScreenCore extends Activity
     protected void onResume() {
         super.onResume();
         featureRuntime.onResume();
+        accountStatusVisible = true;
+        getSharedPreferences("transiva_native_session", MODE_PRIVATE).registerOnSharedPreferenceChangeListener(accountStatusListener);
+        getSharedPreferences("customer_profile_cache_v28", MODE_PRIVATE).registerOnSharedPreferenceChangeListener(accountStatusListener);
+        refreshVerificationBadge();
+        uiHandler.removeCallbacks(accountStatusRefresh);
+        uiHandler.post(accountStatusRefresh);
         orderStatusVisible=true;uiHandler.removeCallbacks(orderStatusRefresh);uiHandler.postDelayed(orderStatusRefresh,5000L);
         DeliveryAddressGate.prefetch(this);
 
@@ -244,6 +274,10 @@ class CustomerDashboardActivityScreenCore extends Activity
 
     @Override
     protected void onPause() {
+        accountStatusVisible = false;
+        uiHandler.removeCallbacks(accountStatusRefresh);
+        getSharedPreferences("transiva_native_session", MODE_PRIVATE).unregisterOnSharedPreferenceChangeListener(accountStatusListener);
+        getSharedPreferences("customer_profile_cache_v28", MODE_PRIVATE).unregisterOnSharedPreferenceChangeListener(accountStatusListener);
         orderStatusVisible=false;uiHandler.removeCallbacks(orderStatusRefresh);
         stopPromoAutoSlide();
         featureRuntime.onPause();
@@ -422,7 +456,7 @@ class CustomerDashboardActivityScreenCore extends Activity
                 )
         );
         verificationText.setOnClickListener(view -> {
-            if (!verified) {
+            if (!isVerifiedUser()) {
                 Toast.makeText(this, "Lengkapi verifikasi melalui menu Akun", Toast.LENGTH_SHORT).show();
             }
         });
@@ -1102,6 +1136,10 @@ class CustomerDashboardActivityScreenCore extends Activity
                     )
             );
 
+            JSONObject snapshot = CustomerProfileCache.cached(this);
+            if (snapshot != null && snapshot.has("email_verified")) {
+                return snapshot.optInt("email_verified", 0) == 1 || snapshot.optInt("verified_by_admin", 0) == 1;
+            }
             return user.optInt(
                     "email_verified",
                     0

@@ -58,6 +58,14 @@ class ProfileActivityScreenCore extends Activity {
     protected CustomerPullRefreshLayout pullRefresh;
     private boolean profileFetching;
     private TextView profileStatus;
+    private LinearLayout addressPrompt;
+    private android.animation.ValueAnimator addressAttention;
+    private boolean profileVisible;
+    private boolean photoBusy;
+    private ProfilePhotoCropDialog cropDialog;
+    private volatile HttpURLConnection photoConnection;
+    private long avatarGeneration;
+
 
 
 
@@ -170,6 +178,8 @@ class ProfileActivityScreenCore extends Activity {
     protected void onResume() {
         super.onResume();
         featureRuntime.onResume();
+        profileVisible = true;
+        updateAddressAttention();
 
         if (
                 avatarView != null
@@ -427,272 +437,67 @@ class ProfileActivityScreenCore extends Activity {
     protected void buildIdentityCard(
             LinearLayout root
     ) {
-        final boolean compactScreen = getResources().getConfiguration().screenHeightDp > 0
-                && getResources().getConfiguration().screenHeightDp < 700;
-        LinearLayout card =
-                new LinearLayout(this);
-
-        card.setOrientation(
-                LinearLayout.VERTICAL
-        );
-
-        card.setGravity(
-                Gravity.CENTER_HORIZONTAL
-        );
-
-        card.setPadding(
-                dp(14),
-                dp(10),
-                dp(14),
-                dp(10)
-        );
-
-        card.setBackground(
-                gradient(
-                        "#075EF4",
-                        "#25A7FF",
-                        22
-                )
-        );
-
+        LinearLayout card = new LinearLayout(this);
+        card.setGravity(Gravity.CENTER_VERTICAL);
+        card.setPadding(dp(14), dp(16), dp(14), dp(16));
+        card.setBackground(gradient("#075EF4", "#25A7FF", 22));
         card.setElevation(dp(3));
-
-        LinearLayout.LayoutParams cardLp =
-                new LinearLayout.LayoutParams(
-                        -1,
-                        -2
-                );
-
-        cardLp.setMargins(
-                0,
-                dp(10),
-                0,
-                dp(10)
-        );
-
+        LinearLayout.LayoutParams cardLp = new LinearLayout.LayoutParams(-1, -2);
+        cardLp.setMargins(0, dp(10), 0, dp(10));
         root.addView(card, cardLp);
 
-        FrameLayout avatarFrame =
-                new FrameLayout(this);
+        FrameLayout avatarFrame = new FrameLayout(this);
+        GradientDrawable border = new GradientDrawable();
+        border.setShape(GradientDrawable.OVAL); border.setColor(Color.WHITE);
+        avatarFrame.setBackground(border);
+        avatarView = new ImageView(this);
+        avatarView.setScaleType(ImageView.ScaleType.CENTER_CROP);
+        avatarView.setImageResource(android.R.drawable.sym_def_app_icon);
+        GradientDrawable mask = new GradientDrawable();
+        mask.setShape(GradientDrawable.OVAL); mask.setColor(Color.parseColor("#EAF4FF"));
+        avatarView.setBackground(mask); avatarView.setClipToOutline(true);
+        avatarView.setOutlineProvider(ViewOutlineProvider.BACKGROUND);
+        FrameLayout.LayoutParams imageLp = new FrameLayout.LayoutParams(dp(94), dp(94), Gravity.CENTER);
+        avatarFrame.addView(avatarView, imageLp);
+        card.addView(avatarFrame, new LinearLayout.LayoutParams(dp(102), dp(102)));
+        TextView editPhoto = text("✎", 18, "#FFFFFF", true);
+        editPhoto.setGravity(Gravity.CENTER); editPhoto.setBackground(round("#064CCB", 18));
+        FrameLayout.LayoutParams editLp = new FrameLayout.LayoutParams(dp(32), dp(32), Gravity.BOTTOM | Gravity.END);
+        avatarFrame.addView(editPhoto, editLp);
+        avatarFrame.setContentDescription("Ubah foto profil, geser dan perbesar untuk memotong");
+        avatarFrame.setOnClickListener(v -> openGallery());
 
-        GradientDrawable avatarBorder =
-                new GradientDrawable();
-
-        avatarBorder.setShape(
-                GradientDrawable.OVAL
-        );
-
-        avatarBorder.setColor(
-                Color.WHITE
-        );
-
-        avatarBorder.setStroke(
-                dp(3),
-                Color.parseColor("#FFFFFF")
-        );
-
-        avatarFrame.setBackground(
-                avatarBorder
-        );
-
-        avatarFrame.setElevation(
-                dp(5)
-        );
-
-        avatarView =
-                new ImageView(this);
-
-        avatarView.setScaleType(
-                ImageView.ScaleType.CENTER_CROP
-        );
-
-        avatarView.setImageResource(
-                android.R.drawable
-                        .sym_def_app_icon
-        );
-
-        GradientDrawable avatarMask =
-                new GradientDrawable();
-
-        avatarMask.setShape(
-                GradientDrawable.OVAL
-        );
-
-        avatarMask.setColor(
-                Color.parseColor("#EAF4FF")
-        );
-
-        avatarView.setBackground(
-                avatarMask
-        );
-
-        avatarView.setClipToOutline(true);
-
-        avatarView.setOutlineProvider(
-                ViewOutlineProvider.BACKGROUND
-        );
-
-        FrameLayout.LayoutParams avatarLp =
-                new FrameLayout.LayoutParams(
-                        dp(compactScreen ? 56 : 64),
-                        dp(compactScreen ? 56 : 64)
-                );
-
-        avatarLp.gravity =
-                Gravity.CENTER;
-
-        avatarFrame.addView(
-                avatarView,
-                avatarLp
-        );
-
-        card.addView(
-                avatarFrame,
-                new LinearLayout.LayoutParams(
-                        dp(compactScreen ? 62 : 70),
-                        dp(compactScreen ? 62 : 70)
-                )
-        );
-
-        TextView photoOverlay =
-                text(
-                        "✎",
-                        15,
-                        "#FFFFFF",
-                        true
-                );
-        photoOverlay.setGravity(Gravity.CENTER);
-        photoOverlay.setBackground(round("#0B7CFF", 18));
-        photoOverlay.setElevation(dp(8));
-
-        FrameLayout.LayoutParams overlayLp =
-                new FrameLayout.LayoutParams(
-                        dp(30),
-                        dp(30)
-                );
-        overlayLp.gravity = Gravity.END | Gravity.BOTTOM;
-        overlayLp.setMargins(0, 0, dp(2), dp(2));
-        avatarFrame.addView(photoOverlay, overlayLp);
-
-        avatarFrame.setClickable(true);
-        avatarFrame.setFocusable(true);
-        avatarFrame.setContentDescription("Ubah Foto Profil");
-        avatarFrame.setOnClickListener(view -> openGallery());
-        avatarView.setOnClickListener(view -> openGallery());
-        photoOverlay.setOnClickListener(view -> openGallery());
-
-        nameView =
-                text(
-                        username,
-                        compactScreen ? 16 : 18,
-                        "#FFFFFF",
-                        true
-                );
-
-        nameView.setGravity(
-                Gravity.CENTER
-        );
-
-        card.addView(nameView);
-
-        usernameView =
-                text(
-                        "@" + username,
-                        10,
-                        "#EAF5FF",
-                        false
-                );
-
-        usernameView.setGravity(
-                Gravity.CENTER
-        );
-
-        card.addView(usernameView);
-
-        LinearLayout badges =
-                new LinearLayout(this);
-
-        badges.setGravity(
-                Gravity.CENTER
-        );
-
-        LinearLayout.LayoutParams badgesLp =
-                new LinearLayout.LayoutParams(
-                        -1,
-                        -2
-                );
-
-        badgesLp.setMargins(
-                0,
-                dp(compactScreen ? 5 : 8),
-                0,
-                0
-        );
-
-        card.addView(
-                badges,
-                badgesLp
-        );
-
-        emailBadge =
-                badge(
-                        emailVerified
-                                ? "✓ Email Terverifikasi"
-                                : "Email Belum Terverifikasi",
-                        emailVerified
-                                ? "#E7FFF2"
-                                : "#FFF4E5",
-                        emailVerified
-                                ? "#0A8F4C"
-                                : "#C96A05"
-                );
-
-        badges.addView(emailBadge);
+        LinearLayout details = new LinearLayout(this);
+        details.setOrientation(LinearLayout.VERTICAL);
+        LinearLayout.LayoutParams detailsLp = new LinearLayout.LayoutParams(0, -2, 1f);
+        detailsLp.setMargins(dp(14), 0, 0, 0); card.addView(details, detailsLp);
+        nameView = text(username, 21, "#FFFFFF", true);
+        nameView.setMaxLines(2); nameView.setEllipsize(TextUtils.TruncateAt.END);
+        details.addView(nameView);
+        usernameView = text("@" + username, 12, "#EAF5FF", false);
+        usernameView.setSingleLine(true); usernameView.setEllipsize(TextUtils.TruncateAt.END);
+        details.addView(usernameView);
+        emailBadge = badge(emailVerified ? "✓ Email Terverifikasi" : "Verifikasi email →",
+                emailVerified ? "#E7FFF2" : "#FFF4E5", emailVerified ? "#0A8F4C" : "#C96A05");
+        emailBadge.setTextSize(10); emailBadge.setMaxLines(2);
+        LinearLayout.LayoutParams badgeLp = new LinearLayout.LayoutParams(-2, -2);
+        badgeLp.setMargins(0, dp(8), 0, 0); details.addView(emailBadge, badgeLp);
         emailBadge.setOnClickListener(v -> {
-            if(emailVerified){toast("Email sudah terverifikasi.");return;}
-            CustomerEmailVerification.show(this, () -> { CustomerProfileCache.clear(this); loadProfile(true); });
+            if (emailVerified) { toast("Email sudah terverifikasi."); return; }
+            CustomerEmailVerification.show(this, () -> {
+                cancelProfileRead();
+                JSONObject snapshot = CustomerProfileCache.cached(this);
+                if (snapshot != null && !profileEditMode) applyUser(snapshot);
+                loadProfile(true);
+            });
         });
-
-        roleView =
-                badge(
-                        "Customer",
-                        "#FFE08A",
-                        "#5C3A00"
-                );
-
-        LinearLayout.LayoutParams roleLp =
-                new LinearLayout.LayoutParams(
-                        -2,
-                        -2
-                );
-
-        roleLp.setMargins(
-                dp(7),
-                0,
-                0,
-                0
-        );
-
-        badges.addView(
-                roleView,
-                roleLp
-        );
-
-        loyaltyBadge =
-                badge(
-                        "Premium Bronze • 0 Poin",
-                        "#FFF4D6",
-                        "#8A5A00"
-                );
-
-        LinearLayout.LayoutParams loyaltyLp =
-                new LinearLayout.LayoutParams(
-                        -2,
-                        -2
-                );
-        loyaltyLp.gravity = Gravity.CENTER_HORIZONTAL;
-        loyaltyLp.setMargins(0, dp(8), 0, 0);
-        card.addView(loyaltyBadge, loyaltyLp);
+        roleView = text("Customer", 10, "#EAF5FF", false);
+        LinearLayout.LayoutParams roleLp = new LinearLayout.LayoutParams(-2, -2);
+        roleLp.setMargins(0, dp(6), 0, 0); details.addView(roleView, roleLp);
+        loyaltyBadge = badge("Premium Bronze • 0 Poin", "#FFF4D6", "#8A5A00");
+        loyaltyBadge.setTextSize(10); loyaltyBadge.setMaxLines(2);
+        LinearLayout.LayoutParams loyaltyLp = new LinearLayout.LayoutParams(-2, -2);
+        loyaltyLp.setMargins(0, dp(6), 0, 0); details.addView(loyaltyBadge, loyaltyLp);
     }
 
     protected void buildFormCard(
@@ -725,6 +530,22 @@ class ProfileActivityScreenCore extends Activity {
         viewPhoneValue = addInfoRow(profileViewBox, "Nomor HP", displayIndonesiaPhone(phone), false);
         viewAddressValue = addInfoRow(profileViewBox, "Alamat Delivery", first(address, "Belum diatur"), true);
         card.addView(profileViewBox, new LinearLayout.LayoutParams(-1, -2));
+        addressPrompt = new LinearLayout(this);
+        addressPrompt.setOrientation(LinearLayout.VERTICAL);
+        addressPrompt.setPadding(dp(14), dp(12), dp(14), dp(12));
+        addressPrompt.setBackground(roundStroke("#FFF8E8", "#F3B63F", 14, 1));
+        addressPrompt.addView(text("📍 Atur alamat delivery Anda", 14, "#7A4B00", true));
+        addressPrompt.addView(text("Agar pesanan tiba di tempat yang tepat. Ketuk untuk mengatur →", 11, "#946200", false));
+        addressPrompt.setContentDescription("Alamat delivery belum diatur. Ketuk untuk mengatur alamat.");
+        addressPrompt.setOnClickListener(v -> {
+            if (loading || photoBusy) return;
+            setProfileEditMode(true);
+            addressInput.requestFocus();
+            addressInput.post(() -> addressInput.requestRectangleOnScreen(new android.graphics.Rect(0, 0, addressInput.getWidth(), addressInput.getHeight()), false));
+        });
+        LinearLayout.LayoutParams promptLp = new LinearLayout.LayoutParams(-1, -2);
+        promptLp.setMargins(0, dp(10), 0, 0); card.addView(addressPrompt, promptLp);
+        ((View)viewAddressValue.getParent()).setOnClickListener(v -> addressPrompt.performClick());
 
         profileEditBox = new LinearLayout(this);
         profileEditBox.setOrientation(LinearLayout.VERTICAL);
@@ -800,6 +621,7 @@ class ProfileActivityScreenCore extends Activity {
 
     protected void setProfileEditMode(boolean enabled) {
         profileEditMode = enabled;
+        updateAddressAttention();
         if (profileViewBox != null) profileViewBox.setVisibility(enabled ? View.GONE : View.VISIBLE);
         if (profileEditBox != null) profileEditBox.setVisibility(enabled ? View.VISIBLE : View.GONE);
         if (usernameInput != null) usernameInput.setEnabled(enabled && !loading);
@@ -820,7 +642,25 @@ class ProfileActivityScreenCore extends Activity {
         if (viewUsernameValue != null) viewUsernameValue.setText(first(username, "-"));
         if (viewEmailValue != null) viewEmailValue.setText(first(email, "Email belum tersedia"));
         if (viewPhoneValue != null) viewPhoneValue.setText(displayIndonesiaPhone(phone));
-        if (viewAddressValue != null) viewAddressValue.setText(first(address, "Belum diatur"));
+        if (viewAddressValue != null) viewAddressValue.setText(first(address, "Atur alamat →"));
+        updateAddressAttention();
+    }
+
+    private void updateAddressAttention() {
+        if (addressPrompt == null) return;
+        boolean missing = first(address).trim().isEmpty() || !isValidDeliveryCoordinate(deliveryLat, deliveryLng);
+        addressPrompt.setVisibility(missing && !profileEditMode ? View.VISIBLE : View.GONE);
+        if (!missing || profileEditMode || !profileVisible) { stopAddressAttention(); return; }
+        if (addressAttention != null) return;
+        if (Settings.Global.getFloat(getContentResolver(), Settings.Global.ANIMATOR_DURATION_SCALE, 1f) == 0f) return;
+        addressAttention = android.animation.ValueAnimator.ofFloat(1f, .76f, 1f);
+        addressAttention.setDuration(1800); addressAttention.setRepeatCount(2);
+        addressAttention.addUpdateListener(a -> addressPrompt.setAlpha((Float)a.getAnimatedValue()));
+        addressAttention.start();
+    }
+    private void stopAddressAttention() {
+        if (addressAttention != null) { addressAttention.cancel(); addressAttention = null; }
+        if (addressPrompt != null) addressPrompt.setAlpha(1f);
     }
 
     protected TextView addInfoRow(LinearLayout parent, String label, String value, boolean multiline) {
@@ -1383,6 +1223,7 @@ class ProfileActivityScreenCore extends Activity {
     }
 
     protected void openGallery() {
+        if (loading || photoBusy) { toast("Tunggu proses selesai."); return; }
         Intent intent =
                 new Intent(
                         Intent.ACTION_OPEN_DOCUMENT
@@ -1423,47 +1264,87 @@ class ProfileActivityScreenCore extends Activity {
             return;
         }
 
-        Uri uri = data.getData();
-
-        setLoading(true);
-
+        final Uri uri = data.getData();
+        cancelProfileRead();
+        final CustomerSessionGuard owner = CustomerSessionGuard.capture(this);
+        photoBusy = true; setLoading(true);
         featureRuntime.execute(() -> {
             try {
-                byte[] image =
-                        ProfileImageProcessor.createSquareWebp(getContentResolver(), uri);
-
-                Bitmap preview =
-                        BitmapFactory
-                                .decodeByteArray(
-                                        image,
-                                        0,
-                                        image.length
-                                );
-
+                final Bitmap source = ProfileImageProcessor.readOrientedBitmap(getContentResolver(), uri);
                 mainHandler.post(() -> {
-                    pendingPhotoWebp = image;
-                    avatarView.setImageBitmap(
-                            preview
-                    );
-
+                    if (isFinishing() || isDestroyed() || !owner.matches(this)) { source.recycle(); return; }
                     setLoading(false);
-                    toast(
-                            "Foto siap disimpan"
-                    );
+                    cropDialog = new ProfilePhotoCropDialog(this, source, cropped -> {
+                        cropDialog = null;
+                        setLoading(true);
+                        uploadCroppedPhoto(cropped, owner);
+                    }, () -> { cropDialog = null; photoBusy = false; setLoading(false); });
+                    cropDialog.show();
                 });
-
             } catch (Exception error) {
-                if (CustomerAsyncError.isCancellation(error) || featureRuntime.isDestroyed()) return;
-                mainHandler.post(() -> {
-                    setLoading(false);
-
-                    showInfo(
-                            "Foto Gagal",
-                            CustomerAsyncError.userMessage(error, "Foto tidak dapat diproses.")
-                    );
+                featureRuntime.post(mainHandler, () -> {
+                    if (!owner.matches(this)) return;
+                    photoBusy = false; setLoading(false);
+                    showInfo("Foto Gagal", "Foto tidak dapat dibaca. Pilih foto lain.");
                 });
             }
-        });
+        }, () -> featureRuntime.post(mainHandler, () -> {
+            photoBusy = false; setLoading(false); toast("Antrean jaringan penuh. Coba kembali.");
+        }));
+    }
+
+    private void uploadCroppedPhoto(final Bitmap cropped, final CustomerSessionGuard owner) {
+        ++avatarGeneration;
+        featureRuntime.execute(() -> {
+            HttpURLConnection connection = null;
+            try {
+                byte[] image = ProfileImageProcessor.encodeWebp(cropped);
+                String boundary = "----TransivaPhoto" + System.nanoTime();
+                connection = CustomerApiClient.open(this, ApiConfig.server("update_customer_photo.php"));
+                photoConnection = connection;
+                owner.authorize(this, connection);
+                connection.setRequestMethod("POST");
+                connection.setConnectTimeout(TIMEOUT_MS); connection.setReadTimeout(TIMEOUT_MS);
+                connection.setDoOutput(true); connection.setUseCaches(false);
+                connection.setRequestProperty("Content-Type", "multipart/form-data; boundary=" + boundary);
+                try (OutputStream output = connection.getOutputStream()) {
+                    writeFile(output, boundary, "profile_photo", "profile.webp", "image/webp", image);
+                    output.write(("--" + boundary + "--\r\n").getBytes(StandardCharsets.UTF_8));
+                }
+                int code = connection.getResponseCode();
+                String body = readStream(code >= 200 && code < 300 ? connection.getInputStream() : connection.getErrorStream());
+                JSONObject response = new JSONObject(body);
+                JSONObject user = response.optJSONObject("user");
+                if (!response.optBoolean("success") || user == null || !owner.account.equals(user.optString("id")))
+                    throw new IllegalStateException(response.optString("message", "Foto belum tersimpan."));
+                final Bitmap preview = BitmapFactory.decodeByteArray(image, 0, image.length);
+                featureRuntime.post(mainHandler, () -> {
+                    if (!owner.matches(this) || isFinishing()) { if (preview != null) preview.recycle(); return; }
+                    photoBusy = false; setLoading(false);
+                    CustomerProfileCache.put(this, user);
+                    if (!profileEditMode) applyUser(user, true);
+                    else {
+                        photoUrl = user.optString("profile_photo", photoUrl);
+                        session.saveUser(user);
+                    }
+                    if (preview != null) avatarView.setImageBitmap(preview);
+                    else loadRemoteImage(photoUrl);
+                    toast("Foto profil tersimpan");
+                });
+            } catch (Exception error) {
+                featureRuntime.post(mainHandler, () -> {
+                    if (!owner.matches(this) || isFinishing()) return;
+                    photoBusy = false; setLoading(false);
+                    showInfo("Foto belum terkonfirmasi", "Periksa koneksi, lalu muat ulang profil. Jika foto belum berubah, pilih kembali foto Anda.");
+                });
+            } finally {
+                if (!cropped.isRecycled()) cropped.recycle();
+                if (connection != null) connection.disconnect();
+                photoConnection = null;
+            }
+        }, () -> featureRuntime.post(mainHandler, () -> {
+            cropped.recycle(); photoBusy = false; setLoading(false); toast("Antrean jaringan penuh. Coba kembali.");
+        }));
     }
 
 
@@ -1480,7 +1361,7 @@ class ProfileActivityScreenCore extends Activity {
         });
     }
     protected void loadProfile(boolean force) {
-        if(loading||profileFetching||userId.isEmpty())return;
+        if(loading||photoBusy||profileFetching||userId.isEmpty())return;
         if(!userId.equals(CustomerSessionGuard.capture(this).account))return;
         JSONObject cached=CustomerProfileCache.cached(this);if(cached!=null&&!profileEditMode)applyUser(cached);
         if(!force&&CustomerProfileCache.isFresh(this)){if(profileStatus!=null)profileStatus.setVisibility(View.GONE);return;}
@@ -1501,9 +1382,9 @@ class ProfileActivityScreenCore extends Activity {
         }, () -> postProfile(request,generation,() -> {cancelProfileRead();if(pullRefresh!=null)pullRefresh.finish(false);}), () -> {if(!isFinishing()&&!isDestroyed()&&profileRead==request&&profileGeneration==generation){cancelProfileRead();if(pullRefresh!=null)pullRefresh.finish(false);}});
     }
 
-    protected void applyUser(
-            JSONObject user
-    ) {
+    protected void applyUser(JSONObject user) { applyUser(user, false); }
+
+    private void applyUser(JSONObject user, boolean localPhoto) {
         username = first(
                 user.optString("username"),
                 username
@@ -1594,7 +1475,7 @@ class ProfileActivityScreenCore extends Activity {
                 )
         );
 
-        if (!photoUrl.isEmpty()) {
+        if (!photoUrl.isEmpty() && !localPhoto) {
             loadRemoteImage(photoUrl);
         }
 
@@ -1607,9 +1488,9 @@ class ProfileActivityScreenCore extends Activity {
     protected void loadRemoteImage(
             String rawUrl
     ) {
-        String fixed =
-                absoluteUrl(rawUrl);
-
+        final String fixed = absoluteUrl(rawUrl);
+        final long generation = ++avatarGeneration;
+        final CustomerSessionGuard owner = CustomerSessionGuard.capture(this);
         featureRuntime.execute(() -> {
             HttpURLConnection connection = null;
 
@@ -1632,12 +1513,11 @@ class ProfileActivityScreenCore extends Activity {
                         );
 
                 if (bitmap != null) {
-                    mainHandler.post(
-                            () -> avatarView
-                                    .setImageBitmap(
-                                            bitmap
-                                    )
-                    );
+                    mainHandler.post(() -> {
+                        if (!isFinishing() && !isDestroyed() && owner.matches(this) && generation == avatarGeneration)
+                            avatarView.setImageBitmap(bitmap);
+                        else bitmap.recycle();
+                    });
                 }
 
             } catch (Exception ignored) {
@@ -2169,6 +2049,8 @@ class ProfileActivityScreenCore extends Activity {
             boolean value
     ) {
         loading = value;
+        if (editProfileButton != null) editProfileButton.setEnabled(!value && !photoBusy);
+        if (emailBadge != null) emailBadge.setEnabled(!value && !photoBusy);
 
         if (progress != null) {
             progress.setVisibility(
@@ -2771,12 +2653,16 @@ class ProfileActivityScreenCore extends Activity {
 
     @Override
     protected void onPause() {
+        profileVisible = false; stopAddressAttention();
         featureRuntime.onPause();
         super.onPause();
     }
 
     @Override
     protected void onDestroy() {
+        if (cropDialog != null) cropDialog.dismiss();
+        if (photoConnection != null) photoConnection.disconnect();
+        stopAddressAttention();
         cancelProfileRead();
         featureRuntime.destroy();
         mainHandler.removeCallbacksAndMessages(null);

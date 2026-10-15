@@ -26,11 +26,11 @@ final class CustomerEmailVerification {
         openDialog=dialog;
         activity.getApplication().registerActivityLifecycleCallbacks(lifecycle);
         dialog.setOnDismissListener(d->{activity.getApplication().unregisterActivityLifecycleCallbacks(lifecycle);openDialog=null;scope.destroy();handler.removeCallbacksAndMessages(null);java.net.HttpURLConnection c=connection;if(c!=null)c.disconnect();});
-        send.setOnClickListener(v->{if(busy)return;if(android.os.SystemClock.elapsedRealtime()<resendAt){status.setText("Tunggu sebelum mengirim ulang kode.");return;}proof="";request("sendEmailOtp.php",new JSONObject(),r->{resendAt=android.os.SystemClock.elapsedRealtime()+r.optInt("retry_after",60)*1000L;if(r.optInt("email_verified",0)==1){refreshed.run();dialog.dismiss();}});});
+        send.setOnClickListener(v->{if(busy)return;if(android.os.SystemClock.elapsedRealtime()<resendAt){status.setText("Tunggu sebelum mengirim ulang kode.");return;}proof="";request("sendEmailOtp.php",new JSONObject(),r->{resendAt=android.os.SystemClock.elapsedRealtime()+r.optInt("retry_after",60)*1000L;if(r.optInt("email_verified",0)==1){CustomerProfileCache.confirmEmailVerified(activity);refreshed.run();dialog.dismiss();}});});
         verify.setOnClickListener(v->{if(busy)return;if(!proof.isEmpty()){consume(dialog,refreshed);return;}String code=otp.getText().toString().trim();if(!code.matches("[0-9]{6}")){status.setText("Masukkan 6 digit kode.");return;}JSONObject body=new JSONObject();try{body.put("otp",code);}catch(Exception ignored){}request("verifyEmailOtp.php",body,r->{proof=r.optString("verification_proof","");if(!proof.isEmpty())consume(dialog,refreshed);});});
         dialog.show();
     }
-    private void consume(AlertDialog dialog,Runnable refreshed){JSONObject b=new JSONObject();try{b.put("verification_proof",proof);}catch(Exception ignored){}request("consumeEmailProof.php",b,r->{refreshed.run();Toast.makeText(activity,"Email terverifikasi",Toast.LENGTH_SHORT).show();dialog.dismiss();});}
+    private void consume(AlertDialog dialog,Runnable refreshed){JSONObject b=new JSONObject();try{b.put("verification_proof",proof);}catch(Exception ignored){}request("consumeEmailProof.php",b,r->{CustomerProfileCache.confirmEmailVerified(activity);refreshed.run();Toast.makeText(activity,"Email terverifikasi",Toast.LENGTH_SHORT).show();dialog.dismiss();});}
     interface Success {void apply(JSONObject result);}
     private void request(String endpoint,JSONObject body,Success success){
         if(!session.matches(activity))return;setBusy(true);

@@ -36,7 +36,7 @@ import java.text.NumberFormat;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
-class TransFoodActivityScreenCore extends Activity {
+class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
 
 
 
@@ -94,11 +94,11 @@ class TransFoodActivityScreenCore extends Activity {
         if(!DeliveryAddressGate.valid(this)){DeliveryAddressGate.showUnavailable(this,"TransFood");DeliveryAddressGate.require(this,"TransFood");return;}
         splitBillManager = new SplitBillManager(this, (key,size,ready) -> { if(currentScreen==2) renderCheckout(); });
         try {
-            getWindow().setStatusBarColor(Color.WHITE);
-            getWindow().setNavigationBarColor(Color.WHITE);
-            int flags = View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR;
-            if (android.os.Build.VERSION.SDK_INT >= 26) flags |= View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR;
-            getWindow().getDecorView().setSystemUiVisibility(flags);
+            CustomerWindowPolicy.status(getWindow(), Color.WHITE);
+            CustomerWindowPolicy.navigation(getWindow(), Color.WHITE);
+            int flags = CustomerWindowPolicy.LIGHT_STATUS;
+            if (android.os.Build.VERSION.SDK_INT >= 26) flags |= CustomerWindowPolicy.LIGHT_NAVIGATION;
+            CustomerWindowPolicy.appearance(getWindow(), flags);
             if (android.os.Build.VERSION.SDK_INT >= 29) {
                 getWindow().setNavigationBarContrastEnforced(false);
                 getWindow().setStatusBarContrastEnforced(false);

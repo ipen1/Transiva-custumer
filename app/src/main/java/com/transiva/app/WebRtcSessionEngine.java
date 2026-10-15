@@ -92,7 +92,7 @@ final class WebRtcSessionEngine {
         }catch(Exception e){main.post(()->fail(e.getMessage()));}});
     }
     private void initialize(){try{
-        PeerConnectionFactory.initialize(PeerConnectionFactory.InitializationOptions.builder(context).createInitializationOptions());
+        WebRtcNativeRuntime.initialize(context);
         audioDevice=JavaAudioDeviceModule.builder(context).setUseHardwareAcousticEchoCanceler(false).setUseHardwareNoiseSuppressor(false).createAudioDeviceModule();
         PeerConnectionFactory.Builder builder=PeerConnectionFactory.builder().setAudioDeviceModule(audioDevice);
         if(video){egl=EglBase.create();builder.setVideoEncoderFactory(new DefaultVideoEncoderFactory(egl.getEglBaseContext(),true,true)).setVideoDecoderFactory(new DefaultVideoDecoderFactory(egl.getEglBaseContext()));}

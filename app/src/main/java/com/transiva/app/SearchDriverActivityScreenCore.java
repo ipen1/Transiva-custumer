@@ -58,7 +58,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
-class SearchDriverActivityScreenCore extends Activity {
+class SearchDriverActivityScreenCore extends CustomerAdaptiveActivity {
 
 
 
@@ -128,8 +128,8 @@ class SearchDriverActivityScreenCore extends Activity {
         super.onCreate(savedInstanceState);
 
         try {
-            getWindow().setStatusBarColor(Color.parseColor("#071426"));
-            getWindow().setNavigationBarColor(Color.parseColor("#071426"));
+            CustomerWindowPolicy.status(getWindow(), Color.parseColor("#071426"));
+            CustomerWindowPolicy.navigation(getWindow(), Color.parseColor("#071426"));
         } catch (Exception ignored) {}
 
         activeOrderId = firstNonEmpty(

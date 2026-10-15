@@ -20,7 +20,7 @@ import java.net.*;
 import java.io.*;
 import java.util.*;
 
-public class TransShopCatalogActivity extends Activity {
+public class TransShopCatalogActivity extends CustomerAdaptiveActivity {
  private static final String ENDPOINT="https://transiva.my.id/server/transshop_catalog.php";
  private final Handler handler=new Handler(Looper.getMainLooper());
  private final ArrayList<JSONObject> stores=new ArrayList<>();
@@ -32,7 +32,7 @@ public class TransShopCatalogActivity extends Activity {
  private LinearLayout column(){LinearLayout l=new LinearLayout(this);l.setOrientation(1);return l;}
  private void pad(View v,int p){v.setPadding(d(p),d(p),d(p),d(p));}
  private void add(LinearLayout parent,View child,int top){LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-1,-2);lp.topMargin=d(top);parent.addView(child,lp);}
- @Override public void onCreate(Bundle b){super.onCreate(b);getWindow().setStatusBarColor(blue);getWindow().setNavigationBarColor(Color.rgb(5,16,29));
+ @Override public void onCreate(Bundle b){super.onCreate(b);CustomerWindowPolicy.status(getWindow(), blue);CustomerWindowPolicy.navigation(getWindow(), Color.rgb(5,16,29));
  ScrollView scroll=new ScrollView(this);scroll.setFillViewport(true);scroll.setBackgroundColor(Color.rgb(246,249,255));LinearLayout root=column();pad(root,16);scroll.addView(root);setContentView(scroll);
  LinearLayout head=new LinearLayout(this);head.setGravity(Gravity.CENTER_VERTICAL);TextView back=text("‹",34,true);back.setGravity(Gravity.CENTER);head.addView(back,new LinearLayout.LayoutParams(d(44),d(48)));back.setOnClickListener(v->finish());TextView title=text("TransShop",25,true);head.addView(title,new LinearLayout.LayoutParams(0,-2,1));TextView cart=text("Toko",14,true);cart.setTextColor(blue);head.addView(cart);add(root,head,0);
  TextView banner=text("Belanja mudah dari toko sekitar\nPilih produk favoritmu.",16,true);banner.setTextColor(Color.WHITE);banner.setBackground(bg(blue,20));pad(banner,14);add(root,banner,12);

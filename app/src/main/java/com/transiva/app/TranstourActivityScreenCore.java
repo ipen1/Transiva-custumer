@@ -44,7 +44,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-class TranstourActivityScreenCore extends Activity {
+class TranstourActivityScreenCore extends CustomerAdaptiveActivity {
 
 
     protected final CustomerLifecycleNetworkScope networkScope =
@@ -89,10 +89,10 @@ class TranstourActivityScreenCore extends Activity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         try {
-            getWindow().setStatusBarColor(Color.WHITE);
-            getWindow().setNavigationBarColor(Color.WHITE);
+            CustomerWindowPolicy.status(getWindow(), Color.WHITE);
+            CustomerWindowPolicy.navigation(getWindow(), Color.WHITE);
             if (android.os.Build.VERSION.SDK_INT >= 23) {
-                getWindow().getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR);
+                CustomerWindowPolicy.appearance(getWindow(), CustomerWindowPolicy.LIGHT_STATUS);
             }
         } catch (Exception ignored) {}
 

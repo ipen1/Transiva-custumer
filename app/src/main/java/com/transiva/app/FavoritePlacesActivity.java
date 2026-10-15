@@ -26,7 +26,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.*;
 
 /** Smart Home/Work/Favorite + Transiva AI one-tap ride. */
-public class FavoritePlacesActivity extends Activity {
+public class FavoritePlacesActivity extends CustomerAdaptiveActivity {
     private static final String URL="https://transiva.my.id/server/customer_favorites.php";
     private static final int REQ_LOCATION=5108;
     private final Handler main=new Handler(Looper.getMainLooper());
@@ -38,7 +38,7 @@ public class FavoritePlacesActivity extends Activity {
 
     @Override protected void onCreate(Bundle b){
         super.onCreate(b);
-        try{getWindow().setStatusBarColor(Color.parseColor("#071426"));}catch(Exception ignored){}
+        try{CustomerWindowPolicy.status(getWindow(), Color.parseColor("#071426"));}catch(Exception ignored){}
         build(); load();
     }
 

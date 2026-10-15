@@ -2,9 +2,9 @@ package com.transiva.app;
 
 import android.app.Activity;import android.content.Intent;import android.graphics.Color;import android.graphics.Typeface;import android.graphics.drawable.GradientDrawable;import android.net.Uri;import android.os.Bundle;import android.view.Gravity;import android.view.View;import android.widget.*;import java.util.List;
 
-public class SafetyCenterActivity extends Activity implements UnifiedLiveOrderCenter.Listener {
+public class SafetyCenterActivity extends CustomerAdaptiveActivity implements UnifiedLiveOrderCenter.Listener {
     private LinearLayout activeBox; private TextView activeInfo;
-    @Override protected void onCreate(Bundle b){super.onCreate(b);getWindow().setStatusBarColor(Color.parseColor("#0B7CFF"));setContentView(screen());CustomerAppSettings.apply(this);UnifiedLiveOrderCenter.addListener(this);UnifiedLiveOrderCenter.refresh(this,null);}
+    @Override protected void onCreate(Bundle b){super.onCreate(b);CustomerWindowPolicy.status(getWindow(), Color.parseColor("#0B7CFF"));setContentView(screen());CustomerAppSettings.apply(this);UnifiedLiveOrderCenter.addListener(this);UnifiedLiveOrderCenter.refresh(this,null);}
     @Override protected void onDestroy(){UnifiedLiveOrderCenter.removeListener(this);super.onDestroy();}
     private ScrollView screen(){ScrollView s=new ScrollView(this);s.setBackgroundColor(Color.parseColor("#F6F9FE"));LinearLayout r=new LinearLayout(this);r.setOrientation(LinearLayout.VERTICAL);r.setPadding(dp(18),dp(18),dp(18),dp(30));s.addView(r);TextView back=t("‹  Safety Center 2.0",24,"#0B3A78",true);back.setOnClickListener(v->finish());r.addView(back);TextView hero=t("Perjalanan lebih aman, bantuan lebih cepat",22,"#0B3A78",true);hero.setPadding(0,dp(24),0,dp(6));r.addView(hero);r.addView(t("Safety Center membaca perjalanan aktif dari server agar informasi yang dibagikan tetap relevan.",13,"#64748B",false));
         activeBox=box();activeInfo=t("Memeriksa perjalanan aktif…",13,"#475569",false);activeBox.addView(t("Perjalanan aktif",17,"#0B3A78",true));activeBox.addView(activeInfo);r.addView(activeBox,lp());

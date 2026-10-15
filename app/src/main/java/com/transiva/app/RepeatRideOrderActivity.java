@@ -16,7 +16,7 @@ import android.widget.Toast;
 
 import org.json.JSONObject;
 
-public class RepeatRideOrderActivity extends Activity {
+public class RepeatRideOrderActivity extends CustomerAdaptiveActivity {
     private final CustomerLifecycleNetworkScope networkScope =
             new CustomerLifecycleNetworkScope();
 
@@ -39,7 +39,7 @@ public class RepeatRideOrderActivity extends Activity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
-        getWindow().setStatusBarColor(
+        CustomerWindowPolicy.status(getWindow(), 
                 Color.parseColor("#0B7CFF")
         );
 

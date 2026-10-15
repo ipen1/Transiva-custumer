@@ -43,7 +43,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.Locale;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
-class CustomerTripActivityScreenCore extends Activity {
+class CustomerTripActivityScreenCore extends CustomerAdaptiveActivity {
 
 
 
@@ -125,8 +125,8 @@ class CustomerTripActivityScreenCore extends Activity {
         super.onCreate(savedInstanceState);
 
         try {
-            getWindow().setStatusBarColor(Color.parseColor("#071426"));
-            getWindow().setNavigationBarColor(Color.parseColor("#071426"));
+            CustomerWindowPolicy.status(getWindow(), Color.parseColor("#071426"));
+            CustomerWindowPolicy.navigation(getWindow(), Color.parseColor("#071426"));
         } catch (Exception ignored) {}
 
         readIntentAndSavedData();

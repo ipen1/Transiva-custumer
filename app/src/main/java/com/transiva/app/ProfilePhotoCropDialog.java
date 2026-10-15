@@ -75,7 +75,8 @@ final class ProfilePhotoCropDialog extends Dialog {
             window.clearFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND);
             window.setBackgroundDrawable(new android.graphics.drawable.ColorDrawable(Color.rgb(11, 24, 43)));
             window.setLayout(WindowManager.LayoutParams.MATCH_PARENT, WindowManager.LayoutParams.MATCH_PARENT);
-            window.setStatusBarColor(Color.rgb(11, 24, 43)); window.setNavigationBarColor(Color.rgb(11, 24, 43));
+            CustomerWindowPolicy.install(window);
+            CustomerWindowPolicy.status(window, Color.rgb(11, 24, 43)); CustomerWindowPolicy.navigation(window, Color.rgb(11, 24, 43));
         }
     }
     private final class CropView extends View {

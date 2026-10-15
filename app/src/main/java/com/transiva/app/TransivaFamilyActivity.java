@@ -18,7 +18,7 @@ import java.io.*;
 import java.net.*;
 import java.nio.charset.StandardCharsets;
 
-public class TransivaFamilyActivity extends Activity {
+public class TransivaFamilyActivity extends CustomerAdaptiveActivity {
     private static final String URL="https://transiva.my.id/server/customer_family.php";
     private static final int REQ_CONTACT=4102;
     private LinearLayout list;
@@ -30,7 +30,7 @@ public class TransivaFamilyActivity extends Activity {
 
     @Override public void onCreate(Bundle b){
         super.onCreate(b);
-        try{getWindow().setStatusBarColor(Color.parseColor("#071426"));}catch(Exception ignored){}
+        try{CustomerWindowPolicy.status(getWindow(), Color.parseColor("#071426"));}catch(Exception ignored){}
         build(); load();
     }
 

@@ -49,7 +49,7 @@ import java.text.NumberFormat;
 import java.util.List;
 import java.util.Locale;
 import java.util.Random;
-class TransPickupActivityScreenCore extends FragmentActivity {
+class TransPickupActivityScreenCore extends CustomerAdaptiveFragmentActivity {
 
 
     protected final CustomerLifecycleNetworkScope networkScope =
@@ -94,9 +94,9 @@ class TransPickupActivityScreenCore extends FragmentActivity {
     @Override protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         try {
-            getWindow().setStatusBarColor(Color.parseColor("#071426"));
-            getWindow().setNavigationBarColor(Color.parseColor("#071426"));
-            if (android.os.Build.VERSION.SDK_INT >= 23) getWindow().getDecorView().setSystemUiVisibility(0);
+            CustomerWindowPolicy.status(getWindow(), Color.parseColor("#071426"));
+            CustomerWindowPolicy.navigation(getWindow(), Color.parseColor("#071426"));
+            if (android.os.Build.VERSION.SDK_INT >= 23) CustomerWindowPolicy.appearance(getWindow(), 0);
         } catch (Exception ignored) {}
         loadSession();
         buildBase();

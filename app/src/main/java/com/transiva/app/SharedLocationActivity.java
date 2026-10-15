@@ -18,7 +18,7 @@ import android.widget.TextView;
  * Pengguna memilih apakah lokasi menjadi titik Jemput atau Antar, kemudian
  * memilih layanan TransRide atau TransCar.
  */
-public class SharedLocationActivity extends Activity {
+public class SharedLocationActivity extends CustomerAdaptiveActivity {
 
     private String sharedLocation = "";
     private String selectedRole = "";
@@ -31,8 +31,8 @@ public class SharedLocationActivity extends Activity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        getWindow().setStatusBarColor(Color.parseColor("#071426"));
-        getWindow().setNavigationBarColor(Color.parseColor("#071426"));
+        CustomerWindowPolicy.status(getWindow(), Color.parseColor("#071426"));
+        CustomerWindowPolicy.navigation(getWindow(), Color.parseColor("#071426"));
 
         sharedLocation = readSharedLocation(getIntent());
         if (sharedLocation.isEmpty()) {

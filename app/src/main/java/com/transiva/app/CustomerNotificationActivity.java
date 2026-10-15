@@ -21,7 +21,7 @@ import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.Locale;
 
-public class CustomerNotificationActivity extends Activity {
+public class CustomerNotificationActivity extends CustomerAdaptiveActivity {
 
     private LinearLayout list;
     private TextView emptyText;
@@ -29,7 +29,7 @@ public class CustomerNotificationActivity extends Activity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        getWindow().setStatusBarColor(Color.parseColor("#0B7CFF"));
+        CustomerWindowPolicy.status(getWindow(), Color.parseColor("#0B7CFF"));
         setContentView(buildScreen());
         CustomerAppSettings.apply(this);
         renderNotifications();

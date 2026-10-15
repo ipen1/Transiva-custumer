@@ -15,7 +15,7 @@ import android.view.WindowManager;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 
-public class CustomerArrivalAlertActivity extends Activity {
+public class CustomerArrivalAlertActivity extends CustomerAdaptiveActivity {
     private final Handler handler = new Handler(Looper.getMainLooper());
 
     @Override
@@ -35,8 +35,8 @@ public class CustomerArrivalAlertActivity extends Activity {
             );
         }
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
-        getWindow().setStatusBarColor(Color.rgb(8, 30, 62));
-        getWindow().setNavigationBarColor(Color.rgb(5, 20, 42));
+        CustomerWindowPolicy.status(getWindow(), Color.rgb(8, 30, 62));
+        CustomerWindowPolicy.navigation(getWindow(), Color.rgb(5, 20, 42));
 
         CustomerArrivalMessage.Content content = CustomerArrivalMessage.build(
                 clean(getIntent().getStringExtra("event")),

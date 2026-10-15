@@ -1,6 +1,6 @@
 package com.transiva.app;
 import android.app.Activity;import android.os.Bundle;import android.graphics.Color;import android.view.Gravity;import android.widget.*;import org.json.*;import java.io.*;import java.net.*;import java.nio.charset.StandardCharsets;
-public class FamilyLiveActivity extends Activity{
+public class FamilyLiveActivity extends CustomerAdaptiveActivity{
  private LinearLayout list; private int memberId; private final android.os.Handler h=new android.os.Handler(android.os.Looper.getMainLooper());
  private final Runnable poll=new Runnable(){public void run(){load();h.postDelayed(this,15000);}};
  @Override public void onCreate(Bundle b){super.onCreate(b);memberId=getIntent().getIntExtra("family_member_id",0);LinearLayout r=new LinearLayout(this);r.setOrientation(LinearLayout.VERTICAL);r.setPadding(24,24,24,24);r.setBackgroundColor(Color.rgb(244,248,253));TextView t=new TextView(this);t.setText("Transiva Family 2.0\nPantauan perjalanan realtime");t.setTextSize(20);t.setTextColor(Color.rgb(11,58,120));t.setGravity(Gravity.CENTER);r.addView(t);list=new LinearLayout(this);list.setOrientation(LinearLayout.VERTICAL);r.addView(list,new LinearLayout.LayoutParams(-1,0,1));setContentView(r);h.post(poll);}

@@ -61,7 +61,7 @@ import java.text.NumberFormat;
 import java.util.Calendar;
 import java.util.List;
 import java.util.Locale;
-class CustomerDashboardActivityScreenCore extends Activity
+class CustomerDashboardActivityScreenCore extends CustomerAdaptiveActivity
         implements CustomerDashboardContract.View {
     protected CustomerPullRefreshLayout pullRefresh;
 
@@ -202,11 +202,11 @@ class CustomerDashboardActivityScreenCore extends Activity
         dashboardController = new DashboardController(this);
         dashboardController.onCreate();
 
-        getWindow().setStatusBarColor(
+        CustomerWindowPolicy.status(getWindow(), 
                 Color.parseColor("#0B7CFF")
         );
 
-        getWindow().setNavigationBarColor(
+        CustomerWindowPolicy.navigation(getWindow(), 
                 Color.parseColor("#071426")
         );
 

@@ -18,15 +18,15 @@ import org.json.JSONObject;
 import java.text.NumberFormat;
 import java.util.Locale;
 
-public class RecommendationDetailActivity extends Activity {
+public class RecommendationDetailActivity extends CustomerAdaptiveActivity {
 
     private JSONObject item;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        getWindow().setStatusBarColor(Color.parseColor("#0B7CFF"));
-        getWindow().setNavigationBarColor(Color.parseColor("#071426"));
+        CustomerWindowPolicy.status(getWindow(), Color.parseColor("#0B7CFF"));
+        CustomerWindowPolicy.navigation(getWindow(), Color.parseColor("#071426"));
 
         try {
             item = new JSONObject(

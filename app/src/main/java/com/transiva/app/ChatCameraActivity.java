@@ -54,13 +54,20 @@ public class ChatCameraActivity extends ComponentActivity {
             flashMode = savedInstanceState.getInt(STATE_FLASH_MODE, FLASH_AUTO);
         }
 
-        getWindow().setStatusBarColor(Color.BLACK);
-        getWindow().setNavigationBarColor(Color.BLACK);
+        CustomerWindowPolicy.status(getWindow(), Color.BLACK);
+        CustomerWindowPolicy.navigation(getWindow(), Color.BLACK);
 
         cameraExecutor = Executors.newSingleThreadExecutor();
 
         setContentView(buildScreen());
         startCamera();
+    }
+
+    @Override public void onConfigurationChanged(android.content.res.Configuration config) {
+        super.onConfigurationChanged(config);
+        CustomerWindowPolicy.install(this);
+        if (imageCapture != null && previewView != null && previewView.getDisplay() != null)
+            imageCapture.setTargetRotation(previewView.getDisplay().getRotation());
     }
 
     private FrameLayout buildScreen() {

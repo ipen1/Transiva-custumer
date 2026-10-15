@@ -14,11 +14,11 @@ import android.widget.TextView;
 import android.widget.Toast;
 
 /** Simple, theme-aware home for secondary Customer features. */
-public class AllServicesActivity extends Activity {
+public class AllServicesActivity extends CustomerAdaptiveActivity {
     private boolean dark;
     @Override protected void onCreate(Bundle b) {
         super.onCreate(b); dark = false; // Source colors stay light; the shared theme engine renders both modes.
-        getWindow().setStatusBarColor(Color.parseColor(dark ? "#07111F" : "#075ED1"));
+        CustomerWindowPolicy.status(getWindow(), Color.parseColor(dark ? "#07111F" : "#075ED1"));
         setContentView(build()); CustomerAppSettings.apply(this);
     }
     private View build() {

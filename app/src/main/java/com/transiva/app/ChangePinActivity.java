@@ -29,7 +29,7 @@ import java.net.HttpURLConnection;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
 
-public class ChangePinActivity extends Activity {
+public class ChangePinActivity extends CustomerAdaptiveActivity {
     private final CustomerLifecycleNetworkScope networkScope =
             new CustomerLifecycleNetworkScope();
 
@@ -52,8 +52,8 @@ public class ChangePinActivity extends Activity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
-        getWindow().setStatusBarColor(Color.parseColor("#0B7CFF"));
-        getWindow().setNavigationBarColor(Color.parseColor("#081423"));
+        CustomerWindowPolicy.status(getWindow(), Color.parseColor("#0B7CFF"));
+        CustomerWindowPolicy.navigation(getWindow(), Color.parseColor("#081423"));
 
         session = new SessionManager(this);
         if (!session.isLoggedIn() || safe(session.getToken()).isEmpty()) {

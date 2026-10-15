@@ -38,7 +38,7 @@ import java.nio.charset.StandardCharsets;
 import java.text.NumberFormat;
 import java.util.Locale;
 
-public class CustomerOrderDetailActivity extends Activity {
+public class CustomerOrderDetailActivity extends CustomerAdaptiveActivity {
     private final CustomerLifecycleNetworkScope networkScope =
             new CustomerLifecycleNetworkScope();
 

@@ -49,7 +49,7 @@ import java.net.HttpURLConnection;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.util.Locale;
-class LoginActivityScreenCore extends FragmentActivity {
+class LoginActivityScreenCore extends CustomerAdaptiveFragmentActivity {
 
 
 
@@ -97,9 +97,9 @@ class LoginActivityScreenCore extends FragmentActivity {
         super.onCreate(savedInstanceState);
 
         try {
-            getWindow().setStatusBarColor(
+            CustomerWindowPolicy.status(getWindow(), 
                     Color.parseColor("#0A1A2E"));
-            getWindow().setNavigationBarColor(
+            CustomerWindowPolicy.navigation(getWindow(), 
                     Color.parseColor("#0A1A2E"));
         } catch (Exception ignored) {}
 

@@ -54,7 +54,7 @@ import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.util.Locale;
 import java.util.List;
-class ProfileActivityScreenCore extends Activity {
+class ProfileActivityScreenCore extends CustomerAdaptiveActivity {
     protected CustomerPullRefreshLayout pullRefresh;
     private boolean profileFetching;
     private TextView profileStatus;
@@ -151,11 +151,11 @@ class ProfileActivityScreenCore extends Activity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
-        getWindow().setStatusBarColor(
+        CustomerWindowPolicy.status(getWindow(), 
                 Color.parseColor("#0B7CFF")
         );
 
-        getWindow().setNavigationBarColor(
+        CustomerWindowPolicy.navigation(getWindow(), 
                 Color.parseColor("#071426")
         );
 

@@ -44,7 +44,7 @@ import java.util.Date;
 import java.util.List;
 import java.util.Locale;
 import java.util.UUID;
-class CustomerBalanceHistoryActivityScreenCore extends Activity {
+class CustomerBalanceHistoryActivityScreenCore extends CustomerAdaptiveActivity {
     protected CustomerPullRefreshLayout pullRefresh;
 
 
@@ -106,11 +106,11 @@ class CustomerBalanceHistoryActivityScreenCore extends Activity {
     ) {
         super.onCreate(savedInstanceState);
 
-        getWindow().setStatusBarColor(
+        CustomerWindowPolicy.status(getWindow(), 
                 Color.parseColor("#0B7CFF")
         );
 
-        getWindow().setNavigationBarColor(
+        CustomerWindowPolicy.navigation(getWindow(), 
                 Color.parseColor("#071426")
         );
 

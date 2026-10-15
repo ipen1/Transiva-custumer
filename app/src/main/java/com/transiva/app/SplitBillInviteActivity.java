@@ -3,7 +3,7 @@ package com.transiva.app;
 import android.app.*;import android.os.*;import android.graphics.Color;import android.content.*;import android.view.*;import android.widget.*;import org.json.*;
 
 /** Dedicated realtime screen for a Split Bill invitation. */
-public class SplitBillInviteActivity extends Activity {
+public class SplitBillInviteActivity extends CustomerAdaptiveActivity {
  private String key=""; private LinearLayout root; private TextView timer,detail; private Button yes,no;
  private final Handler h=new Handler(Looper.getMainLooper()); private Runnable secondTick,poll; private long deadline=0L; private boolean busy=false;
  private final BroadcastReceiver realtime=new BroadcastReceiver(){public void onReceive(Context c,Intent i){String k=i.getStringExtra("session_key");if(key.equals(k)) load(false);}};

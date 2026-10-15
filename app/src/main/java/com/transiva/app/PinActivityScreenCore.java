@@ -30,7 +30,7 @@ import java.net.HttpURLConnection;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.util.Locale;
-class PinActivityScreenCore extends FragmentActivity {
+class PinActivityScreenCore extends CustomerAdaptiveFragmentActivity {
 
 
     protected final CustomerLifecycleNetworkScope networkScope =
@@ -71,8 +71,8 @@ class PinActivityScreenCore extends FragmentActivity {
         super.onCreate(savedInstanceState);
 
         try {
-            getWindow().setStatusBarColor(Color.parseColor("#081423"));
-            getWindow().setNavigationBarColor(Color.parseColor("#081423"));
+            CustomerWindowPolicy.status(getWindow(), Color.parseColor("#081423"));
+            CustomerWindowPolicy.navigation(getWindow(), Color.parseColor("#081423"));
         } catch (Exception ignored) {}
 
         session = new SessionManager(this);

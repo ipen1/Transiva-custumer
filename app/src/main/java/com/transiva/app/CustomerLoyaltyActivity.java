@@ -16,10 +16,10 @@ import java.nio.charset.StandardCharsets;
 import java.text.NumberFormat;
 import java.util.Locale;
 
-public class CustomerLoyaltyActivity extends Activity{
+public class CustomerLoyaltyActivity extends CustomerAdaptiveActivity{
  private static final String URL="https://transiva.my.id/server/customer_loyalty.php", REDEEM="https://transiva.my.id/server/customer_loyalty_redeem.php";
  private LinearLayout root; private ProgressBar loading; private JSONObject data;
- @Override protected void onCreate(Bundle b){super.onCreate(b);getWindow().setStatusBarColor(Color.parseColor(isDark()?"#07111F":"#075ED1"));getWindow().getDecorView().setSystemUiVisibility(isDark()?0:View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR);setContentView(base());CustomerAppSettings.apply(this);load();}
+ @Override protected void onCreate(Bundle b){super.onCreate(b);CustomerWindowPolicy.status(getWindow(), Color.parseColor(isDark()?"#07111F":"#075ED1"));CustomerWindowPolicy.appearance(getWindow(), isDark()?0:CustomerWindowPolicy.LIGHT_NAVIGATION);setContentView(base());CustomerAppSettings.apply(this);load();}
 
     @Override protected void onResume(){ super.onResume(); CustomerAppSettings.apply(this); }
  private View base(){ScrollView s=new ScrollView(this);s.setFillViewport(true);s.setBackgroundColor(Color.parseColor(isDark()?"#08111F":"#F4F7FC"));root=new LinearLayout(this);root.setOrientation(LinearLayout.VERTICAL);root.setPadding(dp(18),dp(18),dp(18),dp(36));s.addView(root);TextView h=tx("‹   Transiva Royalti",24,"#0B3A78",true);h.setOnClickListener(v->finish());root.addView(h);root.addView(tx("Achievement seumur hidup, status aktif mengikuti season",13,"#64748B",false));loading=new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);LinearLayout.LayoutParams l=new LinearLayout.LayoutParams(-2,-2);l.gravity=Gravity.CENTER;l.setMargins(0,dp(30),0,0);root.addView(loading,l);return s;}

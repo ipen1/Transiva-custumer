@@ -23,7 +23,7 @@ import java.net.*;
 import java.nio.charset.StandardCharsets;
 
 /** Global Search + Trans Asisten intent suggestions. */
-public class GlobalSearchActivity extends Activity {
+public class GlobalSearchActivity extends CustomerAdaptiveActivity {
     private static final String URL="https://transiva.my.id/server/customer_global_search.php?q=";
     private final Handler handler=new Handler(Looper.getMainLooper());
     private Runnable pending;
@@ -46,7 +46,7 @@ public class GlobalSearchActivity extends Activity {
 
     @Override public void onCreate(Bundle b){
         super.onCreate(b);
-        try { getWindow().setStatusBarColor(Color.parseColor(CustomerAppSettings.isDarkMode(this) ? "#071426" : "#0B7CFF")); } catch(Exception ignored){}
+        try { CustomerWindowPolicy.status(getWindow(), Color.parseColor(CustomerAppSettings.isDarkMode(this) ? "#071426" : "#0B7CFF")); } catch(Exception ignored){}
         assistantEngine=new TransAssistantEngine(this);
         TransAssistantSync.sync(this);
         build();

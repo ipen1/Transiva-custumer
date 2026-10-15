@@ -24,7 +24,7 @@ import android.widget.TextView;
 import com.airbnb.lottie.LottieAnimationView;
 
 /** Premium Trans Asisten 3.0 UI with native dark-mode palette and local intelligent engine. */
-public class TransAssistantActivity extends Activity {
+public class TransAssistantActivity extends CustomerAdaptiveActivity {
     private static final int BLUE = Color.rgb(7, 94, 244);
     private static final int CYAN = Color.rgb(0, 210, 255);
     private static final int NAVY = Color.rgb(5, 25, 55);
@@ -44,8 +44,8 @@ public class TransAssistantActivity extends Activity {
         Window w = getWindow();
         w.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
         dark = false; // Source colors stay light; the shared theme engine renders both modes.
-        w.setStatusBarColor(dark ? Color.rgb(4,13,25) : NAVY);
-        w.setNavigationBarColor(dark ? Color.rgb(5,16,29) : Color.WHITE);
+        CustomerWindowPolicy.status(w, dark ? Color.rgb(4,13,25) : NAVY);
+        CustomerWindowPolicy.navigation(w, dark ? Color.rgb(5,16,29) : Color.WHITE);
         engine = new TransAssistantEngine(this);
         TransAssistantSync.sync(this,true);
         setContentView(build());

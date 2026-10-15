@@ -13,7 +13,7 @@ import android.widget.ImageView;
 import android.widget.TextView;
 
 /** Splash Customer: security check ringan + pemulihan order aktif. Update dicek dari Dashboard. */
-public class SplashActivity extends Activity {
+public class SplashActivity extends CustomerAdaptiveActivity {
     private boolean routed;
     private boolean securityCheckStarted;
     private static final int SPLASH_DELAY = 80;

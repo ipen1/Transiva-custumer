@@ -18,7 +18,7 @@ import android.widget.ScrollView;
 import android.widget.TextView;
 
 /** Compact TransShop choices; existing delivery gate and shopping routes are retained. */
-public class TransShopActivity extends Activity {
+public class TransShopActivity extends CustomerAdaptiveActivity {
     private final int blue = Color.rgb(12, 108, 234);
     private final int ink = Color.rgb(20, 52, 89);
     private TextView deliveryLabel;
@@ -121,6 +121,23 @@ public class TransShopActivity extends Activity {
         }
         card.setForeground(new RippleDrawable(ColorStateList.valueOf(Color.argb(28, 12, 108, 234)),
                 null, bg(Color.WHITE, 16)));
+        card.addOnLayoutChangeListener((view,l,t,r,b,ol,ot,or,ob) -> {
+            boolean narrow = r-l < dp(308) || getResources().getConfiguration().fontScale >= 1.35f;
+            if ((card.getOrientation() == LinearLayout.VERTICAL) == narrow) return;
+            card.removeView(content); card.removeView(art);
+            card.setOrientation(narrow ? LinearLayout.VERTICAL : LinearLayout.HORIZONTAL);
+            card.setMinimumHeight(narrow ? 0 : dp(164));
+            if (narrow) {
+                card.addView(art,new LinearLayout.LayoutParams(-1,dp(96)));
+                card.addView(content,new LinearLayout.LayoutParams(-1,-2));
+            } else {
+                card.addView(content,new LinearLayout.LayoutParams(0,-2,.62f));
+                card.addView(art,new LinearLayout.LayoutParams(0,-1,.38f));
+            }
+            fade.setBackground(new GradientDrawable(narrow
+                    ? GradientDrawable.Orientation.TOP_BOTTOM : GradientDrawable.Orientation.LEFT_RIGHT,
+                    new int[]{Color.WHITE,Color.TRANSPARENT,Color.TRANSPARENT}));
+        });
         card.setContentDescription(title + ". " + description + ". " + action);
         card.setOnClickListener(view -> open(target));
         add(root, card, 12);
@@ -128,8 +145,8 @@ public class TransShopActivity extends Activity {
 
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
-        getWindow().setStatusBarColor(blue);
-        getWindow().setNavigationBarColor(Color.rgb(5, 16, 29));
+        CustomerWindowPolicy.status(getWindow(), blue);
+        CustomerWindowPolicy.navigation(getWindow(), Color.rgb(5, 16, 29));
         if (!DeliveryAddressGate.valid(this)) {
             DeliveryAddressGate.showUnavailable(this, "TransShop");
             DeliveryAddressGate.require(this, "TransShop");

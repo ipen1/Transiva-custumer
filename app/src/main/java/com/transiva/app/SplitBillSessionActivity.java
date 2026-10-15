@@ -1,7 +1,7 @@
 package com.transiva.app;
 import android.app.*;import android.os.*;import android.graphics.Color;import android.content.*;import android.view.*;import android.widget.*;import org.json.*;import java.util.*;
 /** Dedicated owner screen: realtime invitation status and local smooth countdown. */
-public class SplitBillSessionActivity extends Activity{
+public class SplitBillSessionActivity extends CustomerAdaptiveActivity{
  private String key="";private LinearLayout list;private TextView timer,title;private final Handler h=new Handler(Looper.getMainLooper());private Runnable clock,poll;private long deadline;private boolean loading;
  private final BroadcastReceiver rt=new BroadcastReceiver(){public void onReceive(Context c,Intent i){if(key.equals(i.getStringExtra("session_key")))load();}};
  public void onCreate(Bundle b){super.onCreate(b);key=getIntent().getStringExtra("session_key");build();registerRt();load();}

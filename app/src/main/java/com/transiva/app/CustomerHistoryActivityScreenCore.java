@@ -45,7 +45,7 @@ import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
 import java.util.Locale;
-class CustomerHistoryActivityScreenCore extends Activity {
+class CustomerHistoryActivityScreenCore extends CustomerAdaptiveActivity {
     protected CustomerPullRefreshLayout pullRefresh;
 
 
@@ -115,11 +115,11 @@ class CustomerHistoryActivityScreenCore extends Activity {
         super.onCreate(savedInstanceState);
         historyRepository = new CustomerHistoryRepository(this, TIMEOUT_MS);
 
-        getWindow().setStatusBarColor(
+        CustomerWindowPolicy.status(getWindow(), 
                 Color.parseColor("#0B7CFF")
         );
 
-        getWindow().setNavigationBarColor(
+        CustomerWindowPolicy.navigation(getWindow(), 
                 Color.parseColor("#071426")
         );
 

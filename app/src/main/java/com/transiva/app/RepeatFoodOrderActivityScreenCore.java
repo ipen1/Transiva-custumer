@@ -23,7 +23,7 @@ import java.text.NumberFormat;
 import java.util.LinkedHashMap;
 import java.util.Locale;
 import java.util.Map;
-class RepeatFoodOrderActivityScreenCore extends FragmentActivity {
+class RepeatFoodOrderActivityScreenCore extends CustomerAdaptiveFragmentActivity {
 
 
     protected final CustomerLifecycleNetworkScope networkScope =
@@ -57,7 +57,7 @@ class RepeatFoodOrderActivityScreenCore extends FragmentActivity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
-        getWindow().setStatusBarColor(
+        CustomerWindowPolicy.status(getWindow(), 
                 Color.parseColor("#0B7CFF")
         );
 

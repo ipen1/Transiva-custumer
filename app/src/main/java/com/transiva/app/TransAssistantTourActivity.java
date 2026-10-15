@@ -28,7 +28,7 @@ import androidx.core.content.ContextCompat;
  * - Permission diminta kontekstual, satu per layar, dan selalu bisa dilewati.
  * - Tidak mengubah login, order recovery, status order, payment, atau backend.
  */
-public class TransAssistantTourActivity extends Activity {
+public class TransAssistantTourActivity extends CustomerAdaptiveActivity {
     static final String PREF = "trans_assistant_onboarding";
     static final String KEY = "done";
 

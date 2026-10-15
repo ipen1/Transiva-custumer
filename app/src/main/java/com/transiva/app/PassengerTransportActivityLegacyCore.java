@@ -72,7 +72,7 @@ import java.util.Locale;
 import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-class PassengerTransportActivityLegacyCore extends Activity {
+class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
 
 
 
@@ -195,8 +195,8 @@ class PassengerTransportActivityLegacyCore extends Activity {
         initializePlacesAutocomplete();
         splitBillManager = new SplitBillManager(this, (key,size,ready) -> { ecosystemFeatures.groupSize=size; ecosystemFeatures.splitFareMode=size>1?"custom":"none"; if(groupRideBtn!=null) groupRideBtn.setText(size>1 ? (ready?"✅ Split "+size:"⏳ Split "+size) : "💳 Split Pay"); });
         try {
-            getWindow().setStatusBarColor(Color.parseColor("#071426"));
-            getWindow().setNavigationBarColor(Color.parseColor("#071426"));
+            CustomerWindowPolicy.status(getWindow(), Color.parseColor("#071426"));
+            CustomerWindowPolicy.navigation(getWindow(), Color.parseColor("#071426"));
         } catch (Exception ignored) {}
 
         readUser();
@@ -613,6 +613,7 @@ class PassengerTransportActivityLegacyCore extends Activity {
         progressLp.gravity = Gravity.CENTER;
         page.addView(progressBar, progressLp);
 
+        CustomerAdaptivePanels.install(root, mapBox);
         setContentView(page);
         CustomerAppSettings.apply(this);
         bindActions();

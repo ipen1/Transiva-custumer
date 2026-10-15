@@ -42,7 +42,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.Locale;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-class TransShopActivityScreenCore extends Activity {
+class TransShopActivityScreenCore extends CustomerAdaptiveActivity {
 
 
 
@@ -120,8 +120,8 @@ class TransShopActivityScreenCore extends Activity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         try {
-            getWindow().setStatusBarColor(Color.parseColor("#071426"));
-            getWindow().setNavigationBarColor(Color.parseColor("#071426"));
+            CustomerWindowPolicy.status(getWindow(), Color.parseColor("#071426"));
+            CustomerWindowPolicy.navigation(getWindow(), Color.parseColor("#071426"));
         } catch (Exception ignored) {}
 
         readUser();

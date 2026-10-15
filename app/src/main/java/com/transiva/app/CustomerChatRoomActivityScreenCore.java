@@ -60,7 +60,7 @@ import java.nio.charset.StandardCharsets;
 import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.Locale;
-class CustomerChatRoomActivityScreenCore extends Activity {
+class CustomerChatRoomActivityScreenCore extends CustomerAdaptiveActivity {
 
 
 
@@ -202,11 +202,11 @@ class CustomerChatRoomActivityScreenCore extends Activity {
         chatStability = new CustomerChatStabilityController(this, mainHandler);
         chatStability.onCreate();
 
-        getWindow().setStatusBarColor(
+        CustomerWindowPolicy.status(getWindow(), 
                 Color.parseColor("#0B7CFF")
         );
 
-        getWindow().setNavigationBarColor(
+        CustomerWindowPolicy.navigation(getWindow(), 
                 Color.parseColor("#071426")
         );
 

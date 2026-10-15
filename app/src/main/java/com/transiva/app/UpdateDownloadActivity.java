@@ -34,7 +34,7 @@ import java.util.Arrays;
 import java.util.Locale;
 
 /** Layar update Customer: DownloadManager background + force gate + verifikasi APK. */
-public class UpdateDownloadActivity extends Activity {
+public class UpdateDownloadActivity extends CustomerAdaptiveActivity {
     private final CustomerLifecycleNetworkScope networkScope =
             new CustomerLifecycleNetworkScope();
 

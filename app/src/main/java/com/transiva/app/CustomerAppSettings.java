@@ -67,11 +67,12 @@ public final class CustomerAppSettings {
         if(a==null||a.isFinishing()||a.isDestroyed())return;
         onMain(()->{
             boolean dark=isDarkMode(a);ACTIVITIES.put(a,dark);
-            a.getWindow().setStatusBarColor(dark?0xff05101d:0xff0b7cff);
-            a.getWindow().setNavigationBarColor(dark?0xff05101d:0xff071426);
+            CustomerWindowPolicy.install(a);
+            CustomerWindowPolicy.status(a.getWindow(), dark?0xff05101d:0xff0b7cff);
+            CustomerWindowPolicy.navigation(a.getWindow(), dark?0xff05101d:0xff071426);
             a.getWindow().setBackgroundDrawable(new android.graphics.drawable.ColorDrawable(dark?DARK_PAGE:CustomerThemeColors.LIGHT_PAGE));
             View decor=a.getWindow().getDecorView();
-            decor.setSystemUiVisibility(decor.getSystemUiVisibility()&~View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR);
+            CustomerWindowPolicy.appearance(a.getWindow(), CustomerWindowPolicy.appearance(a.getWindow())&~CustomerWindowPolicy.LIGHT_STATUS);
             View root=a.findViewById(android.R.id.content);
             if(root!=null){watch(root);paint(root,dark,0,dark?DARK_PAGE:0xffffffff);}
         });

@@ -33,7 +33,7 @@ import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.util.Locale;
 
-public class CustomerSettingsActivity extends Activity {
+public class CustomerSettingsActivity extends CustomerAdaptiveActivity {
     private static final String DEVICE_URL = "https://transiva.my.id/server/customer_device_native.php";
     private final Handler main = new Handler(Looper.getMainLooper());
     private SessionManager session;

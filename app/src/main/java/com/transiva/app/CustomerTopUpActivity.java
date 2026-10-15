@@ -40,7 +40,7 @@ import java.nio.charset.StandardCharsets;
 import java.text.NumberFormat;
 import java.util.Locale;
 
-public class CustomerTopUpActivity extends Activity {
+public class CustomerTopUpActivity extends CustomerAdaptiveActivity {
     private final CustomerLifecycleNetworkScope networkScope =
             new CustomerLifecycleNetworkScope();
 
@@ -72,10 +72,10 @@ public class CustomerTopUpActivity extends Activity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         try {
-            getWindow().setStatusBarColor(Color.WHITE);
-            getWindow().setNavigationBarColor(Color.WHITE);
+            CustomerWindowPolicy.status(getWindow(), Color.WHITE);
+            CustomerWindowPolicy.navigation(getWindow(), Color.WHITE);
             if (android.os.Build.VERSION.SDK_INT >= 23) {
-                getWindow().getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR);
+                CustomerWindowPolicy.appearance(getWindow(), CustomerWindowPolicy.LIGHT_STATUS);
             }
         } catch (Exception ignored) {}
 

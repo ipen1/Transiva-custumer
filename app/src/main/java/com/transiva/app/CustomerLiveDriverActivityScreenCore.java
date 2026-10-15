@@ -27,7 +27,7 @@ import java.util.Locale;
  * No CDN/JavaScript/WebView is required for active-order tracking. Driver location still
  * comes from the existing Transiva status endpoint and the standard order status flow.
  */
-class CustomerLiveDriverActivityScreenCore extends Activity {
+class CustomerLiveDriverActivityScreenCore extends CustomerAdaptiveActivity {
 
 
     protected static final String STATUS_URL =
@@ -77,8 +77,8 @@ class CustomerLiveDriverActivityScreenCore extends Activity {
     @Override protected void onCreate(Bundle state) {
         super.onCreate(state);
         try {
-            getWindow().setStatusBarColor(Color.parseColor("#071426"));
-            getWindow().setNavigationBarColor(Color.parseColor("#071426"));
+            CustomerWindowPolicy.status(getWindow(), Color.parseColor("#071426"));
+            CustomerWindowPolicy.navigation(getWindow(), Color.parseColor("#071426"));
         } catch (Exception ignored) {}
 
         readInput();

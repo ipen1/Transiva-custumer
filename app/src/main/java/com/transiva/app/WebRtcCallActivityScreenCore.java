@@ -50,7 +50,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-class WebRtcCallActivityScreenCore extends Activity {
+class WebRtcCallActivityScreenCore extends CustomerAdaptiveActivity {
 
 
     protected static final int REQ_MIC = 7101;

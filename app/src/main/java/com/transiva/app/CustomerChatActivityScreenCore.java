@@ -30,7 +30,7 @@ import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
 import java.util.Locale;
-class CustomerChatActivityScreenCore extends Activity {
+class CustomerChatActivityScreenCore extends CustomerAdaptiveActivity {
     protected CustomerPullRefreshLayout pullRefresh;
 
 
@@ -73,11 +73,11 @@ class CustomerChatActivityScreenCore extends Activity {
     ) {
         super.onCreate(savedInstanceState);
 
-        getWindow().setStatusBarColor(
+        CustomerWindowPolicy.status(getWindow(), 
                 Color.parseColor("#0B7CFF")
         );
 
-        getWindow().setNavigationBarColor(
+        CustomerWindowPolicy.navigation(getWindow(), 
                 Color.parseColor("#071426")
         );
 

@@ -20,7 +20,7 @@ import java.net.HttpURLConnection;
 import java.nio.charset.StandardCharsets;
 import java.util.Locale;
 
-public class RegisterActivity extends Activity {
+public class RegisterActivity extends CustomerAdaptiveActivity {
     private final Handler handler=new Handler(Looper.getMainLooper());
     private final CustomerLifecycleNetworkScope scope=new CustomerLifecycleNetworkScope();
     private volatile HttpURLConnection activeConnection;
@@ -36,7 +36,7 @@ public class RegisterActivity extends Activity {
 
     @Override protected void onCreate(Bundle saved){
         super.onCreate(saved);
-        getWindow().setStatusBarColor(Color.rgb(5,23,50));getWindow().setNavigationBarColor(Color.rgb(14,66,139));getWindow().getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_LAYOUT_STABLE);
+        CustomerWindowPolicy.status(getWindow(), Color.rgb(5,23,50));CustomerWindowPolicy.navigation(getWindow(), Color.rgb(14,66,139));CustomerWindowPolicy.appearance(getWindow(), 0);
         build();CustomerResponsiveUi.apply(this);
         restoring=true;
         if(saved!=null){username.setText(saved.getString("username",""));email.setText(saved.getString("email",""));phone.setText(saved.getString("phone",""));step=Math.max(0,Math.min(1,saved.getInt("step",0)));}

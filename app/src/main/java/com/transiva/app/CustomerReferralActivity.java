@@ -15,10 +15,10 @@ import java.io.*;
 import java.net.*;
 import java.nio.charset.StandardCharsets;
 
-public class CustomerReferralActivity extends Activity {
+public class CustomerReferralActivity extends CustomerAdaptiveActivity {
     private static final String URL="https://transiva.my.id/server/customer_referral.php";
     private LinearLayout root; private ProgressBar loading;
-    @Override protected void onCreate(Bundle b){super.onCreate(b);getWindow().setStatusBarColor(Color.parseColor(isDark()?"#07111F":"#075ED1"));setContentView(base());CustomerAppSettings.apply(this);load();}
+    @Override protected void onCreate(Bundle b){super.onCreate(b);CustomerWindowPolicy.status(getWindow(), Color.parseColor(isDark()?"#07111F":"#075ED1"));setContentView(base());CustomerAppSettings.apply(this);load();}
 
     @Override protected void onResume(){ super.onResume(); CustomerAppSettings.apply(this); }
     private View base(){ScrollView s=new ScrollView(this);s.setFillViewport(true);s.setBackgroundColor(Color.parseColor(isDark()?"#08111F":"#F4F7FC"));root=new LinearLayout(this);root.setOrientation(LinearLayout.VERTICAL);root.setPadding(dp(18),dp(18),dp(18),dp(36));s.addView(root);TextView h=tx("‹   Referral Customer",24,"#0B3A78",true);h.setOnClickListener(v->finish());root.addView(h);root.addView(tx("Ajak customer baru. Anda mendapat 10 poin setelah order pertama mereka selesai.",13,"#64748B",false));loading=new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-2,-2);lp.gravity=Gravity.CENTER;lp.setMargins(0,dp(28),0,0);root.addView(loading,lp);return s;}

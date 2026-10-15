@@ -16,7 +16,7 @@ import org.json.*;
 import java.net.*;
 import java.io.*;
 
-public class CustomerSupportActivity extends Activity {
+public class CustomerSupportActivity extends CustomerAdaptiveActivity {
  private final CustomerLifecycleNetworkScope scope=new CustomerLifecycleNetworkScope();
  private CustomerSessionGuard supportSession;
  private String linkedOrder="",linkedDb="",linkedSource="orders",photoBase64="";
@@ -33,7 +33,7 @@ public class CustomerSupportActivity extends Activity {
  private LinearLayout card(){LinearLayout l=column();l.setPadding(dp(13),dp(12),dp(13),dp(12));l.setBackground(shape(Color.WHITE,19,0xffdce7f2));return l;}
  private TextView action(String s,boolean primary){TextView t=txt(s,15,primary?Color.WHITE:blue,true);t.setGravity(Gravity.CENTER);t.setMinHeight(dp(49));t.setPadding(dp(10),dp(10),dp(10),dp(10));t.setBackground(shape(primary?blue:Color.WHITE,14,primary?0:0xffbed8f1));t.setClickable(true);return t;}
  private EditText field(String hint,int lines){EditText e=new EditText(this);e.setTextSize(14);e.setTextColor(ink);e.setHintTextColor(muted);e.setHint(hint);e.setPadding(dp(12),dp(11),dp(12),dp(11));e.setBackground(shape(0xfff8fbff,12,0xffd8e4ef));if(lines==1){e.setSingleLine(true);}else{e.setGravity(Gravity.TOP);e.setMinLines(2);e.setMaxLines(6);e.setInputType(android.text.InputType.TYPE_CLASS_TEXT|android.text.InputType.TYPE_TEXT_FLAG_MULTI_LINE|android.text.InputType.TYPE_TEXT_FLAG_CAP_SENTENCES);}return e;}
- @Override public void onCreate(Bundle b){super.onCreate(b);getWindow().setStatusBarColor(blue);getWindow().setNavigationBarColor(Color.BLACK);getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);supportSession=CustomerSessionGuard.capture(this);linkedOrder=getIntent().getStringExtra("order_id");if(linkedOrder==null)linkedOrder="";linkedDb=getIntent().getStringExtra("order_db_id");if(linkedDb==null)linkedDb="";linkedSource=getIntent().getStringExtra("source");if(linkedSource==null)linkedSource="orders";
+ @Override public void onCreate(Bundle b){super.onCreate(b);CustomerWindowPolicy.status(getWindow(), blue);CustomerWindowPolicy.navigation(getWindow(), Color.BLACK);getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);supportSession=CustomerSessionGuard.capture(this);linkedOrder=getIntent().getStringExtra("order_id");if(linkedOrder==null)linkedOrder="";linkedDb=getIntent().getStringExtra("order_db_id");if(linkedDb==null)linkedDb="";linkedSource=getIntent().getStringExtra("source");if(linkedSource==null)linkedSource="orders";
  draft=getSharedPreferences("support_draft_v3_"+supportSession.account+"_"+linkedSource+"_"+linkedOrder.replaceAll("[^A-Za-z0-9-]",""),MODE_PRIVATE);
  ScrollView scroll=new ScrollView(this);scroll.setFillViewport(true);scroll.setClipToPadding(false);scroll.setBackgroundColor(bg);root=column();root.setPadding(dp(14),dp(10),dp(14),dp(54));scroll.addView(root);setContentView(scroll);
  LinearLayout header=new LinearLayout(this);header.setGravity(Gravity.CENTER_VERTICAL);TextView back=txt("‹",32,blue,true);back.setGravity(Gravity.CENTER);back.setWidth(dp(40));header.addView(back);back.setOnClickListener(v->finish());TextView title=txt("Pusat Bantuan",22,ink,true);header.addView(title,new LinearLayout.LayoutParams(0,-2,1));TextView headset=txt("🎧",23,blue,false);header.addView(headset);add(root,header,9);

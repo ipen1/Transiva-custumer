@@ -14,7 +14,7 @@ import android.widget.TextView;
 import java.util.List;
 
 /** Unified native order cards. Cached content stays readable while refreshing. */
-public class LiveOrderCenterActivity extends Activity implements UnifiedLiveOrderCenter.Listener {
+public class LiveOrderCenterActivity extends CustomerAdaptiveActivity implements UnifiedLiveOrderCenter.Listener {
     private LinearLayout list;
     private ProgressBar loading;
     private TextView info, count, refreshButton;
@@ -23,7 +23,7 @@ public class LiveOrderCenterActivity extends Activity implements UnifiedLiveOrde
 
     @Override protected void onCreate(Bundle state) {
         super.onCreate(state);
-        getWindow().setStatusBarColor(Color.parseColor("#0B7CFF"));
+        CustomerWindowPolicy.status(getWindow(), Color.parseColor("#0B7CFF"));
         setContentView(screen()); CustomerAppSettings.apply(this);
         UnifiedLiveOrderCenter.addListener(this);
     }

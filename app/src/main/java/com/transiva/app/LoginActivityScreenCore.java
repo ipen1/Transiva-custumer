@@ -58,7 +58,7 @@ class LoginActivityScreenCore extends FragmentActivity {
     protected static final String LOGIN_URL = BASE_URL + "server/customer_login_native.php";
     protected static final String SAVE_FCM_URL =
             BASE_URL + "server/save_fcm_token.php";
-    protected static final String PRIVACY_URL = BASE_URL + "privacy-policy.html";
+    protected static final String PRIVACY_URL = BASE_URL + "customer_privacy.html";
     protected static final String TERMS_URL = BASE_URL + "terms.html";
     protected static final int TIMEOUT_MS = 25000;
     protected static final int RC_GOOGLE_SIGN_IN = 9101;

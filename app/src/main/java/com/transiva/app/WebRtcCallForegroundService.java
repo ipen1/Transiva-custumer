@@ -41,6 +41,13 @@ public final class WebRtcCallForegroundService extends Service {
         Notification n=b.setSmallIcon(getApplicationInfo().icon).setContentTitle(engine.video?"Video Call Transiva":"Panggilan suara Transiva").setContentText(engine.peer+" • "+engine.status).setContentIntent(view).setOngoing(true).setCategory(Notification.CATEGORY_CALL).setOnlyAlertOnce(true).addAction(android.R.drawable.ic_menu_close_clear_cancel,"Akhiri",hangup).build();
         if(Build.VERSION.SDK_INT>=30){int type=ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE;if(engine.video&&Build.VERSION.SDK_INT>=30)type|=ServiceInfo.FOREGROUND_SERVICE_TYPE_CAMERA;startForeground(ID,n,type);}else startForeground(ID,n);
     }
-    @Override public void onDestroy(){if(engine!=null)engine.destroy();engine=null;if(instance==this)instance=null;try{unregisterReceiver(receiver);}catch(RuntimeException ignored){}sendBroadcast(new Intent(WebRtcSessionEngine.CHANGED).setPackage(getPackageName()));super.onDestroy();}
+    @Override public void onDestroy(){
+        String error=engine==null||!engine.failed?"":engine.error;
+        if(engine!=null)engine.destroy();engine=null;if(instance==this)instance=null;
+        try{unregisterReceiver(receiver);}catch(RuntimeException ignored){}
+        Intent changed=new Intent(WebRtcSessionEngine.CHANGED).setPackage(getPackageName());
+        if(!error.isEmpty())changed.putExtra("error",error);
+        sendBroadcast(changed);super.onDestroy();
+    }
     @Override public IBinder onBind(Intent i){return null;}
 }

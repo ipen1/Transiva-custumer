@@ -20,7 +20,7 @@ final class WebRtcSessionEngine {
     final String role,orderId,source,peer;
     final boolean video,incoming;
     volatile String callId="",status="Menyiapkan panggilan",error="";
-    volatile boolean ended,accepted,connected,muted,speaker=true,cameraEnabled=true;
+    volatile boolean ended,failed,accepted,connected,muted,speaker=true,cameraEnabled=true;
     volatile long connectedAt;
     private final Handler main=new Handler(Looper.getMainLooper());
     private final ExecutorService io=Executors.newSingleThreadExecutor();
@@ -91,17 +91,26 @@ final class WebRtcSessionEngine {
             if(list.isEmpty())throw new IllegalStateException("Konfigurasi koneksi panggilan tidak tersedia");main.post(()->{if(!ended){iceServers=list;initialize();}});
         }catch(Exception e){main.post(()->fail(e.getMessage()));}});
     }
+    private String initializationStage="native";
     private void initialize(){try{
+        initializationStage="native";
         WebRtcNativeRuntime.initialize(context);
+        initializationStage="audio";
         audioDevice=JavaAudioDeviceModule.builder(context).setUseHardwareAcousticEchoCanceler(false).setUseHardwareNoiseSuppressor(false).createAudioDeviceModule();
         PeerConnectionFactory.Builder builder=PeerConnectionFactory.builder().setAudioDeviceModule(audioDevice);
         if(video){egl=EglBase.create();builder.setVideoEncoderFactory(new DefaultVideoEncoderFactory(egl.getEglBaseContext(),true,true)).setVideoDecoderFactory(new DefaultVideoDecoderFactory(egl.getEglBaseContext()));}
+        initializationStage="peer";
         factory=builder.createPeerConnectionFactory();PeerConnection.RTCConfiguration config=new PeerConnection.RTCConfiguration(iceServers);config.sdpSemantics=PeerConnection.SdpSemantics.UNIFIED_PLAN;
         pc=factory.createPeerConnection(config,new Observer());if(pc==null)throw new IllegalStateException("Koneksi media tidak dapat dibuat");
         audioSource=factory.createAudioSource(new MediaConstraints());audioTrack=factory.createAudioTrack("TRANSIVA_AUDIO",audioSource);audioTrack.setEnabled(!muted);pc.addTrack(audioTrack,Collections.singletonList("transiva_audio"));
         AudioManager audio=(AudioManager)context.getSystemService(Context.AUDIO_SERVICE);audio.setMode(AudioManager.MODE_IN_COMMUNICATION);audio.setSpeakerphoneOn(speaker);
-        if(video)startCamera();status="Menghubungkan";changed();if(!incoming)offer();
-    }catch(Exception e){fail(e.getMessage());}}
+        if(video){initializationStage="camera";startCamera();}
+        initializationStage="negotiation";status="Menghubungkan";changed();if(!incoming)offer();
+    }catch(LinkageError e){initializationFailed(e);}catch(Exception e){initializationFailed(e);}}
+    private void initializationFailed(Throwable error){
+        android.util.Log.e("TransivaWebRTC","Media init failed at "+initializationStage,error);
+        fail("Gagal menyiapkan media ("+initializationStage+", "+error.getClass().getSimpleName()+"). Kembali ke chat dan mulai panggilan baru.");
+    }
     EglBase.Context eglContext(){return egl==null?null:egl.getEglBaseContext();}
     private void startCamera(){
         CameraEnumerator devices=Camera2Enumerator.isSupported(context)?new Camera2Enumerator(context):new Camera1Enumerator(true);
@@ -125,7 +134,7 @@ final class WebRtcSessionEngine {
     private void signal(String action,String sdp){if(ended)return;async(()->{try{WebRtcSignalApi.post(session,payload(action).put("sdp",sdp));}catch(Exception e){main.post(()->fail(e.getMessage()));}});}
     private void flushIce(){if(pc==null||!remoteSet)return;for(IceCandidate c:pendingIce)pc.addIceCandidate(c);pendingIce.clear();}
     void terminal(String id,String state){if(callId.equals(id)&&Arrays.asList("ended","rejected","missed").contains(state))end(false,"Panggilan berakhir");}
-    private void fail(String message){error=message==null?"Panggilan gagal":message;end(true,error);}
+    private void fail(String message){failed=true;error=message==null?"Panggilan gagal":message;end(true,error);}
     void end(boolean notify,String message){
         if(closing)return;closing=true;ended=true;status=message;main.removeCallbacks(poll);changed();release();
         // Queue behind start/accept so even an early cancel waits for the real call ID.

@@ -16,6 +16,15 @@ import static org.junit.Assert.*;
 /** Runs against the minified Play release, not a debug copy. No production login or server call. */
 @RunWith(AndroidJUnit4.class)
 public class ReleaseWebRtcSmokeTest {
+    @Test public void jniOnLoadEntryPointsKeepTheirNativeNames() throws Exception {
+        Class<?> init=Class.forName("org.jni_zero.JniInit");
+        assertNotNull(init.getDeclaredMethod("init"));
+        assertNotNull(init.getDeclaredMethod("crashIfMultiplexingMisaligned",long.class,long.class));
+        Class<?> util=Class.forName("org.jni_zero.JniUtil");
+        assertNotNull(util.getDeclaredMethod("mapToArray",java.util.Map.class));
+        assertNotNull(util.getDeclaredMethod("arrayToMap",Object[].class));
+    }
+
     @Test public void releaseJniCreatesAudioPeerAndSdp() throws Exception {
         Context context = InstrumentationRegistry.getInstrumentation().getTargetContext();
         WebRtcNativeRuntime.initialize(context);

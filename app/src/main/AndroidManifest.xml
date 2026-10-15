@@ -64,12 +64,12 @@
         android:supportsRtl="true"
         android:theme="@style/AppTheme"
         android:usesCleartextTraffic="false">
-        <activity android:name=".TransShopZoomActivity" android:exported="false" />
-        <activity android:name=".TransAssistantActivity" android:exported="false" android:screenOrientation="portrait" android:theme="@style/AppTheme" />
-        <activity android:name=".TransAssistantTourActivity" android:exported="false" android:screenOrientation="portrait" android:theme="@style/AppTheme" />
-        <activity android:name=".FamilyLiveActivity" android:exported="false" android:screenOrientation="portrait" android:theme="@style/AppTheme" />
-        <activity android:name=".TransivaFamilyActivity" android:exported="false" android:screenOrientation="portrait" android:theme="@style/AppTheme" />
-        <activity android:name=".GlobalSearchActivity" android:exported="false" android:screenOrientation="portrait" android:theme="@style/AppTheme" />
+        <activity android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout" android:name=".TransShopZoomActivity" android:exported="false" />
+        <activity android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout" android:name=".TransAssistantActivity" android:exported="false" android:theme="@style/AppTheme" />
+        <activity android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout" android:name=".TransAssistantTourActivity" android:exported="false" android:theme="@style/AppTheme" />
+        <activity android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout" android:name=".FamilyLiveActivity" android:exported="false" android:theme="@style/AppTheme" />
+        <activity android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout" android:name=".TransivaFamilyActivity" android:exported="false" android:theme="@style/AppTheme" />
+        <activity android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout" android:name=".GlobalSearchActivity" android:exported="false" android:theme="@style/AppTheme" />
 
 
         <meta-data
@@ -113,10 +113,10 @@
                 android:resource="@xml/chat_file_paths" />
         </provider>
 
-        <activity
+        <activity android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout"
             android:name=".SplashActivity"
             android:exported="true"
-            android:screenOrientation="portrait"
+           
             android:theme="@style/AppTheme">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
@@ -124,97 +124,97 @@
             </intent-filter>
         </activity>
 
-        <activity
+        <activity android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout"
             android:name=".PinActivity"
             android:exported="false"
-            android:screenOrientation="portrait"
+           
             android:theme="@style/AppTheme" />
 
-        <activity
+        <activity android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout"
             android:name=".ChangePinActivity"
             android:exported="false"
-            android:screenOrientation="portrait"
+           
             android:theme="@style/AppTheme"
             android:windowSoftInputMode="adjustResize" />
 
-        <activity
+        <activity android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout"
             android:name=".LoginActivity"
             android:exported="false"
-            android:screenOrientation="portrait"
+           
             android:theme="@style/AppTheme"
             android:windowSoftInputMode="adjustResize" />
 
-        <activity
+        <activity android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout"
             android:name=".RegisterActivity"
             android:exported="false"
-            android:screenOrientation="portrait"
+           
             android:theme="@style/AppTheme"
             android:windowSoftInputMode="adjustResize" />
 
 
-        <activity android:name=".SafetyCenterActivity" android:exported="false" android:screenOrientation="portrait" android:theme="@style/AppTheme" />
-        <activity android:name=".SmartReorderActivity" android:exported="false" android:screenOrientation="portrait" android:theme="@style/AppTheme" />
-        <activity android:name=".LiveOrderCenterActivity" android:exported="false" android:screenOrientation="portrait" android:theme="@style/AppTheme" />
-        <activity android:name=".AllServicesActivity" android:exported="false" android:screenOrientation="portrait" android:theme="@style/AppTheme" />
-        <activity android:name=".CustomerLoyaltyActivity" android:exported="false" android:screenOrientation="portrait" android:theme="@style/AppTheme" />
-        <activity android:name=".CustomerReferralActivity" android:exported="false" android:screenOrientation="portrait" android:theme="@style/AppTheme" />
+        <activity android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout" android:name=".SafetyCenterActivity" android:exported="false" android:theme="@style/AppTheme" />
+        <activity android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout" android:name=".SmartReorderActivity" android:exported="false" android:theme="@style/AppTheme" />
+        <activity android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout" android:name=".LiveOrderCenterActivity" android:exported="false" android:theme="@style/AppTheme" />
+        <activity android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout" android:name=".AllServicesActivity" android:exported="false" android:theme="@style/AppTheme" />
+        <activity android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout" android:name=".CustomerLoyaltyActivity" android:exported="false" android:theme="@style/AppTheme" />
+        <activity android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout" android:name=".CustomerReferralActivity" android:exported="false" android:theme="@style/AppTheme" />
 
-        <activity
+        <activity android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout"
             android:name=".CustomerDashboardActivity"
             android:exported="false"
-            android:screenOrientation="portrait"
+           
             android:theme="@style/AppTheme" />
 
 
-        <activity
+        <activity android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout"
             android:name=".UpdateDownloadActivity"
             android:exported="false"
-            android:screenOrientation="portrait"
+           
             android:theme="@style/AppTheme" />
-        <activity
+        <activity android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout"
             android:name=".FavoritePlacesActivity"
             android:exported="false"
-            android:screenOrientation="portrait"
+           
             android:theme="@style/AppTheme" />
 
-        <activity
+        <activity android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout"
             android:name=".CustomerSettingsActivity"
             android:exported="false"
-            android:screenOrientation="portrait"
+           
             android:theme="@style/AppTheme" />
 
-        <activity android:name=".CustomerSupportActivity" android:exported="false" />
-        <activity
+        <activity android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout" android:name=".CustomerSupportActivity" android:exported="false" />
+        <activity android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout"
             android:name=".CustomerNotificationActivity"
             android:exported="false"
-            android:screenOrientation="portrait"
+           
             android:theme="@style/AppTheme" />
 
-        <activity
+        <activity android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout"
             android:name=".CustomerChatActivity"
             android:exported="false"
-            android:screenOrientation="portrait"
+           
             android:theme="@style/AppTheme"
             android:windowSoftInputMode="adjustResize" />
 
-        <activity
+        <activity android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout"
             android:name=".CustomerTopUpActivity"
             android:exported="false"
-            android:screenOrientation="portrait"
+           
             android:theme="@style/AppTheme" />
 
-        <activity
+        <activity android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout"
             android:name=".ProfileActivity"
             android:exported="false"
-            android:screenOrientation="portrait"
+           
             android:theme="@style/AppTheme"
             android:windowSoftInputMode="adjustResize" />
 
 
-        <activity
+        <activity android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout"
             android:name=".SharedLocationActivity"
             android:exported="true"
-            android:screenOrientation="portrait"
+           
             android:theme="@style/AppTheme">
 
             <!-- Tautan lokasi yang diketuk dari WhatsApp/Google Maps -->
@@ -244,59 +244,59 @@
             </intent-filter>
         </activity>
 
-        <activity android:name=".TransShopProductActivity" android:exported="false" />
-        <activity android:name=".TransShopStoreActivity" android:exported="false" android:screenOrientation="portrait" android:theme="@style/AppTheme" />
-        <activity android:name=".TransShopCatalogActivity" android:exported="false" android:screenOrientation="portrait" android:theme="@style/AppTheme" />
-        <activity android:name=".TransShopLegacyActivity" android:exported="false" android:screenOrientation="portrait" android:theme="@style/AppTheme" />
-        <activity android:name=".TransShopActivity" android:exported="false" android:screenOrientation="portrait" android:theme="@style/AppTheme" />
+        <activity android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout" android:name=".TransShopProductActivity" android:exported="false" />
+        <activity android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout" android:name=".TransShopStoreActivity" android:exported="false" android:theme="@style/AppTheme" />
+        <activity android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout" android:name=".TransShopCatalogActivity" android:exported="false" android:theme="@style/AppTheme" />
+        <activity android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout" android:name=".TransShopLegacyActivity" android:exported="false" android:theme="@style/AppTheme" />
+        <activity android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout" android:name=".TransShopActivity" android:exported="false" android:theme="@style/AppTheme" />
 
-        <activity
+        <activity android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout"
             android:name=".TransRideActivity"
             android:exported="false"
-            android:screenOrientation="portrait"
+           
             android:theme="@style/AppTheme"
             android:windowSoftInputMode="adjustResize" />
 
-        <activity
+        <activity android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout"
             android:name=".PassengerCarActivity"
             android:exported="false"
-            android:screenOrientation="portrait"
+           
             android:theme="@style/AppTheme"
             android:windowSoftInputMode="adjustResize" />
 
-        <activity
+        <activity android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout"
             android:name=".TransFoodActivity"
             android:exported="false"
-            android:screenOrientation="portrait"
+           
             android:theme="@style/AppTheme" />
 
-        <activity
+        <activity android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout"
             android:name=".TranstourActivity"
-            android:screenOrientation="portrait"
+           
             android:exported="false"
             android:theme="@style/AppTheme" />
 
-        <activity
+        <activity android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout"
             android:name=".CustomerHistoryActivity"
-            android:screenOrientation="portrait"
+           
             android:exported="false"
             android:theme="@style/AppTheme" />
 
-        <activity
+        <activity android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout"
             android:name=".SearchDriverActivity"
             android:exported="false"
-            android:screenOrientation="portrait"
+           
             android:theme="@style/AppTheme" />
 
-        <activity
+        <activity android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout"
             android:name=".CustomerOrderDetailActivity"
-            android:screenOrientation="portrait"
+           
             android:exported="false" />
 
-        <activity
+        <activity android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout"
             android:name=".CustomerTripActivity"
             android:exported="true"
-            android:screenOrientation="portrait"
+           
             android:theme="@style/AppTheme">
 
             <!-- Deep link perjalanan live Transiva -->
@@ -319,38 +319,38 @@
             </intent-filter>
         </activity>
 
-        <activity
+        <activity android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout"
             android:name=".CustomerLiveDriverActivity"
             android:exported="false"
-            android:screenOrientation="portrait"
+           
             android:theme="@style/AppTheme" />
 
 
-        <activity
+        <activity android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout"
             android:name=".TransPickupActivity"
             android:exported="false"
-            android:screenOrientation="portrait"
+           
             android:theme="@style/AppTheme"
             android:windowSoftInputMode="adjustResize" />
 
-        <activity
+        <activity android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout"
             android:name=".RecommendationDetailActivity"
             android:exported="false"
-            android:screenOrientation="portrait"
+           
             android:theme="@style/AppTheme"
             android:windowSoftInputMode="adjustResize" />
 
-        <activity
+        <activity android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout"
             android:name=".RepeatRideOrderActivity"
             android:exported="false"
-            android:screenOrientation="portrait"
+           
             android:theme="@style/AppTheme"
             android:windowSoftInputMode="adjustResize" />
 
-        <activity
+        <activity android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout"
             android:name=".RepeatFoodOrderActivity"
             android:exported="false"
-            android:screenOrientation="portrait"
+           
             android:theme="@style/AppTheme"
             android:windowSoftInputMode="adjustResize" />
 
@@ -368,35 +368,35 @@
             android:turnScreenOn="true"
             android:configChanges="density|fontScale|keyboard|keyboardHidden|orientation|screenLayout|screenSize|smallestScreenSize|uiMode"
             android:theme="@style/AppTheme" />
-        <activity
+        <activity android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout"
             android:name=".CustomerChatRoomActivity"
             android:exported="false"
-            android:screenOrientation="portrait"
+           
             android:theme="@style/AppTheme"
             android:windowSoftInputMode="adjustResize" />
-        <activity
+        <activity android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout"
             android:name=".ChatCameraActivity"
             android:exported="false"
-            android:screenOrientation="portrait"
+           
             android:theme="@style/AppTheme" />
-        <activity
+        <activity android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout"
             android:name=".CustomerBalanceHistoryActivity"
             android:exported="false"
-            android:screenOrientation="portrait"
+           
             android:theme="@style/AppTheme"
             android:windowSoftInputMode="adjustResize" />
 
 
     
-        <activity
+        <activity android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout"
             android:name=".CustomerArrivalAlertActivity"
             android:exported="false"
             android:excludeFromRecents="true"
             android:showWhenLocked="true"
             android:turnScreenOn="true"
             android:theme="@style/AppTheme" />
-            <activity android:name=".SplitBillInviteActivity" android:exported="false" />
-            <activity android:name=".SplitBillSessionActivity" android:exported="false" />
+            <activity android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout" android:name=".SplitBillInviteActivity" android:exported="false" />
+            <activity android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout" android:name=".SplitBillSessionActivity" android:exported="false" />
 </application>
 
 </manifest>

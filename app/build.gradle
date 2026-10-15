@@ -14,6 +14,9 @@ android {
             buildConfigField 'boolean', 'SELF_UPDATE_APK', 'true'
         }
         play {
+            // Required by the enabled Google Play automatic protection.
+            // Direct APK keeps the default minSdk 23.
+            minSdk 24
             dimension 'distribution'
             buildConfigField 'boolean', 'SELF_UPDATE_APK', 'false'
         }
@@ -41,8 +44,8 @@ android {
         applicationId 'com.transiva.customer'
         minSdk 23
         targetSdk 36
-        versionCode 42
-        versionName '2.6.8'
+        versionCode 43
+        versionName '2.6.9'
     }
 
     signingConfigs {

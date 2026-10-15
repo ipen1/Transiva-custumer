@@ -13,7 +13,7 @@ public final class CustomerAsyncError {
         int depth = 0;
         while (current != null && depth++ < 8) {
             if (current instanceof InterruptedException
-                    || current instanceof InterruptedIOException
+                    || (current instanceof InterruptedIOException && !(current instanceof java.net.SocketTimeoutException))
                     || current instanceof CancellationException) {
                 return true;
             }
@@ -39,6 +39,6 @@ public final class CustomerAsyncError {
         if (message == null || message.trim().isEmpty() || "null".equalsIgnoreCase(message.trim())) {
             return fallback == null ? "" : fallback;
         }
-        return message.trim();
+        return CustomerErrorMessages.humanize(message, fallback);
     }
 }

@@ -1249,6 +1249,7 @@ class ProfileActivityScreenCore extends Activity {
             int resultCode,
             Intent data
     ) {
+        if (CustomerAccountDeletionController.handleGoogleResult(this, requestCode, resultCode, data)) return;
         super.onActivityResult(
                 requestCode,
                 resultCode,

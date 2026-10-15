@@ -67,6 +67,8 @@ public class TransivaAlertDialogBuilder extends AlertDialog.Builder {
 
             TextView message = dialog.findViewById(android.R.id.message);
             if (message != null) {
+                if (CustomerErrorMessages.containsTechnicalDetails(message.getText().toString()))
+                    message.setText(CustomerErrorMessages.humanize(message.getText().toString(), "Layanan sedang mengalami kendala. Silakan coba lagi sebentar."));
                 message.setTextColor(Color.rgb(55, 65, 81));
                 message.setTextSize(16f);
                 message.setLineSpacing(0f, 1.12f);

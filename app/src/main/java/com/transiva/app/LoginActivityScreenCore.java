@@ -111,6 +111,7 @@ class LoginActivityScreenCore extends FragmentActivity {
         setContentView(buildScreen());
         CustomerResponsiveUi.apply(this);
         passwordInput.setSaveEnabled(false);
+        if(getIntent().getBooleanExtra("account_deleted",false)) showMessage("Akun Anda sudah berhasil dihapus. Terima kasih telah menggunakan Transiva.",true);
         if(savedInstanceState!=null){usernameInput.setText(savedInstanceState.getString("login_username",""));loginStep=0;updateLoginStep();if(savedInstanceState.getInt("login_step",0)==1)authScope.post(mainHandler,this::loadLoginPreview);}
         if(getIntent().getBooleanExtra("start_google",false))authScope.post(mainHandler,this::startGoogleLogin);
 
@@ -123,53 +124,27 @@ class LoginActivityScreenCore extends FragmentActivity {
 
     protected View buildScreen() {
         FrameLayout page = new FrameLayout(this);
-        page.setBackgroundColor(Color.parseColor("#F4F8FF"));
+        page.setBackground(CustomerAuthDesign.backdrop());
 
         ScrollView scroll = new ScrollView(this);
-        scroll.setFillViewport(false);
+        scroll.setFillViewport(true);
         page.addView(scroll, new FrameLayout.LayoutParams(-1, -1));
 
-        LinearLayout root = new LinearLayout(this);
+        LinearLayout root = new CustomerAuthDesign.Column(this);
         root.setOrientation(LinearLayout.VERTICAL);
         root.setGravity(Gravity.CENTER_HORIZONTAL);
         root.setPadding(dp(16), dp(12), dp(16), dp(18));
-        scroll.addView(root, new ScrollView.LayoutParams(-1, -2));
+        scroll.addView(root, new ScrollView.LayoutParams(-1, -2, Gravity.CENTER_HORIZONTAL));
 
-        ImageView logo = new ImageView(this);
-        int logoRes = findDrawable("transiva_logo");
-        if (logoRes == 0) logoRes = findDrawable("logo_transiva");
-        if (logoRes == 0) logoRes = findDrawable("logo");
-        if (logoRes == 0) logoRes = getApplicationInfo().icon;
-        logo.setImageResource(logoRes);
-        logo.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
-
-        LinearLayout.LayoutParams logoLp =
-                new LinearLayout.LayoutParams(dp(140), dp(52));
-        logoLp.setMargins(0, dp(6), 0, dp(5));
-        root.addView(logo, logoLp);
-
-        TextView title = text(
-                "Masuk Transiva", 23, "#123F7A", true);
-        title.setGravity(Gravity.CENTER);
-        root.addView(title);
-
-        TextView subtitle = text(
-                "Selamat datang kembali di Transiva",
-                13,
-                "#667085",
-                false
-        );
-        subtitle.setGravity(Gravity.CENTER);
-        subtitle.setPadding(0, dp(5), 0, dp(14));
-        root.addView(subtitle);
+        root.addView(CustomerAuthDesign.brand(this, "Selamat datang kembali", "Perjalanan nyaman dimulai dari sini."), new LinearLayout.LayoutParams(-1,-2));
 
         LinearLayout card = new LinearLayout(this);
         card.setOrientation(LinearLayout.VERTICAL);
-        card.setPadding(dp(18), dp(20), dp(18), dp(20));
+        card.setPadding(dp(18), dp(18), dp(18), dp(16));
         card.setBackground(
-                roundStroke("#FFFFFF", "#E5EBF3", dp(22), 1));
-        card.setElevation(dp(2));
-        root.addView(card, new LinearLayout.LayoutParams(Math.min(dp(440),getResources().getDisplayMetrics().widthPixels-dp(32)), -2));
+                CustomerAuthDesign.surface(this));
+        card.setElevation(dp(5));
+        root.addView(card, new LinearLayout.LayoutParams(-1, -2));
 
         messageText = text("", 12, "#B91C1C", true);
         messageText.setVisibility(View.GONE);
@@ -181,7 +156,7 @@ class LoginActivityScreenCore extends FragmentActivity {
         card.addView(messageText, messageLp);
 
         stepLabel=text("LANGKAH 1 DARI 2 • IDENTITAS",12,"#1685F2",true);
-        stepLabel.setPadding(0,0,0,dp(16));card.addView(stepLabel);
+        stepLabel.setPadding(0,0,0,dp(12));card.addView(stepLabel);
         usernameLabel=label("Nama Pengguna");card.addView(usernameLabel);
 
         usernameInput = input(
@@ -191,12 +166,12 @@ class LoginActivityScreenCore extends FragmentActivity {
         );
         card.addView(usernameInput, fieldLayout());
 
-        loginIdentityCard=new LinearLayout(this);loginIdentityCard.setOrientation(LinearLayout.VERTICAL);loginIdentityCard.setGravity(Gravity.CENTER);loginIdentityCard.setPadding(dp(12),dp(14),dp(12),dp(14));loginIdentityCard.setBackground(round("#F3F7FD",dp(16)));
+        loginIdentityCard=new LinearLayout(this);loginIdentityCard.setOrientation(LinearLayout.HORIZONTAL);loginIdentityCard.setGravity(Gravity.CENTER_VERTICAL);loginIdentityCard.setPadding(dp(12),dp(14),dp(12),dp(14));loginIdentityCard.setBackground(round("#F3F7FD",dp(16)));
         LinearLayout.LayoutParams identityLp=new LinearLayout.LayoutParams(-1,-2);identityLp.bottomMargin=dp(12);card.addView(loginIdentityCard,identityLp);
-        FrameLayout circle=new FrameLayout(this);circle.setBackground(avatarOval("#DDEBFF"));loginIdentityCard.addView(circle,new LinearLayout.LayoutParams(dp(76),dp(76)));
-        loginInitial=text("",25,"#1676ED",true);loginInitial.setGravity(Gravity.CENTER);loginInitial.setBackground(avatarOval("#FFFFFF"));FrameLayout.LayoutParams initialLp=new FrameLayout.LayoutParams(dp(68),dp(68),Gravity.CENTER);circle.addView(loginInitial,initialLp);
-        loginAvatar=new ImageView(this);loginAvatar.setBackground(avatarOval("#00FFFFFF"));loginAvatar.setClipToOutline(true);loginAvatar.setScaleType(ImageView.ScaleType.CENTER_CROP);loginAvatar.setContentDescription("Foto profil akun");circle.addView(loginAvatar,new FrameLayout.LayoutParams(dp(68),dp(68),Gravity.CENTER));
-        loginIdentityName=text("",16,"#123F7A",true);loginIdentityName.setGravity(Gravity.CENTER);loginIdentityName.setPadding(0,dp(9),0,0);loginIdentityCard.addView(loginIdentityName,new LinearLayout.LayoutParams(-1,-2));
+        FrameLayout circle=new FrameLayout(this);circle.setBackground(avatarOval("#DDEBFF"));loginIdentityCard.addView(circle,new LinearLayout.LayoutParams(dp(68),dp(68)));
+        loginInitial=text("",25,"#1676ED",true);loginInitial.setGravity(Gravity.CENTER);loginInitial.setBackground(avatarOval("#FFFFFF"));FrameLayout.LayoutParams initialLp=new FrameLayout.LayoutParams(dp(60),dp(60),Gravity.CENTER);circle.addView(loginInitial,initialLp);
+        loginAvatar=new ImageView(this);loginAvatar.setBackground(avatarOval("#00FFFFFF"));loginAvatar.setClipToOutline(true);loginAvatar.setScaleType(ImageView.ScaleType.CENTER_CROP);loginAvatar.setContentDescription("Foto profil akun");circle.addView(loginAvatar,new FrameLayout.LayoutParams(dp(60),dp(60),Gravity.CENTER));
+        loginIdentityName=text("",16,"#123F7A",true);loginIdentityName.setGravity(Gravity.START|Gravity.CENTER_VERTICAL);loginIdentityName.setPadding(dp(12),0,0,0);loginIdentityName.setMaxLines(2);loginIdentityName.setEllipsize(android.text.TextUtils.TruncateAt.END);loginIdentityCard.addView(loginIdentityName,new LinearLayout.LayoutParams(0,-2,1f));
         passwordLabel=label("Kata Sandi");card.addView(passwordLabel);
 
         FrameLayout passwordBox = new FrameLayout(this);loginPasswordBox=passwordBox;passwordBox.setMinimumHeight(dp(48));
@@ -261,7 +236,7 @@ class LoginActivityScreenCore extends FragmentActivity {
         card.addView(googleButton, googleLp);
 
         biometricLoginButton = text("◉  Masuk dengan sidik jari / biometrik", 13, "#1685F2", true);
-        biometricLoginButton.setGravity(Gravity.CENTER);
+        biometricLoginButton.setGravity(Gravity.CENTER);biometricLoginButton.setMinHeight(dp(48));
         biometricLoginButton.setPadding(dp(8), dp(10), dp(8), dp(10));
         biometricLoginButton.setVisibility(BiometricSecurityManager.isEnabled(this) ? View.VISIBLE : View.GONE);
         card.addView(biometricLoginButton, new LinearLayout.LayoutParams(-1, -2));
@@ -291,7 +266,7 @@ class LoginActivityScreenCore extends FragmentActivity {
         legal.addView(terms);
         card.addView(legal);
 
-        loadingView = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
+        loadingView = new ProgressBar(this);
         loadingView.setVisibility(View.GONE);
 
         FrameLayout.LayoutParams loadingLp =
@@ -350,7 +325,7 @@ class LoginActivityScreenCore extends FragmentActivity {
         if (loading) return;
         clearMessage();
         if (googleSignInClient == null) {
-            showMessage("Google Login belum dikonfigurasi. Isi google_web_client_id dengan OAuth Web Client ID Transiva.", false);
+            showMessage("Masuk dengan Google belum tersedia saat ini. Gunakan nama pengguna dan kata sandi, atau hubungi bantuan Transiva.", false);
             return;
         }
         try {
@@ -370,13 +345,13 @@ class LoginActivityScreenCore extends FragmentActivity {
             GoogleSignInAccount account = GoogleSignIn.getSignedInAccountFromIntent(data).getResult(ApiException.class);
             String idToken = account == null ? "" : safe(account.getIdToken()).trim();
             if (idToken.isEmpty()) {
-                showMessage("Google tidak mengirim token login. Periksa konfigurasi OAuth.", false);
+                showMessage("Konfirmasi Google belum selesai. Pilih kembali akun Google Anda.", false);
                 return;
             }
             loginWithGoogleToken(idToken);
         } catch (ApiException e) {
             Log.w(TAG, "Google sign-in gagal code=" + e.getStatusCode(), e);
-            showMessage("Login Google dibatalkan atau gagal (" + e.getStatusCode() + ").", false);
+            showMessage("Masuk dengan Google belum selesai. Silakan pilih akun Anda kembali.", false);
         }
     }
 
@@ -443,7 +418,7 @@ class LoginActivityScreenCore extends FragmentActivity {
         if (!result.success) { showMessage(result.message, false); return; }
         if (result.user == null) { showMessage("Server tidak mengirim data pengguna.", false); return; }
         String apiToken = result.user.optString("token", "").trim();
-        if (apiToken.isEmpty()) { showMessage("Login berhasil, tetapi token sesi kosong.", false); return; }
+        if (apiToken.isEmpty()) { showMessage("Proses masuk belum selesai. Silakan coba lagi.", false); return; }
         String role = normalizeRole(result.user.optString("role", result.role));
         try { result.user.put("role", role); } catch (Exception ignored) {}
         SessionManager session = new SessionManager(this);
@@ -454,7 +429,7 @@ class LoginActivityScreenCore extends FragmentActivity {
         } catch (Exception e) { Log.e(TAG, "Gagal menyimpan session", e); saved = false; }
         if (!saved || !session.isLoggedIn() || session.getUsername().trim().isEmpty() || session.getToken().trim().isEmpty()) {
             session.forceLogout("login_session_invalid");
-            showMessage("Login berhasil, tetapi sesi gagal disimpan.", false);
+            showMessage("Sesi belum dapat disimpan. Tutup aplikasi, lalu coba masuk kembali.", false);
             return;
         }
         try { TransivaSession.saveUser(this, result.user); } catch (Exception e) { Log.w(TAG, "Legacy session gagal", e); }
@@ -505,7 +480,7 @@ class LoginActivityScreenCore extends FragmentActivity {
             if (user.optString("token", "").trim().isEmpty()) user.put("token", response.optString("token", ""));
             user.put("role", "customer");
             return LoginResult.ok(message, "customer", user);
-        } catch (Exception e) { Log.e(TAG, "Google native login gagal", e); return LoginResult.fail("Login Google gagal: " + e.getClass().getSimpleName()); }
+        } catch (Exception e) { Log.e(TAG, "Google native login gagal", e); return LoginResult.fail("Masuk dengan Google belum berhasil. Periksa internet Anda, lalu coba lagi."); }
         finally { if (connection != null) connection.disconnect(); }
     }
 
@@ -602,7 +577,7 @@ class LoginActivityScreenCore extends FragmentActivity {
 
             if (raw.isEmpty()) {
                 return LoginResult.fail(
-                        "Server tidak mengirim response (HTTP " + httpCode + ")."
+                        "Server belum merespons. Tunggu sebentar, lalu coba lagi."
                 );
             }
 
@@ -620,9 +595,9 @@ class LoginActivityScreenCore extends FragmentActivity {
             try {
                 response = new JSONObject(raw);
             } catch (Exception jsonError) {
-                Log.e(TAG, "Response login bukan JSON. HTTP=" + httpCode + ", raw=" + raw, jsonError);
+                Log.e(TAG, "Response login bukan JSON. HTTP=" + httpCode, jsonError);
                 return LoginResult.fail(
-                        "Respons login server tidak valid (HTTP " + httpCode + ")."
+                        "Layanan masuk sedang mengalami kendala. Coba lagi sebentar."
                 );
             }
 
@@ -683,11 +658,11 @@ class LoginActivityScreenCore extends FragmentActivity {
             return LoginResult.fail("Koneksi aman ke server gagal. Periksa tanggal/waktu dan jaringan perangkat.");
         } catch (java.net.UnknownHostException error) {
             Log.e(TAG, "DNS login gagal", error);
-            return LoginResult.fail("Domain server tidak dapat ditemukan. Periksa jaringan/DNS.");
+            return LoginResult.fail("Belum bisa terhubung ke Transiva. Periksa internet Anda, lalu coba lagi.");
         } catch (Exception error) {
             Log.e(TAG, "Login gagal", error);
             return LoginResult.fail(
-                    "Koneksi login gagal: " + error.getClass().getSimpleName()
+                    "Belum bisa terhubung. Periksa internet Anda, lalu coba lagi."
             );
         } finally {
             if (connection != null) {
@@ -999,7 +974,7 @@ class LoginActivityScreenCore extends FragmentActivity {
             boolean success
     ) {
         messageText.setVisibility(View.VISIBLE);
-        messageText.setText(message);
+        messageText.setText(success?message:CustomerErrorMessages.humanize(message,"Belum berhasil masuk. Silakan coba lagi."));
         messageText.setTextColor(
                 Color.parseColor(
                         success ? "#166534" : "#B91C1C"
@@ -1112,6 +1087,8 @@ class LoginActivityScreenCore extends FragmentActivity {
                         1
                 )
         );
+        field.setBackground(CustomerAuthDesign.field(this));
+        field.setSaveEnabled(false);
         return field;
     }
 
@@ -1319,7 +1296,7 @@ class LoginActivityScreenCore extends FragmentActivity {
             request.start(this,"customer_auth_check.php",body,response->{
                 if(authScope.isDestroyed()||isFinishing()||!dialog.isShowing()||googleSignupLookup!=request)return;
                 googleSignupLookup=null;dialog.getButton(AlertDialog.BUTTON_POSITIVE).setEnabled(true);
-                if(!response.optBoolean("success")){Toast.makeText(this,response.optString("message","Data belum dapat diperiksa."),Toast.LENGTH_LONG).show();return;}
+                if(!response.optBoolean("success")){Toast.makeText(this,CustomerErrorMessages.humanize(response.optString("message"),"Data belum dapat diperiksa. Silakan coba lagi."),Toast.LENGTH_LONG).show();return;}
                 JSONObject result=response.optJSONObject("fields"),un=result==null?null:result.optJSONObject("username"),ph=result==null?null:result.optJSONObject("phone");
                 boolean nameOk=un!=null&&un.optBoolean("available"),phoneOk=ph!=null&&ph.optBoolean("available");
                 if(!nameOk)name.setError(un==null?"Data belum diperiksa.":un.optString("message"));

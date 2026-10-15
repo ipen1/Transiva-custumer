@@ -36,6 +36,8 @@ jobs:
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           script: gradle :app:connectedPlayReleaseAndroidTest -PtransivaLocalVerification --stacktrace
+      - name: Verify native WebRTC lookup names after R8
+        run: python3 tools/reliability/verify_webrtc_jni.py app/build/outputs/mapping/playRelease/mapping.txt
       - name: Upload smoke reports
         if: always()
         uses: actions/upload-artifact@v6

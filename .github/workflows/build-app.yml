@@ -186,6 +186,11 @@ jobs:
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
 
+      - name: Verify native WebRTC lookup names after R8
+        run: |
+          python3 tools/reliability/verify_webrtc_jni.py app/build/outputs/mapping/playRelease/mapping.txt
+          python3 tools/reliability/verify_webrtc_jni.py app/build/outputs/mapping/directRelease/mapping.txt
+
       - name: Upload Direct Signed APK
         uses: actions/upload-artifact@v6
         with:

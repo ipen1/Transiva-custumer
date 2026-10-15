@@ -14,7 +14,10 @@ with tempfile.TemporaryDirectory() as temp:
 ''')
  put('android/content/Context.java','''package android.content;import java.util.*;public class Context{public static final int MODE_PRIVATE=0;final Map<String,SharedPreferences> p=new HashMap<>();public Context getApplicationContext(){return this;}public synchronized SharedPreferences getSharedPreferences(String n,int m){return p.computeIfAbsent(n,k->new SharedPreferences());}}
 ''')
- put('com/transiva/app/SessionManager.java','''package com.transiva.app;import android.content.Context;public class SessionManager{static volatile String id="99",token="tokenA";static volatile boolean login=true;public SessionManager(Context c){}public boolean isLoggedIn(){return login;}public String getRole(){return "customer";}public String getId(){return id;}public String getUserId(){return id;}public String getToken(){return token;}}
+ put('com/transiva/app/SessionManager.java','''package com.transiva.app;import android.content.Context;public class SessionManager{static volatile String id="99",token="tokenA";static volatile boolean login=true;public SessionManager(Context c){}public boolean isLoggedIn(){return login;}public String getRole(){return "customer";}public String getId(){return id;}public String getUserId(){return id;}public String getToken(){return token;}
+static org.json.JSONObject raw=new org.json.JSONObject().put("id",99).put("username","session").put("role","customer");
+public org.json.JSONObject getSessionJson(){return raw;}
+public boolean saveUser(org.json.JSONObject value){raw=value;return true;}}
 ''')
  put('com/transiva/app/DeliveryAddressGate.java','package com.transiva.app;import android.content.Context;import org.json.JSONObject;public class DeliveryAddressGate{static void storeProfile(Context c,String id,JSONObject p){}}')
  put('com/transiva/app/ApiConfig.java','package com.transiva.app;public class ApiConfig{static String server(String p){return p;}}')
@@ -40,9 +43,16 @@ public class ProfileCacheRegression{
   SessionManager.id="100";check(CustomerProfileCache.cached(c)==null,"Account cache leak");SessionManager.id="99";SessionManager.token="tokenB";check(CustomerProfileCache.cached(c)==null,"Session cache leak");SessionManager.token="tokenA";
   TransivaHttpRepository.started=new CountDownLatch(1);TransivaHttpRepository.release=new CountDownLatch(1);CountDownLatch edit=new CountDownLatch(1);
   CustomerProfileCache.fetch(c,true,v->{check("edited".equals(v.optString("username")),"Old GET overwrote profile save");edit.countDown();});waitFor(TransivaHttpRepository.started);CustomerProfileCache.put(c,user("edited"));TransivaHttpRepository.release.countDown();waitFor(edit);
+  CustomerProfileCache.confirmEmailVerified(c);
+  check(CustomerProfileCache.cached(c).optInt("email_verified")==1,"Confirmed verification missing from cache");
+  check(SessionManager.raw.optInt("email_verified")==1,"Confirmed verification missing from session");
+  check("edited".equals(CustomerProfileCache.cached(c).optString("username")),"Verification discarded current profile");
+  TransivaHttpRepository.started=new CountDownLatch(1);TransivaHttpRepository.release=new CountDownLatch(1);CountDownLatch verification=new CountDownLatch(1);
+  CustomerProfileCache.fetch(c,true,v->{check(v.optInt("email_verified")==1,"Old GET undid verification");verification.countDown();});
+  waitFor(TransivaHttpRepository.started);CustomerProfileCache.confirmEmailVerified(c);TransivaHttpRepository.release.countDown();waitFor(verification);
   TransivaHttpRepository.started=new CountDownLatch(1);TransivaHttpRepository.release=new CountDownLatch(1);CountDownLatch logout=new CountDownLatch(1);
   CustomerProfileCache.fetch(c,true,v->{check(v==null,"Late callback exposed old session");logout.countDown();});waitFor(TransivaHttpRepository.started);CustomerProfileCache.clear(c);SessionManager.login=false;TransivaHttpRepository.release.countDown();waitFor(logout);check(CustomerProfileCache.cached(c)==null,"Logout cache persists");
-  DashboardReadExecutor.e.shutdownNow();System.out.println("PASS: cold request coalescing; fresh cache reuse; sensitive field filtering; account/session isolation; edit race; logout late-response isolation");
+  DashboardReadExecutor.e.shutdownNow();System.out.println("PASS: cold request coalescing; fresh cache reuse; sensitive field filtering; account/session isolation; edit race; confirmed verification sync; stale GET after verification; logout late-response isolation");
  }
 }
 ''')

@@ -22,7 +22,7 @@ final class CustomerEmailVerification {
         otp=new EditText(activity);otp.setHint("6 digit OTP");otp.setInputType(InputType.TYPE_CLASS_NUMBER);otp.setFilters(new android.text.InputFilter[]{new android.text.InputFilter.LengthFilter(6)});otp.setSaveEnabled(false);box.addView(otp);
         send=new Button(activity);send.setAllCaps(false);send.setText("Kirim kode");box.addView(send);
         verify=new Button(activity);verify.setAllCaps(false);verify.setText("Verifikasi email");box.addView(verify);
-        AlertDialog dialog=new AlertDialog.Builder(activity).setTitle("Verifikasi email").setView(box).setNegativeButton("Tutup",null).create();
+        AlertDialog dialog=new TransivaAlertDialogBuilder(activity).setTitle("Verifikasi email").setView(box).setNegativeButton("Tutup",null).create();
         openDialog=dialog;
         activity.getApplication().registerActivityLifecycleCallbacks(lifecycle);
         dialog.setOnDismissListener(d->{activity.getApplication().unregisterActivityLifecycleCallbacks(lifecycle);openDialog=null;scope.destroy();handler.removeCallbacksAndMessages(null);java.net.HttpURLConnection c=connection;if(c!=null)c.disconnect();});

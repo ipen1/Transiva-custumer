@@ -13,7 +13,7 @@ final class CustomerPendingMessageCenter {
         Handler main=new Handler(Looper.getMainLooper());
         ScrollView scroll=new ScrollView(activity);LinearLayout rows=new LinearLayout(activity);rows.setOrientation(LinearLayout.VERTICAL);int pad=(int)(16*activity.getResources().getDisplayMetrics().density);rows.setPadding(pad,pad,pad,pad);scroll.addView(rows);
         final android.media.MediaPlayer[] player={null};
-        AlertDialog dialog=new AlertDialog.Builder(activity).setTitle("Pesan tertunda").setView(scroll).setPositiveButton("Tutup",null).create();dialog.show();dialog.setOnDismissListener(d->{if(player[0]!=null){player[0].release();player[0]=null;}});
+        AlertDialog dialog=new TransivaAlertDialogBuilder(activity).setTitle("Pesan tertunda").setView(scroll).setPositiveButton("Tutup",null).create();dialog.show();dialog.setOnDismissListener(d->{if(player[0]!=null){player[0].release();player[0]=null;}});
         TextView loading=new TextView(activity);loading.setText("Memuat pesan tersimpan...");rows.addView(loading);
         TransivaNetworkExecutor.execute(()->{
             try{
@@ -31,7 +31,7 @@ final class CustomerPendingMessageCenter {
                             Button inspect=new Button(activity);inspect.setAllCaps(false);inspect.setText("image".equals(kind)?"Lihat foto tersimpan":"Putar voice tersimpan");card.addView(inspect);
                             inspect.setOnClickListener(v->{java.io.File attachment=attachments.get(op.optString("client_message_id"));if(attachment==null||!attachment.isFile()){Toast.makeText(activity,"Lampiran sudah dikirim atau tidak tersedia",Toast.LENGTH_SHORT).show();return;}
                                 if("voice".equals(kind)){try{if(player[0]!=null)player[0].release();android.media.MediaPlayer audio=new android.media.MediaPlayer();player[0]=audio;audio.setDataSource(attachment.getAbsolutePath());audio.setOnPreparedListener(p->{if(dialog.isShowing())p.start();});audio.setOnCompletionListener(p->inspect.setText("Putar voice tersimpan"));audio.prepareAsync();inspect.setText("Memutar voice...");}catch(Exception e){Toast.makeText(activity,"Voice belum dapat diputar",Toast.LENGTH_SHORT).show();}}
-                                else TransivaNetworkExecutor.execute(()->{android.graphics.BitmapFactory.Options options=new android.graphics.BitmapFactory.Options();options.inSampleSize=2;android.graphics.Bitmap bitmap=android.graphics.BitmapFactory.decodeFile(attachment.getAbsolutePath(),options);main.post(()->{if(!dialog.isShowing()||!session.matches(activity))return;ImageView image=new ImageView(activity);image.setAdjustViewBounds(true);image.setImageBitmap(bitmap);new AlertDialog.Builder(activity).setTitle("Foto tertunda").setView(image).setPositiveButton("Tutup",null).show();});});
+                                else TransivaNetworkExecutor.execute(()->{android.graphics.BitmapFactory.Options options=new android.graphics.BitmapFactory.Options();options.inSampleSize=2;android.graphics.Bitmap bitmap=android.graphics.BitmapFactory.decodeFile(attachment.getAbsolutePath(),options);main.post(()->{if(!dialog.isShowing()||!session.matches(activity))return;ImageView image=new ImageView(activity);image.setAdjustViewBounds(true);image.setImageBitmap(bitmap);new TransivaAlertDialogBuilder(activity).setTitle("Foto tertunda").setView(image).setPositiveButton("Tutup",null).show();});});
                             });
                         }
 

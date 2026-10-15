@@ -88,7 +88,7 @@ public class UpdateDownloadActivity extends Activity {
         super.onCreate(state);
         forcedMode = getIntent().getBooleanExtra(EXTRA_FORCE, false);
         autoStart = getIntent().getBooleanExtra(EXTRA_AUTO_START, false);
-        dark = CustomerAppSettings.isDarkMode(this);
+        dark = false; // Source colors stay light; the shared theme engine renders both modes.
         setContentView(buildScreen());
         AppUpdateRuntimeGate.clearLaunchingFlag();
         checkUpdate();

@@ -17,7 +17,7 @@ import android.widget.Toast;
 public class AllServicesActivity extends Activity {
     private boolean dark;
     @Override protected void onCreate(Bundle b) {
-        super.onCreate(b); dark = CustomerAppSettings.isDarkMode(this);
+        super.onCreate(b); dark = false; // Source colors stay light; the shared theme engine renders both modes.
         getWindow().setStatusBarColor(Color.parseColor(dark ? "#07111F" : "#075ED1"));
         setContentView(build()); CustomerAppSettings.apply(this);
     }

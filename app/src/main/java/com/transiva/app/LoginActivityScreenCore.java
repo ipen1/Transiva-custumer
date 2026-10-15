@@ -1283,7 +1283,7 @@ class LoginActivityScreenCore extends FragmentActivity {
         LinearLayout box=new LinearLayout(this);box.setOrientation(1);box.setPadding(dp(24),dp(12),dp(24),dp(12));
         EditText name=input("Nama pengguna",InputType.TYPE_CLASS_TEXT,false);
         EditText phone=input("Nomor HP",InputType.TYPE_CLASS_PHONE,false);box.addView(name,fieldLayout());box.addView(phone,fieldLayout());
-        AlertDialog dialog=new AlertDialog.Builder(this).setTitle("Lengkapi akun Google").setMessage("Email Google Anda sudah diverifikasi. Lengkapi identitas untuk mulai menggunakan Transiva.").setView(box).setNegativeButton("Batal",null).setPositiveButton("Buat akun",null).create();
+        AlertDialog dialog=new TransivaAlertDialogBuilder(this).setTitle("Lengkapi akun Google").setMessage("Email Google Anda sudah diverifikasi. Lengkapi identitas untuk mulai menggunakan Transiva.").setView(box).setNegativeButton("Batal",null).setPositiveButton("Buat akun",null).create();
         dialog.setOnDismissListener(d->{if(googleSignupLookup!=null)googleSignupLookup.cancel();googleSignupLookup=null;});
         dialog.setOnShowListener(d->dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v->{
             final String u=name.getText().toString().trim().toLowerCase(Locale.US);

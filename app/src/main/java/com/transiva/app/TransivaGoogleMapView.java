@@ -41,7 +41,7 @@ import java.util.Map;
  * Native Google Maps renderer shared by TransRide, TransCar and CustomerTrip.
  * Routing remains on Transiva's existing OSRM engine (StableRouteEngine).
  */
-public final class TransivaGoogleMapView extends FrameLayout implements OnMapReadyCallback {
+public final class TransivaGoogleMapView extends FrameLayout implements OnMapReadyCallback, CustomerAppSettings.ThemeAware {
 
     public interface Listener {
         void onReady(double lat, double lng);
@@ -88,6 +88,7 @@ public final class TransivaGoogleMapView extends FrameLayout implements OnMapRea
 
     public TransivaGoogleMapView(Context context, Mode mode) {
         super(context);
+        CustomerAppSettings.preserveArtwork(this);
         this.mode = mode;
         setClipToOutline(true);
         // Clip Google Maps itself to the same rounded container. This prevents
@@ -195,6 +196,15 @@ public final class TransivaGoogleMapView extends FrameLayout implements OnMapRea
         nativeMapView.getMapAsync(this);
     }
 
+    private Boolean appliedMapDark;
+    @Override public void onCustomerThemeChanged(boolean dark) {
+        if(googleMap==null || (appliedMapDark!=null && appliedMapDark==dark))return;
+        try {
+            googleMap.setMapStyle(dark?MapStyleOptions.loadRawResourceStyle(getContext(),R.raw.google_map_dark):null);
+            appliedMapDark=dark;
+        }catch(Exception ignored){}
+    }
+
     @Override
     public void onMapReady(GoogleMap map) {
         googleMap = map;
@@ -211,11 +221,7 @@ public final class TransivaGoogleMapView extends FrameLayout implements OnMapRea
             map.setTrafficEnabled(false);
         } catch (Exception ignored) {}
 
-        try {
-            if (CustomerAppSettings.isDarkMode(getContext())) {
-                map.setMapStyle(MapStyleOptions.loadRawResourceStyle(getContext(), R.raw.google_map_dark));
-            }
-        } catch (Exception ignored) {}
+        onCustomerThemeChanged(CustomerAppSettings.isDarkMode(getContext()));
 
         map.moveCamera(CameraUpdateFactory.newLatLngZoom(DEFAULT_CENTER, mode == Mode.PICKER ? 17f : 15f));
 

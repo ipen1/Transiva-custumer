@@ -213,7 +213,7 @@ public class CustomerNotificationActivity extends Activity {
 
     private void showKOnlineInfo() {
         try {
-            new AlertDialog.Builder(this)
+            new TransivaAlertDialogBuilder(this)
                     .setTitle("K Online × Transiva")
                     .setMessage(
                             "K Online kini menjadi bagian dari Transiva.\n\n"

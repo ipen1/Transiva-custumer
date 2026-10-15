@@ -1079,7 +1079,7 @@ class CustomerDashboardActivityScreenCore extends Activity
 
     protected void showKOnlineTransitionDialog() {
         try {
-            new AlertDialog.Builder(this)
+            new TransivaAlertDialogBuilder(this)
                     .setTitle("K Online × Transiva")
                     .setMessage(
                             "K Online kini menjadi bagian dari Transiva.\n\n"
@@ -2027,7 +2027,7 @@ class CustomerDashboardActivityScreenCore extends Activity
                 "Asisten Transiva",
                 "TransMart — Segera hadir"
         };
-        new AlertDialog.Builder(this)
+        new TransivaAlertDialogBuilder(this)
                 .setTitle("Semua Fitur")
                 .setItems(labels, (dialog, which) -> {
                     switch (which) {
@@ -2141,15 +2141,16 @@ class CustomerDashboardActivityScreenCore extends Activity
 
         FrameLayout iconHolder = new FrameLayout(this);
         iconHolder.setBackground(Shape.roundStroke("#F8FBFF", "#D9E8F7", dp(16), 1));
-        iconHolder.setPadding(dp(1), dp(1), dp(1), dp(1));
+        iconHolder.setPadding(0, 0, 0, 0);
+        CustomerAppSettings.preserveArtwork(iconHolder);
         iconHolder.setClipToOutline(true);
         iconHolder.setElevation(dp(1));
         card.addView(iconHolder, new LinearLayout.LayoutParams(iconSize, iconSize));
 
         ImageView image = new ImageView(this);
         image.setImageResource(drawable(icon));
-        image.setScaleType(ImageView.ScaleType.FIT_CENTER);
-        int inset = Math.max(dp(1), iconSize / 32);
+        image.setScaleType(ImageView.ScaleType.CENTER_CROP);
+        int inset = 0;
         image.setPadding(inset, inset, inset, inset);
         FrameLayout.LayoutParams imageLp = new FrameLayout.LayoutParams(-1, -1);
         imageLp.gravity = Gravity.CENTER;

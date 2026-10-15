@@ -19,6 +19,7 @@ public class TransivaCustomerApplication extends Application implements Applicat
     @Override public void onCreate() {
         super.onCreate();
         instance = this;
+        CustomerAppSettings.install(this);
         CustomerPerformanceMetrics.install();
         CustomerStartupManager.installCritical(this);
         TransivaCrashReporter.user(this);

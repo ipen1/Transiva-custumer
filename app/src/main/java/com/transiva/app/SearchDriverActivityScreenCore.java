@@ -289,7 +289,7 @@ class SearchDriverActivityScreenCore extends Activity {
         distLp.setMargins(0, dp(9), 0, 0);
         infoCol.addView(driverDistanceText, distLp);
 
-        miniMap = new WebView(this);
+        miniMap = new CustomerThemedWebView(this);
         miniMap.setBackgroundColor(Color.TRANSPARENT);
         WebSettings settings = miniMap.getSettings();
         settings.setJavaScriptEnabled(true);
@@ -298,6 +298,7 @@ class SearchDriverActivityScreenCore extends Activity {
         settings.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
         settings.setDomStorageEnabled(true);
         miniMap.setWebViewClient(new WebViewClient() {
+            @Override public void onPageFinished(WebView view,String url) { if(view instanceof CustomerThemedWebView)((CustomerThemedWebView)view).refreshCustomerTheme(); }
             @Override public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) { return true; }
             @Override public boolean shouldOverrideUrlLoading(WebView view, String url) { return true; }
         });
@@ -895,7 +896,7 @@ class SearchDriverActivityScreenCore extends Activity {
                 "<style>html,body,#map{height:100%;margin:0} .leaflet-control-attribution{display:none}</style></head>" +
                 "<body><div id='map'></div><script>" +
                 "var map=L.map('map',{zoomControl:false,attributionControl:false});" +
-                "L.tileLayer('" + tileUrl + "').addTo(map);" +
+                "window.transivaThemeTiles=L.tileLayer('" + tileUrl + "').addTo(map);" +
                 "var d=[" + driverLat + "," + driverLng + "], p=[" + pickupLat + "," + pickupLng + "];" +
                 "L.marker(d).addTo(map).bindPopup('" + jsSafe(driverName) + "').openPopup();" +
                 "L.marker(p).addTo(map).bindPopup('Lokasi Jemput');" +

@@ -43,7 +43,7 @@ public class TransAssistantActivity extends Activity {
         super.onCreate(b);
         Window w = getWindow();
         w.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
-        dark = CustomerAppSettings.isDarkMode(this);
+        dark = false; // Source colors stay light; the shared theme engine renders both modes.
         w.setStatusBarColor(dark ? Color.rgb(4,13,25) : NAVY);
         w.setNavigationBarColor(dark ? Color.rgb(5,16,29) : Color.WHITE);
         engine = new TransAssistantEngine(this);

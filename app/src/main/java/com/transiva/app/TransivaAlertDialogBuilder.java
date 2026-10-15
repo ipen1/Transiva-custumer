@@ -38,6 +38,11 @@ public class TransivaAlertDialogBuilder extends AlertDialog.Builder {
     public AlertDialog create() {
         final AlertDialog dialog = super.create();
         dialog.setOnShowListener(d -> applyTransivaStyle(dialog));
+        Window themedWindow=dialog.getWindow();
+        if(themedWindow!=null)themedWindow.getDecorView().addOnAttachStateChangeListener(new View.OnAttachStateChangeListener(){
+            @Override public void onViewAttachedToWindow(View view){CustomerAppSettings.applyToView(context,view);}
+            @Override public void onViewDetachedFromWindow(View view){}
+        });
         return dialog;
     }
 
@@ -81,6 +86,7 @@ public class TransivaAlertDialogBuilder extends AlertDialog.Builder {
             styleButton(positive, Color.rgb(22, 119, 255), Color.WHITE);
             styleButton(negative, Color.rgb(234, 244, 255), Color.rgb(11, 54, 117));
             styleButton(neutral, Color.rgb(242, 247, 255), Color.rgb(22, 119, 255));
+            if (window != null) CustomerAppSettings.applyToView(context,window.getDecorView());
 
             makeButtonsBalanced(positive, negative, neutral);
         } catch (Throwable ignored) {

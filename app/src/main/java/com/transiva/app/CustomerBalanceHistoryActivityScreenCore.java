@@ -738,7 +738,7 @@ class CustomerBalanceHistoryActivityScreenCore extends Activity {
                 );
 
         periodText=period;
-        period.setPadding(dp(8),dp(12),dp(8),dp(12));period.setOnClickListener(v->new AlertDialog.Builder(this).setTitle("Periode transaksi").setItems(new String[]{"7 hari terakhir","30 hari terakhir","90 hari terakhir"},(dialog,which)->{periodDays=new int[]{7,30,90}[which];periodText.setText(periodDays+" hari ▾");loadWallet();}).show());
+        period.setPadding(dp(8),dp(12),dp(8),dp(12));period.setOnClickListener(v->new TransivaAlertDialogBuilder(this).setTitle("Periode transaksi").setItems(new String[]{"7 hari terakhir","30 hari terakhir","90 hari terakhir"},(dialog,which)->{periodDays=new int[]{7,30,90}[which];periodText.setText(periodDays+" hari ▾");loadWallet();}).show());
         header.addView(period);
         content.addView(header);
 
@@ -1065,7 +1065,7 @@ class CustomerBalanceHistoryActivityScreenCore extends Activity {
         String body="Nominal: "+rupiah(item.optInt("amount"))+"\nMetode: "+(cash?"Tunai":"Transiva Pay")+"\nStatus: "+transactionStatus(item)+"\nWaktu: "+formatDate(item.optString("created_at"))+"\nReferensi: "+item.optString("reference","-")+"\n\n"+item.optString("description");
         if(cash&&item.has("waiting_fee"))body+="\n\nOngkir: "+rupiah(item.optInt("fare_before_waiting"))+"\nSmart Waiting: "+rupiah(item.optInt("waiting_fee"))+"\nTotal: "+rupiah(item.optInt("amount"));
         body+=cash?"\n\nPembayaran tunai tidak memotong saldo Transiva Pay.":"\n\nSaldo sebelum: "+rupiah(item.optInt("balance_before"))+"\nSaldo setelah: "+rupiah(item.optInt("balance_after"));
-        new AlertDialog.Builder(this).setTitle(item.optString("title","Detail transaksi")).setMessage(body).setPositiveButton("Tutup",null).show();
+        new TransivaAlertDialogBuilder(this).setTitle(item.optString("title","Detail transaksi")).setMessage(body).setPositiveButton("Tutup",null).show();
     }
 
     protected void openDeposit() {

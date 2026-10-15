@@ -24,7 +24,16 @@ public final class CustomerBottomNavigation {
 
     private CustomerBottomNavigation() {}
 
-    public static View build(Activity activity, int activeIndex) {
+    public static View build(Activity activity, int activeIndex) { return new ThemeNavigation(activity,activeIndex); }
+
+    private static final class ThemeNavigation extends FrameLayout implements CustomerAppSettings.ThemeAware {
+        final Activity activity;final int activeIndex;boolean dark;
+        ThemeNavigation(Activity a,int index){super(a);activity=a;activeIndex=index;dark=CustomerAppSettings.isDarkMode(a);rebuild();}
+        private void rebuild(){removeAllViews();View nav=buildCore(activity,activeIndex);CustomerAppSettings.preserveArtwork(nav);addView(nav,new FrameLayout.LayoutParams(-1,-1));}
+        public void onCustomerThemeChanged(boolean target){if(target!=dark){dark=target;rebuild();}}
+    }
+
+    private static View buildCore(Activity activity, int activeIndex) {
         boolean dark = isDark(activity);
 
         LinearLayout nav = new LinearLayout(activity);
@@ -62,8 +71,8 @@ public final class CustomerBottomNavigation {
         statusLp.setMargins(dp(activity, 2), 0, 0, 0);
         nav.addView(connectionSlot, statusLp);
 
-        nav.setAlpha(0f);
-        nav.setTranslationY(dp(activity, 12));
+        nav.setAlpha(1f);
+        nav.setTranslationY(0f);
         nav.animate()
                 .alpha(1f)
                 .translationY(0f)
@@ -137,7 +146,7 @@ public final class CustomerBottomNavigation {
         if (center) {
             icon.setColorFilter(Color.WHITE);
         } else {
-            icon.setColorFilter(Color.parseColor(active ? BLUE : (dark ? "#BFD5EC" : "#70859B")));
+            icon.setColorFilter(Color.parseColor(active ? (dark ? "#78BAFF" : BLUE) : (dark ? "#BFD5EC" : "#70859B")));
         }
         FrameLayout.LayoutParams iconLp = new FrameLayout.LayoutParams(-1, -1, Gravity.CENTER);
         iconWrap.addView(icon, iconLp);
@@ -146,7 +155,7 @@ public final class CustomerBottomNavigation {
         title.setText(label);
         title.setTextSize(center ? 9.5f : 9f);
         title.setTextColor(center ? Color.parseColor(active ? "#39A8FF" : (dark ? "#F4F9FF" : "#26384B"))
-                : Color.parseColor(active ? BLUE : (dark ? "#D8E6F7" : "#60738A")));
+                : Color.parseColor(active ? (dark ? "#78BAFF" : BLUE) : (dark ? "#D8E6F7" : "#60738A")));
         title.setGravity(Gravity.CENTER);
         title.setSingleLine(true);
         if (active || center) title.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
@@ -193,8 +202,7 @@ public final class CustomerBottomNavigation {
     }
 
     private static boolean isDark(Activity activity) {
-        int mode = activity.getResources().getConfiguration().uiMode & Configuration.UI_MODE_NIGHT_MASK;
-        return mode == Configuration.UI_MODE_NIGHT_YES;
+        return CustomerAppSettings.isDarkMode(activity);
     }
 
     private static int dp(Activity activity, int value) {

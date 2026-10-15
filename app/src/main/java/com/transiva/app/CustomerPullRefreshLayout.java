@@ -34,7 +34,7 @@ public final class CustomerPullRefreshLayout extends FrameLayout {
         slop=ViewConfiguration.get(activity).getScaledTouchSlop();
         addView(child,new FrameLayout.LayoutParams(-1,-1));
         badge=new LinearLayout(activity);badge.setGravity(Gravity.CENTER);badge.setPadding(dp(14),dp(10),dp(14),dp(10));
-        boolean dark=CustomerAppSettings.isDarkMode(activity);
+        boolean dark=false; // Shared reversible theme policy.
         GradientDrawable bg=new GradientDrawable();bg.setColor(Color.parseColor(dark?"#17283D":"#FFFFFF"));bg.setCornerRadius(dp(24));bg.setStroke(dp(1),Color.parseColor(dark?"#365579":"#CBE4FF"));badge.setBackground(bg);badge.setElevation(dp(6));
         spinner=new ProgressBar(activity);spinner.setIndeterminateTintList(android.content.res.ColorStateList.valueOf(Color.parseColor("#0B7CFF")));badge.addView(spinner,new LinearLayout.LayoutParams(dp(20),dp(20)));
         label=new TextView(activity);label.setTextSize(12);label.setTextColor(Color.parseColor(dark?"#E7F2FF":"#075BB8"));label.setPadding(dp(8),0,0,0);badge.addView(label);

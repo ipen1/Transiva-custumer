@@ -2078,7 +2078,7 @@ class CustomerChatRoomActivityScreenCore extends Activity {
         EditText query=new EditText(this);query.setSingleLine(true);query.setHint("Cari isi pesan (minimal 2 karakter)");body.addView(query);
         Button find=new Button(this);find.setAllCaps(false);find.setText("Cari");body.addView(find);
         ScrollView scroll=new ScrollView(this);LinearLayout results=new LinearLayout(this);results.setOrientation(LinearLayout.VERTICAL);scroll.addView(results);body.addView(scroll,new LinearLayout.LayoutParams(-1,dp(280)));
-        android.app.AlertDialog dialog=new android.app.AlertDialog.Builder(this).setTitle("Pencarian percakapan").setView(body).setPositiveButton("Tutup",null).create();dialog.show();
+        android.app.AlertDialog dialog=new TransivaAlertDialogBuilder(this).setTitle("Pencarian percakapan").setView(body).setPositiveButton("Tutup",null).create();dialog.show();
         find.setOnClickListener(v->{String term=query.getText().toString().trim();if(term.length()<2){query.setError("Minimal 2 karakter");return;}results.removeAllViews();searchPage(term,0,results,dialog);});
     }
     private String searchEndpoint() throws Exception {return ApiConfig.server("search_chat.php")+"?room_id="+URLEncoder.encode(roomId,"UTF-8")+"&source="+URLEncoder.encode(orderSource,"UTF-8")+"&order_id="+URLEncoder.encode(orderId,"UTF-8")+"&order_db_id="+URLEncoder.encode(orderDbId,"UTF-8");}

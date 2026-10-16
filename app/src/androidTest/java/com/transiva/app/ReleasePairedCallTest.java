@@ -32,7 +32,7 @@ public class ReleasePairedCallTest {
     private WebRtcCallActivity activity;private DataChannel data;
     private String nonce,action;private boolean caller;
     private final Handler ui=new Handler(Looper.getMainLooper());
-    private final CountDownLatch go=new CountDownLatch(1),finish=new CountDownLatch(1);
+    private final CountDownLatch go=new CountDownLatch(1),finish=new CountDownLatch(1),release=new CountDownLatch(1);
     private final AtomicInteger frames=new AtomicInteger(),restartFrames=new AtomicInteger(-1);
     private final AtomicBoolean connected=new AtomicBoolean(),pong=new AtomicBoolean();
     private final AtomicReference<Throwable> error=new AtomicReference<>();
@@ -52,6 +52,7 @@ public class ReleasePairedCallTest {
         String type=value.optString("type");
         if("go".equals(type)){go.countDown();return;}
         if("finish".equals(type)){finish.countDown();return;}
+        if("release".equals(type)){release.countDown();return;}
         if("restart".equals(type)){restartFrames.set(frames.get());peer.restartIce();peer.createOffer(description("offer"),new MediaConstraints());return;}
         if("pip".equals(type)){activity.enterPictureInPictureMode(new PictureInPictureParams.Builder().setAspectRatio(new Rational(3,4)).build());ui.postDelayed(()->{try{event("pip",new JSONObject().put("active",activity.isInPictureInPictureMode()));}catch(Exception e){error.set(e);}},1000);return;}
         if("lock_state".equals(type)){event("lock",new JSONObject().put("active",((KeyguardManager)activity.getSystemService(Context.KEYGUARD_SERVICE)).isKeyguardLocked()));return;}
@@ -95,7 +96,7 @@ public class ReleasePairedCallTest {
             videoSource=factory.createVideoSource(false);video=factory.createVideoTrack("ci_video",videoSource);peer.addTrack(video,Collections.singletonList("ci"));videoSource.getCapturerObserver().onCapturerStarted(true);
             capture=Executors.newSingleThreadScheduledExecutor();capture.scheduleAtFixedRate(()->{JavaI420Buffer buffer=JavaI420Buffer.allocate(160,120);for(int n=0;n<buffer.getDataY().capacity();n++)buffer.getDataY().put(n,(byte)160);for(int n=0;n<buffer.getDataU().capacity();n++)buffer.getDataU().put(n,(byte)128);for(int n=0;n<buffer.getDataV().capacity();n++)buffer.getDataV().put(n,(byte)128);VideoFrame frame=new VideoFrame(buffer,0,System.nanoTime());videoSource.getCapturerObserver().onFrameCaptured(frame);frame.release();},0,100,TimeUnit.MILLISECONDS);
             if(caller)channel(peer.createDataChannel("ci",new DataChannel.Init()));
-            ContextCompat.registerReceiver(context,receiver,new IntentFilter(action),ContextCompat.RECEIVER_EXPORTED);registered=true;event("ready");
+            ContextCompat.registerReceiver(context,receiver,new IntentFilter(action),ContextCompat.RECEIVER_EXPORTED);registered=true;event("ready",new JSONObject().put("protocol_version",2));
             if(caller){assertTrue(go.await(30,TimeUnit.SECONDS));instrumentation.runOnMainSync(()->peer.createOffer(description("offer"),new MediaConstraints()));}
             long deadline=SystemClock.elapsedRealtime()+70000;
             while((!connected.get()||!pong.get()||frames.get()<3)&&error.get()==null&&SystemClock.elapsedRealtime()<deadline)SystemClock.sleep(100);
@@ -104,6 +105,10 @@ public class ReleasePairedCallTest {
             if(error.get()!=null)throw new AssertionError(error.get());assertTrue("Media not reconnected after transition",connected.get());assertTrue("Media did not continue after ICE restart",restartFrames.get()>=0&&frames.get()>restartFrames.get()+3);
             CountDownLatch stats=new CountDownLatch(1);AtomicLong receivedAudio=new AtomicLong();peer.getStats(report->{for(RTCStats stat:report.getStatsMap().values()){Map<String,Object> m=stat.getMembers();if("inbound-rtp".equals(stat.getType())&&"audio".equals(String.valueOf(m.get("kind")))){Object n=m.get("packetsReceived");if(n instanceof Number)receivedAudio.addAndGet(((Number)n).longValue());}}stats.countDown();});assertTrue(stats.await(10,TimeUnit.SECONDS));assertTrue("No inbound audio packets",receivedAudio.get()>0);
             event("done",new JSONObject().put("video_frames",frames.get()).put("audio_packets",receivedAudio.get()));
+            // done acknowledges verified media, not permission to close this peer.
+            // The other device may still be collecting stats/asserting connected.
+            // Keep media alive until the host has received BOTH acknowledgements.
+            assertTrue("Host did not release both verified peers",release.await(30,TimeUnit.SECONDS));
         }finally{
             if(registered)context.unregisterReceiver(receiver);
             if(capture!=null){capture.shutdownNow();capture.awaitTermination(5,TimeUnit.SECONDS);}if(videoSource!=null)videoSource.getCapturerObserver().onCapturerStopped();

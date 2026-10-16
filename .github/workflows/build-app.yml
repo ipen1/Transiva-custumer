@@ -79,8 +79,11 @@ jobs:
             wallet-alert.log
           if-no-files-found: warn
 
+  release-device-gate:
+    uses: ./.github/workflows/play-release-smoke.yml
+
   build:
-    needs: backend-reliability
+    needs: [backend-reliability, release-device-gate]
     runs-on: ubuntu-24.04
 
     steps:
@@ -124,6 +127,9 @@ jobs:
           export JSON_JAR
           python3 tools/reliability/wallet_runtime_regression.py | tee wallet-runtime.log
           python3 tools/reliability/chat_runtime_regression.py | tee chat-runtime.log
+          python3 tools/reliability/session_poller_regression.py | tee session-poller-runtime.log
+          python3 tools/reliability/candidate_runtime_regression.py | tee candidate-runtime.log
+          python3 tools/reliability/paired_gate_selftest.py
           python3 tools/reliability/pending_chat_runtime_regression.py | tee pending-chat-runtime.log
       - name: Test real profile cache concurrency and session isolation
         shell: bash
@@ -174,6 +180,8 @@ jobs:
             profile-cache-regression.log
             wallet-runtime.log
             chat-runtime.log
+            session-poller-runtime.log
+            candidate-runtime.log
           if-no-files-found: warn
 
       # Direct = APK for your own server/distribution.

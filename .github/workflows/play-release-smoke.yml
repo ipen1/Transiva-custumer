@@ -1,12 +1,13 @@
-name: Play Release WebRTC Smoke
+name: Release API 36 Device Gate
 on:
+  workflow_call:
   workflow_dispatch:
 permissions:
   contents: read
 jobs:
   release-smoke:
     runs-on: ubuntu-24.04
-    timeout-minutes: 45
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-java@v5
@@ -18,33 +19,68 @@ jobs:
           gradle-version: '8.11.1'
       - name: Create temporary test-only signing key
         run: keytool -genkeypair -keystore app/transiva-release.jks -storetype PKCS12 -storepass smoke-test-only -keypass smoke-test-only -alias smoke -keyalg RSA -validity 2 -dname 'CN=Release Smoke Only'
-      - name: Enable emulator acceleration
+      - name: Build minified release and run JVM/API checks
+        env:
+          KEYSTORE_PASSWORD: smoke-test-only
+          KEY_PASSWORD: smoke-test-only
+          KEY_ALIAS: smoke
+        run: |
+          gradle :app:assemblePlayRelease :app:assemblePlayReleaseAndroidTest :app:testPlayReleaseUnitTest :app:lintPlayRelease :app:lintDirectRelease -PtransivaLocalVerification
+          python3 tools/reliability/verify_webrtc_jni.py app/build/outputs/mapping/playRelease/mapping.txt
+          JSON_JAR=$(find "$HOME/.gradle/caches" -path '*/org.json/json/20240303/*/json-20240303.jar' -print -quit)
+          export JSON_JAR
+          python3 tools/reliability/session_poller_regression.py
+          python3 tools/reliability/candidate_runtime_regression.py
+          python3 tools/reliability/paired_gate_selftest.py
+          gradle --stop
+      - name: Enable emulator acceleration and isolated TURN relay
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
-      - name: Run native WebRTC checks on minified Play release
+          sudo apt-get update && sudo apt-get install -y coturn
+          HOST_IP=$(hostname -I | awk '{print $1}')
+          TURN_PASSWORD=$(openssl rand -hex 12)
+          echo "TURN_HOST=$HOST_IP" >> "$GITHUB_ENV"
+          echo "TURN_PASSWORD=$TURN_PASSWORD" >> "$GITHUB_ENV"
+          sudo systemctl stop coturn || true
+          turnserver -n -a -f --realm=transiva-ci --user="ci:$TURN_PASSWORD" --listening-ip="$HOST_IP" --relay-ip="$HOST_IP" --external-ip="$HOST_IP" --min-port=49160 --max-port=49200 --no-tls --no-dtls --no-cli --allow-loopback-peers --no-multicast-peers > turn-ci.log 2>&1 &
+      - name: Real release UI, paired media, network, PiP, lock and performance gates
         uses: reactivecircus/android-emulator-runner@v2
         env:
           KEYSTORE_PASSWORD: smoke-test-only
           KEY_PASSWORD: smoke-test-only
           KEY_ALIAS: smoke
         with:
-          api-level: 35
+          api-level: 36
           arch: x86_64
           target: google_apis
+          avd-name: transiva-primary
           disable-animations: true
-          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
-          script: gradle :app:connectedPlayReleaseAndroidTest -PtransivaLocalVerification --stacktrace
-      - name: Verify native WebRTC lookup names after R8
-        run: python3 tools/reliability/verify_webrtc_jni.py app/build/outputs/mapping/playRelease/mapping.txt
-      - name: Upload smoke reports
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -memory 1536 -cores 2
+          script: |
+            adb -s emulator-5554 shell locksettings set-disabled false
+            gradle :app:connectedPlayReleaseAndroidTest -PtransivaLocalVerification --stacktrace
+            gradle --stop
+            python3 tools/reliability/collect_release_performance.py --serial emulator-5554 --output release-performance.json
+            echo no | avdmanager create avd --name transiva-peer --package 'system-images;android-36;google_apis;x86_64' --device pixel_5 --force
+            $ANDROID_HOME/emulator/emulator @transiva-peer -port 5556 -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -no-snapshot -memory 1536 -cores 2 > peer-emulator.log 2>&1 &
+            python3 tools/reliability/wait_peer_emulator.py emulator-5556
+            adb -s emulator-5556 install -r app/build/outputs/apk/play/release/app-play-release.apk
+            adb -s emulator-5556 install -r app/build/outputs/apk/androidTest/play/release/app-play-release-androidTest.apk
+            adb -s emulator-5556 shell locksettings set-disabled false
+            python3 tools/reliability/paired_release_gate.py --caller emulator-5554 --callee emulator-5556 --turn "turn:$TURN_HOST:3478?transport=udp" --turn-password "$TURN_PASSWORD" --output paired-release.json
+      - name: Upload device and performance reports
         if: always()
         uses: actions/upload-artifact@v6
         with:
-          name: play-release-webrtc-smoke-reports
+          name: release-api36-device-gate
           path: |
             app/build/reports/androidTests/
             app/build/outputs/androidTest-results/
-            app/build/outputs/mapping/playRelease/
+            app/build/test-results/
+            app/build/reports/lint-results-*.xml
+            paired-release.json
+            release-performance.json
+            peer-emulator.log
           if-no-files-found: warn

@@ -37,6 +37,6 @@ public static void main(String[] args)throws Exception{
 '''}
  for name,text in files.items():
   f=p/name;f.parent.mkdir(parents=True,exist_ok=True);f.write_text(text)
- cp=os.pathsep.join([os.environ['JSON_JAR'],str(sdk),str(p/'webrtc.jar')]);sources=list(p.rglob('*.java'))+[app/(name+'.java') for name in ['WebRtcSessionEngine','CallRecoveryPolicy','NetworkSafetyRules']]
+ cp=os.pathsep.join([os.environ['JSON_JAR'],str(sdk),str(p/'webrtc.jar')]);sources=list(p.rglob('*.java'))+[app/(name+'.java') for name in ['WebRtcSessionEngine','CallRecoveryPolicy','CallMediaState','NetworkSafetyRules']]
  subprocess.run([os.getenv('JAVAC_BIN','javac'),'-cp',cp,'-d',str(p/'classes'),*map(str,sources)],check=True)
  subprocess.run(['java','-cp',str(p/'classes')+os.pathsep+cp,'com.transiva.app.CandidateProbe'],check=True)

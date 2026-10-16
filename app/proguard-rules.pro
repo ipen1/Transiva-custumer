@@ -21,6 +21,17 @@
 }
 # Firebase and other SDKs supply their own consumer rules. Avoid blanket SDK keeps.
 
+# The separate instrumentation APK calls this shared class by its original ABI.
+# Without this rule R8 removes/renames Trace in the app, while AGP excludes the
+# duplicate dependency from the test APK. AndroidJUnitRunner then crashes before
+# running any test (run #680: NoClassDefFoundError androidx.tracing.Trace).
+# Retain its methods too: a name-only keep still allows forceEnableAppTracing()
+# and the trace-section entry points used by the runner to be removed/inlined.
+-keep class androidx.tracing.Trace { *; }
+# AndroidX Test's ListFuture calls this shared static entry point too. R8 can
+# inline every app call and remove its holder, leaving the test APK unlinked.
+-keep class androidx.concurrent.futures.CallbackToFutureAdapter { *; }
+
 -keep class com.transiva.app.WebRtcNativeRuntime { *; }
 
 # WebRTC 144 also calls these classes directly from libjingle_peerconnection_so.so.

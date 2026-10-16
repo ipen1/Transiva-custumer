@@ -31,7 +31,7 @@ public class ReleaseWebRtcSmokeTest {
         WebRtcNativeRuntime.initialize(context); // A second call must be harmless.
         JavaAudioDeviceModule adm = JavaAudioDeviceModule.builder(context)
                 .setUseHardwareAcousticEchoCanceler(false).setUseHardwareNoiseSuppressor(false).createAudioDeviceModule();
-        PeerConnectionFactory factory = null; PeerConnection peer = null;
+        PeerConnectionFactory factory = null; PeerConnection peer = null, verifier = null;
         AudioSource source = null; AudioTrack track = null;
         try {
             factory = PeerConnectionFactory.builder().setAudioDeviceModule(adm).createPeerConnectionFactory();
@@ -54,8 +54,12 @@ public class ReleaseWebRtcSmokeTest {
             assertTrue("JNI SDP callback timed out",done.await(20,TimeUnit.SECONDS));
             assertNull(error.get()); assertNotNull(result.get());
             assertTrue("Audio offer missing",result.get().contains("m=audio"));
+            verifier=factory.createPeerConnection(config,new Observer());assertNotNull(verifier);
+            CountDownLatch parsed=new CountDownLatch(1);error.set(null);
+            verifier.setRemoteDescription(new SdpObserver(){public void onCreateSuccess(SessionDescription d){}public void onCreateFailure(String reason){}public void onSetSuccess(){parsed.countDown();}public void onSetFailure(String reason){error.set(reason);parsed.countDown();}},new SessionDescription(SessionDescription.Type.OFFER,result.get()+CallRecoveryPolicy.CAPABILITY+"\r\n"));
+            assertTrue("Advertised SDP parse timed out",parsed.await(20,TimeUnit.SECONDS));assertNull("Capability broke native SDP parsing",error.get());
         } finally {
-            if(peer!=null)peer.dispose(); if(track!=null)track.dispose();
+            if(verifier!=null)verifier.dispose();if(peer!=null)peer.dispose(); if(track!=null)track.dispose();
             if(source!=null)source.dispose(); if(factory!=null)factory.dispose(); adm.release();
         }
     }

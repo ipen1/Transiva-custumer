@@ -129,7 +129,7 @@ public class TransivaCallUiActivity extends CustomerAdaptiveActivity {
         control(mute,"mic",e.muted,"Mic mati","Mikrofon",e.muted?"Aktifkan mikrofon":"Matikan mikrofon");
         control(speaker,"speaker",e.speaker,"Speaker aktif","Speaker",e.speaker?"Matikan speaker":"Aktifkan speaker");
         control(camera,"video",!e.cameraEnabled,"Kamera mati","Kamera",e.cameraEnabled?"Matikan kamera":"Aktifkan kamera");
-        boolean ready=e.connected;mute.setEnabled(ready);speaker.setEnabled(ready);camera.setEnabled(ready);swap.setEnabled(ready&&e.cameraEnabled);
+        boolean ready=e.connected;mute.setEnabled(ready);speaker.setEnabled(ready);camera.setEnabled(ready);swap.setEnabled(ready&&e.cameraEnabled&&!e.cameraSwitching);
         for(Button b:new Button[]{mute,speaker,camera,swap})b.setAlpha(b.isEnabled()?1f:.45f);
     }
     private void control(Button b,String icon,boolean selected,String on,String off,String description){
@@ -229,7 +229,7 @@ public class TransivaCallUiActivity extends CustomerAdaptiveActivity {
             previewFrame=new FrameLayout(this);previewFrame.setPadding(dp(2),dp(2),dp(2),dp(2));
             previewFrame.setBackground(CallVisuals.surface(0xffa4cbd3,0xff426f86,dp(18),0));
             previewFrame.setClipToOutline(true);previewFrame.setClipChildren(true);previewFrame.setClipToPadding(true);
-            local.init(e.eglContext(),null);local.setMirror(true);
+            local.init(e.eglContext(),null);local.setMirror(e.frontCamera);
             local.setOutlineProvider(new ViewOutlineProvider(){@Override public void getOutline(View view,Outline outline){outline.setRoundRect(0,0,view.getWidth(),view.getHeight(),dp(16));}});
             local.setClipToOutline(true);
             previewFrame.addView(local,new FrameLayout.LayoutParams(-1,-1));
@@ -237,6 +237,7 @@ public class TransivaCallUiActivity extends CustomerAdaptiveActivity {
             preview.setMargins(dp(12),dp(12),dp(12),dp(12));stage.addView(previewFrame,preview);
             rendererReady=true;e.attach(local,remote);resizeLocalPreview();
         }
+        if(local!=null)local.setMirror(e.frontCamera);
         if(previewFrame!=null)previewFrame.setVisibility(e.cameraEnabled&&!(Build.VERSION.SDK_INT>=26&&isInPictureInPictureMode())?View.VISIBLE:View.INVISIBLE);
         updatePip();
     }

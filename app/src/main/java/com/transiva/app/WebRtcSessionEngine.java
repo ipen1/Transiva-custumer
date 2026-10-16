@@ -32,6 +32,9 @@ final class WebRtcSessionEngine {
     volatile String callId="",status="Menyiapkan panggilan",error="";
     volatile boolean ended,failed,accepted,connected,muted,speaker=true,cameraEnabled=true;
     volatile long connectedAt;
+    volatile boolean frontCamera=true,cameraSwitching;
+    private static final String CAMERA_ERROR="Kamera terhenti; suara tetap aktif";
+    private static final String SWITCH_ERROR="Gagal mengganti kamera. Coba lagi.";
     private final Handler main=new Handler(Looper.getMainLooper());
     private final ExecutorService io=Executors.newSingleThreadExecutor();
     private final ExecutorService heartbeatIo=Executors.newSingleThreadExecutor();
@@ -106,10 +109,28 @@ final class WebRtcSessionEngine {
             async(()->{try{
                 JSONObject r=postSignal(payload("poll").put("candidate_after",after));
                 main.post(()->{pollBusy=false;if(ended)return;networkFailures=0;apply(r);});
-            }catch(Exception e){main.post(()->{pollBusy=false;if(ended)return;networkFailures++;status="Menyambungkan kembali…";changed();if(networkFailures>=12)fail("Koneksi signaling terputus. Coba hubungi kembali.");});}});
+            }catch(Exception e){main.post(()->{pollBusy=false;if(ended)return;networkFailures++;if(!reconcileMediaConnection()){status="Menyambungkan kembali…";changed();}if(networkFailures>=12)fail("Koneksi signaling terputus. Coba hubungi kembali.");});}});
         }
         main.postDelayed(this,connected?2000:900);
     }};
+    private boolean reconcileMediaConnection(){
+        if(ended||pc==null)return false;
+        if(!CallMediaState.isConnected(pc.iceConnectionState().name(),pc.connectionState().name()))return false;
+        boolean notify=!connected||!"Terhubung".equals(status);
+        connected=true;recovery.connected();main.removeCallbacks(recoverTick);
+        if(pc.signalingState()==PeerConnection.SignalingState.STABLE)negotiatingRestart=false;
+        if(connectedAt==0)connectedAt=SystemClock.elapsedRealtime();
+        status="Terhubung";
+        if(notify)changed();
+        return true;
+    }
+    private void mediaStateChanged(){
+        if(ended||pc==null||reconcileMediaConnection())return;
+        PeerConnection.IceConnectionState ice=pc.iceConnectionState();
+        PeerConnection.PeerConnectionState transport=pc.connectionState();
+        if(ice==PeerConnection.IceConnectionState.FAILED||ice==PeerConnection.IceConnectionState.DISCONNECTED
+                ||transport==PeerConnection.PeerConnectionState.FAILED||transport==PeerConnection.PeerConnectionState.DISCONNECTED)beginRecovery();
+    }
     private void updateIdentity(JSONObject r){
         peer=CallPeerIdentity.first(r.optString("peer_name"),peer);
         peerPhoto=CallPeerIdentity.first(r.optString("peer_photo"),r.optString("peer_photo_url"),peerPhoto);
@@ -138,7 +159,7 @@ final class WebRtcSessionEngine {
             if(receivedIce.size()>512)receivedIce.remove(receivedIce.iterator().next());
             if(pc!=null&&remoteSet)pc.addIceCandidate(ice);else if(pendingIce.size()<256)pendingIce.add(ice);
         }
-        after=r.optInt("candidate_last",after);changed();
+        after=r.optInt("candidate_last",after);reconcileMediaConnection();changed();
     }
     private void loadIce(){
         iceServers=new ArrayList<>();
@@ -171,15 +192,28 @@ final class WebRtcSessionEngine {
     EglBase.Context eglContext(){return egl==null?null:egl.getEglBaseContext();}
     private void startCamera(){
         CameraEnumerator devices=Camera2Enumerator.isSupported(context)?new Camera2Enumerator(context):new Camera1Enumerator(true);
-        for(String name:devices.getDeviceNames())if(devices.isFrontFacing(name)){camera=devices.createCapturer(name,null);if(camera!=null)break;}
-        if(camera==null)for(String name:devices.getDeviceNames()){camera=devices.createCapturer(name,null);if(camera!=null)break;}
+        for(String name:devices.getDeviceNames())if(devices.isFrontFacing(name)){camera=devices.createCapturer(name,null);if(camera!=null){frontCamera=true;break;}}
+        if(camera==null)for(String name:devices.getDeviceNames()){camera=devices.createCapturer(name,null);if(camera!=null){frontCamera=devices.isFrontFacing(name);break;}}
         if(camera==null)throw new IllegalStateException("Kamera tidak tersedia");
         videoSource=factory.createVideoSource(false);texture=SurfaceTextureHelper.create("TransivaCallCamera",egl.getEglBaseContext());camera.initialize(texture,context,videoSource.getCapturerObserver());localVideo=factory.createVideoTrack("TRANSIVA_VIDEO",videoSource);pc.addTrack(localVideo,Collections.singletonList("transiva_video"));for(VideoSink sink:localSinks)localVideo.addSink(sink);updateCamera();
     }
     void setVisible(boolean visible){videoVisible=visible;updateCamera();}
     void toggleCamera(){cameraEnabled=!cameraEnabled;updateCamera();changed();}
-    void switchCamera(){if(camera!=null&&cameraRunning)camera.switchCamera(null);}
-    private void updateCamera(){if(camera==null||ended)return;boolean run=videoVisible&&cameraEnabled;try{if(run&&!cameraRunning){camera.startCapture(640,480,20);cameraRunning=true;}else if(!run&&cameraRunning){camera.stopCapture();cameraRunning=false;}localVideo.setEnabled(run);}catch(InterruptedException e){Thread.currentThread().interrupt();}catch(RuntimeException e){localVideo.setEnabled(false);error="Kamera terhenti; suara tetap aktif";changed();}}
+    void switchCamera(){
+        if(ended||camera==null||!cameraRunning||cameraSwitching)return;
+        cameraSwitching=true;changed();
+        try{camera.switchCamera(new CameraVideoCapturer.CameraSwitchHandler(){
+            public void onCameraSwitchDone(boolean isFrontCamera){main.post(()->{
+                if(ended)return;cameraSwitching=false;frontCamera=isFrontCamera;
+                if(SWITCH_ERROR.equals(error))error="";
+                changed();
+            });}
+            public void onCameraSwitchError(String reason){main.post(()->{
+                if(ended)return;cameraSwitching=false;error=SWITCH_ERROR;changed();
+            });}
+        });}catch(RuntimeException unavailable){cameraSwitching=false;error=SWITCH_ERROR;changed();}
+    }
+    private void updateCamera(){if(camera==null||ended)return;boolean run=videoVisible&&cameraEnabled;try{if(run&&!cameraRunning){camera.startCapture(640,480,20);cameraRunning=true;}else if(!run&&cameraRunning){camera.stopCapture();cameraRunning=false;}localVideo.setEnabled(run);if(run&&CAMERA_ERROR.equals(error)){error="";changed();}}catch(InterruptedException e){Thread.currentThread().interrupt();}catch(RuntimeException e){localVideo.setEnabled(false);error=CAMERA_ERROR;changed();}}
     void attach(VideoSink local,VideoSink remote){if(local!=null&&!localSinks.contains(local)){localSinks.add(local);if(localVideo!=null)localVideo.addSink(local);}if(remote!=null&&!remoteSinks.contains(remote)){remoteSinks.add(remote);if(remoteVideo!=null)remoteVideo.addSink(remote);}}
     void detach(VideoSink local,VideoSink remote){localSinks.remove(local);remoteSinks.remove(remote);if(localVideo!=null&&local!=null)localVideo.removeSink(local);if(remoteVideo!=null&&remote!=null)remoteVideo.removeSink(remote);}
     void toggleMute(){muted=!muted;if(audioTrack!=null)audioTrack.setEnabled(!muted);changed();}
@@ -248,8 +282,9 @@ final class WebRtcSessionEngine {
         });}catch(RejectedExecutionException stopped){candidateBusy=false;outgoingIce.remove(key);}
     }
     private final Runnable recoverTick=new Runnable(){public void run(){
-        if(ended||connected)return;
+        if(ended)return;
         if(!callOwner.matches(context)){end(false,"Sesi panggilan berubah");return;}
+        if(reconcileMediaConnection()||connected)return;
         if(recovery.expired(SystemClock.elapsedRealtime())){fail("Koneksi media belum pulih. Coba hubungi kembali.");return;}
         if(pc!=null&&pc.signalingState()==PeerConnection.SignalingState.STABLE&&!negotiatingRestart
                 &&recovery.takeRestart(SystemClock.elapsedRealtime(),!incoming,peerRestart)){
@@ -288,7 +323,8 @@ final class WebRtcSessionEngine {
     private static class Sdp implements SdpObserver{public void onCreateSuccess(SessionDescription d){}public void onSetSuccess(){}public void onCreateFailure(String e){}public void onSetFailure(String e){}}
     private final class Observer implements PeerConnection.Observer{
         public void onSignalingChange(PeerConnection.SignalingState s){}
-        public void onIceConnectionChange(PeerConnection.IceConnectionState s){main.post(()->{if(ended)return;if(s==PeerConnection.IceConnectionState.CONNECTED||s==PeerConnection.IceConnectionState.COMPLETED){connected=true;recovery.connected();main.removeCallbacks(recoverTick);if(connectedAt==0)connectedAt=SystemClock.elapsedRealtime();status="Terhubung";changed();}else if(s==PeerConnection.IceConnectionState.FAILED||s==PeerConnection.IceConnectionState.DISCONNECTED){beginRecovery();}});}
+        public void onIceConnectionChange(PeerConnection.IceConnectionState s){main.post(()->mediaStateChanged());}
+        @Override public void onConnectionChange(PeerConnection.PeerConnectionState s){main.post(()->mediaStateChanged());}
         public void onIceConnectionReceivingChange(boolean b){}public void onIceGatheringChange(PeerConnection.IceGatheringState s){}
         public void onIceCandidate(IceCandidate c){main.post(()->queueCandidate(c));}
         public void onIceCandidatesRemoved(IceCandidate[] c){}public void onAddStream(MediaStream s){}public void onRemoveStream(MediaStream s){}public void onDataChannel(DataChannel d){}public void onRenegotiationNeeded(){}

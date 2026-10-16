@@ -435,7 +435,6 @@ class LoginActivityScreenCore extends CustomerAdaptiveFragmentActivity {
         try { TransivaSession.saveUser(this, result.user); } catch (Exception e) { Log.w(TAG, "Legacy session gagal", e); }
         authSessionToken=safe(session.getToken());
         saveFcmTokenAfterLogin(result.user);
-        CustomerFcmTokenSync.forceSync(this);
         showMessage("Login berhasil", true);
         mainHandler.postDelayed(() -> {if(!authScope.isDestroyed()&&!isFinishing()&&authSessionToken.equals(safe(new SessionManager(this).getToken())))openPinPage(role);},420);
     }
@@ -454,6 +453,7 @@ class LoginActivityScreenCore extends CustomerAdaptiveFragmentActivity {
             connection.setRequestProperty("Accept", "application/json");
             connection.setRequestProperty("X-Transiva-Client", "Android-Native-Google");
             JSONObject payload = new JSONObject();
+            payload.put("fcm_registration_protocol",2);
             payload.put("id_token", idToken);
             payload.put("signup_username",googleSignupUsername);payload.put("signup_phone",googleSignupPhone);
             payload.put("device_name", Build.MANUFACTURER + " " + Build.MODEL);
@@ -464,7 +464,7 @@ class LoginActivityScreenCore extends CustomerAdaptiveFragmentActivity {
             payload.put("model", Build.MODEL);
             payload.put("android_version", Build.VERSION.RELEASE);
             try { payload.put("app_version", getPackageManager().getPackageInfo(getPackageName(), 0).versionName); } catch (Exception ignored) { payload.put("app_version", "unknown"); }
-            String fcm = getCachedFcmToken(); if (!fcm.isEmpty()) payload.put("fcm_token", fcm);
+            payload.put("fcm_registration_protocol", 2);
             try (BufferedWriter writer = new BufferedWriter(new OutputStreamWriter(connection.getOutputStream(), StandardCharsets.UTF_8))) { writer.write(payload.toString()); }
             int code = connection.getResponseCode();
             InputStream stream = code >= 200 && code < 300 ? connection.getInputStream() : connection.getErrorStream();
@@ -521,6 +521,7 @@ class LoginActivityScreenCore extends CustomerAdaptiveFragmentActivity {
             );
 
             JSONObject payload = new JSONObject();
+            payload.put("fcm_registration_protocol",2);
             payload.put("username", username);
             payload.put("password", password);
             payload.put(
@@ -546,7 +547,7 @@ class LoginActivityScreenCore extends CustomerAdaptiveFragmentActivity {
                  * FCM token hanya untuk notifikasi.
                  * Jangan kirim sebagai field token autentikasi.
                  */
-                payload.put("fcm_token", cachedFcmToken);
+                payload.put("fcm_registration_protocol", 2);
             }
 
             try (BufferedWriter writer =
@@ -674,77 +675,7 @@ class LoginActivityScreenCore extends CustomerAdaptiveFragmentActivity {
     protected void saveFcmTokenAfterLogin(
             JSONObject user
     ) {
-        try {
-            int userId = firstPositiveInt(
-                    user.optInt("id", 0),
-                    user.optInt("user_id", 0),
-                    user.optInt("uid", 0)
-            );
-
-            String username = firstNotEmpty(
-                    user.optString("username", ""),
-                    user.optString("user_name", ""),
-                    user.optString("name", "")
-            );
-
-            String role = normalizeRole(
-                    user.optString("role", "customer")
-            );
-
-            String cachedToken = getCachedFcmToken();
-
-            if (!cachedToken.isEmpty()) {
-                saveFcmLocal(
-                        cachedToken,
-                        userId,
-                        username,
-                        role
-                );
-
-                uploadFcmToken(
-                        userId,
-                        username,
-                        role,
-                        cachedToken
-                );
-            }
-
-            FirebaseMessaging.getInstance()
-                    .getToken()
-                    .addOnSuccessListener(token -> {
-                        if(authScope.isDestroyed()||isFinishing()||!authSessionToken.equals(safe(new SessionManager(this).getToken())))return;
-                        String clean =
-                                token == null
-                                        ? ""
-                                        : token.trim();
-
-                        if (clean.isEmpty()) return;
-
-                        saveFcmLocal(
-                                clean,
-                                userId,
-                                username,
-                                role
-                        );
-
-                        uploadFcmToken(
-                                userId,
-                                username,
-                                role,
-                                clean
-                        );
-                    })
-                    .addOnFailureListener(
-                            error -> Log.e(
-                                    TAG,
-                                    "FCM token gagal",
-                                    error
-                            )
-                    );
-
-        } catch (Exception error) {
-            Log.e(TAG, "FCM setelah login gagal", error);
-        }
+        FcmTokenCoordinator.forceSync(getApplicationContext());
     }
 
     protected void uploadFcmToken(
@@ -753,83 +684,7 @@ class LoginActivityScreenCore extends CustomerAdaptiveFragmentActivity {
             String role,
             String fcmToken
     ) {
-        if (fcmToken == null || fcmToken.trim().isEmpty()) {
-            return;
-        }
-
-        authScope.execute(() -> {
-            HttpURLConnection connection = null;
-
-            try {
-                connection = (HttpURLConnection)
-                        CustomerApiClient.open(this, SAVE_FCM_URL);
-                CustomerApiClient.applySecurity(this, connection);
-
-                connection.setRequestMethod("POST");
-                connection.setConnectTimeout(TIMEOUT_MS);
-                connection.setReadTimeout(TIMEOUT_MS);
-                connection.setDoInput(true);
-                connection.setDoOutput(true);
-                connection.setUseCaches(false);
-                connection.setRequestProperty(
-                        "Content-Type",
-                        "application/json; charset=UTF-8"
-                );
-                connection.setRequestProperty(
-                        "Accept",
-                        "application/json"
-                );
-
-                JSONObject payload = new JSONObject();
-                payload.put("user_id", userId);
-                payload.put("id", userId);
-                payload.put("username", username);
-                payload.put("role", role);
-                payload.put("fcm_token", fcmToken.trim());
-                payload.put("token", fcmToken.trim());
-                payload.put("platform", "android_native");
-            payload.put("app_scope", "customer");
-            payload.put("installation_uuid", DeviceIdentityManager.getInstallationUuid(this));
-            payload.put("manufacturer", Build.MANUFACTURER);
-            payload.put("model", Build.MODEL);
-            payload.put("android_version", Build.VERSION.RELEASE);
-            try {
-                payload.put("app_version", getPackageManager().getPackageInfo(getPackageName(), 0).versionName);
-            } catch (Exception ignored) {
-                payload.put("app_version", "unknown");
-            }
-
-                try (BufferedWriter writer =
-                             new BufferedWriter(
-                                     new OutputStreamWriter(
-                                             connection.getOutputStream(),
-                                             StandardCharsets.UTF_8
-                                     )
-                             )) {
-                    writer.write(payload.toString());
-                }
-
-                int code = connection.getResponseCode();
-
-                InputStream stream =
-                        code >= 200 && code < 300
-                                ? connection.getInputStream()
-                                : connection.getErrorStream();
-
-                Log.d(
-                        TAG,
-                        "FCM upload HTTP=" + code
-                                + ", body=" + readStream(stream)
-                );
-
-            } catch (Exception error) {
-                Log.e(TAG, "Upload FCM gagal", error);
-            } finally {
-                if (connection != null) {
-                    connection.disconnect();
-                }
-            }
-        });
+        FcmTokenCoordinator.forceSync(getApplicationContext());
     }
 
     protected String getCachedFcmToken() {

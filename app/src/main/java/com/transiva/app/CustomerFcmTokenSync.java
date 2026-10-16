@@ -1,13 +1,9 @@
 package com.transiva.app;
 import android.content.Context;
-/** Compatibility entry points; one coordinator owns acknowledgements and retries. */
+/** Compatibility facade: all token writes are owned by one coordinator. */
 public final class CustomerFcmTokenSync {
     private CustomerFcmTokenSync(){}
-    public static void syncIfNeeded(Context context){ /* Runtime checks on every foreground tick. */ }
-    public static void forceSync(Context context){CallReliabilityRuntime.requestTokenSync();}
-    public static void syncTokenNow(Context context,String token){
-        if(context==null||token==null||token.trim().length()<20)return;
-        new SessionManager(context.getApplicationContext()).saveFcmToken(token.trim());
-        CallReliabilityRuntime.requestTokenSync();
-    }
+    public static void syncIfNeeded(Context c){FcmTokenCoordinator.syncIfNeeded(c);}
+    public static void forceSync(Context c){FcmTokenCoordinator.forceSync(c);}
+    public static void syncTokenNow(Context c,String token){FcmTokenCoordinator.onNewToken(c,token);}
 }

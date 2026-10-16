@@ -75,6 +75,7 @@ public final class CustomerAppSettings {
             CustomerWindowPolicy.appearance(a.getWindow(), CustomerWindowPolicy.appearance(a.getWindow())&~CustomerWindowPolicy.LIGHT_STATUS);
             View root=a.findViewById(android.R.id.content);
             if(root!=null){watch(root);paint(root,dark,0,dark?DARK_PAGE:0xffffffff);}
+            if(a instanceof TransivaCallUiActivity)((TransivaCallUiActivity)a).applyCallBars();
         });
     }
     public static void applyToView(Context c,View root){

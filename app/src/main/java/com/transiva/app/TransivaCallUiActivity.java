@@ -6,8 +6,6 @@ import android.content.*;
 import android.content.pm.PackageManager;
 import android.content.res.Configuration;
 import android.graphics.*;
-import android.graphics.drawable.GradientDrawable;
-import android.media.*;
 import android.os.*;
 import android.util.Rational;
 import android.view.*;
@@ -22,7 +20,11 @@ public class TransivaCallUiActivity extends CustomerAdaptiveActivity {
     public static final String ACTION_CALL_STATE="com.transiva.app.WEBRTC_CALL_STATE",EXTRA_CALL_ID="call_id",EXTRA_CALL_STATUS="call_status";
     private static final int PERMISSIONS=7101;
     private LinearLayout root,header,controls,actions;
-    private FrameLayout stage;
+    private FrameLayout stage,identity,previewFrame;
+    private CallVisuals.Avatar avatar;
+    private TextView brand,stageHint;
+    private boolean compact;
+    private String boundPhoto="",boundName="";
     private SurfaceViewRenderer local,remote;
     private TextView name,status;
     private Button accept,end,mute,speaker,camera,swap;
@@ -50,20 +52,81 @@ public class TransivaCallUiActivity extends CustomerAdaptiveActivity {
     @Override protected void onNewIntent(Intent i){super.onNewIntent(i);if(WebRtcCallForegroundService.current()!=null){render();return;}failureMessage="";startPending=false;setIntent(i);incoming=i.getBooleanExtra("incoming",false);video="video".equals(i.getStringExtra("call_type"));serviceRequested=false;startedSession=false;releaseRenderers();build();cancelIncomingNotification();if(incoming){startRing();if(i.getBooleanExtra("auto_accept",false))requestStart();}else requestStart();}
     private int dp(int n){return Math.round(n*getResources().getDisplayMetrics().density);}
     private TextView label(String text,int size){TextView t=new TextView(this);t.setText(text);t.setTextSize(size);t.setTextColor(Color.WHITE);t.setGravity(Gravity.CENTER);return t;}
-    private Button button(String text){Button b=new Button(this);b.setText(text);b.setTextSize(12);b.setAllCaps(false);return b;}
-    private void build(){root=new LinearLayout(this);root.setOrientation(LinearLayout.VERTICAL);root.setPadding(dp(12),dp(12),dp(12),dp(12));root.setBackgroundColor(0xFF07131F);
-        header=new LinearLayout(this);header.setOrientation(LinearLayout.VERTICAL);name=label(getIntent().getStringExtra("peer_name")==null?"Panggilan Transiva":getIntent().getStringExtra("peer_name"),21);status=label(incoming?"Panggilan masuk":"Menyiapkan panggilan",13);header.addView(name);header.addView(status);root.addView(header);
-        stage=new FrameLayout(this);stage.setBackgroundColor(0xFF102337);LinearLayout.LayoutParams sp=new LinearLayout.LayoutParams(-1,0,1);sp.setMargins(0,dp(10),0,dp(10));root.addView(stage,sp);
-        stage.addOnLayoutChangeListener((v,l,t,r,b,ol,ot,or,ob)->resizeLocalPreview());
-        TextView placeholder=label(video?"Video ditampilkan setelah terhubung":"☎",video?13:64);stage.addView(placeholder,new FrameLayout.LayoutParams(-1,-1));
-        controls=new LinearLayout(this);controls.setOrientation(LinearLayout.VERTICAL);
-        LinearLayout audioRow=new LinearLayout(this);mute=button("Mic aktif");speaker=button("Speaker");audioRow.addView(mute,new LinearLayout.LayoutParams(0,dp(48),1));audioRow.addView(speaker,new LinearLayout.LayoutParams(0,dp(48),1));controls.addView(audioRow);
-        LinearLayout cameraRow=new LinearLayout(this);camera=button("Kamera aktif");swap=button("Ganti kamera");cameraRow.addView(camera,new LinearLayout.LayoutParams(0,dp(48),1));cameraRow.addView(swap,new LinearLayout.LayoutParams(0,dp(48),1));cameraRow.setVisibility(video?View.VISIBLE:View.GONE);controls.addView(cameraRow);root.addView(controls);
-        actions=new LinearLayout(this);accept=button("Terima");end=button(incoming?"Tolak":"Akhiri");accept.setVisibility(incoming?View.VISIBLE:View.GONE);actions.addView(accept,new LinearLayout.LayoutParams(0,dp(48),1));actions.addView(end,new LinearLayout.LayoutParams(0,dp(48),1));root.addView(actions);setContentView(root);
-        // System/cutout/IME insets belong to CustomerWindowPolicy, including PiP.
-
-        accept.setOnClickListener(v->requestStart());end.setOnClickListener(v->hangup());mute.setOnClickListener(v->{WebRtcSessionEngine e=WebRtcCallForegroundService.current();if(e!=null)e.toggleMute();});speaker.setOnClickListener(v->{WebRtcSessionEngine e=WebRtcCallForegroundService.current();if(e!=null)e.toggleSpeaker();});camera.setOnClickListener(v->{WebRtcSessionEngine e=WebRtcCallForegroundService.current();if(e!=null)e.toggleCamera();});swap.setOnClickListener(v->{WebRtcSessionEngine e=WebRtcCallForegroundService.current();if(e!=null)e.switchCamera();});
+    private Button button(String text,String icon,int kind){
+        Button b=new Button(this);b.setText(text);b.setTextSize(11);b.setMaxLines(2);
+        CallVisuals.style(b,icon,false,kind,dp(kind==0?22:28));return b;
     }
+    private void addControl(LinearLayout row,Button b){
+        LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(0,dp(76),1);p.setMargins(dp(4),0,dp(4),0);row.addView(b,p);
+    }
+    private void build(){
+        boundPhoto="";boundName="";compact=false;
+        root=new LinearLayout(this);root.setOrientation(LinearLayout.VERTICAL);
+        root.setPadding(dp(18),dp(10),dp(18),dp(16));
+        root.setBackground(CallVisuals.surface(CallVisuals.TOP,CallVisuals.BOTTOM,0,0));
+        // Call artwork keeps its own contrast in either application theme.
+        CustomerAppSettings.preserveArtwork(root);
+        header=new LinearLayout(this);header.setOrientation(LinearLayout.VERTICAL);
+        brand=label("T R A N S I V A  /  "+(video?"VIDEO CALL":"VOICE CALL"),10);
+        brand.setTextColor(0xff71d8c2);brand.setPadding(0,0,0,dp(10));header.addView(brand);
+        name=label(CallPeerIdentity.first(getIntent().getStringExtra("peer_name"),getIntent().getStringExtra("caller_name"),"Transiva"),28);
+        name.setTypeface(Typeface.create("sans-serif-medium",0));name.setMaxLines(2);header.addView(name);
+        status=label(incoming?"Panggilan masuk":"Menyiapkan panggilan",13);status.setTextColor(CallVisuals.MUTED);
+        status.setPadding(0,dp(4),0,dp(4));header.addView(status);root.addView(header);
+        stage=new FrameLayout(this);stage.setBackground(CallVisuals.surface(0xff10263b,0xff091525,dp(28),0xff213b50));
+        LinearLayout.LayoutParams sp=new LinearLayout.LayoutParams(-1,0,1);sp.setMargins(0,dp(12),0,dp(16));root.addView(stage,sp);
+        identity=new FrameLayout(this);identity.setBackground(CallVisuals.surface(0xff10263b,0xff091525,dp(28),0xff213b50));identity.addView(new CallVisuals.Halo(this),new FrameLayout.LayoutParams(-1,-1));
+        avatar=new CallVisuals.Avatar(this);identity.addView(avatar,new FrameLayout.LayoutParams(dp(144),dp(144),Gravity.CENTER));
+        stageHint=label(video?"Menunggu video lawan bicara":"Panggilan suara",12);stageHint.setTextColor(CallVisuals.MUTED);
+        FrameLayout.LayoutParams hint=new FrameLayout.LayoutParams(-1,dp(40),Gravity.BOTTOM);hint.bottomMargin=dp(12);identity.addView(stageHint,hint);
+        stage.addView(identity,new FrameLayout.LayoutParams(-1,-1));
+        stage.addOnLayoutChangeListener((v,l,t,r,b,ol,ot,or,ob)->resizeLocalPreview());
+        controls=new LinearLayout(this);controls.setOrientation(LinearLayout.VERTICAL);
+        LinearLayout row=new LinearLayout(this);row.setGravity(Gravity.CENTER);
+        mute=button("Mikrofon","mic",0);speaker=button("Speaker","speaker",0);
+        camera=button("Kamera","video",0);swap=button("Putar kamera","swap",0);
+        for(Button control:new Button[]{mute,speaker,camera,swap}){control.setEnabled(false);control.setAlpha(.45f);}
+        addControl(row,mute);addControl(row,speaker);if(video){addControl(row,camera);addControl(row,swap);}
+        controls.addView(row);root.addView(controls);
+        actions=new LinearLayout(this);actions.setPadding(0,dp(14),0,0);
+        accept=button(video?"Terima video":"Terima","phone",1);end=button(incoming?"Tolak":"Akhiri","end",2);
+        accept.setVisibility(incoming?View.VISIBLE:View.GONE);
+        LinearLayout.LayoutParams ap=new LinearLayout.LayoutParams(0,dp(68),1);ap.setMargins(dp(4),0,dp(4),0);
+        actions.addView(accept,ap);LinearLayout.LayoutParams ep=new LinearLayout.LayoutParams(ap);actions.addView(end,ep);root.addView(actions);
+        setContentView(root);
+        root.addOnLayoutChangeListener((v,l,t,r,b,ol,ot,or,ob)->{boolean small=(b-t)<dp(480);if(small!=compact){compact=small;resizeChrome();}});
+        bindIdentity(name.getText().toString(),CallPeerIdentity.first(getIntent().getStringExtra("peer_photo"),getIntent().getStringExtra("caller_photo")));
+        accept.setOnClickListener(v->requestStart());end.setOnClickListener(v->hangup());
+        mute.setOnClickListener(v->{WebRtcSessionEngine e=WebRtcCallForegroundService.current();if(e!=null){e.toggleMute();render();}});
+        speaker.setOnClickListener(v->{WebRtcSessionEngine e=WebRtcCallForegroundService.current();if(e!=null){e.toggleSpeaker();render();}});
+        camera.setOnClickListener(v->{WebRtcSessionEngine e=WebRtcCallForegroundService.current();if(e!=null){e.toggleCamera();render();}});
+        swap.setOnClickListener(v->{WebRtcSessionEngine e=WebRtcCallForegroundService.current();if(e!=null)e.switchCamera();});
+    }
+    private void bindIdentity(String peer,String photo){
+        if(!peer.equals(boundName)){boundName=peer;name.setText(peer);avatar.name(peer);}
+        String url=ImageUrlResolver.resolve(photo);
+        if(!url.equals(boundPhoto)){boundPhoto=url;RemoteImageLoader.loadCenterCrop(avatar,url,0);}
+    }
+    private void resizeChrome(){
+        brand.setVisibility(compact?View.GONE:View.VISIBLE);name.setTextSize(compact?20:28);
+        for(Button b:new Button[]{mute,speaker,camera,swap,accept,end}){
+            ViewGroup.LayoutParams p=b.getLayoutParams();if(p!=null){p.height=dp(compact?64:(b==accept||b==end)?68:76);b.setLayoutParams(p);}
+        }
+        actions.setPadding(0,dp(compact?6:14),0,0);applyPadding();
+    }
+    private void updateControls(WebRtcSessionEngine e){
+        control(mute,"mic",e.muted,"Mic mati","Mikrofon",e.muted?"Aktifkan mikrofon":"Matikan mikrofon");
+        control(speaker,"speaker",e.speaker,"Speaker aktif","Speaker",e.speaker?"Matikan speaker":"Aktifkan speaker");
+        control(camera,"video",!e.cameraEnabled,"Kamera mati","Kamera",e.cameraEnabled?"Matikan kamera":"Aktifkan kamera");
+        boolean ready=e.connected;mute.setEnabled(ready);speaker.setEnabled(ready);camera.setEnabled(ready);swap.setEnabled(ready&&e.cameraEnabled);
+        for(Button b:new Button[]{mute,speaker,camera,swap})b.setAlpha(b.isEnabled()?1f:.45f);
+    }
+    private void control(Button b,String icon,boolean selected,String on,String off,String description){
+        if(b.isSelected()!=selected)CallVisuals.style(b,icon,selected,0,dp(22));
+        b.setText(selected?on:off);b.setContentDescription(description);
+    }
+    // Called after the global theme applies its window colors.
+    void applyCallBars(){CustomerWindowPolicy.status(getWindow(),CallVisuals.TOP);CustomerWindowPolicy.navigation(getWindow(),CallVisuals.BOTTOM);}
     private boolean permission(){return checkSelfPermission(Manifest.permission.RECORD_AUDIO)==PackageManager.PERMISSION_GRANTED&&(!video||checkSelfPermission(Manifest.permission.CAMERA)==PackageManager.PERMISSION_GRANTED);}
     private void requestStart(){
         if(serviceRequested||!failureMessage.isEmpty())return;
@@ -143,13 +206,30 @@ public class TransivaCallUiActivity extends CustomerAdaptiveActivity {
         if(e!=null&&e.ended&&e.failed){showFailure(e.status);return;}
         if(e!=null&&e.ended&&serviceRequested&&!startedSession){Toast.makeText(this,e.status,Toast.LENGTH_LONG).show();finish();}
         if(startedSession){updatePip();stopRing();releaseRenderers();finish();}return;}
-        startedSession=true;name.setText(e.peer);status.setText(e.status+(e.connectedAt>0?" • "+duration(e.connectedAt):"")+(e.error.isEmpty()?"":"\n"+e.error));accept.setVisibility(View.GONE);end.setText("Akhiri");mute.setText(e.muted?"Mic mati":"Mic aktif");speaker.setText(e.speaker?"Speaker aktif":"Speaker mati");camera.setText(e.cameraEnabled?"Kamera aktif":"Kamera mati");
-        if(video&&e.eglContext()!=null&&!rendererReady){attached=e;local=new SurfaceViewRenderer(this);remote=new SurfaceViewRenderer(this);remote.init(e.eglContext(),null);remote.setScalingType(RendererCommon.ScalingType.SCALE_ASPECT_FIT);stage.addView(remote,new FrameLayout.LayoutParams(-1,-1));local.init(e.eglContext(),null);local.setZOrderMediaOverlay(true);local.setMirror(true);FrameLayout.LayoutParams preview=new FrameLayout.LayoutParams(dp(84),dp(112),Gravity.TOP|Gravity.END);stage.addView(local,preview);rendererReady=true;e.attach(local,remote);resizeLocalPreview();}
-        if(local!=null)local.setVisibility(e.cameraEnabled&&!(Build.VERSION.SDK_INT>=26&&isInPictureInPictureMode())?View.VISIBLE:View.INVISIBLE);
+        startedSession=true;bindIdentity(e.peer,e.peerPhoto);status.setText(e.status+(e.connectedAt>0?" • "+duration(e.connectedAt):"")+(e.error.isEmpty()?"":"\n"+e.error));accept.setVisibility(View.GONE);end.setText("Akhiri");updateControls(e);
+        if(video&&e.eglContext()!=null&&!rendererReady){
+            attached=e;local=new SurfaceViewRenderer(this);remote=new SurfaceViewRenderer(this);
+            final SurfaceViewRenderer target=remote;
+            remote.init(e.eglContext(),new RendererCommon.RendererEvents(){
+                public void onFirstFrameRendered(){main.post(()->{if(!rendererReady||attached!=e||remote!=target||isDestroyed())return;identity.setVisibility(View.GONE);remote.setVisibility(View.VISIBLE);});}
+                public void onFrameResolutionChanged(int width,int height,int rotation){}
+            });
+            remote.setScalingType(RendererCommon.ScalingType.SCALE_ASPECT_FILL);remote.setEnableHardwareScaler(true);
+            stage.addView(remote,0,new FrameLayout.LayoutParams(-1,-1));
+            previewFrame=new FrameLayout(this);previewFrame.setPadding(dp(2),dp(2),dp(2),dp(2));
+            previewFrame.setBackground(CallVisuals.surface(0xffa4cbd3,0xff426f86,dp(18),0));
+            local.init(e.eglContext(),null);local.setZOrderMediaOverlay(true);local.setMirror(true);
+            local.setScalingType(RendererCommon.ScalingType.SCALE_ASPECT_FILL);local.setEnableHardwareScaler(true);
+            previewFrame.addView(local,new FrameLayout.LayoutParams(-1,-1));
+            FrameLayout.LayoutParams preview=new FrameLayout.LayoutParams(dp(92),dp(128),Gravity.TOP|Gravity.END);
+            preview.setMargins(dp(12),dp(12),dp(12),dp(12));stage.addView(previewFrame,preview);
+            rendererReady=true;e.attach(local,remote);resizeLocalPreview();
+        }
+        if(previewFrame!=null)previewFrame.setVisibility(e.cameraEnabled&&!(Build.VERSION.SDK_INT>=26&&isInPictureInPictureMode())?View.VISIBLE:View.INVISIBLE);
         updatePip();
     }
     private String duration(long base){long seconds=Math.max(0,(SystemClock.elapsedRealtime()-base)/1000);return String.format(java.util.Locale.US,"%02d:%02d",seconds/60,seconds%60);}
-    private void releaseRenderers(){if(attached!=null)attached.detach(local,remote);attached=null;if(local!=null){local.release();local=null;}if(remote!=null){remote.release();remote=null;}rendererReady=false;}
+    private void releaseRenderers(){if(attached!=null)attached.detach(local,remote);attached=null;if(local!=null){local.release();local=null;}if(remote!=null){stage.removeView(remote);remote.release();remote=null;}rendererReady=false;if(previewFrame!=null){stage.removeView(previewFrame);previewFrame=null;}if(identity!=null)identity.setVisibility(View.VISIBLE);}
     private void hangup(){resolveRing();stopRing();cancelIncomingNotification(true);WebRtcSessionEngine e=WebRtcCallForegroundService.current();if(e!=null&&e.active()){e.end(true,"Panggilan berakhir");}else if(serviceRequested){startService(new Intent(this,WebRtcCallForegroundService.class).setAction(WebRtcCallForegroundService.END));finish();}else{final String id=getIntent().getStringExtra("call_id");final SessionManager session=new SessionManager(getApplicationContext());final String role=getPackageName().endsWith(".driver")?"driver":"customer";if(id!=null&&!id.isEmpty())new Thread(()->{try{WebRtcSignalApi.post(session,new org.json.JSONObject().put("action","reject").put("role",role).put("call_id",id));}catch(Exception ignored){}},"TransivaCallReject").start();finish();}}
     @ChecksSdkIntAtLeast(api = 26)
     private boolean pipAvailable(){return Build.VERSION.SDK_INT>=26&&getPackageManager().hasSystemFeature(PackageManager.FEATURE_PICTURE_IN_PICTURE);}
@@ -160,15 +240,24 @@ public class TransivaCallUiActivity extends CustomerAdaptiveActivity {
     @Override public void onBackPressed(){if(video&&startedSession){backToChat=true;if(enterPip())return;backToChat=false;Toast.makeText(this,"PiP tidak tersedia; suara tetap berjalan",Toast.LENGTH_SHORT).show();}openChat();finish();}
     @Override protected void onUserLeaveHint(){super.onUserLeaveHint();if(video&&startedSession&&Build.VERSION.SDK_INT<31)enterPip();}
     @RequiresApi(26)
-    @Override public void onPictureInPictureModeChanged(boolean pip,Configuration config){super.onPictureInPictureModeChanged(pip,config);pipEntering=false;CustomerWindowPolicy.install(this);header.setVisibility(pip?View.GONE:View.VISIBLE);controls.setVisibility(pip?View.GONE:View.VISIBLE);actions.setVisibility(pip?View.GONE:View.VISIBLE);applyPadding();if(local!=null)local.setVisibility(!pip&&WebRtcCallForegroundService.current()!=null&&WebRtcCallForegroundService.current().cameraEnabled?View.VISIBLE:View.INVISIBLE);WebRtcSessionEngine e=WebRtcCallForegroundService.current();if(e!=null)e.setVisible(pip||resumed);if(pip&&backToChat){backToChat=false;openChat();}}
+    @Override public void onPictureInPictureModeChanged(boolean pip,Configuration config){super.onPictureInPictureModeChanged(pip,config);pipEntering=false;CustomerWindowPolicy.install(this);header.setVisibility(pip?View.GONE:View.VISIBLE);controls.setVisibility(pip?View.GONE:View.VISIBLE);actions.setVisibility(pip?View.GONE:View.VISIBLE);applyPadding();if(previewFrame!=null)previewFrame.setVisibility(!pip&&WebRtcCallForegroundService.current()!=null&&WebRtcCallForegroundService.current().cameraEnabled?View.VISIBLE:View.INVISIBLE);WebRtcSessionEngine e=WebRtcCallForegroundService.current();if(e!=null)e.setVisible(pip||resumed);if(pip&&backToChat){backToChat=false;openChat();}}
     private void resizeLocalPreview(){
-        if(local==null||stage.getHeight()<=0||stage.getWidth()<=0)return;
-        FrameLayout.LayoutParams p=(FrameLayout.LayoutParams)local.getLayoutParams();
-        int height=Math.min(dp(112),stage.getHeight());
-        int width=Math.min(dp(84),Math.min(stage.getWidth(),Math.round(height*.75f)));
-        if(p.width!=width||p.height!=height){p.width=width;p.height=height;local.setLayoutParams(p);}
+        if(stage.getHeight()<=0||stage.getWidth()<=0)return;
+        int edge=Math.max(1,Math.min(dp(144),Math.min(stage.getWidth()-dp(32),stage.getHeight()-dp(64))));
+        FrameLayout.LayoutParams avatarSize=(FrameLayout.LayoutParams)avatar.getLayoutParams();
+        if(avatarSize.width!=edge){avatarSize.width=edge;avatarSize.height=edge;avatar.setLayoutParams(avatarSize);}
+        stageHint.setVisibility(stage.getHeight()<dp(180)?View.GONE:View.VISIBLE);
+        if(previewFrame==null)return;
+        FrameLayout.LayoutParams p=(FrameLayout.LayoutParams)previewFrame.getLayoutParams();
+        int height=Math.max(1,Math.min(dp(128),stage.getHeight()-dp(24)));
+        int width=Math.max(1,Math.min(dp(92),Math.min(stage.getWidth()-dp(24),Math.round(height*.72f))));
+        if(p.width!=width||p.height!=height){p.width=width;p.height=height;previewFrame.setLayoutParams(p);}
     }
-    private void applyPadding(){boolean pip=Build.VERSION.SDK_INT>=26&&isInPictureInPictureMode();root.setPadding(pip?0:dp(12),pip?0:dp(12),pip?0:dp(12),pip?0:dp(12));}
+    private void applyPadding(){boolean pip=Build.VERSION.SDK_INT>=26&&isInPictureInPictureMode();root.setPadding(pip?0:dp(18),pip?0:dp(compact?4:10),pip?0:dp(18),pip?0:dp(compact?6:16));
+        LinearLayout.LayoutParams p=(LinearLayout.LayoutParams)stage.getLayoutParams();
+        int top=pip?0:dp(compact?6:12),bottom=pip?0:dp(compact?6:16);
+        if(p.topMargin!=top||p.bottomMargin!=bottom){p.setMargins(0,top,0,bottom);stage.setLayoutParams(p);}
+    }
     private void openChat(){WebRtcSessionEngine e=WebRtcCallForegroundService.current();String order=e!=null?e.orderId:getIntent().getStringExtra("order_id");if(order==null||order.isEmpty())return;Intent i=new Intent();i.setClassName(this,getPackageName().endsWith(".driver")?"com.transiva.app.DriverChatRoomActivity":"com.transiva.app.CustomerChatRoomActivity");i.putExtra("order_id",order).putExtra("order_source",e!=null?e.source:getIntent().getStringExtra("source")).putExtra("source",e!=null?e.source:getIntent().getStringExtra("source")).putExtra("participant_name",e!=null?e.peer:getIntent().getStringExtra("peer_name"));i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK|Intent.FLAG_ACTIVITY_CLEAR_TOP);startActivity(i);}
     @Override protected void onResume(){super.onResume();resumed=true;
         if(settingsOpen){settingsOpen=false;startPending=permission();if(!startPending){permissionRetry("Izin belum diberikan. Anda dapat membukanya lagi melalui Setelan.");}}

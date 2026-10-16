@@ -17,7 +17,8 @@ final class WebRtcSessionEngine {
     static final String CHANGED="com.transiva.app.CALL_SESSION_CHANGED";
     final Context context;
     final SessionManager session;
-    final String role,orderId,source,peer;
+    final String role,orderId,source;
+    volatile String peer,peerPhoto="";
     final boolean video,incoming;
     volatile String callId="",status="Menyiapkan panggilan",error="";
     volatile boolean ended,failed,accepted,connected,muted,speaker=true,cameraEnabled=true;
@@ -44,6 +45,7 @@ final class WebRtcSessionEngine {
         context=c.getApplicationContext();session=new SessionManager(context);stopped=stop;
         role=context.getPackageName().endsWith(".driver")?"driver":"customer";
         orderId=clean(i.getStringExtra("order_id"));source=first(i.getStringExtra("source"),"orders");peer=first(i.getStringExtra("peer_name"),i.getStringExtra("caller_name"),"Transiva");
+        peerPhoto=CallPeerIdentity.first(i.getStringExtra("peer_photo"),i.getStringExtra("caller_photo"));
         video="video".equals(i.getStringExtra("call_type"));incoming=i.getBooleanExtra("incoming",false);callId=clean(i.getStringExtra("call_id"));
     }
     boolean active(){return !ended;}
@@ -54,7 +56,7 @@ final class WebRtcSessionEngine {
     void start(){
         changed();async(()->{try{
             if(incoming){WebRtcSignalApi.post(session,payload("accept"));accepted=true;status="Menghubungkan";}
-            else{JSONObject p=payload("start").put("order_id",orderId).put("source",source).put("call_type",video?"video":"audio");JSONObject r=WebRtcSignalApi.post(session,p);callId=r.optString("call_id");if(callId.isEmpty())throw new IllegalStateException("Server tidak memberikan ID panggilan");status="Memanggil "+peer;}
+            else{JSONObject p=payload("start").put("order_id",orderId).put("source",source).put("call_type",video?"video":"audio");JSONObject r=WebRtcSignalApi.post(session,p);callId=r.optString("call_id");if(callId.isEmpty())throw new IllegalStateException("Server tidak memberikan ID panggilan");updateIdentity(r);status="Memanggil "+peer;}
             main.post(()->{if(!ended){changed();main.post(poll);}});
         }catch(Exception e){main.post(()->fail(e.getMessage()));}});
     }
@@ -69,7 +71,12 @@ final class WebRtcSessionEngine {
         }
         main.postDelayed(this,connected?2000:900);
     }};
+    private void updateIdentity(JSONObject r){
+        peer=CallPeerIdentity.first(r.optString("peer_name"),peer);
+        peerPhoto=CallPeerIdentity.first(r.optString("peer_photo"),r.optString("peer_photo_url"),peerPhoto);
+    }
     private void apply(JSONObject r){
+        updateIdentity(r);
         String state=r.optString("status");
         if(Arrays.asList("ended","rejected","missed","cancelled").contains(state)){end(false,state.equals("rejected")?"Panggilan ditolak":"Panggilan berakhir");return;}
         if("accepted".equals(state)){accepted=true;if(pc==null&&iceServers==null)loadIce();}

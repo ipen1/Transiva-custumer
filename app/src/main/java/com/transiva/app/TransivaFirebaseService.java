@@ -493,6 +493,8 @@ public class TransivaFirebaseService extends FirebaseMessagingService {
             intent.putExtra("order_id", orderId);
             intent.putExtra("source", data != null ? first(data.get("source"), "orders") : "orders");
             intent.putExtra("call_type",data!=null?first(data.get("call_type"),"audio"):"audio");
+            intent.putExtra("peer_photo", data == null ? "" : CallPeerIdentity.first(
+                    data.get("caller_photo"), data.get("caller_photo_url"), data.get("caller_avatar")));
             intent.putExtra("caller_name", data != null ? first(data.get("caller_name"), "Transiva") : "Transiva");
             intent.putExtra("incoming", data != null && "incoming_call".equalsIgnoreCase(first(data.get("event"), "")));
             return intent;

@@ -151,6 +151,7 @@ class CustomerChatRoomActivityScreenCore extends CustomerAdaptiveActivity {
     protected String orderSource = "orders";
     protected String roomId = "";
     protected String participantName = "";
+    private String participantPhoto = "";
     protected String orderType = "";
     protected String orderStatus = "";
 
@@ -271,6 +272,8 @@ class CustomerChatRoomActivityScreenCore extends CustomerAdaptiveActivity {
     }
 
     protected void readIntent() {
+        participantPhoto = CallPeerIdentity.first(getIntent().getStringExtra("participant_photo"),
+                getIntent().getStringExtra("driver_photo"));
         orderId = first(
                 getIntent().getStringExtra(
                         "order_id"
@@ -334,6 +337,7 @@ class CustomerChatRoomActivityScreenCore extends CustomerAdaptiveActivity {
         Intent call = new Intent(this, WebRtcCallActivity.class);
         call.putExtra("order_id", orderId);
         call.putExtra("peer_name", participantName);
+        call.putExtra("peer_photo", participantPhoto);
         call.putExtra(
                 "source",
                 first(
@@ -1433,6 +1437,7 @@ class CustomerChatRoomActivityScreenCore extends CustomerAdaptiveActivity {
                 response.optJSONObject("driver");
 
         if (driver != null) {
+            participantPhoto = CallPeerIdentity.photo(driver);
             String serverName = first(
                     driver.optString("name"),
                     driver.optString("username"),

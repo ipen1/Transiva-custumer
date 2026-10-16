@@ -33,6 +33,7 @@ jobs:
           python3 tools/reliability/session_poller_regression.py
           python3 tools/reliability/candidate_runtime_regression.py
           python3 tools/reliability/paired_gate_selftest.py
+          python3 tools/reliability/performance_gate_selftest.py
           gradle --stop
       - name: Enable emulator acceleration and isolated TURN relay
         run: |
@@ -67,12 +68,14 @@ jobs:
             gradle :app:connectedPlayReleaseAndroidTest -PtransivaLocalVerification --stacktrace > device-diagnostics/instrumentation-gradle.txt 2>&1 || { cat device-diagnostics/instrumentation-gradle.txt; adb -s emulator-5554 shell dumpsys activity exit-info com.transiva.customer > device-diagnostics/process-exit.txt; exit 1; }
             cat device-diagnostics/instrumentation-gradle.txt
             gradle --stop
+            adb -s emulator-5554 install -r app/build/outputs/apk/play/release/app-play-release.apk
+            adb -s emulator-5554 install -r -t app/build/outputs/apk/androidTest/play/release/app-play-release-androidTest.apk
             python3 tools/reliability/collect_release_performance.py --serial emulator-5554 --output release-performance.json
             echo no | avdmanager create avd --name transiva-peer --package 'system-images;android-36;google_apis;x86_64' --device pixel_5 --force
             $ANDROID_HOME/emulator/emulator @transiva-peer -port 5556 -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -no-snapshot -memory 1536 -cores 2 > peer-emulator.log 2>&1 &
             python3 tools/reliability/wait_peer_emulator.py emulator-5556
             adb -s emulator-5556 install -r app/build/outputs/apk/play/release/app-play-release.apk
-            adb -s emulator-5556 install -r app/build/outputs/apk/androidTest/play/release/app-play-release-androidTest.apk
+            adb -s emulator-5556 install -r -t app/build/outputs/apk/androidTest/play/release/app-play-release-androidTest.apk
             adb -s emulator-5556 shell locksettings set-disabled false
             python3 tools/reliability/paired_release_gate.py --caller emulator-5554 --callee emulator-5556 --turn "turn:$TURN_HOST:3478?transport=udp" --turn-password "$TURN_PASSWORD" --output paired-release.json
       - name: Upload device and performance reports

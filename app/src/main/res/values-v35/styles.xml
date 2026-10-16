@@ -1,1 +1,6 @@
-
+<resources>
+    <!-- No deprecated system-bar color or cutout opt-out parameters on Android 15+. -->
+    <style name="AppTheme" parent="TransivaBaseTheme">
+        <item name="android:enforceNavigationBarContrast">false</item>
+    </style>
+</resources>

@@ -34,5 +34,12 @@ final class AuthPublicRequest {
         main.post(()->{if(finished.compareAndSet(false,true)){main.removeCallbacks(deadline);result.received(response);}});
     }
     void cancel(){finished.set(true);if(deadline!=null)main.removeCallbacks(deadline);close();}
-    private void close(){Future<?> f=future;if(f!=null)f.cancel(true);HttpURLConnection c=connection;if(c!=null)c.disconnect();connection=null;}
+    private void close(){
+        // Snapshot before interrupting: the worker's finally can clear the
+        // shared reference immediately after cancel(true). Always disconnect
+        // the socket that belonged to this request even in that interleaving.
+        HttpURLConnection c=connection;connection=null;
+        Future<?> f=future;if(f!=null)f.cancel(true);
+        if(c!=null)c.disconnect();
+    }
 }

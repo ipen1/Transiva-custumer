@@ -50,7 +50,11 @@ public final class CustomerWindowPolicy {
         if (content == null) return;
         if (!state.installed) {
             state.installed = true;
-            WindowCompat.enableEdgeToEdge(window);
+            // targetSdk 36: Android 15+ enforces edge-to-edge for non-floating
+            // windows. Older platforms and floating fullscreen dialogs still
+            // need the compatibility bridge (including its legacy color APIs).
+            if (Build.VERSION.SDK_INT < 35 || window.isFloating())
+                WindowCompat.enableEdgeToEdge(window);
             window.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
             state.left = content.getPaddingLeft(); state.top = content.getPaddingTop();
             state.right = content.getPaddingRight(); state.bottom = content.getPaddingBottom();

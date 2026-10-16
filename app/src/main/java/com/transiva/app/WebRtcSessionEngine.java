@@ -28,11 +28,14 @@ final class WebRtcSessionEngine {
     final String role,orderId,source;
     volatile String peer,peerPhoto="";
     final boolean video,incoming;
+    final String operationId;
     volatile String callId="",status="Menyiapkan panggilan",error="";
     volatile boolean ended,failed,accepted,connected,muted,speaker=true,cameraEnabled=true;
     volatile long connectedAt;
     private final Handler main=new Handler(Looper.getMainLooper());
     private final ExecutorService io=Executors.newSingleThreadExecutor();
+    private final ExecutorService heartbeatIo=Executors.newSingleThreadExecutor();
+    private boolean heartbeatBusy;
     private final Runnable stopped;
     private PeerConnectionFactory factory;
     private PeerConnection pc;
@@ -54,6 +57,7 @@ final class WebRtcSessionEngine {
         role=context.getPackageName().endsWith(".driver")?"driver":"customer";
         orderId=clean(i.getStringExtra("order_id"));source=first(i.getStringExtra("source"),"orders");peer=first(i.getStringExtra("peer_name"),i.getStringExtra("caller_name"),"Transiva");
         peerPhoto=CallPeerIdentity.first(i.getStringExtra("peer_photo"),i.getStringExtra("caller_photo"));
+        operationId=first(i.getStringExtra("operation_id"),java.util.UUID.randomUUID().toString());
         video="video".equals(i.getStringExtra("call_type"));incoming=i.getBooleanExtra("incoming",false);callId=clean(i.getStringExtra("call_id"));
     }
     boolean active(){return !ended;}
@@ -64,13 +68,36 @@ final class WebRtcSessionEngine {
     private JSONObject postSignal(JSONObject payload)throws Exception {
         return WebRtcSignalApi.post(session,payload,callOwner);
     }
+    private JSONObject startWithRetry(JSONObject payload)throws Exception {
+        for(int attempt=0;;attempt++){
+            try{return postSignal(payload);}
+            catch(java.io.IOException error){
+                if(attempt>=2||ended)throw error;
+                Thread.sleep(attempt==0?350L:1000L);
+            }
+        }
+    }
     void start(){
         changed();async(()->{try{
             if(incoming){postSignal(payload("accept"));accepted=true;status="Menghubungkan";}
-            else{JSONObject p=payload("start").put("order_id",orderId).put("source",source).put("call_type",video?"video":"audio");JSONObject r=postSignal(p);callId=r.optString("call_id");if(callId.isEmpty())throw new IllegalStateException("Server tidak memberikan ID panggilan");updateIdentity(r);status="Memanggil "+peer;}
-            main.post(()->{if(!ended){changed();main.post(poll);}});
+            else{JSONObject p=payload("start").put("order_id",orderId).put("source",source).put("call_type",video?"video":"audio").put("operation_id",operationId);JSONObject r=startWithRetry(p);callId=r.optString("call_id");if(callId.isEmpty())throw new IllegalStateException("Server tidak memberikan ID panggilan");if(Arrays.asList("ended","rejected","missed","cancelled").contains(r.optString("status")))throw new IllegalStateException("Panggilan sebelumnya sudah berakhir. Mulai panggilan baru dari chat.");updateIdentity(r);status="Memanggil "+peer;}
+            main.post(()->{if(!ended){changed();main.post(poll);main.post(heartbeat);}});
         }catch(Exception e){main.post(()->fail(e.getMessage()));}});
     }
+    // Separate from SDP/ICE queue: a slow candidate upload cannot starve liveness.
+    private final Runnable heartbeat=new Runnable(){public void run(){
+        if(ended)return;
+        if(!callId.isEmpty()&&!heartbeatBusy&&!heartbeatIo.isShutdown()){
+            heartbeatBusy=true;
+            try{heartbeatIo.execute(()->{
+                try{
+                    JSONObject response=postSignal(payload("heartbeat"));
+                    main.post(()->{heartbeatBusy=false;if(!ended)terminal(callId,response.optString("status"));});
+                }catch(Exception error){main.post(()->{heartbeatBusy=false;});}
+            });}catch(RejectedExecutionException error){heartbeatBusy=false;}
+        }
+        main.postDelayed(this,15000);
+    }};
     private final Runnable poll=new Runnable(){public void run(){
         if(ended)return;
         if(!callOwner.matches(context)){end(false,"Sesi panggilan berubah");return;}
@@ -244,11 +271,11 @@ final class WebRtcSessionEngine {
     void terminal(String id,String state){if(callId.equals(id)&&Arrays.asList("ended","rejected","missed").contains(state))end(false,"Panggilan berakhir");}
     private void fail(String message){failed=true;error=message==null?"Panggilan gagal":message;end(true,error);}
     void end(boolean notify,String message){
-        if(closing)return;closing=true;ended=true;status=message;main.removeCallbacks(poll);main.removeCallbacks(recoverTick);main.removeCallbacks(candidatePump);outgoingIce.clear();candidateIo.shutdownNow();changed();release();
+        if(closing)return;closing=true;ended=true;status=message;main.removeCallbacks(poll);main.removeCallbacks(heartbeat);heartbeatIo.shutdownNow();main.removeCallbacks(recoverTick);main.removeCallbacks(candidatePump);outgoingIce.clear();candidateIo.shutdownNow();changed();release();
         // Queue behind start/accept so even an early cancel waits for the real call ID.
         async(()->{if(notify&&!callId.isEmpty())try{postSignal(payload("end"));}catch(Exception ignored){}main.post(stopped);io.shutdown();});
     }
-    void destroy(){if(!ended){ended=true;main.removeCallbacks(poll);release();}io.shutdownNow();candidateIo.shutdownNow();outgoingIce.clear();main.removeCallbacksAndMessages(null);}
+    void destroy(){if(!ended){ended=true;main.removeCallbacks(poll);main.removeCallbacks(heartbeat);heartbeatIo.shutdownNow();release();}io.shutdownNow();candidateIo.shutdownNow();outgoingIce.clear();main.removeCallbacksAndMessages(null);}
     private void release(){
         if(localVideo!=null)for(VideoSink s:localSinks)localVideo.removeSink(s);if(remoteVideo!=null)for(VideoSink s:remoteSinks)remoteVideo.removeSink(s);localSinks.clear();remoteSinks.clear();
         if(camera!=null){try{if(cameraRunning)camera.stopCapture();}catch(InterruptedException e){Thread.currentThread().interrupt();}catch(RuntimeException ignored){}camera.dispose();camera=null;}cameraRunning=false;

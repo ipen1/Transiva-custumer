@@ -18,6 +18,7 @@ public class TransivaCustomerApplication extends Application implements Applicat
 
     @Override public void onCreate() {
         super.onCreate();
+        CallReliabilityRuntime.install(this);
         instance = this;
         if(BuildConfig.LOCAL_VERIFICATION){
             com.google.firebase.crashlytics.FirebaseCrashlytics.getInstance().setCrashlyticsCollectionEnabled(false);

@@ -305,7 +305,7 @@ function dd_dispatch_due_orders(mysqli $conn,int $limit=20,int $offerSeconds=15,
         if(!empty($result['assigned']) && empty($result['unchanged']) && !empty($result['offers'])){
           $service=$table==='pickup_orders' ? 'TransSend' : (string)($fresh['order_type']??'Order');
           foreach($result['offers'] as $offerRow){
-            $token=trim((string)($offerRow['fcm_token']??'')); if($token==='') continue;
+            $token=trim((string)($offerRow['fcm_token']??'')); // Queue even while registration is recovering; worker resolves latest token.
             $distance=(float)($offerRow['distance_km']??0); $offerDriver=(string)($offerRow['username']??'');
             $payload=[
               'app'=>'transiva','type'=>'transiva_order','event'=>'new_order','screen'=>'driver_order',

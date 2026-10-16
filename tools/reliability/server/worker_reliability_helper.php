@@ -28,3 +28,13 @@ function worker_offer_is_current(mysqli $conn,array $data): bool {
     $row=$conn->query("SELECT status FROM `$source` WHERE id=$id")->fetch_assoc();
     return $row && in_array(strtolower((string)$row['status']),['pending','merchant_accepted','offered'],true);
 }
+
+/** Called only after offer ownership/expiry validation. Never trust a queued token for an offer. */
+function worker_order_recipient_token(mysqli $conn,array $payload):string {
+    $data=$payload['data']??[];
+    if(($data['event']??'')!=='new_order')return trim((string)($payload['token']??''));
+    $name=trim((string)($data['offered_driver']??''));if($name==='')return '';
+    $st=$conn->prepare("SELECT fcm_token FROM users WHERE username=? AND LOWER(role)='driver' LIMIT 1");
+    $st->bind_param('s',$name);$st->execute();$row=$st->get_result()->fetch_assoc();$st->close();
+    return trim((string)($row['fcm_token']??''));
+}

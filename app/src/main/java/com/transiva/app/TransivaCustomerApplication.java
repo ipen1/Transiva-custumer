@@ -19,6 +19,11 @@ public class TransivaCustomerApplication extends Application implements Applicat
     @Override public void onCreate() {
         super.onCreate();
         instance = this;
+        if(BuildConfig.LOCAL_VERIFICATION){
+            com.google.firebase.crashlytics.FirebaseCrashlytics.getInstance().setCrashlyticsCollectionEnabled(false);
+            com.google.firebase.analytics.FirebaseAnalytics.getInstance(this).setAnalyticsCollectionEnabled(false);
+            com.google.firebase.messaging.FirebaseMessaging.getInstance().setAutoInitEnabled(false);
+        }
         CustomerAppSettings.install(this);
         CustomerPerformanceMetrics.install();
         CustomerStartupManager.installCritical(this);

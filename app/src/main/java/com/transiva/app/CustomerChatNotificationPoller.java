@@ -21,6 +21,7 @@ import org.json.JSONObject;
 
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
+import java.util.concurrent.Future;
 
 public final class CustomerChatNotificationPoller {
 
@@ -40,65 +41,31 @@ public final class CustomerChatNotificationPoller {
 
     private static Context appContext;
     private static int userId;
-    private static boolean running;
-    private static boolean requestInFlight;
-    private static String openRoom = "";
+    private static boolean running,requestInFlight;
+    private static String openRoom="";
+    private static long generation,serial,activeRequest;
+    private static Future<?> future;
+    private static Runnable deadline;
+    private static CustomerTransportSession owner;
 
-    private CustomerChatNotificationPoller() {
+    private CustomerChatNotificationPoller() {}
+    public static synchronized void start(Context context,int currentUserId) {
+        if(context==null||currentUserId<=0)return;
+        Context app=context.getApplicationContext();
+        SessionManager session=new SessionManager(app);
+        if(!session.isLoggedIn()||!String.valueOf(currentUserId).equals(session.getUserId()))return;
+        if(running&&userId==currentUserId&&owner!=null&&owner.matches(app))return;
+        stop();appContext=app;userId=currentUserId;owner=CustomerTransportSession.capture(app);running=true;
+        createChannel(app);HANDLER.post(checkRunnable);
     }
-
-    public static void start(
-            Context context,
-            int currentUserId
-    ) {
-        if (
-                context == null
-                        || currentUserId <= 0
-        ) {
-            return;
-        }
-
-        appContext =
-                context.getApplicationContext();
-
-        userId = currentUserId;
-
-        createChannel(appContext);
-
-        if (running) {
-            return;
-        }
-
-        running = true;
-        HANDLER.post(checkRunnable);
-    }
-
-
     public static synchronized void stop() {
-        running = false;
-        requestInFlight = false;
-        userId = 0;
-        openRoom = "";
-        appContext = null;
-        HANDLER.removeCallbacks(checkRunnable);
+        ++generation;running=false;requestInFlight=false;activeRequest=0;
+        if(future!=null)future.cancel(true);future=null;
+        if(deadline!=null)HANDLER.removeCallbacks(deadline);deadline=null;
+        userId=0;openRoom="";appContext=null;owner=null;HANDLER.removeCallbacks(checkRunnable);
     }
-
-    public static void setOpenRoom(
-            String roomId
-    ) {
-        openRoom = normalizeRoom(roomId);
-    }
-
-    public static void clearOpenRoom(
-            String roomId
-    ) {
-        String normalized =
-                normalizeRoom(roomId);
-
-        if (openRoom.equals(normalized)) {
-            openRoom = "";
-        }
-    }
+    public static synchronized void setOpenRoom(String room){openRoom=normalizeRoom(room);}
+    public static synchronized void clearOpenRoom(String room){if(openRoom.equals(normalizeRoom(room)))openRoom="";}
 
     public static void requestPermission(
             Activity activity
@@ -126,139 +93,65 @@ public final class CustomerChatNotificationPoller {
         }
     }
 
-    private static final Runnable checkRunnable =
-            new Runnable() {
-                @Override
-                public void run() {
-                    if (
-                            !running
-                                    || appContext == null
-                                    || userId <= 0
-                    ) {
-                        return;
+    private static final Runnable checkRunnable=new Runnable(){public void run(){
+        synchronized(CustomerChatNotificationPoller.class){
+            if(!running||appContext==null)return;
+            checkNow();
+            if(running)HANDLER.postDelayed(this,INTERVAL_MS);
+        }
+    }};
+    private static synchronized boolean current(long epoch,long request,Context context,CustomerTransportSession session){
+        return running&&epoch==generation&&request==activeRequest&&session==owner&&session.matches(context);
+    }
+    private static synchronized void finish(long epoch,long request){
+        if(epoch!=generation||request!=activeRequest)return;
+        requestInFlight=false;activeRequest=0;future=null;
+        if(deadline!=null)HANDLER.removeCallbacks(deadline);deadline=null;
+    }
+    private static synchronized void checkNow(){
+        if(!running||appContext==null||owner==null||requestInFlight)return;
+        if(!owner.matches(appContext)){stop();return;}
+        final Context context=appContext;final int id=userId;final CustomerTransportSession session=owner;
+        final long epoch=generation,request=++serial;activeRequest=request;requestInFlight=true;
+        final SharedPreferences preferences=context.getSharedPreferences(PREFS+"_"+id,Context.MODE_PRIVATE);
+        // Do not import the old global cursor: its owner cannot be established safely.
+        final int lastId=preferences.getInt(KEY_LAST_ID,0);
+        deadline=()->{synchronized(CustomerChatNotificationPoller.class){
+            if(epoch!=generation||request!=activeRequest)return;
+            if(future!=null)future.cancel(true);finish(epoch,request);
+        }};
+        HANDLER.postDelayed(deadline,40000L); // Includes queue time; late work cannot publish or clear a new lease.
+        Future<?> submitted=TransivaNetworkExecutor.execute(()->{
+            JSONObject response=null;
+            try{
+                if(!current(epoch,request,context,session))return;
+                String endpoint="https://transiva.my.id/server/get_customer_chat_updates.php?user_id="
+                        +URLEncoder.encode(String.valueOf(id),StandardCharsets.UTF_8.name())+"&last_id="+lastId;
+                response=TransivaHttpRepository.getJsonOnce(context,endpoint,15000,session);
+            }catch(Exception ignored){}finally{
+                final JSONObject result=response;
+                HANDLER.post(()->{
+                    synchronized(CustomerChatNotificationPoller.class){
+                        try{
+                            if(!current(epoch,request,context,session)||result==null||!result.optBoolean("success",false))return;
+                            JSONArray messages=result.optJSONArray("messages");
+                            if(messages!=null)for(int i=0;i<messages.length();i++){
+                                if(!current(epoch,request,context,session))return;
+                                JSONObject message=messages.optJSONObject(i);
+                                if(message==null||message.optInt("id",0)<=lastId)continue;
+                                if(!normalizeRoom(message.optString("room_id","")).equals(openRoom))showNotification(context,message);
+                            }
+                            if(current(epoch,request,context,session)){
+                                int latest=Math.max(lastId,result.optInt("last_id",lastId));
+                                if(latest>lastId)preferences.edit().putInt(KEY_LAST_ID,latest).apply();
+                            }
+                        }finally{finish(epoch,request);}
                     }
-
-                    checkNow();
-
-                    HANDLER.postDelayed(
-                            this,
-                            INTERVAL_MS
-                    );
-                }
-            };
-
-    private static void checkNow() {
-        final Context context = appContext;
-        final int currentUserId = userId;
-
-        SharedPreferences preferences =
-                context.getSharedPreferences(
-                        PREFS,
-                        Context.MODE_PRIVATE
-                );
-
-        final int lastId =
-                preferences.getInt(
-                        KEY_LAST_ID,
-                        0
-                );
-
-        if (requestInFlight) return;
-        requestInFlight = true;
-        TransivaNetworkExecutor.execute(() -> {
-            try {
-                String endpoint =
-                        "https://transiva.my.id/"
-                                + "server/get_customer_chat_updates.php"
-                                + "?user_id="
-                                + URLEncoder.encode(
-                                String.valueOf(
-                                        currentUserId
-                                ),
-                                StandardCharsets.UTF_8.name()
-                        )
-                                + "&last_id="
-                                + lastId
-                                + "&_="
-                                + System.currentTimeMillis();
-
-                JSONObject response =
-                        CustomerMessageApi.get(endpoint);
-
-                if (
-                        !response.optBoolean(
-                                "success",
-                                false
-                        )
-                ) {
-                    return;
-                }
-
-                JSONArray messages =
-                        response.optJSONArray(
-                                "messages"
-                        );
-
-                int newestId =
-                        response.optInt(
-                                "last_id",
-                                lastId
-                        );
-
-                if (messages != null) {
-                    for (
-                            int i = 0;
-                            i < messages.length();
-                            i++
-                    ) {
-                        JSONObject message =
-                                messages.optJSONObject(i);
-
-                        if (message == null) {
-                            continue;
-                        }
-
-                        int messageId =
-                                message.optInt(
-                                        "id",
-                                        0
-                                );
-
-                        if (messageId <= lastId) {
-                            continue;
-                        }
-
-                        String room =
-                                normalizeRoom(
-                                        message.optString(
-                                                "room_id",
-                                                ""
-                                        )
-                                );
-
-                        if (!room.equals(openRoom)) {
-                            showNotification(
-                                    context,
-                                    message
-                            );
-                        }
-                    }
-                }
-
-                if (newestId > lastId) {
-                    preferences.edit()
-                            .putInt(
-                                    KEY_LAST_ID,
-                                    newestId
-                            )
-                            .apply();
-                }
-
-            } catch (Exception ignored) {
-            } finally {
-                requestInFlight = false;
+                });
             }
-        });
+        },()->finish(epoch,request));
+        if(epoch==generation&&request==activeRequest&&requestInFlight)future=submitted;
+        else if(submitted!=null)submitted.cancel(true);
     }
 
     private static void showNotification(

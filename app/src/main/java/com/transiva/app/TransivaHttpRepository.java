@@ -39,20 +39,29 @@ public final class TransivaHttpRepository {
         if (key == null || key.trim().isEmpty()) throw new IllegalArgumentException("idempotencyKey required");
         return request(context, "POST", url, body, timeoutMs, 1, key.trim());
     }
+    static JSONObject getJsonOnce(Context context,String url,int timeoutMs,CustomerTransportSession owner)throws Exception {
+        return request(context,"GET",url,null,timeoutMs,0,null,owner);
+    }
+    static JSONObject postJson(Context context,String url,JSONObject body,int timeoutMs,CustomerTransportSession owner)throws Exception {
+        return request(context,"POST",url,body,timeoutMs,0,null,owner);
+    }
+    private static JSONObject request(Context context,String method,String url,JSONObject body,int timeoutMs,int retries,String key)throws Exception {
+        return request(context,method,url,body,timeoutMs,retries,key,CustomerTransportSession.capture(context));
+    }
     private static JSONObject request(Context context, String method, String url, JSONObject body,
-                                      int timeoutMs, int retries, String key) throws Exception {
-        String expectedUser = new SessionManager(context).getUserId();
+                                      int timeoutMs, int retries, String key,CustomerTransportSession owner) throws Exception {
+        owner.check(context);
         int socketTimeout = Math.max(3000, Math.min(30000, timeoutMs));
         long deadline = SystemClock.elapsedRealtime() + socketTimeout * 2L;
         for (int attempt = 0; ; attempt++) {
             checkCancelled(deadline);
-            String liveUser = new SessionManager(context).getUserId();
-            if (!java.util.Objects.equals(expectedUser, liveUser)) throw new InterruptedException("Account changed during request");
+            owner.check(context);
             if (!TransivaNetworkMonitor.isOnline()) throw new java.net.UnknownHostException("Perangkat sedang offline");
             HttpURLConnection c = null;
             long started = SystemClock.elapsedRealtime();
             try {
                 c = CustomerApiClient.open(context, url);
+                owner.pin(context,c);
                 c.setRequestMethod(method);
                 c.setConnectTimeout(remaining(deadline, socketTimeout));
                 c.setReadTimeout(remaining(deadline, socketTimeout));
@@ -71,7 +80,14 @@ public final class TransivaHttpRepository {
                 TransivaCrashReporter.recordHttpStatus(code, method, url, SystemClock.elapsedRealtime() - started);
                 c.setReadTimeout(remaining(deadline, socketTimeout));
                 String raw = read(code >= 200 && code < 300 ? c.getInputStream() : c.getErrorStream(), deadline);
-                CustomerApiClient.handleSessionResponse(context, code, raw);
+                owner.check(context);
+                if((code==401||code==403)&&NetworkSafetyRules.maySendCredentials(url)) {
+                    // Login changes and logout application are serialized on the UI thread.
+                    new android.os.Handler(android.os.Looper.getMainLooper()).post(()->{
+                        if(owner.matches(context))CustomerApiClient.handleSessionResponse(context,code,raw);
+                    });
+                }
+                owner.check(context);
                 if (code >= 200 && code < 300) return new JSONObject(raw.isEmpty() ? "{}" : raw);
                 String message = "Server belum dapat memproses permintaan (" + code + ").";
                 try { message = new JSONObject(raw).optString("message", message); } catch (Exception ignored) { }

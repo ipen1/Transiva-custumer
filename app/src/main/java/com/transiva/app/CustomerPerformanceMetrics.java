@@ -14,9 +14,12 @@ public final class CustomerPerformanceMetrics {
     private static long processCreated;
     private static boolean firstScreen;
     private static final AtomicInteger loads = new AtomicInteger();
+    private static long lastResourceSample;
+    private static int resourceSamples;
     private CustomerPerformanceMetrics() { }
     public static synchronized void install() { processCreated = SystemClock.elapsedRealtime(); }
     public static void resumed(Activity activity) {
+        resourceSample(activity.getApplicationContext());
         if (activity instanceof SplashActivity || activity instanceof UpdateDownloadActivity) return;
         synchronized (CustomerPerformanceMetrics.class) {
             if (firstScreen) return;
@@ -35,6 +38,36 @@ public final class CustomerPerformanceMetrics {
                 return true;
             }
         });
+    }
+    /** At most 12 passive samples/process, never more than once a minute; no new permission. */
+    private static synchronized void resourceSample(Context context){
+        long now=SystemClock.elapsedRealtime();
+        if(resourceSamples>=12||(lastResourceSample>0&&now-lastResourceSample<60000))return;
+        if(TransivaNetworkExecutor.queuedTasks()>16)return; // Passive sampling yields to customer work.
+        lastResourceSample=now;++resourceSamples;
+        TransivaNetworkExecutor.execute(()->{
+            try{
+                Bundle sample=new Bundle();
+                sample.putLong("java_heap_kb",(Runtime.getRuntime().totalMemory()-Runtime.getRuntime().freeMemory())/1024);
+                sample.putLong("native_heap_kb",Debug.getNativeHeapAllocatedSize()/1024);
+                sample.putLong("process_pss_kb",Debug.getPss());
+                android.os.BatteryManager battery=(android.os.BatteryManager)context.getSystemService(Context.BATTERY_SERVICE);
+                if(battery!=null){int percent=battery.getIntProperty(android.os.BatteryManager.BATTERY_PROPERTY_CAPACITY);if(percent>=0&&percent<=100)sample.putLong("device_battery_percent",percent);}
+                sample.putLong("network_queue",TransivaNetworkExecutor.queuedTasks());
+                sample.putLong("network_rejected",TransivaNetworkExecutor.rejectedTasks());
+                if(android.os.Build.VERSION.SDK_INT>=30){
+                    android.app.ActivityManager manager=(android.app.ActivityManager)context.getSystemService(Context.ACTIVITY_SERVICE);
+                    int crashes=0,anrs=0;
+                    if(manager!=null)for(android.app.ApplicationExitInfo info:manager.getHistoricalProcessExitReasons(context.getPackageName(),0,10)){
+                        if(info.getReason()==android.app.ApplicationExitInfo.REASON_CRASH||info.getReason()==android.app.ApplicationExitInfo.REASON_CRASH_NATIVE)++crashes;
+                        if(info.getReason()==android.app.ApplicationExitInfo.REASON_ANR)++anrs;
+                    }
+                    // Counts among the last ten retained exits, NOT a crash-free rate or session denominator.
+                    sample.putLong("recent_crash_exits",crashes);sample.putLong("recent_anr_exits",anrs);
+                }
+                CustomerAnalytics.event(context,"customer_resource_sample",sample);
+            }catch(Exception ignored){}
+        },()->{});
     }
     public static String readCategory(String url) {
         // Only fixed category labels are emitted. Query strings and identifiers are discarded.

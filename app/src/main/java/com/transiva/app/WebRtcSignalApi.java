@@ -17,10 +17,20 @@ public final class WebRtcSignalApi {
     private WebRtcSignalApi() {}
 
     public static JSONObject post(SessionManager session, JSONObject payload) throws Exception {
+        if(session==null||session.getAppContext()==null)throw new IllegalStateException("Sesi signaling tidak tersedia");
+        return post(session,payload,CustomerTransportSession.capture(session.getAppContext()));
+    }
+    static JSONObject post(SessionManager session,JSONObject payload,CustomerTransportSession owner)throws Exception {
+        return request(session,payload,owner,TIMEOUT_MS);
+    }
+    static JSONObject postCandidate(SessionManager session,JSONObject payload,CustomerTransportSession owner)throws Exception {
+        return request(session,payload,owner,6000);
+    }
+    private static JSONObject request(SessionManager session,JSONObject payload,CustomerTransportSession owner,int timeout)throws Exception {
         if (session == null || session.getAppContext() == null) {
             throw new IllegalStateException("Sesi signaling tidak tersedia");
         }
-        JSONObject json = TransivaHttpRepository.postJson(session.getAppContext(), ENDPOINT, payload, TIMEOUT_MS);
+        JSONObject json = TransivaHttpRepository.postJson(session.getAppContext(), ENDPOINT, payload, timeout,owner);
         if (!json.optBoolean("success", false)) {
             throw new IllegalStateException(json.optString("message", "Signaling gagal"));
         }

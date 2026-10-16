@@ -43,7 +43,7 @@ public final class TransivaCrashReporter {
                 appContext = app;
                 boolean debug = (app.getApplicationInfo().flags & ApplicationInfo.FLAG_DEBUGGABLE) != 0;
                 FirebaseCrashlytics crashlytics = FirebaseCrashlytics.getInstance();
-                crashlytics.setCrashlyticsCollectionEnabled(!debug);
+                crashlytics.setCrashlyticsCollectionEnabled(!debug && !BuildConfig.LOCAL_VERIFICATION);
                 crashlytics.setCustomKey("app_role", "customer");
                 crashlytics.setCustomKey("android_sdk", Build.VERSION.SDK_INT);
                 crashlytics.setCustomKey("device_manufacturer", safe(Build.MANUFACTURER));

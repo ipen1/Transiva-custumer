@@ -43,11 +43,13 @@ android {
 
     defaultConfig {
         applicationId 'com.transiva.customer'
+        buildConfigField 'boolean', 'LOCAL_VERIFICATION', project.hasProperty('transivaLocalVerification') ? 'true' : 'false'
+        manifestPlaceholders = [transivaTelemetryEnabled: project.hasProperty('transivaLocalVerification') ? 'false' : 'true']
         testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner'
         minSdk 23
         targetSdk 36
-        versionCode 47
-        versionName '2.7.3'
+        versionCode 48
+        versionName '2.7.4'
     }
 
     signingConfigs {

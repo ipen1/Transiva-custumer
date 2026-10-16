@@ -77,6 +77,8 @@ jobs:
             adb -s emulator-5556 install -r app/build/outputs/apk/play/release/app-play-release.apk
             adb -s emulator-5556 install -r -t app/build/outputs/apk/androidTest/play/release/app-play-release-androidTest.apk
             adb -s emulator-5556 shell locksettings set-disabled false
+            adb -s emulator-5556 logcat -c
+            adb -s emulator-5556 logcat -v threadtime > device-diagnostics/peer-logcat.txt 2>&1 &
             python3 tools/reliability/paired_release_gate.py --caller emulator-5554 --callee emulator-5556 --turn "turn:$TURN_HOST:3478?transport=udp" --turn-password "$TURN_PASSWORD" --output paired-release.json
       - name: Upload device and performance reports
         if: always()

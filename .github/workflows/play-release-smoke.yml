@@ -25,8 +25,9 @@ jobs:
           KEY_PASSWORD: smoke-test-only
           KEY_ALIAS: smoke
         run: |
-          gradle :app:assemblePlayRelease :app:assemblePlayReleaseAndroidTest :app:testPlayReleaseUnitTest :app:lintPlayRelease :app:lintDirectRelease -PtransivaLocalVerification
+          gradle :app:clean :app:assemblePlayRelease :app:assemblePlayReleaseAndroidTest :app:testPlayReleaseUnitTest :app:lintPlayRelease :app:lintDirectRelease -PtransivaLocalVerification
           python3 tools/reliability/verify_webrtc_jni.py app/build/outputs/mapping/playRelease/mapping.txt
+          python3 tools/reliability/verify_release_runner.py app/build/outputs/apk/play/release/app-play-release.apk app/build/outputs/apk/androidTest/play/release/app-play-release-androidTest.apk --self-test
           JSON_JAR=$(find "$HOME/.gradle/caches" -path '*/org.json/json/20240303/*/json-20240303.jar' -print -quit)
           export JSON_JAR
           python3 tools/reliability/session_poller_regression.py
@@ -60,7 +61,11 @@ jobs:
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -memory 1536 -cores 2
           script: |
             adb -s emulator-5554 shell locksettings set-disabled false
-            gradle :app:connectedPlayReleaseAndroidTest -PtransivaLocalVerification --stacktrace
+            mkdir -p device-diagnostics
+            adb -s emulator-5554 logcat -c
+            adb -s emulator-5554 logcat -v threadtime > device-diagnostics/primary-logcat.txt 2>&1 &
+            gradle :app:connectedPlayReleaseAndroidTest -PtransivaLocalVerification --stacktrace > device-diagnostics/instrumentation-gradle.txt 2>&1 || { cat device-diagnostics/instrumentation-gradle.txt; adb -s emulator-5554 shell dumpsys activity exit-info com.transiva.customer > device-diagnostics/process-exit.txt; exit 1; }
+            cat device-diagnostics/instrumentation-gradle.txt
             gradle --stop
             python3 tools/reliability/collect_release_performance.py --serial emulator-5554 --output release-performance.json
             echo no | avdmanager create avd --name transiva-peer --package 'system-images;android-36;google_apis;x86_64' --device pixel_5 --force
@@ -83,4 +88,5 @@ jobs:
             paired-release.json
             release-performance.json
             peer-emulator.log
+            device-diagnostics/
           if-no-files-found: warn

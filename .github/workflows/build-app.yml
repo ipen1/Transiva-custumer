@@ -30,10 +30,11 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y php-cli php-mysql php-mbstring
       - name: Test auth receipts, one-time proofs, and network lifecycle
         run: |
-          python3 tools/reliability/auth_fixture_regression.py
-          python3 tools/reliability/auth_android_regression.py
-          python3 tools/reliability/auth_lookup_regression.py
-          python3 tools/reliability/auth_lookup_android_regression.py
+          set -euo pipefail
+          python3 tools/reliability/auth_fixture_regression.py 2>&1 | tee auth-fixtures.log
+          python3 tools/reliability/auth_android_regression.py 2>&1 | tee auth-android.log
+          python3 tools/reliability/auth_lookup_regression.py 2>&1 | tee auth-lookups.log
+          python3 tools/reliability/auth_lookup_android_regression.py --repeat 5 2>&1 | tee auth-lookup-runtime.log
       - name: Test auth schema and concurrent signup with real MariaDB
         env:
           TEST_DB_PASSWORD: integration-only
@@ -72,6 +73,7 @@ jobs:
         with:
           name: transaction-integration-report
           path: |
+            auth-*.log
             transaction-integration.log
             settlement-helper.log
             wallet-final.log

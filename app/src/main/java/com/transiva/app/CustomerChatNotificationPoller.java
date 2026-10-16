@@ -292,9 +292,7 @@ public final class CustomerChatNotificationPoller {
                 );
 
         String preview =
-                (rawMessage.startsWith("[[IMAGE]]") || rawMessage.startsWith("[[IMAGE2]]"))
-                        ? "📷 Mengirim sebuah foto"
-                        : rawMessage;
+                CustomerChatPreviewFormatter.notificationText(rawMessage);
 
         Intent intent = new Intent(
                 context,

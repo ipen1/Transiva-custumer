@@ -34,7 +34,7 @@ public final class TransivaNotificationStore {
             JSONObject item = new JSONObject();
             item.put("type", safe(type, "general"));
             item.put("title", safe(title, "Transiva"));
-            item.put("body", safe(body, "Notifikasi baru"));
+            item.put("body", safe(CustomerChatPreviewFormatter.notificationText(body), "Notifikasi baru"));
             item.put("order_id", safe(orderId, ""));
             item.put("room_id", safe(roomId, ""));
             item.put("url", safe(url, ""));
@@ -56,7 +56,12 @@ public final class TransivaNotificationStore {
     public static JSONArray getItems(Context context) {
         try {
             SharedPreferences prefs = context.getSharedPreferences(PREF, Context.MODE_PRIVATE);
-            return new JSONArray(prefs.getString(KEY_ITEMS, "[]"));
+            JSONArray items = new JSONArray(prefs.getString(KEY_ITEMS, "[]"));
+            for (int i=0;i<items.length();i++) {
+                JSONObject item=items.optJSONObject(i);
+                if(item!=null)item.put("body",CustomerChatPreviewFormatter.notificationText(item.optString("body", "Notifikasi baru")));
+            }
+            return items;
         } catch (Exception ignored) {
             return new JSONArray();
         }

@@ -29,6 +29,24 @@ public final class CustomerChatPreviewFormatter {
                 || value.startsWith(IMAGE_V2_PREFIX);
     }
 
+    /** Display-only preview. Chat storage keeps the original media payload for playback. */
+    public static String notificationText(String raw) {
+        String value=raw==null?"":raw.trim();
+        if(value.startsWith(VOICE_PREFIX)) {
+            int split=value.lastIndexOf('|');
+            if(split>=VOICE_PREFIX.length())try {
+                long millis=Long.parseLong(value.substring(split+1).trim());
+                if(millis>0 && millis<=600000) {
+                    long seconds=millis/1000;
+                    return String.format(Locale.US,"🎙 Pesan suara • %d:%02d",seconds/60,seconds%60);
+                }
+            } catch(NumberFormatException ignored) {}
+            return "🎙 Pesan suara";
+        }
+        if(isImageMessage(value))return "📷 Mengirim sebuah foto";
+        return raw==null?"":raw;
+    }
+
     public static boolean isMine(
             JSONObject item
     ) {

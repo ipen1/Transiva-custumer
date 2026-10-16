@@ -256,6 +256,7 @@ public class TransivaFirebaseService extends FirebaseMessagingService {
                 && "incoming_call".equalsIgnoreCase(first(data.get("event"), ""))
                 && !IncomingCallAlertManager.claimNotification(first(data.get("call_id"), ""))) return;
 
+        body = CustomerChatPreviewFormatter.notificationText(body);
         TransivaNotificationStore.add(
                 this,
                 type,

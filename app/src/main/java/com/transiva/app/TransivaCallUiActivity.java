@@ -25,7 +25,7 @@ public class TransivaCallUiActivity extends CustomerAdaptiveActivity {
     private TextView brand,stageHint;
     private boolean compact;
     private String boundPhoto="",boundName="";
-    private SurfaceViewRenderer local,remote;
+    private CallTextureRenderer local,remote;
     private TextView name,status;
     private Button accept,end,mute,speaker,camera,swap;
     private WebRtcSessionEngine attached;
@@ -73,7 +73,7 @@ public class TransivaCallUiActivity extends CustomerAdaptiveActivity {
         name.setTypeface(Typeface.create("sans-serif-medium",0));name.setMaxLines(2);header.addView(name);
         status=label(incoming?"Panggilan masuk":"Menyiapkan panggilan",13);status.setTextColor(CallVisuals.MUTED);
         status.setPadding(0,dp(4),0,dp(4));header.addView(status);root.addView(header);
-        stage=new FrameLayout(this);stage.setBackground(CallVisuals.surface(0xff10263b,0xff091525,dp(28),0xff213b50));
+        stage=new FrameLayout(this);stage.setClipChildren(true);stage.setClipToPadding(true);stage.setClipToOutline(true);stage.setBackground(CallVisuals.surface(0xff10263b,0xff091525,dp(28),0xff213b50));
         LinearLayout.LayoutParams sp=new LinearLayout.LayoutParams(-1,0,1);sp.setMargins(0,dp(12),0,dp(16));root.addView(stage,sp);
         identity=new FrameLayout(this);identity.setBackground(CallVisuals.surface(0xff10263b,0xff091525,dp(28),0xff213b50));identity.addView(new CallVisuals.Halo(this),new FrameLayout.LayoutParams(-1,-1));
         avatar=new CallVisuals.Avatar(this);identity.addView(avatar,new FrameLayout.LayoutParams(dp(144),dp(144),Gravity.CENTER));
@@ -208,18 +208,19 @@ public class TransivaCallUiActivity extends CustomerAdaptiveActivity {
         if(startedSession){updatePip();stopRing();releaseRenderers();finish();}return;}
         startedSession=true;bindIdentity(e.peer,e.peerPhoto);status.setText(e.status+(e.connectedAt>0?" • "+duration(e.connectedAt):"")+(e.error.isEmpty()?"":"\n"+e.error));accept.setVisibility(View.GONE);end.setText("Akhiri");updateControls(e);
         if(video&&e.eglContext()!=null&&!rendererReady){
-            attached=e;local=new SurfaceViewRenderer(this);remote=new SurfaceViewRenderer(this);
-            final SurfaceViewRenderer target=remote;
-            remote.init(e.eglContext(),new RendererCommon.RendererEvents(){
-                public void onFirstFrameRendered(){main.post(()->{if(!rendererReady||attached!=e||remote!=target||isDestroyed())return;identity.setVisibility(View.GONE);remote.setVisibility(View.VISIBLE);});}
-                public void onFrameResolutionChanged(int width,int height,int rotation){}
+            attached=e;local=new CallTextureRenderer(this);remote=new CallTextureRenderer(this);
+            final CallTextureRenderer target=remote;
+            remote.init(e.eglContext(),()->{
+                if(!rendererReady||attached!=e||remote!=target||isDestroyed())return;
+                identity.setVisibility(View.GONE);
             });
-            remote.setScalingType(RendererCommon.ScalingType.SCALE_ASPECT_FILL);remote.setEnableHardwareScaler(true);
             stage.addView(remote,0,new FrameLayout.LayoutParams(-1,-1));
             previewFrame=new FrameLayout(this);previewFrame.setPadding(dp(2),dp(2),dp(2),dp(2));
             previewFrame.setBackground(CallVisuals.surface(0xffa4cbd3,0xff426f86,dp(18),0));
-            local.init(e.eglContext(),null);local.setZOrderMediaOverlay(true);local.setMirror(true);
-            local.setScalingType(RendererCommon.ScalingType.SCALE_ASPECT_FILL);local.setEnableHardwareScaler(true);
+            previewFrame.setClipToOutline(true);previewFrame.setClipChildren(true);previewFrame.setClipToPadding(true);
+            local.init(e.eglContext(),null);local.setMirror(true);
+            local.setOutlineProvider(new ViewOutlineProvider(){@Override public void getOutline(View view,Outline outline){outline.setRoundRect(0,0,view.getWidth(),view.getHeight(),dp(16));}});
+            local.setClipToOutline(true);
             previewFrame.addView(local,new FrameLayout.LayoutParams(-1,-1));
             FrameLayout.LayoutParams preview=new FrameLayout.LayoutParams(dp(92),dp(128),Gravity.TOP|Gravity.END);
             preview.setMargins(dp(12),dp(12),dp(12),dp(12));stage.addView(previewFrame,preview);
@@ -249,9 +250,11 @@ public class TransivaCallUiActivity extends CustomerAdaptiveActivity {
         stageHint.setVisibility(stage.getHeight()<dp(180)?View.GONE:View.VISIBLE);
         if(previewFrame==null)return;
         FrameLayout.LayoutParams p=(FrameLayout.LayoutParams)previewFrame.getLayoutParams();
-        int height=Math.max(1,Math.min(dp(128),stage.getHeight()-dp(24)));
-        int width=Math.max(1,Math.min(dp(92),Math.min(stage.getWidth()-dp(24),Math.round(height*.72f))));
-        if(p.width!=width||p.height!=height){p.width=width;p.height=height;previewFrame.setLayoutParams(p);}
+        CallPreviewBounds bounds=CallPreviewBounds.fit(stage.getWidth(),stage.getHeight(),dp(92),dp(128),dp(12));
+        if(p.width!=bounds.width||p.height!=bounds.height||p.topMargin!=bounds.margin||p.rightMargin!=bounds.margin){
+            p.width=bounds.width;p.height=bounds.height;p.setMargins(bounds.margin,bounds.margin,bounds.margin,bounds.margin);
+            previewFrame.setLayoutParams(p);
+        }
     }
     private void applyPadding(){boolean pip=Build.VERSION.SDK_INT>=26&&isInPictureInPictureMode();root.setPadding(pip?0:dp(18),pip?0:dp(compact?4:10),pip?0:dp(18),pip?0:dp(compact?6:16));
         LinearLayout.LayoutParams p=(LinearLayout.LayoutParams)stage.getLayoutParams();

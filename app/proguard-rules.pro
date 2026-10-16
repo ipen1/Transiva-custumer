@@ -32,6 +32,42 @@
 # inline every app call and remove its holder, leaving the test APK unlinked.
 -keep class androidx.concurrent.futures.CallbackToFutureAdapter { *; }
 
+# Separate release instrumentation also calls Kotlin multifile facades. R8
+# cannot infer those calls from app code, and AGP removes duplicate stdlib
+# classes from the test APK. Keep only the shared entry-point families verified
+# by tools/reliability/verify_release_runner.py, not the entire Kotlin runtime.
+# A facade's static methods can be inherited from its __ implementation class.
+-keep class kotlin.Lazy { *; }
+-keep class kotlin.LazyKt** { *; }
+-keep class kotlin.Result { *; }
+-keep class kotlin.ResultKt { *; }
+-keep class kotlin.coroutines.ContinuationKt { *; }
+-keep class kotlin.coroutines.Continuation { *; }
+-keep class kotlin.coroutines.jvm.internal.ContinuationImpl { *; }
+-keep class kotlin.coroutines.jvm.internal.SuspendLambda { *; }
+-keep class kotlin.coroutines.intrinsics.IntrinsicsKt** { *; }
+-keep class kotlin.coroutines.jvm.internal.DebugProbesKt { *; }
+-keep class kotlin.jvm.internal.FunctionReferenceImpl { *; }
+-keep class kotlin.jvm.internal.StringCompanionObject { *; }
+-keep class kotlin.jvm.internal.Intrinsics { *; }
+-keep class kotlin.jvm.internal.Lambda { *; }
+-keep class kotlin.jvm.internal.Ref$ObjectRef { *; }
+-keep class kotlin.io.CloseableKt { *; }
+-keep class kotlin.time.DurationKt { *; }
+# Instrumentation's coroutine helpers use these shared APIs as well. Preserve
+# constructor parameter order and dispatcher accessors across the APK boundary.
+-keep class kotlinx.coroutines.Dispatchers { *; }
+-keep class kotlinx.coroutines.CancellableContinuationImpl { *; }
+-keep class kotlinx.coroutines.BuildersKt** { *; }
+-keep class kotlinx.coroutines.ExecutorsKt { *; }
+-keep class kotlinx.coroutines.Job$DefaultImpls { *; }
+-keep class kotlinx.coroutines.TimeoutKt { *; }
+# The paired-device test registers its receiver using this public overload.
+# Other ContextCompat methods remain eligible for shrinking/optimization.
+-keep class androidx.core.content.ContextCompat {
+    public static android.content.Intent registerReceiver(...);
+}
+
 -keep class com.transiva.app.WebRtcNativeRuntime { *; }
 
 # WebRTC 144 also calls these classes directly from libjingle_peerconnection_so.so.

@@ -24,6 +24,11 @@ public class ReleaseCallLifecycleTest {
         Instrumentation i=InstrumentationRegistry.getInstrumentation();
         Context c=i.getTargetContext();
         assertNotEquals("Run on a fresh install before granting call permissions",PackageManager.PERMISSION_GRANTED,c.checkSelfPermission(Manifest.permission.RECORD_AUDIO));
+        // A preceding denial test may set user-fixed after the second denial.
+        // Reset only denial flags, never revoke/pm-clear the running target
+        // process (that would kill this instrumentation and hide the result).
+        for(String permission:new String[]{Manifest.permission.RECORD_AUDIO,Manifest.permission.CAMERA})
+            shell(i,"pm clear-permission-flags "+c.getPackageName()+" "+permission+" user-set user-fixed");
         WebRtcCallActivity screen=null;
         try{
             shell(i,"input keyevent 224");shell(i,"wm dismiss-keyguard");

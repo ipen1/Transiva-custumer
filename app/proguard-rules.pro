@@ -82,3 +82,9 @@
 -keepclasseswithmembers,includedescriptorclasses class * {
     @org.jni_zero.AccessedByNative <fields>;
 }
+
+# IncomingCallNotificationTest is packaged in a separate release test APK.
+# Preserve the class and member ABI it calls in the minified target app.
+# Otherwise R8 can inline/rename this holder while the test DEX still refers
+# to com.transiva.app.IncomingCallNotifier.channels/build by their Java names.
+-keep class com.transiva.app.IncomingCallNotifier { *; }

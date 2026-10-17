@@ -282,15 +282,21 @@ public class TransivaCallUiActivity extends CustomerAdaptiveActivity {
     @Override protected void onPause(){resumed=false;main.removeCallbacks(refresh);main.removeCallbacks(advanceStart);super.onPause();/* Service media remains active; only UI refresh/start is deferred. */}
     @Override protected void onStop(){super.onStop();WebRtcSessionEngine e=WebRtcCallForegroundService.current();if(e!=null)e.setVisible(Build.VERSION.SDK_INT>=26&&isInPictureInPictureMode());}
     @Override protected void onDestroy(){if(!incoming||startedSession||serviceRequested)stopRing();main.removeCallbacksAndMessages(null);releaseRenderers();if(registered)unregisterReceiver(receiver);if(Build.VERSION.SDK_INT>=33&&backCallback!=null)getOnBackInvokedDispatcher().unregisterOnBackInvokedCallback(backCallback);super.onDestroy();/* Never end or release the service session here. */}
+    private long incomingRemaining(){
+        if(getIntent().hasExtra(IncomingCallNotifier.DEADLINE))return Math.max(1,IncomingCallNotifier.remaining(getIntent()));
+        return Math.max(1,Math.min(45,getIntent().getIntExtra("remaining_seconds",45)))*1000L;
+    }
     private void startRing(){if(incoming){
-        IncomingCallAlertManager.start(this,getIntent().getStringExtra("call_id"));
+        if(getIntent().getBooleanExtra("incoming_system_alert",false))IncomingCallNotifier.cancel(this,getIntent().getStringExtra("call_id"));
+        IncomingCallNotifier.attachVisible(this,getIntent());
+        IncomingCallAlertManager.start(this,getIntent().getStringExtra("call_id"),incomingRemaining());
         final String ringingId=getIntent().getStringExtra("call_id");
         main.postDelayed(()->{
             if(!isFinishing()&&!serviceRequested&&!startedSession
                     &&ringingId!=null&&ringingId.equals(getIntent().getStringExtra("call_id"))){
                 IncomingCallAlertManager.resolve(ringingId);finish();
             }
-        },Math.max(1,Math.min(45,getIntent().getIntExtra("remaining_seconds",45)))*1000L);
+        },incomingRemaining());
     }}
     private void stopRing(){if(incoming){String id=getIntent().getStringExtra("call_id");if(id!=null&&!id.trim().isEmpty())IncomingCallAlertManager.stop(id);}}
     private void resolveRing(){if(incoming)IncomingCallAlertManager.resolve(getIntent().getStringExtra("call_id"));}

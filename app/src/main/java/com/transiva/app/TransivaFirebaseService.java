@@ -79,6 +79,8 @@ public class TransivaFirebaseService extends FirebaseMessagingService {
         Map<String, String> data =
                 remoteMessage.getData();
 
+        if (PushExpiryPolicy.expiredOrder(data,System.currentTimeMillis())) return;
+
         if (data == null || data.isEmpty()) {
             String title =
                     remoteMessage.getNotification() != null
@@ -119,6 +121,10 @@ public class TransivaFirebaseService extends FirebaseMessagingService {
             rt.putExtra("session_key", first(data.get("session_key"), ""));
             rt.putExtra("event", first(data.get("event"), type));
             sendBroadcast(rt);
+        }
+
+        if ("webrtc_call".equals(type) && "incoming_call".equalsIgnoreCase(first(data.get("event"),""))) {
+            IncomingCallNotifier.receive(this,data);return;
         }
 
         if ("webrtc_call".equals(type)) {
@@ -252,9 +258,10 @@ public class TransivaFirebaseService extends FirebaseMessagingService {
             String url,
             Map<String, String> data
     ) {
-        if ("webrtc_call".equals(type) && data != null
-                && "incoming_call".equalsIgnoreCase(first(data.get("event"), ""))
-                && !IncomingCallAlertManager.claimNotification(first(data.get("call_id"), ""))) return;
+        if ("webrtc_call".equals(type)) {
+            if(data!=null&&"incoming_call".equalsIgnoreCase(first(data.get("event"),"")))IncomingCallNotifier.receive(this,data);
+            return;
+        }
 
         body = CustomerChatPreviewFormatter.notificationText(body);
         TransivaNotificationStore.add(
@@ -359,33 +366,14 @@ public class TransivaFirebaseService extends FirebaseMessagingService {
 
         TransivaNotificationStyle.apply(this, builder, type);
 
-        boolean incomingCallNotification = "webrtc_call".equals(type)
-                && data != null
-                && "incoming_call".equalsIgnoreCase(first(data.get("event"), ""));
-
-        if (incomingCallNotification) {
-            IncomingCallAlertManager.start(this, callNotificationId);
-            // Full-screen is reserved strictly for a new incoming call. Accepted,
-            // SDP and ICE events must never relaunch the active call Activity.
-            builder.setCategory(NotificationCompat.CATEGORY_CALL)
-                    .setPriority(NotificationCompat.PRIORITY_MAX)
-                    .setOngoing(true)
-                    .setAutoCancel(false)
-                    .setOnlyAlertOnce(true)
-                    .setSilent(true)
-                    .setTimeoutAfter(50_000L)
-                    .setFullScreenIntent(pendingIntent, true);
-        } else {
-            builder.setDefaults(
+        builder.setDefaults(
                     NotificationCompat.DEFAULT_SOUND
                             | NotificationCompat.DEFAULT_VIBRATE
                             | NotificationCompat.DEFAULT_LIGHTS
             );
-        }
+        
 
-        if (incomingCallNotification) {
-            wakeScreen(12000L);
-        } else if (arrivalEvent) {
+        if (arrivalEvent) {
             // Play policy: driver-arrival is a high-priority heads-up event, not a
             // full-screen intent. Full-screen is reserved for incoming calls only.
             builder.setPriority(NotificationCompat.PRIORITY_HIGH)
@@ -405,15 +393,19 @@ public class TransivaFirebaseService extends FirebaseMessagingService {
             return;
         }
 
-        NotificationManagerCompat
-                .from(this)
-                .notify(requestCode, builder.build());
-
-        if ("webrtc_call".equals(type)
-                && data != null
-                && "incoming_call".equalsIgnoreCase(first(data.get("event"), ""))) {
-            openIncomingCallScreen(intent);
+        try {
+            NotificationManagerCompat.from(this).notify(requestCode,builder.build());
+        } catch (RuntimeException unavailable) {
+            try {
+                NotificationCompat.Builder fallback=new NotificationCompat.Builder(this,channelId)
+                    .setSmallIcon(getSmallIcon()).setContentTitle(first(title,"Transiva"))
+                    .setContentText(first(body,"Notifikasi baru")).setContentIntent(pendingIntent)
+                    .setPriority(priorityForType(type)).setAutoCancel(true);
+                NotificationManagerCompat.from(this).notify(requestCode,fallback.build());
+            }catch(RuntimeException failed){android.util.Log.w("TransivaNotification","Notification unavailable",failed);}
         }
+
+
     }
 
     private Intent buildArrivalIntent(String event, String orderId, Map<String, String> data) {
@@ -456,24 +448,7 @@ public class TransivaFirebaseService extends FirebaseMessagingService {
         }
     }
 
-    private void openIncomingCallScreen(Intent intent) {
-        if (intent == null) return;
-        String dbgCall = first(intent.getStringExtra("call_id"), "");
-        boolean overlay = Build.VERSION.SDK_INT < 23 || Settings.canDrawOverlays(this);
-        try {
-            Intent callIntent = new Intent(intent);
-            callIntent.addFlags(
-                    Intent.FLAG_ACTIVITY_NEW_TASK
-                            | Intent.FLAG_ACTIVITY_CLEAR_TOP
-                            | Intent.FLAG_ACTIVITY_SINGLE_TOP
-                            | Intent.FLAG_ACTIVITY_NO_USER_ACTION
-            );
-            startActivity(callIntent);
-        } catch (Throwable ignored) {
-            // Android 10+ may block a direct background Activity start. In that
-            // case the high-priority full-screen call notification above opens it.
-        }
-    }
+
 
     private Intent buildOpenIntent(
             String type,

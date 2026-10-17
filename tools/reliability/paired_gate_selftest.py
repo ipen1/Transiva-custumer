@@ -51,7 +51,8 @@ class Adb:
         self.mode=mode;self.processes={};self.offer=0;self.clock=0
         self.verified=set();self.releases=[];self.closed=set();self.commands=[]
         self.password='ci-test-secret';self.nonce=''
-    def now(self):self.clock+=2;return self.clock
+        self.lock_checks=0;self.settings=[];self.lock_confirmed_at=None;self.finish_times=[]
+    def now(self):self.clock+=.25;return self.clock
     def popen(self,args,**kwargs):
         role='caller' if args[args.index('-s')+1]=='one-device' else 'callee'
         self.nonce=args[args.index('pair_nonce')+1]
@@ -71,6 +72,9 @@ class Adb:
     def run(self,args,**kwargs):
         role='caller' if args[args.index('-s')+1]=='one-device' else 'callee';out=''
         if 'getprop' in args:out='36\n'
+        if 'settings' in args:
+            self.settings.append(args[args.index('settings')+1:])
+            if 'get' in args:out='null\n' if self.mode=='unset_lock_timeout' else '5000\n'
         if 'meminfo' in args:out='TOTAL PSS: 32000\n'
         if 'broadcast' in args:
             value=json.loads(base64.b64decode(args[args.index('payload')+1]));kind=value['type']
@@ -82,9 +86,14 @@ class Adb:
                 for peer in self.processes.values():peer.emit({'type':'media'})
             elif kind.startswith('network_'):
                 p.emit({'type':kind,'transport':'wifi' if kind=='network_before' else 'cellular'})
-            elif kind in ('pip','lock_state'):
-                p.emit({'type':'pip' if kind=='pip' else 'lock','active':True})
+            elif kind=='pip':p.emit({'type':'pip','active':True})
+            elif kind=='lock_state':
+                self.lock_checks+=1
+                active=self.mode!='never_locked' and (self.mode!='delayed_lock' or self.lock_checks>=3)
+                if active and self.lock_confirmed_at is None:self.lock_confirmed_at=self.clock
+                if self.mode!='silent_lock':p.emit({'type':'lock','active':active})
             elif kind=='finish':
+                self.finish_times.append(self.clock)
                 if self.mode=='slow_callee' and role=='callee':
                     timer=threading.Timer(.03,self.verify,args=(role,));timer.daemon=True;timer.start()
                 else:self.verify(role)
@@ -103,7 +112,9 @@ def run_fixture(fixture,directory,diagnostics_arg=True):
           '--turn-password',fixture.password,'--output',str(report)]
     if diagnostics_arg:args+=['--diagnostics-dir',str(logs)]
     error=None
-    with patch.object(sys,'argv',args),patch.object(gate.subprocess,'run',fixture.run),patch.object(gate.subprocess,'Popen',fixture.popen),patch.object(gate.time,'monotonic',fixture.now),patch.object(gate.time,'sleep',lambda seconds:real_sleep(.001)):
+    class FastQueue(queue.Queue):
+        def get(self,block=True,timeout=None):return super().get(block, min(timeout,.002) if timeout is not None else None)
+    with patch.object(gate,'queue',types.SimpleNamespace(Queue=FastQueue,Empty=queue.Empty)),patch.object(sys,'argv',args),patch.object(gate.subprocess,'run',fixture.run),patch.object(gate.subprocess,'Popen',fixture.popen),patch.object(gate.time,'monotonic',fixture.now),patch.object(gate.time,'sleep',lambda seconds:real_sleep(.001)):
         try:gate.main()
         except (AssertionError,RuntimeError) as caught:error=caught
     return json.loads(report.read_text()),logs,error
@@ -121,6 +132,27 @@ class PairedGateTest(unittest.TestCase):
         self.assertEqual(['caller','callee'],f.releases)
         self.assertEqual('cellular',r['network_after'])
         self.assertIn('OK (1 test)',(logs/'callee-instrumentation.txt').read_text())
+    def test_delayed_keyguard_retries_and_observes_media_after_lock(self):
+        f,r,logs,error=self.run_case('delayed_lock')
+        self.assertIsNone(error);self.assertEqual('passed',r['result'])
+        self.assertGreaterEqual(f.lock_checks,3);self.assertTrue(r['keyguard_observed'])
+        self.assertTrue(all(t-f.lock_confirmed_at>12 for t in f.finish_times))
+        self.assertIn(['put','secure','lock_screen_lock_after_timeout','0'],f.settings)
+        self.assertEqual(['put','secure','lock_screen_lock_after_timeout','5000'],f.settings[-1])
+    def test_unset_keyguard_timeout_restored_by_deleting_override(self):
+        f,r,logs,error=self.run_case('unset_lock_timeout')
+        self.assertIsNone(error)
+        self.assertEqual(['delete','secure','lock_screen_lock_after_timeout'],f.settings[-1])
+    def test_keyguard_never_active_fails_without_finishing_media(self):
+        f,r,logs,error=self.run_case('never_locked')
+        self.assertIsNotNone(error);self.assertIn('keyguard within 15 seconds',r['failure']['message'])
+        self.assertEqual([],f.finish_times);self.assertEqual([],f.releases)
+        self.assertTrue((logs/'callee-window-policy.txt').exists())
+        self.assertEqual(['put','secure','lock_screen_lock_after_timeout','5000'],f.settings[-1])
+    def test_missing_keyguard_reply_has_bounded_failure(self):
+        f,r,logs,error=self.run_case('silent_lock')
+        self.assertIsNotNone(error);self.assertIn('keyguard within 15 seconds',r['failure']['message'])
+        self.assertEqual([],f.releases)
     def test_slow_callee_is_not_disconnected_by_caller(self):
         f,r,logs,error=self.run_case('slow_callee')
         self.assertIsNone(error);self.assertEqual('passed',r['result'])

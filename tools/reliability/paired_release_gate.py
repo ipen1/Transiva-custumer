@@ -3,6 +3,8 @@
 import argparse,base64,json,subprocess,threading,queue,time,secrets,pathlib,re
 
 PROTOCOL_VERSION=2
+LOCK_TIMEOUT_SECONDS=15
+LOCK_POLL_SECONDS=1
 
 def run(args,timeout=30):
  p=subprocess.run(args,text=True,capture_output=True,timeout=timeout)
@@ -40,7 +42,13 @@ def main():
    (diagnostics/(role+'-instrumentation.txt')).write_text(''.join(transcript))
    events.put((role,{'type':'exit'}))
  report={'device_roles':['caller','callee'],'protocol_version':PROTOCOL_VERSION,'scope':'release SDK fixture; ADB signaling; TURN on CI host; no production backend','events':[]};ready=set();media=set();done={};answers=0;switched=False;pip=False;locked=False;phase_at=None;started=time.monotonic();network_deadline=None;network_changed=False;release_sent=False
+ lock_deadline=None;lock_poll_at=None;lock_observed_at=None;lock_timeout_original=None
  try:
+  # Only disposable test devices: remove the user-configurable grace period
+  # between screen-off and keyguard, and restore it even when the gate fails.
+  lock_timeout_original=adb('callee','shell','settings','get','secure','lock_screen_lock_after_timeout').strip()
+  adb('callee','shell','settings','put','secure','lock_screen_lock_after_timeout','0')
+  adb('callee','shell','locksettings','set-disabled','false')
   for role,serial in devices.items():
    sdk=int(adb(role,'shell','getprop','ro.build.version.sdk').strip());assert sdk>=36,'API 36+ required'
    adb(role,'shell','input','keyevent','224');adb(role,'shell','wm','dismiss-keyguard');adb(role,'shell','svc','wifi','enable')
@@ -51,7 +59,13 @@ def main():
   limit=time.monotonic()+210
   while time.monotonic()<limit and len(done)<2:
    # Continuous ICE/status traffic must not postpone the observation deadline.
-   if phase_at and time.monotonic()-phase_at>12 and pip and locked:
+   now=time.monotonic()
+   if lock_deadline is not None and not locked:
+    assert now<lock_deadline,'Callee did not reach keyguard within 15 seconds'
+    if now>=lock_poll_at:
+     send('callee',{'type':'lock_state'});lock_poll_at=now+LOCK_POLL_SECONDS
+   # Observe media for a full 12 seconds AFTER keyguard is confirmed.
+   if phase_at and lock_observed_at is not None and now-max(phase_at,lock_observed_at)>12 and pip and locked:
     send('caller',{'type':'finish'});send('callee',{'type':'finish'});phase_at=None
    try:role,event=events.get(timeout=1)
    except queue.Empty:continue
@@ -65,7 +79,9 @@ def main():
     if kind=='answer':
      answers+=1
      if answers==2:
-      phase_at=time.monotonic();send('caller',{'type':'pip'});adb('callee','shell','input','keyevent','223');time.sleep(1);send('callee',{'type':'lock_state'})
+      phase_at=time.monotonic();send('caller',{'type':'pip'})
+      adb('callee','shell','input','keyevent','223')
+      lock_deadline=time.monotonic()+LOCK_TIMEOUT_SECONDS;lock_poll_at=time.monotonic()
    elif kind=='media':
     media.add(role)
     if len(media)==2 and not switched:
@@ -84,7 +100,14 @@ def main():
     else:
      assert time.monotonic()<network_deadline,'Caller did not switch to cellular';time.sleep(1);send('caller',{'type':'network_after'})
    elif kind=='pip':pip=bool(event.get('active'));assert pip,'PiP did not become active'
-   elif kind=='lock':locked=bool(event.get('active'));assert locked,'Callee did not reach keyguard'
+   elif kind=='lock':
+    assert role=='callee' and lock_deadline is not None,'Unexpected keyguard observation'
+    report['keyguard_checks']=report.get('keyguard_checks',0)+1
+    if event.get('active') and not locked:
+     locked=True;lock_observed_at=time.monotonic()
+     report['keyguard_observed']=True
+    # A false observation can be the asynchronous screen-off transition.
+    # Keep processing signaling/media and retry until the bounded deadline.
    elif kind=='done':
     assert role not in done,'Duplicate verification acknowledgement: '+role
     done[role]={k:event[k] for k in ('video_frames','audio_packets')}
@@ -105,12 +128,22 @@ def main():
    assert any('OK (1 test)' in line for line in summaries.get(role,[])),role+': '+'\n'.join(summaries.get(role,[]))[-4000:]
   report.update(result='passed',media=done,network_switch='emulated Wi-Fi off / cellular on; not a physical-carrier NAT test')
  except Exception as error:
-  report['failure']={'type':type(error).__name__,'message':scrub(str(error))};raise
+  report['failure']={'type':type(error).__name__,'message':scrub(str(error))}
+  if lock_deadline is not None and not locked:
+   for service in ('power','window policy'):
+    try:(diagnostics/('callee-'+service.replace(' ','-')+'.txt')).write_text(scrub(adb('callee','shell','dumpsys',*service.split())))
+    except Exception:pass
+  raise
  finally:
   for role,p in processes.items():
    if p.poll() is None:p.terminate()
    try:adb(role,'shell','input','keyevent','224');adb(role,'shell','wm','dismiss-keyguard');adb(role,'shell','svc','wifi','enable')
    except Exception:pass
+  if lock_timeout_original is not None:
+   try:
+    if lock_timeout_original in ('','null'):adb('callee','shell','settings','delete','secure','lock_screen_lock_after_timeout')
+    else:adb('callee','shell','settings','put','secure','lock_screen_lock_after_timeout',lock_timeout_original)
+   except Exception as error:report['restore_warning']=scrub(str(error))
   for thread in readers.values():thread.join(timeout=5)
   report.update(verified_peers=sorted(done),release_sent=release_sent)
   report.setdefault('media',done);report.setdefault('result','failed')

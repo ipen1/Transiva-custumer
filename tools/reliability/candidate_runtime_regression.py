@@ -8,14 +8,16 @@ with tempfile.TemporaryDirectory(prefix='ice-regression-') as directory:
  p=Path(directory)
  with zipfile.ZipFile(aars[0]) as z:(p/'webrtc.jar').write_bytes(z.read('classes.jar'))
  files={
- 'android/content/Context.java':'package android.content;public class Context{public static final String AUDIO_SERVICE="audio";public Context getApplicationContext(){return this;}public Object getSystemService(String n){return new android.media.AudioManager();}public String getPackageName(){return "com.transiva.customer";}public void sendBroadcast(Intent i){}}',
+ 'android/content/Context.java':'package android.content;public class Context{public static final String AUDIO_SERVICE="audio",NOTIFICATION_SERVICE="notification";public Context getApplicationContext(){return this;}public Object getSystemService(String n){return NOTIFICATION_SERVICE.equals(n)?new android.app.NotificationManager():new android.media.AudioManager();}public String getPackageName(){return "com.transiva.customer";}public void sendBroadcast(Intent i){}}',
  'android/content/Intent.java':'package android.content;public class Intent{public Intent(){}public Intent(String s){}public String getStringExtra(String k){return "fixture";}public boolean getBooleanExtra(String k,boolean d){return d;}public Intent setPackage(String p){return this;}}',
- 'android/media/AudioManager.java':'package android.media;public class AudioManager{public static final int MODE_NORMAL=0,MODE_IN_COMMUNICATION=3;public void setSpeakerphoneOn(boolean b){}public void setMode(int n){}}',
+ 'android/media/AudioManager.java':'package android.media;public class AudioManager{public static final int MODE_NORMAL=0,MODE_IN_COMMUNICATION=3,RINGER_MODE_NORMAL=2,STREAM_RING=2;public static int ringerMode=2,ringVolume=3;public int getRingerMode(){return ringerMode;}public int getStreamVolume(int stream){return ringVolume;}public void setSpeakerphoneOn(boolean b){}public void setMode(int n){}}',
+ 'android/app/NotificationManager.java':'package android.app;public class NotificationManager{public static final int INTERRUPTION_FILTER_ALL=1;public static int filter=1;public int getCurrentInterruptionFilter(){return filter;}}',
  'android/os/Looper.java':'package android.os;public class Looper{public static Looper getMainLooper(){return new Looper();}}',
  'android/os/SystemClock.java':'package android.os;public class SystemClock{public static volatile long now;public static long elapsedRealtime(){return now;}}',
  'android/os/Handler.java':'''package android.os;import java.util.*;public class Handler{static class E{Runnable r;long at;E(Runnable r,long at){this.r=r;this.at=at;}}static List<E> q=new ArrayList<>();public Handler(Looper l){}public boolean post(Runnable r){return postDelayed(r,0);}public boolean postDelayed(Runnable r,long d){synchronized(q){q.add(new E(r,SystemClock.now+d));}return true;}public void removeCallbacks(Runnable r){synchronized(q){q.removeIf(e->e.r==r);}}public void removeCallbacksAndMessages(Object o){synchronized(q){q.clear();}}public static void step(){for(int n=0;n<1000;n++){E next=null;synchronized(q){for(E e:q)if(e.at<=SystemClock.now){next=e;break;}if(next!=null)q.remove(next);}if(next==null)return;next.r.run();}throw new AssertionError("callback loop");}}''',
  'com/transiva/app/Fixtures.java':'''package com.transiva.app;import android.content.*;import org.json.*;import java.util.concurrent.*;
 class SessionManager{SessionManager(Context c){}}
+class IncomingCallAlertManager{static boolean playing;static boolean isRinging(String id){return playing;}}
 class CustomerTransportSession{static boolean valid=true;static CustomerTransportSession capture(Context c){return new CustomerTransportSession();}boolean matches(Context c){return valid;}}
 class WebRtcNativeRuntime{static void initialize(Context c){}}
 class CallPeerIdentity{static String first(String... values){for(String s:values)if(s!=null&&!s.isEmpty())return s;return "";}}
@@ -33,10 +35,20 @@ public static void main(String[] args)throws Exception{
  e=engine();WebRtcSignalApi.block=new CountDownLatch(1);send(e,"blocked");tick(2);e.end(false,"done");tick(100);check(WebRtcSignalApi.calls==1&&((Map<?,?>)field(e,"outgoingIce")).isEmpty(),"hangup cancels pending retries");close(e);
  e=engine();WebRtcSignalApi.block=new CountDownLatch(1);send(e,"same");tick(2);((Map<?,?>)field(e,"outgoingIce")).clear();send(e,"same");WebRtcSignalApi.block.countDown();tick(20);check(WebRtcSignalApi.calls==2&&((Map<?,?>)field(e,"outgoingIce")).isEmpty(),"old generation completion cannot delete replacement candidate");close(e);
  e=engine();e.connected=true;WebRtcSignalApi.block=new CountDownLatch(1);for(int n=0;n<100;n++)send(e,"cap-"+n);check(((Map<?,?>)field(e,"outgoingIce")).size()<=64,"gathering burst remains bounded");close(e);
+ e=engine();java.lang.reflect.Method apply=WebRtcSessionEngine.class.getDeclaredMethod("apply",org.json.JSONObject.class);apply.setAccessible(true);
+ apply.invoke(e,new org.json.JSONObject().put("status","ringing"));check(e.status.startsWith("Memanggil "),"missing callee acknowledgement keeps calling state");
+ apply.invoke(e,new org.json.JSONObject().put("status","ringing").put("receiver_ringing",true));check(e.status.startsWith("Berdering "),"callee acknowledgement reaches production engine status");
+ e.accepted=true;e.status="Menghubungkan";apply.invoke(e,new org.json.JSONObject().put("status","ringing").put("receiver_ringing",true));check(e.status.equals("Menghubungkan"),"late ringing report cannot overwrite accepted call");
+ e.accepted=false;e.connectedAt=1;e.status="Terhubung";apply.invoke(e,new org.json.JSONObject().put("status","ringing").put("receiver_ringing",true));check(e.status.equals("Terhubung"),"late ringing report cannot overwrite connected call");close(e);
+ IncomingCallAlertManager.playing=true;check(CallRingingState.audible(new Context(),"fixture"),"active ringtone with normal volume can confirm");
+ android.media.AudioManager.ringVolume=0;check(!CallRingingState.audible(new Context(),"fixture"),"zero volume cannot confirm audible ringing");android.media.AudioManager.ringVolume=3;
+ android.media.AudioManager.ringerMode=0;check(!CallRingingState.audible(new Context(),"fixture"),"silent mode cannot confirm audible ringing");android.media.AudioManager.ringerMode=2;
+ android.app.NotificationManager.filter=2;check(!CallRingingState.audible(new Context(),"fixture"),"restricted interruption filter cannot confirm ringing");android.app.NotificationManager.filter=1;
+ IncomingCallAlertManager.playing=false;check(!CallRingingState.audible(new Context(),"fixture"),"posted notification alone cannot confirm ringing");
  System.out.println("PASS "+checks+" candidate runtime scenarios");}}
 '''}
  for name,text in files.items():
   f=p/name;f.parent.mkdir(parents=True,exist_ok=True);f.write_text(text)
- cp=os.pathsep.join([os.environ['JSON_JAR'],str(sdk),str(p/'webrtc.jar')]);sources=list(p.rglob('*.java'))+[app/(name+'.java') for name in ['WebRtcSessionEngine','CallRecoveryPolicy','CallMediaState','NetworkSafetyRules']]
+ cp=os.pathsep.join([os.environ['JSON_JAR'],str(sdk),str(p/'webrtc.jar')]);sources=list(p.rglob('*.java'))+[app/(name+'.java') for name in ['WebRtcSessionEngine','CallRecoveryPolicy','CallMediaState','NetworkSafetyRules','CallRingingState']]
  subprocess.run([os.getenv('JAVAC_BIN','javac'),'-cp',cp,'-d',str(p/'classes'),*map(str,sources)],check=True)
  subprocess.run(['java','-cp',str(p/'classes')+os.pathsep+cp,'com.transiva.app.CandidateProbe'],check=True)

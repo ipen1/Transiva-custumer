@@ -79,6 +79,7 @@ public class TransivaFirebaseService extends FirebaseMessagingService {
         Map<String, String> data =
                 remoteMessage.getData();
 
+        if(data!=null&&"webrtc_call".equalsIgnoreCase(data.get("type"))&&"incoming_call".equalsIgnoreCase(data.get("event")))CallDeliveryTrace.record(this,data,"PUSH_RECEIVED","");
         if(!FcmSessionTarget.accept(this,data))return;
 
         if (PushExpiryPolicy.expiredOrder(data,System.currentTimeMillis())) return;

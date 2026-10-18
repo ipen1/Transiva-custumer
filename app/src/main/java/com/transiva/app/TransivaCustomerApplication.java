@@ -19,6 +19,7 @@ public class TransivaCustomerApplication extends Application implements Applicat
     @Override public void onCreate() {
         super.onCreate();
         SecureTokenStore.migrateLegacy(this);
+        CallDeliveryTrace.resume(this);
         CallReliabilityRuntime.install(this);
         instance = this;
         if(BuildConfig.LOCAL_VERIFICATION){
@@ -35,6 +36,7 @@ public class TransivaCustomerApplication extends Application implements Applicat
     }
 
     @Override public void onActivityResumed(Activity activity) {
+        FcmReadinessBanner.attach(activity);
         currentActivity = new WeakReference<>(activity);
         CustomerPerformanceMetrics.resumed(activity);
         TransivaCrashReporter.screen(activity);
@@ -100,6 +102,7 @@ public class TransivaCustomerApplication extends Application implements Applicat
     @Override public void onActivityCreated(Activity activity, Bundle state) { }
     @Override public void onActivityStarted(Activity activity) { }
     @Override public void onActivityPaused(Activity activity) {
+        FcmReadinessBanner.detach(activity);
         NetworkStatusBanner.detach(activity);
         Activity current = currentActivity.get();
         if (current == activity) {
@@ -108,7 +111,7 @@ public class TransivaCustomerApplication extends Application implements Applicat
     }
     @Override public void onActivityStopped(Activity activity) { }
     @Override public void onActivitySaveInstanceState(Activity activity, Bundle state) { }
-    @Override public void onActivityDestroyed(Activity activity) { }
+    @Override public void onActivityDestroyed(Activity activity) {FcmReadinessBanner.detach(activity);}
     @Override public void onTrimMemory(int level) {
         super.onTrimMemory(level);
         if (level >= android.content.ComponentCallbacks2.TRIM_MEMORY_BACKGROUND

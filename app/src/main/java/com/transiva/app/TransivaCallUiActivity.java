@@ -42,14 +42,14 @@ public class TransivaCallUiActivity extends CustomerAdaptiveActivity {
         render();
     }};
     private final Runnable refresh=new Runnable(){public void run(){render();if(!isFinishing())main.postDelayed(this,1000);}};
-    @Override protected void onCreate(Bundle saved){super.onCreate(saved);ensureOperationId(getIntent(),saved);getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);incoming=getIntent().getBooleanExtra("incoming",false);video="video".equals(getIntent().getStringExtra("call_type"));
+    @Override protected void onCreate(Bundle saved){super.onCreate(saved);ensureOperationId(getIntent(),saved);getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);incoming=getIntent().getBooleanExtra("incoming",false);if(incoming)CallDeliveryTrace.record(this,getIntent(),"CALL_UI_OPENED","");video="video".equals(getIntent().getStringExtra("call_type"));
         WebRtcSessionEngine e=WebRtcCallForegroundService.current();if(e!=null&&e.active()){video=e.video;incoming=e.incoming;startedSession=true;}
         build();IntentFilter f=new IntentFilter(WebRtcSessionEngine.CHANGED);f.addAction(ACTION_CALL_STATE);ContextCompat.registerReceiver(this,receiver,f,ContextCompat.RECEIVER_NOT_EXPORTED);registered=true;
         cancelIncomingNotification();
         if(e!=null&&e.active())render();else if(incoming){startRing();if(getIntent().getBooleanExtra("auto_accept",false))requestStart();}else if(getIntent().getStringExtra("order_id")!=null)requestStart();else{status.setText("Tidak ada panggilan aktif");accept.setVisibility(View.GONE);}
         if(Build.VERSION.SDK_INT>=33){backCallback=()->onBackPressed();getOnBackInvokedDispatcher().registerOnBackInvokedCallback(android.window.OnBackInvokedDispatcher.PRIORITY_DEFAULT,backCallback);}
     }
-    @Override protected void onNewIntent(Intent i){super.onNewIntent(i);ensureOperationId(i,null);if(WebRtcCallForegroundService.current()!=null){render();return;}failureMessage="";startPending=false;setIntent(i);incoming=i.getBooleanExtra("incoming",false);video="video".equals(i.getStringExtra("call_type"));serviceRequested=false;startedSession=false;releaseRenderers();build();cancelIncomingNotification();if(incoming){startRing();if(i.getBooleanExtra("auto_accept",false))requestStart();}else requestStart();}
+    @Override protected void onNewIntent(Intent i){super.onNewIntent(i);ensureOperationId(i,null);if(WebRtcCallForegroundService.current()!=null){render();return;}failureMessage="";startPending=false;setIntent(i);incoming=i.getBooleanExtra("incoming",false);if(incoming)CallDeliveryTrace.record(this,i,"CALL_UI_OPENED","");video="video".equals(i.getStringExtra("call_type"));serviceRequested=false;startedSession=false;releaseRenderers();build();cancelIncomingNotification();if(incoming){startRing();if(i.getBooleanExtra("auto_accept",false))requestStart();}else requestStart();}
     private static void ensureOperationId(Intent intent,Bundle saved){
         if(intent.getBooleanExtra("incoming",false))return;
         String id=intent.getStringExtra("operation_id");
@@ -139,7 +139,7 @@ public class TransivaCallUiActivity extends CustomerAdaptiveActivity {
     // Called after the global theme applies its window colors.
     void applyCallBars(){CustomerWindowPolicy.status(getWindow(),CallVisuals.TOP);CustomerWindowPolicy.navigation(getWindow(),CallVisuals.BOTTOM);}
     private boolean permission(){return checkSelfPermission(Manifest.permission.RECORD_AUDIO)==PackageManager.PERMISSION_GRANTED&&(!video||checkSelfPermission(Manifest.permission.CAMERA)==PackageManager.PERMISSION_GRANTED);}
-    private void requestStart(){
+    private void requestStart(){if(incoming)CallDeliveryTrace.record(this,getIntent(),"ACCEPT_REQUESTED","USER_ACTION");
         if(serviceRequested||!failureMessage.isEmpty())return;
         startPending=true;
         scheduleStart();
@@ -243,7 +243,7 @@ public class TransivaCallUiActivity extends CustomerAdaptiveActivity {
     }
     private String duration(long base){long seconds=Math.max(0,(SystemClock.elapsedRealtime()-base)/1000);return String.format(java.util.Locale.US,"%02d:%02d",seconds/60,seconds%60);}
     private void releaseRenderers(){if(attached!=null)attached.detach(local,remote);attached=null;if(local!=null){local.release();local=null;}if(remote!=null){stage.removeView(remote);remote.release();remote=null;}rendererReady=false;if(previewFrame!=null){stage.removeView(previewFrame);previewFrame=null;}if(identity!=null)identity.setVisibility(View.VISIBLE);}
-    private void hangup(){resolveRing();stopRing();cancelIncomingNotification(true);WebRtcSessionEngine e=WebRtcCallForegroundService.current();if(e!=null&&e.active()){e.end(true,"Panggilan berakhir");}else if(serviceRequested){startService(new Intent(this,WebRtcCallForegroundService.class).setAction(WebRtcCallForegroundService.END));finish();}else{final String id=getIntent().getStringExtra("call_id");final SessionManager session=new SessionManager(getApplicationContext());final String role=getPackageName().endsWith(".driver")?"driver":"customer";if(id!=null&&!id.isEmpty())new Thread(()->{try{WebRtcSignalApi.post(session,new org.json.JSONObject().put("action","reject").put("role",role).put("call_id",id));}catch(Exception ignored){}},"TransivaCallReject").start();finish();}}
+    private void hangup(){if(incoming&&!serviceRequested&&!startedSession)CallDeliveryTrace.record(this,getIntent(),"REJECT_REQUESTED","CALL_SCREEN");resolveRing();stopRing();cancelIncomingNotification(true);WebRtcSessionEngine e=WebRtcCallForegroundService.current();if(e!=null&&e.active()){e.end(true,"Panggilan berakhir");}else if(serviceRequested){startService(new Intent(this,WebRtcCallForegroundService.class).setAction(WebRtcCallForegroundService.END));finish();}else{final String id=getIntent().getStringExtra("call_id");final SessionManager session=new SessionManager(getApplicationContext());final String role=getPackageName().endsWith(".driver")?"driver":"customer";if(id!=null&&!id.isEmpty())new Thread(()->{try{WebRtcSignalApi.post(session,new org.json.JSONObject().put("action","reject").put("role",role).put("call_id",id));}catch(Exception ignored){}},"TransivaCallReject").start();finish();}}
     @ChecksSdkIntAtLeast(api = 26)
     private boolean pipAvailable(){return Build.VERSION.SDK_INT>=26&&getPackageManager().hasSystemFeature(PackageManager.FEATURE_PICTURE_IN_PICTURE);}
     @RequiresApi(26)

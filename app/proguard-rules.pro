@@ -88,3 +88,6 @@
 # Otherwise R8 can inline/rename this holder while the test DEX still refers
 # to com.transiva.app.IncomingCallNotifier.channels/build by their Java names.
 -keep class com.transiva.app.IncomingCallNotifier { *; }
+
+# WorkManager creates this worker reflectively after process restart.
+-keep class com.transiva.app.FcmRegistrationWorker { public <init>(android.content.Context, androidx.work.WorkerParameters); }

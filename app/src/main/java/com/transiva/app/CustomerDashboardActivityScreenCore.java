@@ -502,40 +502,8 @@ class CustomerDashboardActivityScreenCore extends CustomerAdaptiveActivity
         loyaltyMiniLp.setMargins(dp(5), 0, 0, 0);
         financeRow.addView(loyaltyMini, loyaltyMiniLp);
 
-        View divider = new View(this);
-        divider.setBackgroundColor(Color.parseColor("#3DFFFFFF"));
-        LinearLayout.LayoutParams dividerLp = new LinearLayout.LayoutParams(-1, dp(1));
-        dividerLp.setMargins(0, dp(7), 0, dp(6));
-        header.addView(divider, dividerLp);
-
-        LinearLayout locationCard = new LinearLayout(this);
-        locationCard.setOrientation(LinearLayout.HORIZONTAL);
-        locationCard.setGravity(Gravity.CENTER_VERTICAL);
-        locationCard.setPadding(dp(9), dp(4), dp(9), dp(4));
-        locationCard.setBackground(Shape.round("#20FFFFFF", dp(16)));
-        locationCard.setOnClickListener(view -> loadLocation());
-
-        ImageView pin = new ImageView(this);
-        pin.setImageResource(drawable("ic_location_pin"));
-        pin.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
-        locationCard.addView(pin, new LinearLayout.LayoutParams(dp(30), dp(30)));
-
-        LinearLayout locationTexts = new LinearLayout(this);
-        locationTexts.setOrientation(LinearLayout.VERTICAL);
-        LinearLayout.LayoutParams locationTextsLp = new LinearLayout.LayoutParams(0, -2, 1);
-        locationTextsLp.setMargins(dp(7), 0, dp(6), 0);
-        locationCard.addView(locationTexts, locationTextsLp);
-
-        locationTexts.addView(text("Lokasi Anda", 9, "#D9EDFF", false));
-        locationText = text("Memuat lokasi...", 12, "#FFFFFF", true);
-        locationText.setSingleLine(true);
-        locationTexts.addView(locationText);
-        clusterText = text("Cluster: mendeteksi...", 10, "#D9EDFF", true);
-        locationTexts.addView(clusterText);
-
-        TextView change = text("Perbarui ›", 10, "#FFFFFF", true);
-        locationCard.addView(change, new LinearLayout.LayoutParams(-2, -2));
-        header.addView(locationCard, new LinearLayout.LayoutParams(-1, -2));
+        // Lokasi tetap diproses untuk layanan dan kartu informasi di bawah beranda.
+        // Header hanya memuat identitas, saldo, dan royalti.
     }
 
     protected View buildHeaderBalanceCard() {
@@ -1934,31 +1902,6 @@ class CustomerDashboardActivityScreenCore extends CustomerAdaptiveActivity
         addQuickGap(quick);
         quick.addView(smartQuickAction("ic_smart_map", "Peta", () -> startActivity(new Intent(this, TransRideActivity.class).putExtra("open_map_picker", true))), new LinearLayout.LayoutParams(0, dp(30), 1));
 
-        TextView ideasLabel = text("Ide tujuan hari ini", 10, "#64748B", true);
-        LinearLayout.LayoutParams ideasLp = new LinearLayout.LayoutParams(-1, -2);
-        ideasLp.setMargins(dp(3), dp(10), 0, dp(5));
-        card.addView(ideasLabel, ideasLp);
-        HorizontalScrollView ideasScroll = new HorizontalScrollView(this);
-        ideasScroll.setHorizontalScrollBarEnabled(false);
-        LinearLayout ideas = new LinearLayout(this);
-        java.util.List<String> suggestions = new java.util.ArrayList<>(java.util.Arrays.asList(
-                "Alfamidi", "Indomaret", "Pasar", "SPBU", "Rumah sakit", "Apotek", "Kafe"));
-        java.util.Collections.shuffle(suggestions);
-        for (String place : suggestions.subList(0, 4)) {
-            TextView chip = text(place + "  ›", 11, "#1268D5", true);
-            chip.setGravity(Gravity.CENTER);
-            chip.setPadding(dp(12), dp(8), dp(12), dp(8));
-            chip.setMinHeight(dp(44));
-            chip.setBackground(Shape.roundStroke("#F0F7FF", "#D9E9FC", dp(14), 1));
-            chip.setContentDescription("Cari tujuan " + place);
-            chip.setOnClickListener(v -> startActivity(new Intent(this, TransRideActivity.class)
-                    .putExtra("focus_destination_search", true).putExtra("destination_query", place)));
-            LinearLayout.LayoutParams chipLp = new LinearLayout.LayoutParams(-2, -2);
-            chipLp.setMargins(0, 0, dp(6), 0);
-            ideas.addView(chip, chipLp);
-        }
-        ideasScroll.addView(ideas);
-        card.addView(ideasScroll, new LinearLayout.LayoutParams(-1, -2));
     }
 
     protected void addQuickGap(LinearLayout row) {
@@ -2654,7 +2597,7 @@ class CustomerDashboardActivityScreenCore extends CustomerAdaptiveActivity
                     networkScope.post(uiHandler, 
                             () -> {
                                 currentLocation = finalResult;
-                                locationText.setText(finalResult);
+                                if (locationText != null) locationText.setText(finalResult);
                                 fallbackLat = location.getLatitude();
                                 fallbackLng = location.getLongitude();
                                 updateLocationPopularFallback();
@@ -2873,7 +2816,7 @@ class CustomerDashboardActivityScreenCore extends CustomerAdaptiveActivity
             loadLocation();
 
         } else if (requestCode == REQ_LOCATION) {
-            locationText.setText("Izin ditolak");
+            if (locationText != null) locationText.setText("Izin ditolak");
         }
     }
 

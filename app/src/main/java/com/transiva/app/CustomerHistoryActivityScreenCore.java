@@ -708,10 +708,16 @@ class CustomerHistoryActivityScreenCore extends CustomerAdaptiveActivity {
         content.addView(searchInput, searchLp);
     }
 
+    private HorizontalScrollView serviceFilterScroll;
+    private String serviceFilterOrder = "";
+    private java.util.Map<String, Integer> serviceTabCounts = new java.util.HashMap<>();
+    private java.util.Map<String, Integer> serviceRunningCounts = new java.util.HashMap<>();
+
     protected void buildServiceFilters() {
         HorizontalScrollView scroll =
                 new HorizontalScrollView(this);
 
+        serviceFilterScroll = scroll;
         scroll.setHorizontalScrollBarEnabled(
                 false
         );
@@ -745,30 +751,42 @@ class CustomerHistoryActivityScreenCore extends CustomerAdaptiveActivity {
     }
 
     protected void rebuildServiceFilters() {
+        if (serviceChipRow == null) return;
+        boolean active = TAB_ACTIVE.equals(selectedTab);
+        serviceTabCounts = CustomerHistoryPolicy.serviceCounts(allOrders, active);
+        serviceRunningCounts = active ? serviceTabCounts : CustomerHistoryPolicy.serviceCounts(allOrders, true);
         serviceChipRow.removeAllViews();
-
         addServiceChip("Semua", "all");
-        addServiceChip("TransRide", "ride");
-        addServiceChip("TransCar", "car");
-        addServiceChip("TransFood", "food");
-        addServiceChip("TransSend", "pickup");
-        addServiceChip("TransShop", "shop");
+        java.util.List<String> keys = CustomerHistoryPolicy.orderedServiceKeys(serviceTabCounts);
+        String signature = selectedTab + keys.toString() + serviceTabCounts.toString();
+        if (!signature.equals(serviceFilterOrder) && serviceFilterScroll != null) {
+            serviceFilterOrder = signature;
+            serviceFilterScroll.post(() -> serviceFilterScroll.smoothScrollTo(0, 0));
+        }
+        for (String key : keys) {
+            if ((key.equals("tour") || key.equals("laundry") || key.equals("other"))
+                    && CustomerHistoryPolicy.count(serviceTabCounts, key) == 0
+                    && !key.equals(selectedService)) continue;
+            addServiceChip(CustomerHistoryPolicy.serviceLabel(key), key);
+        }
     }
 
     protected void addServiceChip(
             String label,
             String value
     ) {
-        boolean selected =
-                value.equals(selectedService);
-
+        boolean selected = value.equals(selectedService);
+        int count = CustomerHistoryPolicy.count(serviceTabCounts, value);
+        int running = CustomerHistoryPolicy.count(serviceRunningCounts, value);
+        boolean live = running > 0;
+        String caption = label + (count > 0 ? " · " + count : "") + (live ? "  ●" : "");
         TextView chip = text(
-                label,
+                caption,
                 10,
                 selected
                         ? "#FFFFFF"
-                        : "#52647A",
-                selected
+                        : (live ? "#087C63" : "#52647A"),
+                selected || live
         );
 
         chip.setGravity(Gravity.CENTER);
@@ -784,16 +802,16 @@ class CustomerHistoryActivityScreenCore extends CustomerAdaptiveActivity {
                 selected
                         ? round("#0B7CFF", 15)
                         : roundStroke(
-                                "#FFFFFF",
-                                "#DCE8F6",
+                                live ? "#E6FAF2" : "#FFFFFF",
+                                live ? "#9CDECA" : "#DCE8F6",
                                 15,
                                 1
                         )
         );
+        chip.setContentDescription(label + ", " + count + " pesanan di tab ini, " + running + " sedang berjalan");
 
         chip.setOnClickListener(view -> {
             selectedService = value;
-            rebuildServiceFilters();
             renderOrders();
         });
 
@@ -858,6 +876,7 @@ class CustomerHistoryActivityScreenCore extends CustomerAdaptiveActivity {
 
         listBox.removeAllViews();
         updateSummary();
+        rebuildServiceFilters();
 
         if (loading && allOrders.isEmpty()) {
             addInfoState(
@@ -967,9 +986,7 @@ class CustomerHistoryActivityScreenCore extends CustomerAdaptiveActivity {
             return true;
         }
 
-        String type = serviceType(order);
-
-        return type.contains(selectedService);
+        return selectedService.equals(CustomerHistoryPolicy.serviceKey(order));
     }
 
 
@@ -2563,7 +2580,7 @@ class CustomerHistoryActivityScreenCore extends CustomerAdaptiveActivity {
     protected int serviceDrawable(
             JSONObject order
     ) {
-        String type = serviceType(order);
+        String type = CustomerHistoryPolicy.serviceKey(order);
 
         if (type.contains("food")) {
             return drawable("ic_service_food");

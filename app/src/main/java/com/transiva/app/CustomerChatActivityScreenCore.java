@@ -66,6 +66,8 @@ class CustomerChatActivityScreenCore extends CustomerAdaptiveActivity {
     protected int userId;
     protected String selectedTab = "active";
     protected boolean loading;
+    private boolean deletingConversation;
+    private final java.util.HashSet<String> hiddenHistory = new java.util.HashSet<>();
 
     @Override
     protected void onCreate(
@@ -153,7 +155,7 @@ class CustomerChatActivityScreenCore extends CustomerAdaptiveActivity {
         scroll.setFillViewport(true);
         scroll.setClipToPadding(false);
 
-        pullRefresh = new CustomerPullRefreshLayout(this, scroll, () -> loadConversations(), () -> loading||userId<=0);
+        pullRefresh = new CustomerPullRefreshLayout(this, scroll, () -> loadConversations(), () -> loading||deletingConversation||userId<=0);
         pullRefresh.setTimeoutAction(this::cancelConversations);
         shell.addView(
                 pullRefresh,
@@ -187,7 +189,14 @@ class CustomerChatActivityScreenCore extends CustomerAdaptiveActivity {
         );
 
         buildHeader();
-        Button pendingCenter=new Button(this);pendingCenter.setAllCaps(false);pendingCenter.setText("Pesan tertunda");pendingCenter.setOnClickListener(v->CustomerPendingMessageCenter.open(this));content.addView(pendingCenter,new LinearLayout.LayoutParams(-1,-2));
+        TextView pendingCenter = text("Pesan tertunda  ›", 11, "#1268D5", true);
+        pendingCenter.setGravity(Gravity.CENTER_VERTICAL);
+        pendingCenter.setPadding(dp(12), 0, dp(12), 0);
+        pendingCenter.setBackground(roundStroke("#EDF5FF", "#D8E7F8", 12, 1));
+        pendingCenter.setOnClickListener(v -> CustomerPendingMessageCenter.open(this));
+        LinearLayout.LayoutParams pendingLp = new LinearLayout.LayoutParams(-1, dp(44));
+        pendingLp.bottomMargin = dp(6);
+        content.addView(pendingCenter, pendingLp);
         buildInfoCard();
         buildTabs();
 
@@ -401,7 +410,7 @@ class CustomerChatActivityScreenCore extends CustomerAdaptiveActivity {
 
         info.addView(
                 text(
-                        "Chat selesai tetap tersimpan sebagai riwayat baca.",
+                        "Tekan lama percakapan di Riwayat untuk menghapus dari daftar Anda.",
                         10,
                         "#EAF5FF",
                         false
@@ -581,7 +590,7 @@ class CustomerChatActivityScreenCore extends CustomerAdaptiveActivity {
         });
     }
     protected void loadConversations() {
-        if(loading)return;
+        if(loading || deletingConversation)return;
         if(userId<=0){toast("Sesi pengguna tidak ditemukan");return;}
         CustomerSessionGuard session=CustomerSessionGuard.capture(this);
         if(!Integer.toString(userId).equals(session.account))return;
@@ -642,6 +651,7 @@ class CustomerChatActivityScreenCore extends CustomerAdaptiveActivity {
                                     )
                             );
 
+            if (history && hiddenHistory.contains(conversationKey(item))) continue;
             if (
                     selectedTab.equals("history")
                             == history
@@ -989,6 +999,10 @@ class CustomerChatActivityScreenCore extends CustomerAdaptiveActivity {
                 )
         );
 
+        if (history) {
+            card.setOnLongClickListener(view -> { confirmDeleteHistory(item); return true; });
+            card.setContentDescription("Riwayat percakapan. Tekan lama untuk menghapus dari daftar Anda.");
+        }
         if (canOpen) {
             card.setOnClickListener(
                     view -> openRoom(
@@ -1240,6 +1254,72 @@ class CustomerChatActivityScreenCore extends CustomerAdaptiveActivity {
                 || sender.equals(
                 "pelanggan"
         );
+    }
+
+    private String conversationKey(JSONObject item) {
+        return item.optString("source", "orders") + ":"
+                + first(item.optString("order_db_id"), item.optString("id"));
+    }
+
+    private void confirmDeleteHistory(JSONObject item) {
+        if (deletingConversation) { toast("Sedang menghapus riwayat…"); return; }
+        if (!item.optBoolean("is_history", false) && !CustomerMessageStatus.isEnded(item.optString("status"))) return;
+        final CustomerTransportSession owner = CustomerTransportSession.capture(this);
+        new TransivaAlertDialogBuilder(this)
+                .setTitle("Hapus riwayat percakapan?")
+                .setMessage("Percakapan ini akan dihapus dari daftar pesan akun Anda. Data pesanan dan riwayat driver tetap tersimpan.")
+                .setNegativeButton("Kembali", null)
+                .setPositiveButton("Hapus", (dialog, which) -> {
+                    if (deletingConversation || !owner.matches(this)) return;
+                    deleteHistory(item, owner);
+                }).show();
+    }
+
+    private void deleteHistory(JSONObject item, CustomerTransportSession owner) {
+        final String key = conversationKey(item);
+        final JSONObject payload = new JSONObject();
+        try {
+            payload.put("source", item.optString("source", "orders"));
+            payload.put("order_db_id", first(item.optString("order_db_id"), item.optString("id")));
+        } catch (Exception error) { toast("Identitas percakapan tidak valid"); return; }
+        // Invalidate the in-flight list before mutation, so an older GET cannot restore the row.
+        cancelConversations();
+        if (pullRefresh != null) pullRefresh.finish(false);
+        deletingConversation = true;
+        progress.setVisibility(View.VISIBLE);
+        networkScope.execute(() -> {
+            try {
+                JSONObject response = TransivaHttpRepository.postJson(this,
+                        BASE_URL + "server/hide_customer_conversation.php", payload, 20000, owner);
+                final boolean success = response.optBoolean("success", false);
+                final String message = response.optString("message", success
+                        ? "Percakapan dihapus dari riwayat Anda." : "Riwayat belum dapat dihapus. Coba lagi.");
+                networkScope.post(mainHandler, () -> {
+                    deletingConversation = false;
+                    if (isFinishing() || isDestroyed() || !owner.matches(this)) return;
+                    progress.setVisibility(View.GONE);
+                    if (success) {
+                        hiddenHistory.add(key);
+                        for (int i = conversations.size() - 1; i >= 0; i--)
+                            if (key.equals(conversationKey(conversations.get(i)))) conversations.remove(i);
+                    }
+                    render(); toast(message);
+                    if (success) loadConversations();
+                });
+            } catch (Exception error) {
+                networkScope.post(mainHandler, () -> {
+                    deletingConversation = false;
+                    if (isFinishing() || isDestroyed() || !owner.matches(this)) return;
+                    progress.setVisibility(View.GONE);
+                    toast("Riwayat belum terkonfirmasi dihapus. Muat ulang untuk memeriksa, lalu coba lagi bila masih tampil.");
+                    render(); loadConversations();
+                });
+            }
+        }, () -> networkScope.post(mainHandler, () -> {
+            deletingConversation = false;
+            if (isFinishing() || isDestroyed() || !owner.matches(this)) return;
+            progress.setVisibility(View.GONE); toast("Penghapusan belum dimulai. Coba lagi.");
+        }));
     }
 
     protected void openRoom(

@@ -72,7 +72,7 @@ class SearchDriverActivityScreenCore extends CustomerAdaptiveActivity {
     protected final Handler mainHandler = new Handler(Looper.getMainLooper());
 
     protected FrameLayout pageRoot;
-    protected RadarView radarView;
+    protected CustomerMatchmakingView matchingView;
     protected TextView countdownText;
     protected TextView countdownLabel;
     protected CountDownTimer matchCountdown;
@@ -102,13 +102,13 @@ class SearchDriverActivityScreenCore extends CustomerAdaptiveActivity {
     protected double userLng = 0;
     protected boolean hasUserLocation = false;
     protected volatile String cachedDriverType = "bike";
-    protected final AtomicBoolean radarRequestInFlight = new AtomicBoolean(false);
+    protected final AtomicBoolean matchRequestInFlight = new AtomicBoolean(false);
     protected final AtomicBoolean statusRequestInFlight = new AtomicBoolean(false);
 
-    protected final Runnable driverRadarRunnable = new Runnable() {
+    protected final Runnable driverMatchRunnable = new Runnable() {
         @Override public void run() {
             if (!destroyed && !isCanceling && !driverFound) {
-                loadIdleDriversToRadar();
+                loadMatchingDrivers();
                 mainHandler.postDelayed(this, 8000);
             }
         }
@@ -162,17 +162,17 @@ class SearchDriverActivityScreenCore extends CustomerAdaptiveActivity {
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
         root.setGravity(Gravity.CENTER_HORIZONTAL);
-        root.setPadding(dp(18), dp(24), dp(18), dp(24));
+        root.setPadding(dp(18), dp(16), dp(18), dp(20));
         scroll.addView(root, new ScrollView.LayoutParams(-1, -2));
 
         TextView appTitle = text("TRANSIVA • MATCHMAKING", 13, "#53B7FF", true);
         appTitle.setGravity(Gravity.CENTER);
         root.addView(appTitle, new LinearLayout.LayoutParams(-1, -2));
 
-        titleText = text("MENCARI DRIVER TERBAIK", 25, "#FFF0B7", true);
+        titleText = text("Temukan driver yang pas", 22, "#F0F7FF", true);
         titleText.setGravity(Gravity.CENTER);
         LinearLayout.LayoutParams titleLp = new LinearLayout.LayoutParams(-1, -2);
-        titleLp.setMargins(0, dp(12), 0, dp(6));
+        titleLp.setMargins(0, dp(10), 0, dp(6));
         root.addView(titleText, titleLp);
 
         subtitleText = text("Mencocokkan Anda dengan driver terdekat", 14, "#D5E8FF", false);
@@ -183,20 +183,20 @@ class SearchDriverActivityScreenCore extends CustomerAdaptiveActivity {
         searchStatus.bind(null, "Mencari driver terdekat", "Pesanan sedang diproses");
         LinearLayout.LayoutParams searchStatusLp = new LinearLayout.LayoutParams(-1, -2);
         searchStatusLp.topMargin = dp(16); root.addView(searchStatus, searchStatusLp);
-        radarView = new RadarView(this);
-        LinearLayout.LayoutParams radarLp = new LinearLayout.LayoutParams(dp(Math.max(180, Math.min(310, getResources().getConfiguration().screenWidthDp - 48))), dp(Math.max(180, Math.min(310, getResources().getConfiguration().screenWidthDp - 48))));
-        radarLp.setMargins(0, dp(20), 0, dp(10));
-        root.addView(radarView, radarLp);
+        matchingView = new CustomerMatchmakingView(this, "car".equals(cachedDriverType));
+        LinearLayout.LayoutParams matchingLp = new LinearLayout.LayoutParams(-1, dp(192));
+        matchingLp.setMargins(0, dp(12), 0, dp(14));
+        root.addView(matchingView, matchingLp);
 
-        countdownLabel = text("ESTIMASI MATCH", 11, "#8FCBFF", true);
+        countdownLabel = text("MENCARI DI SEKITAR JEMPUT", 10, "#8FCBFF", true);
         countdownLabel.setGravity(Gravity.CENTER);
         root.addView(countdownLabel, new LinearLayout.LayoutParams(-1, -2));
 
-        countdownText = text("00:15", 38, "#FFF1A6", true);
+        countdownText = text("00:30", 24, "#E2F2FF", true);
         countdownText.setGravity(Gravity.CENTER);
         countdownText.setPadding(dp(18), dp(7), dp(18), dp(7));
-        countdownText.setBackground(roundStroke("#101F3B", "#D4A83A", dp(18), 1));
-        LinearLayout.LayoutParams countdownLp = new LinearLayout.LayoutParams(dp(180), -2);
+        countdownText.setBackground(roundStroke("#102B49", "#285677", dp(14), 1));
+        LinearLayout.LayoutParams countdownLp = new LinearLayout.LayoutParams(dp(124), -2);
         countdownLp.gravity = Gravity.CENTER_HORIZONTAL;
         countdownLp.setMargins(0, dp(6), 0, dp(10));
         root.addView(countdownText, countdownLp);
@@ -209,12 +209,12 @@ class SearchDriverActivityScreenCore extends CustomerAdaptiveActivity {
 
         cancelBtn = new Button(this);
         cancelBtn.setAllCaps(false);
-        cancelBtn.setText("Batalkan Order");
-        cancelBtn.setTextSize(15);
+        cancelBtn.setText("Batalkan pesanan");
+        cancelBtn.setTextSize(13);
         cancelBtn.setTypeface(Typeface.DEFAULT_BOLD);
-        cancelBtn.setTextColor(Color.WHITE);
-        cancelBtn.setBackground(roundGradient("#EF4444", "#DC2626", dp(18)));
-        LinearLayout.LayoutParams cancelLp = new LinearLayout.LayoutParams(-1, dp(52));
+        cancelBtn.setTextColor(Color.parseColor("#F3B9BD"));
+        cancelBtn.setBackground(roundStroke("#182B43", "#5C3E51", dp(14), 1));
+        LinearLayout.LayoutParams cancelLp = new LinearLayout.LayoutParams(-1, dp(46));
         root.addView(cancelBtn, cancelLp);
         cancelBtn.setOnClickListener(v -> confirmCancelOrder());
 
@@ -338,7 +338,7 @@ class SearchDriverActivityScreenCore extends CustomerAdaptiveActivity {
         try {
             LocationManager lm = (LocationManager) getSystemService(LOCATION_SERVICE);
             if (lm == null) {
-                setSubtitle("GPS tidak tersedia, radar tetap berjalan");
+                setSubtitle("Lokasi belum tersedia, pencarian tetap berjalan");
                 startLoops();
                 return;
             }
@@ -364,10 +364,10 @@ class SearchDriverActivityScreenCore extends CustomerAdaptiveActivity {
                     @Override public void onProviderDisabled(String provider) {}
                 }, Looper.getMainLooper());
             } else {
-                setSubtitle("GPS belum aktif, radar tetap berjalan");
+                setSubtitle("GPS belum aktif, pencarian tetap berjalan");
             }
         } catch (Exception e) {
-            setSubtitle("GPS gagal diakses, radar tetap berjalan");
+            setSubtitle("Lokasi belum terbaca, pencarian tetap berjalan");
         }
 
         startLoops();
@@ -383,11 +383,11 @@ class SearchDriverActivityScreenCore extends CustomerAdaptiveActivity {
 
     protected void startLoops() {
         startMatchCountdown();
-        mainHandler.removeCallbacks(driverRadarRunnable);
+        mainHandler.removeCallbacks(driverMatchRunnable);
         mainHandler.removeCallbacks(checkOrderRunnable);
-        loadIdleDriversToRadar();
+        loadMatchingDrivers();
         checkOrderStatus();
-        mainHandler.postDelayed(driverRadarRunnable, CustomerPerformanceManager.pollingCritical(this, 8000));
+        mainHandler.postDelayed(driverMatchRunnable, CustomerPerformanceManager.pollingCritical(this, 8000));
         mainHandler.postDelayed(checkOrderRunnable, CustomerPerformanceManager.pollingCritical(this, 3000));
     }
 
@@ -395,7 +395,7 @@ class SearchDriverActivityScreenCore extends CustomerAdaptiveActivity {
         stopMatchCountdown();
         countdownRemainingMs = 90000L;
         if (countdownText != null) countdownText.setText("00:30");
-        if (countdownLabel != null) countdownLabel.setText("CLUSTER ANDA");
+        if (countdownLabel != null) countdownLabel.setText("MENCARI DI SEKITAR JEMPUT");
         setSearchPhase(1);
         matchCountdown = new CountDownTimer(90000L, 1000L) {
             @Override public void onTick(long millisUntilFinished) {
@@ -423,19 +423,19 @@ class SearchDriverActivityScreenCore extends CustomerAdaptiveActivity {
 
     protected void setSearchPhase(int phase) {
         int safe = Math.max(1, Math.min(3, phase));
-        if (searchPhase == safe && radarView != null) {
-            radarView.setSearchPhase(safe);
+        if (searchPhase == safe && matchingView != null) {
+            matchingView.setSearchPhase(safe);
             return;
         }
         searchPhase = safe;
-        if (radarView != null) radarView.setSearchPhase(safe);
+        if (matchingView != null) matchingView.setSearchPhase(safe);
         if (countdownLabel != null) {
-            countdownLabel.setText(safe == 1 ? "CLUSTER ANDA" : (safe == 2 ? "CLUSTER TETANGGA" : "SEMUA CLUSTER ONLINE"));
+            countdownLabel.setText(safe == 1 ? "MENCARI DI SEKITAR JEMPUT" : (safe == 2 ? "MEMPERLUAS PENCARIAN" : "MENCARI DRIVER ONLINE"));
         }
-        if (safe == 1) setSubtitle("30 detik awal • prioritas driver di cluster Anda");
-        else if (safe == 2) setSubtitle("Pencarian diperluas ke driver cluster tetangga");
+        if (safe == 1) setSubtitle("Memprioritaskan driver di sekitar titik jemput");
+        else if (safe == 2) setSubtitle("Mencari kecocokan di area yang lebih luas");
         else setSubtitle("Pencarian diperluas ke seluruh driver online");
-        loadIdleDriversToRadar();
+        loadMatchingDrivers();
     }
 
     protected void stopMatchCountdown() {
@@ -512,8 +512,8 @@ class SearchDriverActivityScreenCore extends CustomerAdaptiveActivity {
 
 
 
-    protected void loadIdleDriversToRadar() {
-        if (!radarRequestInFlight.compareAndSet(false, true)) return;
+    protected void loadMatchingDrivers() {
+        if (!matchRequestInFlight.compareAndSet(false, true)) return;
         featureRuntime.execute(() -> {
             try {
                 JSONObject payload = new JSONObject();
@@ -534,18 +534,20 @@ class SearchDriverActivityScreenCore extends CustomerAdaptiveActivity {
                 }
 
                 JSONArray arr = res.optJSONArray("drivers");
-                List<RadarDriver> drivers = parseDrivers(arr);
+                List<MatchDriver> drivers = parseDrivers(arr);
                 int serverPhase = Math.max(1, Math.min(3, res.optInt("search_phase", searchPhase)));
                 String activeOffer = firstNonEmpty(res.optString("offered_driver", ""), offeredDriverUsername);
                 featureRuntime.post(mainHandler, () -> {
+                    if (destroyed || driverFound || isCanceling) return;
                     searchPhase = serverPhase;
                     offeredDriverUsername = activeOffer;
-                    radarView.setSearchPhase(serverPhase);
-                    radarView.setOfferedDriver(activeOffer);
-                    radarView.setDrivers(drivers, hasUserLocation, userLat, userLng);
+                    matchingView.setSearchPhase(serverPhase);
+                    matchingView.setOfferedDriver(activeOffer);
+                    matchingView.setDriverCount(drivers.size());
                     if (drivers.size() > 0 && hasUserLocation) {
                         double nearest = nearestDistance(drivers);
-                        setSubtitle("Driver terdekat sekitar " + String.format(Locale.US, "%.1f", nearest) + " km");
+                        setSubtitle(nearest < 0.1 ? "Driver tersedia di dekat titik jemput"
+                                : "Driver terdekat sekitar " + String.format(Locale.US, "%.1f", nearest) + " km");
                     } else if (drivers.size() > 0) {
                         setSubtitle("Ada " + drivers.size() + " driver aktif, menunggu GPS akurat");
                     } else {
@@ -555,13 +557,13 @@ class SearchDriverActivityScreenCore extends CustomerAdaptiveActivity {
             } catch (Exception e) {
                 featureRuntime.post(mainHandler, () -> setSubtitle("Koneksi gagal mengambil driver"));
             } finally {
-                radarRequestInFlight.set(false);
+                matchRequestInFlight.set(false);
             }
         });
     }
 
-    protected List<RadarDriver> parseDrivers(JSONArray arr) {
-        List<RadarDriver> list = new ArrayList<>();
+    protected List<MatchDriver> parseDrivers(JSONArray arr) {
+        List<MatchDriver> list = new ArrayList<>();
         if (arr == null) return list;
         for (int i = 0; i < arr.length(); i++) {
             JSONObject d = arr.optJSONObject(i);
@@ -569,7 +571,7 @@ class SearchDriverActivityScreenCore extends CustomerAdaptiveActivity {
             double lat = safeDouble(firstNonEmpty(d.optString("lat"), d.optString("latitude")));
             double lng = safeDouble(firstNonEmpty(d.optString("lng"), d.optString("longitude")));
             if (lat == 0 || lng == 0) continue;
-            RadarDriver rd = new RadarDriver();
+            MatchDriver rd = new MatchDriver();
             rd.name = firstNonEmpty(d.optString("name"), d.optString("username"), "Driver");
             rd.username = firstNonEmpty(d.optString("username"), rd.name);
             rd.clusterName = d.optString("cluster_name", "");
@@ -580,9 +582,9 @@ class SearchDriverActivityScreenCore extends CustomerAdaptiveActivity {
         return list;
     }
 
-    protected double nearestDistance(List<RadarDriver> drivers) {
+    protected double nearestDistance(List<MatchDriver> drivers) {
         double best = 999999;
-        for (RadarDriver d : drivers) {
+        for (MatchDriver d : drivers) {
             best = Math.min(best, distanceKm(userLat, userLng, d.lat, d.lng));
         }
         return best == 999999 ? 0 : best;
@@ -618,7 +620,7 @@ class SearchDriverActivityScreenCore extends CustomerAdaptiveActivity {
                 featureRuntime.post(mainHandler, () -> {
                     offeredDriverUsername = finalCurrentOffer;
                     setSearchPhase(finalPhaseFromServer);
-                    if (radarView != null) radarView.setOfferedDriver(finalCurrentOffer);
+                    if (matchingView != null) matchingView.setOfferedDriver(finalCurrentOffer);
                 });
 
                 final JSONObject statusOrder = new JSONObject(order.toString());
@@ -696,7 +698,10 @@ class SearchDriverActivityScreenCore extends CustomerAdaptiveActivity {
         driverFound = true;
         stopMatchCountdown();
         destroyLoopsKeepScreen();
-        radarView.stopRadar();
+        matchingView.stopMatching();
+        matchingView.setVisibility(View.GONE);
+        countdownLabel.setVisibility(View.GONE);
+        countdownText.setVisibility(View.GONE);
         playDriverAcceptedEffect();
 
         titleText.setText("DRIVER SUDAH TERHUBUNG");
@@ -816,9 +821,9 @@ class SearchDriverActivityScreenCore extends CustomerAdaptiveActivity {
             // dipanggil setelah CustomerTripActivity dibuka. Jadikan CustomerTrip sebagai root
             // task baru agar layar/radar pencarian benar-benar dihancurkan.
             destroyLoops();
-            if (radarView != null) {
-                radarView.stopRadar();
-                radarView.setVisibility(View.GONE);
+            if (matchingView != null) {
+                matchingView.stopMatching();
+                matchingView.setVisibility(View.GONE);
             }
 
             i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK
@@ -1012,7 +1017,7 @@ class SearchDriverActivityScreenCore extends CustomerAdaptiveActivity {
                     } else {
                         isCanceling = false;
                         cancelBtn.setEnabled(true);
-                        cancelBtn.setText("Batalkan Order");
+                        cancelBtn.setText("Batalkan pesanan");
                         titleText.setText("Mencari Driver...");
                         showInfo("Gagal", msg);
                         startLoops();
@@ -1023,7 +1028,7 @@ class SearchDriverActivityScreenCore extends CustomerAdaptiveActivity {
                     progressBar.setVisibility(View.GONE);
                     isCanceling = false;
                     cancelBtn.setEnabled(true);
-                    cancelBtn.setText("Batalkan Order");
+                    cancelBtn.setText("Batalkan pesanan");
                     titleText.setText("Mencari Driver...");
                     showInfo("Koneksi Gagal", "Koneksi gagal saat membatalkan order");
                     startLoops();
@@ -1106,13 +1111,13 @@ class SearchDriverActivityScreenCore extends CustomerAdaptiveActivity {
     private void destroyLoops() {
         stopMatchCountdown();
         destroyed = true;
-        mainHandler.removeCallbacks(driverRadarRunnable);
+        mainHandler.removeCallbacks(driverMatchRunnable);
         mainHandler.removeCallbacks(checkOrderRunnable);
     }
 
     private void destroyLoopsKeepScreen() {
         stopMatchCountdown();
-        mainHandler.removeCallbacks(driverRadarRunnable);
+        mainHandler.removeCallbacks(driverMatchRunnable);
         mainHandler.removeCallbacks(checkOrderRunnable);
     }
 
@@ -1121,10 +1126,12 @@ class SearchDriverActivityScreenCore extends CustomerAdaptiveActivity {
     protected void onResume() {
         super.onResume();
         featureRuntime.onResume();
+        if (matchingView != null) matchingView.setAnimatingEnabled(!driverFound && !isCanceling);
     }
 
     @Override
     protected void onPause() {
+        if (matchingView != null) matchingView.setAnimatingEnabled(false);
         featureRuntime.onPause();
         super.onPause();
     }
@@ -1145,7 +1152,7 @@ class SearchDriverActivityScreenCore extends CustomerAdaptiveActivity {
                 for (int g : grantResults) if (g == PackageManager.PERMISSION_GRANTED) ok = true;
             }
             if (ok) getUserLocationThenStart();
-            else setSubtitle("Izin lokasi ditolak, radar tetap berjalan");
+            else setSubtitle("Izin lokasi belum aktif, pencarian tetap berjalan");
         }
     }
 
@@ -1248,138 +1255,12 @@ class SearchDriverActivityScreenCore extends CustomerAdaptiveActivity {
         return CustomerUiPrimitives.dp(this, v);
     }
 
-    private static class RadarDriver {
+    private static class MatchDriver {
         String name = "Driver";
         String username = "";
         String clusterName = "";
         double lat;
         double lng;
-    }
-
-    private class RadarView extends View {
-        private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
-        private final List<RadarDriver> drivers = new ArrayList<>();
-        private boolean gpsOk = false;
-        private double centerLat = 0;
-        private double centerLng = 0;
-        private float sweep = 0;
-        private boolean running = true;
-        private int phase = 1;
-        private String offeredDriver = "";
-
-        public RadarView(android.content.Context context) {
-            super(context);
-            setLayerType(View.LAYER_TYPE_SOFTWARE, null);
-            post(tick);
-        }
-
-        private final Runnable tick = new Runnable() {
-            @Override public void run() {
-                if (running) {
-                    sweep += 4;
-                    if (sweep >= 360) sweep = 0;
-                    invalidate();
-                    postDelayed(this, CustomerPerformanceManager.animationFrame(SearchDriverActivityScreenCore.this));
-                }
-            }
-        };
-
-        public void stopRadar() {
-            running = false;
-            invalidate();
-        }
-
-        public void setSearchPhase(int phase) {
-            this.phase = Math.max(1, Math.min(3, phase));
-            invalidate();
-        }
-
-        public void setOfferedDriver(String username) {
-            this.offeredDriver = username == null ? "" : username.trim();
-            invalidate();
-        }
-
-        public void setDrivers(List<RadarDriver> newDrivers, boolean gpsOk, double lat, double lng) {
-            drivers.clear();
-            if (newDrivers != null) drivers.addAll(newDrivers);
-            this.gpsOk = gpsOk;
-            centerLat = lat;
-            centerLng = lng;
-            invalidate();
-        }
-
-        @Override protected void onDraw(Canvas canvas) {
-            super.onDraw(canvas);
-            int w = getWidth();
-            int h = getHeight();
-            float cx = w / 2f;
-            float cy = h / 2f;
-            float baseR = Math.min(w, h) / 2f - dp(12);
-            float zoom = phase == 1 ? 0.78f : (phase == 2 ? 0.90f : 1.0f);
-            float r = baseR * zoom;
-
-            paint.setStyle(Paint.Style.FILL);
-            paint.setColor(Color.parseColor("#071A35"));
-            paint.setShadowLayer(dp(24), 0, 0, Color.argb(160, 0, 132, 255));
-            canvas.drawCircle(cx, cy, r, paint);
-            paint.clearShadowLayer();
-
-            paint.setStyle(Paint.Style.STROKE);
-            paint.setStrokeWidth(dp(1));
-            paint.setColor(Color.parseColor("#245589"));
-            canvas.drawCircle(cx, cy, r * .35f, paint);
-            canvas.drawCircle(cx, cy, r * .62f, paint);
-            canvas.drawCircle(cx, cy, r * .88f, paint);
-
-            paint.setStyle(Paint.Style.FILL);
-            paint.setColor(Color.argb(95, 0, 157, 255));
-            RectF arc = new RectF(cx - r, cy - r, cx + r, cy + r);
-            canvas.drawArc(arc, sweep, 34, true, paint);
-
-            paint.setColor(Color.parseColor("#0B7CFF"));
-            paint.setShadowLayer(dp(18), 0, 0, Color.parseColor("#00C8FF"));
-            canvas.drawCircle(cx, cy, dp(32), paint);
-            paint.clearShadowLayer();
-            paint.setColor(Color.WHITE);
-            paint.setTextAlign(Paint.Align.CENTER);
-            paint.setTypeface(Typeface.DEFAULT_BOLD);
-            paint.setTextSize(dp(15));
-            canvas.drawText("ANDA", cx, cy + dp(5), paint);
-
-            for (int i = 0; i < drivers.size() && i < 12; i++) {
-                RadarDriver d = drivers.get(i);
-                double dist = gpsOk ? distanceKm(centerLat, centerLng, d.lat, d.lng) : (i + 1);
-                double maxVisualKm = phase == 1 ? 12.0 : (phase == 2 ? 24.0 : 40.0);
-                double safe = Math.min(dist, maxVisualKm);
-                float radius = (float) ((safe / maxVisualKm) * r * .78f);
-                if (radius < dp(44)) radius = dp(44);
-                double angle = Math.toRadians((i * 67 + dist * 31) % 360);
-                float x = (float) (cx + Math.cos(angle) * radius);
-                float y = (float) (cy + Math.sin(angle) * radius);
-
-                boolean receiving = !offeredDriver.isEmpty() && offeredDriver.equalsIgnoreCase(d.username);
-                paint.setStyle(Paint.Style.FILL);
-                if (receiving) {
-                    paint.setColor(Color.parseColor("#2EE59D"));
-                    paint.setShadowLayer(dp(18), 0, 0, Color.parseColor("#2EE59D"));
-                    canvas.drawCircle(x, y, dp(13), paint);
-                    paint.clearShadowLayer();
-                    paint.setColor(Color.WHITE);
-                    canvas.drawCircle(x, y, dp(6), paint);
-                } else {
-                    paint.setColor(Color.parseColor("#F4C85A"));
-                    canvas.drawCircle(x, y, dp(8), paint);
-                    paint.setColor(Color.WHITE);
-                    canvas.drawCircle(x, y, dp(4), paint);
-                }
-
-                paint.setColor(receiving ? Color.parseColor("#7CFFD0") : Color.parseColor("#D8ECFF"));
-                paint.setTextSize(dp(receiving ? 11 : 10));
-                paint.setTypeface(Typeface.DEFAULT_BOLD);
-                String label = receiving ? "MENERIMA NOTIF" : (d.name.length() > 8 ? d.name.substring(0, 8) : d.name);
-                canvas.drawText(label, x, y - dp(receiving ? 18 : 13), paint);
-            }
-        }
     }
 
 }

@@ -93,6 +93,8 @@ class CustomerDashboardActivityScreenCore extends CustomerAdaptiveActivity
     protected TextView clusterText;
     protected TextView balanceText;
     private PremiumOrderStatusView premiumOrder;
+    private TextView dashboardCancel;
+    private boolean dashboardCancelBusy;
     protected TextView orderText;
     protected TextView orderHint;
     private SmartWaitingTextView dashboardWaiting;
@@ -1931,6 +1933,32 @@ class CustomerDashboardActivityScreenCore extends CustomerAdaptiveActivity
         quick.addView(smartQuickAction("ic_smart_work", "Kantor", () -> startActivity(new Intent(this, FavoritePlacesActivity.class))), new LinearLayout.LayoutParams(0, dp(30), 1));
         addQuickGap(quick);
         quick.addView(smartQuickAction("ic_smart_map", "Peta", () -> startActivity(new Intent(this, TransRideActivity.class).putExtra("open_map_picker", true))), new LinearLayout.LayoutParams(0, dp(30), 1));
+
+        TextView ideasLabel = text("Ide tujuan hari ini", 10, "#64748B", true);
+        LinearLayout.LayoutParams ideasLp = new LinearLayout.LayoutParams(-1, -2);
+        ideasLp.setMargins(dp(3), dp(10), 0, dp(5));
+        card.addView(ideasLabel, ideasLp);
+        HorizontalScrollView ideasScroll = new HorizontalScrollView(this);
+        ideasScroll.setHorizontalScrollBarEnabled(false);
+        LinearLayout ideas = new LinearLayout(this);
+        java.util.List<String> suggestions = new java.util.ArrayList<>(java.util.Arrays.asList(
+                "Alfamidi", "Indomaret", "Pasar", "SPBU", "Rumah sakit", "Apotek", "Kafe"));
+        java.util.Collections.shuffle(suggestions);
+        for (String place : suggestions.subList(0, 4)) {
+            TextView chip = text(place + "  ›", 11, "#1268D5", true);
+            chip.setGravity(Gravity.CENTER);
+            chip.setPadding(dp(12), dp(8), dp(12), dp(8));
+            chip.setMinHeight(dp(44));
+            chip.setBackground(Shape.roundStroke("#F0F7FF", "#D9E9FC", dp(14), 1));
+            chip.setContentDescription("Cari tujuan " + place);
+            chip.setOnClickListener(v -> startActivity(new Intent(this, TransRideActivity.class)
+                    .putExtra("focus_destination_search", true).putExtra("destination_query", place)));
+            LinearLayout.LayoutParams chipLp = new LinearLayout.LayoutParams(-2, -2);
+            chipLp.setMargins(0, 0, dp(6), 0);
+            ideas.addView(chip, chipLp);
+        }
+        ideasScroll.addView(ideas);
+        card.addView(ideasScroll, new LinearLayout.LayoutParams(-1, -2));
     }
 
     protected void addQuickGap(LinearLayout row) {
@@ -2234,6 +2262,60 @@ class CustomerDashboardActivityScreenCore extends CustomerAdaptiveActivity
         orderHint = text("", 12, "#64748B", false);
         dashboardWaiting = new SmartWaitingTextView(this);
         premiumOrder.addView(dashboardWaiting, new LinearLayout.LayoutParams(-1, -2));
+        dashboardCancel = text("Batalkan pesanan", 11, "#B54147", true);
+        dashboardCancel.setGravity(Gravity.CENTER);
+        dashboardCancel.setPadding(dp(12), dp(6), dp(12), dp(6));
+        dashboardCancel.setMinHeight(dp(44));
+        dashboardCancel.setBackground(Shape.roundStroke("#FFF5F5", "#F1D5D8", dp(12), 1));
+        dashboardCancel.setVisibility(View.GONE);
+        LinearLayout.LayoutParams cancelLp = new LinearLayout.LayoutParams(-2, -2);
+        cancelLp.gravity = Gravity.END; cancelLp.topMargin = dp(5);
+        premiumOrder.addView(dashboardCancel, cancelLp);
+        dashboardCancel.setOnClickListener(v -> confirmDashboardCancel());
+    }
+
+    private void renderDashboardCancel() {
+        if (dashboardCancel == null) return;
+        boolean allowed = activeOrderJson != null
+                && CustomerHistoryPolicy.canCustomerCancel(activeOrderJson.optString("status"));
+        dashboardCancel.setVisibility(allowed ? View.VISIBLE : View.GONE);
+        dashboardCancel.setEnabled(!dashboardCancelBusy);
+        dashboardCancel.setAlpha(dashboardCancelBusy ? .6f : 1f);
+        dashboardCancel.setText(dashboardCancelBusy ? "Membatalkan…" : "Batalkan pesanan");
+    }
+
+    private void confirmDashboardCancel() {
+        if (dashboardCancelBusy || activeOrderJson == null
+                || !CustomerHistoryPolicy.canCustomerCancel(activeOrderJson.optString("status"))) return;
+        final JSONObject order = activeOrderJson;
+        if (first(order.optString("order_id"), order.optString("id"), "").isEmpty()) {
+            Toast.makeText(this, "ID order tidak ditemukan", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        final String sessionToken = new SessionManager(this).getToken();
+        new TransivaAlertDialogBuilder(this)
+                .setTitle("Batalkan Pesanan")
+                .setMessage("Pesanan dapat dibatalkan selama belum diambil driver. Lanjutkan pembatalan?")
+                .setNegativeButton("Kembali", null)
+                .setPositiveButton("Batalkan", (dialog, which) -> {
+                    if (dashboardCancelBusy || isFinishing() || isDestroyed()
+                            || !java.util.Objects.equals(sessionToken, new SessionManager(this).getToken())) return;
+                    dashboardCancelBusy = true;
+                    renderDashboardCancel();
+                    CustomerActivityOrderAction.cancel(this, order, userId, username,
+                            new CustomerActivityOrderAction.Callback() {
+                        private void complete(String message) {
+                            dashboardCancelBusy = false;
+                            if (isFinishing() || isDestroyed()
+                                    || !java.util.Objects.equals(sessionToken, new SessionManager(CustomerDashboardActivityScreenCore.this).getToken())) return;
+                            renderDashboardCancel();
+                            Toast.makeText(CustomerDashboardActivityScreenCore.this, message, Toast.LENGTH_SHORT).show();
+                            if (presenter != null) presenter.refresh(username, userId);
+                        }
+                        @Override public void onSuccess(String message) { complete(message); }
+                        @Override public void onError(String message) { complete(message); }
+                    });
+                }).show();
     }
 
     private void openActiveOrder() {
@@ -2635,6 +2717,7 @@ class CustomerDashboardActivityScreenCore extends CustomerAdaptiveActivity
                 hasActiveOrder ? activeOrderText : "Belum ada pesanan aktif",
                 hasActiveOrder ? "Pantau pesanan Anda  ›" : "Lihat pusat pesanan  ›");
 
+        renderDashboardCancel();
         renderGrowthState(state);
 
         if (orderHint != null) {

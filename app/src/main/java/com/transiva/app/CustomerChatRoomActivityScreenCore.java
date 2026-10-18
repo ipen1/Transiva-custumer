@@ -113,6 +113,25 @@ class CustomerChatRoomActivityScreenCore extends CustomerAdaptiveActivity {
         CustomerPendingChatStore store;JSONObject operation;try{store=new CustomerPendingChatStore(this,chatRequests.session());operation=store.enqueue(payload,"text",null,null,0);}catch(Exception e){throw new ChatNotSavedException(e);}
         return store.dispatch(operation);
     }
+    private Button compactChatTool(String label, boolean pending) {
+        Button button = new Button(this);
+        button.setAllCaps(false);
+        button.setText(label);
+        button.setTextSize(11);
+        button.setTypeface(android.graphics.Typeface.DEFAULT, android.graphics.Typeface.BOLD);
+        button.setTextColor(Color.parseColor(pending ? "#995A12" : "#1268D5"));
+        button.setMinWidth(0); button.setMinimumWidth(0);
+        button.setMinHeight(0); button.setMinimumHeight(0);
+        button.setPadding(dp(8), 0, dp(8), 0);
+        button.setSingleLine(true);
+        button.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        button.setBackgroundTintList(null);
+        button.setBackground(roundStroke(pending ? "#FFF7E8" : "#EDF5FF",
+                pending ? "#F5E2BE" : "#D8E7F8", 12, 1));
+        button.setStateListAnimator(null);
+        return button;
+    }
+
     private void refreshPendingMessage() {
         chatRequests.execute("pending-read",() -> {
             try {
@@ -121,7 +140,7 @@ class CustomerChatRoomActivityScreenCore extends CustomerAdaptiveActivity {
                 CustomerPendingChatStore store=new CustomerPendingChatStore(this,chatRequests.session());
                 if(prior!=null){store.enqueue(prior,"text",null,null,0);old.resolve(prior.optString("client_message_id"));}
                 final int count=store.list().size();
-                chatRequests.post(mainHandler,() -> {retryMessageButton.setText("Pesan tertunda ("+count+")");retryMessageButton.setVisibility(View.VISIBLE);});
+                chatRequests.post(mainHandler,() -> {retryMessageButton.setText("Tertunda · "+count);retryMessageButton.setVisibility(count > 0 ? View.VISIBLE : View.GONE);});
             }catch(Exception ignored) { }
         },null);
     }
@@ -436,6 +455,7 @@ class CustomerChatRoomActivityScreenCore extends CustomerAdaptiveActivity {
         );
 
         participantText.setSingleLine(true);
+        participantText.setEllipsize(android.text.TextUtils.TruncateAt.END);
         titleBox.addView(participantText);
 
         statusText = text(
@@ -449,6 +469,8 @@ class CustomerChatRoomActivityScreenCore extends CustomerAdaptiveActivity {
                 true
         );
 
+        statusText.setMaxLines(2);
+        statusText.setEllipsize(android.text.TextUtils.TruncateAt.END);
         titleBox.addView(statusText);
 
         header.addView(
@@ -478,7 +500,7 @@ class CustomerChatRoomActivityScreenCore extends CustomerAdaptiveActivity {
                 round("#EAF4FF", 12)
         );
 
-        header.addView(orderLabel);
+        // Service badge joins the tools row, leaving more room for the participant name.
 
         if (!readOnly) {
             TextView callButton = text("☎", 22, "#0B7CFF", true);
@@ -496,13 +518,26 @@ class CustomerChatRoomActivityScreenCore extends CustomerAdaptiveActivity {
         root.addView(header);
         root.addView(new ActiveCallBanner(this),new LinearLayout.LayoutParams(-1,-2));
 
-        Button search=new Button(this);search.setAllCaps(false);search.setText("Cari dalam percakapan");search.setOnClickListener(v->openSearch());root.addView(search,new LinearLayout.LayoutParams(-1,-2));
-        olderMessagesButton=new Button(this);olderMessagesButton.setAllCaps(false);
+        LinearLayout chatTools = new LinearLayout(this);
+        chatTools.setGravity(Gravity.CENTER_VERTICAL);
+        chatTools.setPadding(dp(2), dp(5), dp(2), 0);
+        chatTools.addView(orderLabel, new LinearLayout.LayoutParams(-2, -2));
+        Button search = compactChatTool("Cari pesan", false);
+        search.setContentDescription("Cari dalam percakapan");
+        search.setOnClickListener(v -> openSearch());
+        LinearLayout.LayoutParams searchLp = new LinearLayout.LayoutParams(0, dp(44), 1);
+        searchLp.setMargins(dp(6), 0, 0, 0);
+        chatTools.addView(search, searchLp);
+        root.addView(chatTools, new LinearLayout.LayoutParams(-1, -2));
+        olderMessagesButton=compactChatTool("Muat pesan sebelumnya", false);
         olderMessagesButton.setText("Muat pesan sebelumnya");olderMessagesButton.setVisibility(View.GONE);
         olderMessagesButton.setOnClickListener(v -> loadOlderMessages());root.addView(olderMessagesButton,new LinearLayout.LayoutParams(-1,-2));
-        retryMessageButton=new Button(this);retryMessageButton.setAllCaps(false);
-        retryMessageButton.setText("Pesan tertunda");retryMessageButton.setVisibility(View.GONE);
-        retryMessageButton.setOnClickListener(v -> retryPendingMessage());root.addView(retryMessageButton,new LinearLayout.LayoutParams(-1,-2));
+        retryMessageButton = compactChatTool("Tertunda", true);
+        retryMessageButton.setVisibility(View.GONE);
+        retryMessageButton.setOnClickListener(v -> retryPendingMessage());
+        LinearLayout.LayoutParams retryLp = new LinearLayout.LayoutParams(0, dp(44), 1);
+        retryLp.setMargins(dp(6), 0, 0, 0);
+        chatTools.addView(retryMessageButton, retryLp);
         messagesScroll = new ScrollView(this);
         messagesScroll.setFillViewport(true);
 

@@ -216,6 +216,11 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
         }));
         applySharedLocationIntent();
         requestLocationIfNeeded();
+        if (savedInstanceState == null && getIntent() != null
+                && getIntent().getBooleanExtra("focus_destination_search", false)) {
+            mode = "delivery";
+            featureRuntime.post(mainHandler, () -> { if (!destroyed) openDestinationAutocomplete(); });
+        }
     }
 
     protected void readUser() {
@@ -587,6 +592,9 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
         priceBox.addView(originalPriceText, new LinearLayout.LayoutParams(-1, dp(20)));
 
         finalPriceText = text("Rp -", 19, "#0B3A78", true);
+        finalPriceText.setOnClickListener(v -> {
+            if (!ordering && !locationQuoteReady && !quoteLoading && locationReady()) requestPaymentQuote();
+        });
         finalPriceText.setGravity(Gravity.END | Gravity.CENTER_VERTICAL);
         priceBox.addView(finalPriceText, new LinearLayout.LayoutParams(-1, dp(30)));
 
@@ -603,6 +611,8 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
         // CTA wizard selalu berada di posisi yang sama pada bagian bawah kartu.
         orderBtn = smallButton("LANJUT — PILIH TUJUAN", "#0B7CFF", "#FFFFFF", "#0B7CFF");
         orderBtn.setTextSize(14);
+        orderBtn.setVisibility(View.GONE);
+        orderBtn.setEnabled(false);
         LinearLayout.LayoutParams orderLp = new LinearLayout.LayoutParams(-1, dp(50));
         orderLp.setMargins(0, dp(7), 0, 0);
         bottomCard.addView(orderBtn, orderLp);
@@ -1089,6 +1099,14 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
             if(pending[0]!=null) debounce.removeCallbacks(pending[0]); final String q=c.toString().trim();
             pending[0]=()->{ if(q.length()<PLACES_MIN_QUERY_CHARS){results.removeAllViews(); results.addView(hint); return;} loadSmartPredictions(q, token, results, overlay); }; debounce.postDelayed(pending[0],PLACES_DEBOUNCE_MS);
         } public void afterTextChanged(Editable e){} });
+        if (getIntent() != null && "delivery".equals(mode)) {
+            String query = getIntent().getStringExtra("destination_query");
+            if (query != null && !query.trim().isEmpty()) {
+                getIntent().removeExtra("destination_query");
+                search.setText(query.trim());
+                search.setSelection(search.length());
+            }
+        }
         // Animated contextual search hint, Grab-style: changes only while the field is empty.
         final String[] smartHints = "pickup".equals(mode)
                 ? new String[]{"Cari lokasi jemput…", "Cari nama jalan…", "Cari gedung terdekat…"}
@@ -2246,6 +2264,7 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
     private int routePreviewVersion = 0;
     private int quoteVersion = 0;
     private boolean locationQuoteReady;
+    private boolean quoteLoading;
     private boolean pickupAddressResolving;
     private double resolvingPickupLat, resolvingPickupLng;
     private long deliveryAddressRequest;
@@ -2263,8 +2282,10 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
     private void requestPaymentQuote() {
         final int quoteRequest = ++quoteVersion;
         locationQuoteReady=false;
+        quoteLoading=false;
         updateWizardState();
         if(!locationReady()) return;
+        quoteLoading=true;
         requestVisibleOsrmRoute();
         if (!validCoordinate(pickupLat, pickupLng)
                 || !validCoordinate(deliveryLat, deliveryLng)) {
@@ -2301,6 +2322,8 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
 
         distanceInfoText.setText(String.format(new Locale("id", "ID"), serviceName() + " • %.1f km", fallbackKm));
         durationInfoText.setText(String.format(new Locale("id", "ID"), "± %.0f menit • estimasi perjalanan", fallbackMinutes));
+        finalPriceText.setTextSize(19);
+        finalPriceText.setContentDescription("Sedang menghitung tarif");
         finalPriceText.setText("Menghitung...");
         finalPriceText.setTextColor(Color.parseColor("#64748B"));
         paymentSummaryText.setText("Mengambil tarif dari database...");
@@ -2343,6 +2366,7 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
 
                 featureRuntime.post(mainHandler, () -> {
                     if (destroyed || quoteRequest != quoteVersion) return;
+                    quoteLoading=false;
 
                     if (!res.optBoolean("success", false)) {
                         String message = firstNonEmpty(
@@ -2350,7 +2374,7 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
                                 "Tarif belum dapat dihitung"
                         );
                         paymentSummaryText.setText(TransivaUserMessage.fromServer(message));
-                        finalPriceText.setText("Rp -");
+                        showQuoteRetry();
                         finalPriceText.setTextColor(Color.parseColor("#0B3A78"));
                         return;
                     }
@@ -2390,13 +2414,14 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
 
                     if (total <= 0) {
                         paymentSummaryText.setText("Tarif database tidak valid");
-                        finalPriceText.setText("Rp -");
+                        showQuoteRetry();
                         finalPriceText.setTextColor(Color.parseColor("#0B3A78"));
                         return;
                     }
 
                     locationQuoteReady=true;
                     lastQuotedFare = total;
+                    finalPriceText.setContentDescription("Tarif Rp " + formatMoney(total));
                     finalPriceText.setText("Rp " + formatMoney(total));
                     updateWizardState();
 
@@ -2446,13 +2471,21 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
                 });
             } catch (Exception e) {
                 featureRuntime.post(mainHandler, () -> {
-                    if (destroyed) return;
+                    if (destroyed || quoteRequest != quoteVersion) return;
+                    quoteLoading=false;
                     paymentSummaryText.setText("Gagal terhubung ke server tarif");
-                    finalPriceText.setText("Rp -");
+                    showQuoteRetry();
                     finalPriceText.setTextColor(Color.parseColor("#0B3A78"));
                 });
             }
         }).start();
+    }
+
+    private void showQuoteRetry() {
+        finalPriceText.setTextSize(13);
+        finalPriceText.setText("Coba lagi ↻");
+        finalPriceText.setContentDescription("Tarif belum tersedia. Ketuk untuk mencoba lagi");
+        updateWizardState();
     }
 
     private int jsonInt(JSONObject json, String key, int fallback) {
@@ -2614,28 +2647,17 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
 
     private void updateWizardState() {
         if (orderBtn == null) return;
-        if(ordering) { orderBtn.setEnabled(false); return; }
-        if(!locationReady()) {
-            orderBtn.setEnabled(false); orderBtn.setAlpha(.6f);
-            orderBtn.setText(validCoord(pickupLat,pickupLng)?"MENYIAPKAN ALAMAT LOKASI…":"MENUNGGU LOKASI JEMPUT…");
-            if(wizardStepText!=null) setWizardProgress(0);
+        if (ordering) {
+            orderBtn.setVisibility(View.VISIBLE);
+            orderBtn.setEnabled(false);
             return;
         }
-        orderBtn.setEnabled(true); orderBtn.setAlpha(1f);
-        if(!locationQuoteReady) { orderBtn.setText("LIHAT HARGA"); return; }
-        if (!validCoord(deliveryLat, deliveryLng)) {
-            if (wizardStepText != null) setWizardProgress(0);
-            orderBtn.setText("PILIH TUJUAN");
-        } else if (!validCoord(pickupLat, pickupLng)) {
-            if (wizardStepText != null) setWizardProgress(1);
-            orderBtn.setText("KONFIRMASI JEMPUT");
-        } else if (finalPriceText == null || finalPriceText.getText().toString().contains("-")) {
-            if (wizardStepText != null) setWizardProgress(1);
-            orderBtn.setText("LIHAT HARGA");
-        } else {
-            if (wizardStepText != null) setWizardProgress(2);
-            orderBtn.setText("PESAN " + serviceName().toUpperCase(Locale.US) + " • " + finalPriceText.getText().toString());
-        }
+        boolean ready = locationReady() && locationQuoteReady && lastQuotedFare > 0;
+        orderBtn.setVisibility(ready ? View.VISIBLE : View.GONE);
+        orderBtn.setEnabled(ready);
+        orderBtn.setAlpha(1f);
+        if (wizardStepText != null) setWizardProgress(ready ? 2 : (locationReady() ? 1 : 0));
+        if (ready) orderBtn.setText("PESAN " + serviceName().toUpperCase(Locale.US));
     }
 
     private void resetOrderButton() { ordering = false; setLoading(false); orderBtn.setEnabled(true); updateWizardState(); }

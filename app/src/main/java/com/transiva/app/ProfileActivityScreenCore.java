@@ -793,6 +793,8 @@ class ProfileActivityScreenCore extends CustomerAdaptiveActivity {
             startActivity(intent);
         }));
         card.addView(settingsDivider());
+        card.addView(settingsRow("🔔", "Diagnostik Notifikasi", "Status registrasi dan sinkronisasi", view -> startActivity(new Intent(this,FcmRegistrationDiagnosticsActivity.class))));
+        card.addView(settingsDivider());
         logoutButton = compactActionButton("↪  Keluar dari Akun");
         logoutButton.setTextColor(Color.parseColor("#334E6F"));
         logoutButton.setOnClickListener(view -> confirmLogout());

@@ -122,18 +122,16 @@ public class SessionManager {
             // menghapus Bearer token aktif hanya karena field token tidak ada/kosong.
             String tokenToSave = firstNonEmpty(
                     clean.optString("token", ""),
-                    getToken()
+                    sameAccount ? getToken() : ""
             );
+            if (tokenToSave.isEmpty()) throw new IllegalStateException("AUTH_TOKEN_MISSING");
             if (!tokenToSave.isEmpty()) {
                 // Authentication secret is encrypted with Android Keystore.
                 // Keep no new plaintext token in the normal session preferences.
                 if (!SecureTokenStore.put(appContext, tokenToSave)) {
-                    // Compatibility fallback only if Keystore is temporarily unavailable.
-                    e.putString("token", tokenToSave);
-                } else {
-                    e.remove("token").remove("access_token").remove("auth_token")
-                            .remove("api_token").remove("session_token");
+                    throw new IllegalStateException("AUTH_ENCRYPT_FAILED");
                 }
+                e.remove("token").remove("access_token").remove("auth_token").remove("api_token").remove("session_token");
             }
             e.putString("restaurant_id", clean.optString("restaurant_id", ""));
             e.putString("balance", clean.optString("balance", "0"));
@@ -633,81 +631,15 @@ public class SessionManager {
     }
 
     public String getToken() {
-        String secureToken = SecureTokenStore.get(appContext);
-        if (!secureToken.isEmpty()) return secureToken;
-
-        String token = firstNonEmpty(
-                prefs.getString("token", ""),
-                prefs.getString("access_token", ""),
-                prefs.getString("auth_token", ""),
-                prefs.getString("api_token", ""),
-                prefs.getString("session_token", "")
-        );
-
-        if (token.isEmpty()) {
-            token = tokenFromJson(prefs.getString("raw_user", ""));
-        }
-        if (token.isEmpty()) {
-            token = tokenFromJson(prefs.getString("raw_session", ""));
-        }
-        if (token.isEmpty()) {
-            token = firstNonEmpty(
-                    legacyPrefs.getString("token", ""),
-                    legacyPrefs.getString("access_token", ""),
-                    legacyPrefs.getString("auth_token", ""),
-                    legacyPrefs.getString("api_token", ""),
-                    legacyPrefs.getString("session_token", "")
-            );
-        }
-        if (token.isEmpty()) {
-            token = tokenFromJson(legacyPrefs.getString("user_json", ""));
-        }
-
-        if (!token.isEmpty()) {
-            // One-time migration for existing installations.
-            if (SecureTokenStore.put(appContext, token)) {
-                prefs.edit().remove("token").remove("access_token").remove("auth_token")
-                        .remove("api_token").remove("session_token").apply();
-                legacyPrefs.edit().remove("token").remove("access_token").remove("auth_token")
-                        .remove("api_token").remove("session_token").apply();
-            }
-        }
-        return token;
+        return SecureTokenStore.get(appContext);
     }
 
 
     private String sanitizedSessionJson(JSONObject source) {
-        if (source == null) return "{}";
-        try {
-            JSONObject copy = new JSONObject(source.toString());
-            copy.remove("token");
-            copy.remove("access_token");
-            copy.remove("auth_token");
-            copy.remove("api_token");
-            copy.remove("session_token");
-            return copy.toString();
-        } catch (Exception error) {
-            TransivaCrashReporter.record(error, "session_sanitize", "session_json");
-            return "{}";
-        }
+        return TokenJsonSanitizer.clean(source).toString();
     }
 
-    private String tokenFromJson(String json) {
-        if (json == null || json.trim().isEmpty()) return "";
-        try {
-            JSONObject obj = new JSONObject(json);
-            if (obj.optJSONObject("user") != null) obj = obj.optJSONObject("user");
-            return firstNonEmpty(
-                    obj.optString("token", ""),
-                    obj.optString("access_token", ""),
-                    obj.optString("auth_token", ""),
-                    obj.optString("api_token", ""),
-                    obj.optString("session_token", "")
-            );
-        } catch (Exception ignored) {
-            return "";
-        }
-    }
+
 
     public String getRestaurantId() {
         return prefs.getString("restaurant_id", "");

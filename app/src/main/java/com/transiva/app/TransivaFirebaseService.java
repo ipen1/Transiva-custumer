@@ -79,6 +79,8 @@ public class TransivaFirebaseService extends FirebaseMessagingService {
         Map<String, String> data =
                 remoteMessage.getData();
 
+        if(!FcmSessionTarget.accept(this,data))return;
+
         if (PushExpiryPolicy.expiredOrder(data,System.currentTimeMillis())) return;
 
         if (data == null || data.isEmpty()) {

@@ -18,6 +18,7 @@ public class TransivaCustomerApplication extends Application implements Applicat
 
     @Override public void onCreate() {
         super.onCreate();
+        SecureTokenStore.migrateLegacy(this);
         CallReliabilityRuntime.install(this);
         instance = this;
         if(BuildConfig.LOCAL_VERIFICATION){

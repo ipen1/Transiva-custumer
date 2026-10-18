@@ -651,7 +651,8 @@ class CustomerChatActivityScreenCore extends CustomerAdaptiveActivity {
                                     )
                             );
 
-            if (history && hiddenHistory.contains(conversationKey(item))) continue;
+            if (history && (!CustomerConversationHistoryPolicy.hasConversation(item)
+                    || hiddenHistory.contains(conversationKey(item)))) continue;
             if (
                     selectedTab.equals("history")
                             == history
@@ -674,7 +675,7 @@ class CustomerChatActivityScreenCore extends CustomerAdaptiveActivity {
             } else {
                 addState(
                         "Riwayat pesan masih kosong",
-                        "Chat dari order yang selesai akan tersimpan di sini."
+                        "Hanya percakapan yang pernah berisi pesan yang tampil di sini."
                 );
             }
 
@@ -711,6 +712,11 @@ class CustomerChatActivityScreenCore extends CustomerAdaptiveActivity {
                 titleLp
         );
 
+        if (selectedTab.equals("history")) {
+            TextView hint = text("Tekan lama untuk menghapus percakapan", 10, "#71859A", false);
+            hint.setPadding(dp(2), 0, dp(2), dp(9));
+            listBox.addView(hint, new LinearLayout.LayoutParams(-1, -2));
+        }
         for (JSONObject item : filtered) {
             listBox.addView(
                     conversationCard(item)

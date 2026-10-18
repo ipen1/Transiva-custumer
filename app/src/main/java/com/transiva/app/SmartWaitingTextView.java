@@ -13,6 +13,7 @@ public final class SmartWaitingTextView extends LinearLayout {
     private JSONObject state;
     private long sampledAt;
     private boolean terminal;
+    private boolean compact;
     private final TextView title, clock, detail;
     private final Runnable tick=new Runnable(){public void run(){render();if(isAttachedToWindow()&&!terminal&&state!=null&&state.optJSONObject("active")!=null)postDelayed(this,1000);}};
     public SmartWaitingTextView(Context context){
@@ -23,6 +24,7 @@ public final class SmartWaitingTextView extends LinearLayout {
     }
     private int dp(int n){return Math.round(n*getResources().getDisplayMetrics().density);}
     private TextView label(Context c,int size,int color){TextView v=new TextView(c);v.setTextSize(size);v.setTextColor(color);v.setIncludeFontPadding(false);v.setPadding(0,dp(1),0,dp(1));return v;}
+    public void setCompactPresentation(boolean value){compact=value;render();}
     public void bind(JSONObject value){bind(value,value==null?"":value.optString("order_status"));}
     public void bind(JSONObject value,String status){state=value;sampledAt=SystemClock.elapsedRealtime();String s=status==null?"":status.toLowerCase(Locale.US);terminal=s.equals("finished")||s.equals("completed")||s.equals("canceled")||s.equals("cancelled")||s.equals("cancel");removeCallbacks(tick);if(s.startsWith("cancel")){state=null;}render();if(isAttachedToWindow()&&!terminal&&state!=null&&state.optJSONObject("active")!=null)postDelayed(tick,1000);}
     @Override protected void onAttachedToWindow(){super.onAttachedToWindow();removeCallbacks(tick);post(tick);}
@@ -30,7 +32,9 @@ public final class SmartWaitingTextView extends LinearLayout {
     private String money(long n){return "Rp"+java.text.NumberFormat.getNumberInstance(new Locale("id","ID")).format(n);}
     private void render(){
         JSONArray sessions=state==null?null:state.optJSONArray("sessions");if(sessions==null||sessions.length()==0){setVisibility(GONE);return;}
-        setVisibility(VISIBLE);JSONObject active=terminal?null:state.optJSONObject("active");long fee=state.optLong("total_fee");
+        JSONObject active=terminal?null:state.optJSONObject("active");long fee=state.optLong("total_fee");
+        if(compact && active==null && fee<=0){setVisibility(GONE);return;}
+        setVisibility(VISIBLE);
         if(active!=null){
             long elapsed=active.optLong("elapsed_seconds")+Math.min(30,Math.max(0,(SystemClock.elapsedRealtime()-sampledAt)/1000)),free=active.optLong("free_seconds",300),rate=active.optLong("rate_per_minute",500);
             long remaining=Math.max(0,free-elapsed);fee=Math.max(0,fee-active.optLong("fee"))+((Math.max(0,elapsed-free)+59)/60)*rate;

@@ -136,6 +136,9 @@ public final class PremiumOrderStatusView extends LinearLayout {
     /** Embed status into the trip surface without another nested card. */
     public void setEmbedded() { setBackground(null); setElevation(0); setPadding(0, 0, 0, 0); }
 
+    /** Optional trip-page presentation: driver identity already has its own row. */
+    public void setReferenceVisible(boolean visible) { reference.setVisibility(visible ? VISIBLE : GONE); }
+
     public void setAction(View.OnClickListener listener) { action.setOnClickListener(listener); setOnClickListener(listener); }
     public static int step(String raw) {
         switch (CustomerOrderState.normalize(raw)) {

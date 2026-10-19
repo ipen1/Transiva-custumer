@@ -4,6 +4,7 @@
         <item name="android:fontFamily">sans</item>
         <item name="android:windowLightStatusBar">false</item>
         <item name="android:windowActionModeOverlay">true</item>
+        <item name="android:windowDrawsSystemBarBackgrounds">true</item>
     </style>
     <!-- Colors are required only on legacy Android. API 35+ has its own theme. -->
     <style name="AppTheme" parent="TransivaBaseTheme">

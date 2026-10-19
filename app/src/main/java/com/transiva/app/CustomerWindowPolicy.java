@@ -50,11 +50,15 @@ public final class CustomerWindowPolicy {
         if (content == null) return;
         if (!state.installed) {
             state.installed = true;
-            // targetSdk 36: Android 15+ enforces edge-to-edge for non-floating
-            // windows. Older platforms and floating fullscreen dialogs still
-            // need the compatibility bridge (including its legacy color APIs).
-            if (Build.VERSION.SDK_INT < 35 || window.isFloating())
-                WindowCompat.enableEdgeToEdge(window);
+            // API 35+ enforces edge-to-edge for our non-floating activity/media
+            // windows. Older Android needs explicit layout behind system bars.
+            // Avoid core 1.17 enableEdgeToEdge: it calls deprecated color setters.
+            // Our own legacy theme supplies transparency, BarProtection colors it.
+            if (Build.VERSION.SDK_INT < 35)
+                WindowCompat.setDecorFitsSystemWindows(window, false);
+            if (Build.VERSION.SDK_INT >= 29) {
+                window.setNavigationBarContrastEnforced(false);
+            }
             window.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
             state.left = content.getPaddingLeft(); state.top = content.getPaddingTop();
             state.right = content.getPaddingRight(); state.bottom = content.getPaddingBottom();

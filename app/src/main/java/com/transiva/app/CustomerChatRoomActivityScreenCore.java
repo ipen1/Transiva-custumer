@@ -1848,7 +1848,7 @@ class CustomerChatRoomActivityScreenCore extends CustomerAdaptiveActivity {
             String imageUrl
     ) {
         final Dialog dialog =
-                new Dialog(this, android.R.style.Theme_Material_Light_NoActionBar);
+                new Dialog(this, R.style.AppTheme);
 
         FrameLayout page =
                 new FrameLayout(this);
@@ -1980,6 +1980,9 @@ class CustomerChatRoomActivityScreenCore extends CustomerAdaptiveActivity {
                         -1,
                         -1
                 );
+                CustomerWindowPolicy.install(shownWindow);
+                CustomerWindowPolicy.status(shownWindow, Color.BLACK);
+                CustomerWindowPolicy.navigation(shownWindow, Color.BLACK);
             }
         });
 

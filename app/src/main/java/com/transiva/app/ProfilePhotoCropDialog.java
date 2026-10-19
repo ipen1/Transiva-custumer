@@ -27,7 +27,7 @@ final class ProfilePhotoCropDialog extends Dialog {
     private boolean accepted;
     private CropView crop;
     ProfilePhotoCropDialog(Activity activity, Bitmap source, Result result, Runnable cancelled) {
-        super(activity, android.R.style.Theme_Material_Light_NoActionBar); this.source = source; this.result = result; this.cancelled = cancelled;
+        super(activity, R.style.AppTheme); this.source = source; this.result = result; this.cancelled = cancelled;
     }
     private int dp(int value) { return Math.round(value * getContext().getResources().getDisplayMetrics().density); }
     @Override protected void onCreate(Bundle state) {

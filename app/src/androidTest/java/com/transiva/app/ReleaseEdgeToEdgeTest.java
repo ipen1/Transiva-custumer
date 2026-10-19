@@ -17,9 +17,12 @@ import static org.junit.Assert.*;
 @SdkSuppress(minSdkVersion=35)
 public class ReleaseEdgeToEdgeTest {
     private static WindowInsets insets(int left,int top,int right,int bottom,int keyboard) {
+        return insets(left,top,right,bottom,keyboard,0);
+    }
+    private static WindowInsets insets(int left,int top,int right,int bottom,int keyboard,int cutoutLeft) {
         return new WindowInsets.Builder()
                 .setInsets(WindowInsets.Type.systemBars(),Insets.of(left,top,right,bottom))
-                .setInsets(WindowInsets.Type.displayCutout(),Insets.NONE)
+                .setInsets(WindowInsets.Type.displayCutout(),Insets.of(cutoutLeft,0,0,0))
                 .setInsets(WindowInsets.Type.ime(),Insets.of(0,0,0,keyboard)).build();
     }
     @Test public void barsAndKeyboardApplyOnceAndResetAfterResize() {
@@ -40,6 +43,14 @@ public class ReleaseEdgeToEdgeTest {
                 content.dispatchApplyWindowInsets(insets(43,0,0,31,0));
                 assertEquals(l+43,content.getPaddingLeft());assertEquals(t,content.getPaddingTop());
                 assertEquals(r,content.getPaddingRight());assertEquals(b+31,content.getPaddingBottom());
+                // A landscape cutout is combined by maximum, never added twice.
+                content.dispatchApplyWindowInsets(insets(11,23,17,31,0,67));
+                assertEquals(l+67,content.getPaddingLeft());
+                assertEquals(t+23,content.getPaddingTop());
+                content.dispatchApplyWindowInsets(insets(0,23,0,31,240));
+                assertEquals(b+240,content.getPaddingBottom());
+                content.dispatchApplyWindowInsets(insets(0,23,0,31,0));
+                assertEquals(b+31,content.getPaddingBottom());
                 assertFalse("API 35+ theme still enables navigation contrast scrim",activity.getWindow().isNavigationBarContrastEnforced());
             });
         } finally {i.runOnMainSync(activity::finish);}

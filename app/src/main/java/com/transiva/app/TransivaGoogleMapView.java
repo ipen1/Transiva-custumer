@@ -245,6 +245,7 @@ public final class TransivaGoogleMapView extends FrameLayout implements OnMapRea
                 }
                 if (userCameraGesture && gestureListener != null) gestureListener.onGestureEnd();
                 userCameraGesture = false;
+                syncPickerMarkers();
             });
         }
 
@@ -295,7 +296,6 @@ public final class TransivaGoogleMapView extends FrameLayout implements OnMapRea
     /** Menampilkan pin pemilih hanya saat pengguna sedang memilih titik. */
     public void showCenterPin(boolean show) {
         pickerVisible = show;
-        syncPickerMarkers();
         if (centerPin != null) {
             centerPin.setVisibility(show ? VISIBLE : GONE);
         }
@@ -303,6 +303,7 @@ public final class TransivaGoogleMapView extends FrameLayout implements OnMapRea
             centerAction.setVisibility(show ? VISIBLE : GONE);
         }
         if (centerLocationCard != null) centerLocationCard.setVisibility(show ? VISIBLE : GONE);
+        syncPickerMarkers();
     }
 
     public void showOrderAction(boolean show, String text) {
@@ -356,9 +357,25 @@ public final class TransivaGoogleMapView extends FrameLayout implements OnMapRea
     }
 
     private void syncPickerMarkers() {
-        boolean visible = mode != Mode.PICKER || !pickerVisible;
-        if (pickupMarker != null) pickupMarker.setVisible(visible);
-        if (deliveryMarker != null) deliveryMarker.setVisible(visible);
+        boolean selecting = mode == Mode.PICKER && pickerVisible;
+        // Keep the confirmed green pickup visible while choosing a destination.
+        // During manual pickup selection the center pin is the only pickup pin.
+        if (pickupMarker != null) pickupMarker.setVisible(!selecting || "delivery".equals(selectionMode));
+        if (deliveryMarker != null) deliveryMarker.setVisible(!selecting);
+        if (centerPin != null && selecting) {
+            boolean atPickup = false;
+            if ("delivery".equals(selectionMode) && pickupMarker != null && googleMap != null) {
+                LatLng pickup = pickupMarker.getPosition();
+                LatLng center = googleMap.getCameraPosition().target;
+                float[] meters = new float[1];
+                android.location.Location.distanceBetween(pickup.latitude, pickup.longitude,
+                        center.latitude, center.longitude, meters);
+                atPickup = meters[0] < 8f;
+            }
+            // At launch the center and GPS pickup coincide. Show the green pin;
+            // reveal the red destination picker after the map moves away.
+            centerPin.setVisibility(atPickup ? GONE : VISIBLE);
+        }
     }
 
     public void clearPickup() {

@@ -142,10 +142,10 @@ public class TransAssistantTourActivity extends CustomerAdaptiveActivity {
         addTitle("Pilih Layanan Sesuai Kebutuhanmu");
         addBody("Semua layanan utama Transiva dapat kamu temukan dari Beranda.");
         addSpacer(12);
-        addService("ic_service_ride", "TransRide", "Pesan motor atau mobil dengan mudah");
-        addService("ic_service_food", "TransFood", "Pesan makanan favorit di sekitarmu");
+        addService("ic_service_ride_premium", "TransRide", "Pesan motor atau mobil dengan mudah");
+        addService("ic_service_food_premium", "TransFood", "Pesan makanan favorit di sekitarmu");
         addService("ic_service_shop_premium", "TransShop", "Belanja kebutuhan dari toko terdekat");
-        addService("ic_service_pickup", "TransSend", "Kirim dan ambil barang dengan praktis");
+        addService("ic_service_send_premium", "TransSend", "Kirim dan ambil barang dengan praktis");
         primary.setText("Lanjut  →");
         secondary.setText("Lewati");
     }
@@ -285,8 +285,17 @@ public class TransAssistantTourActivity extends CustomerAdaptiveActivity {
         if (id != 0) {
             ImageView icon = new ImageView(this);
             icon.setImageResource(id);
-            icon.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
-            card.addView(icon, new LinearLayout.LayoutParams(dp(66), dp(66)));
+            icon.setScaleType(ImageView.ScaleType.CENTER_CROP);
+            android.graphics.drawable.GradientDrawable circle = new android.graphics.drawable.GradientDrawable();
+            circle.setShape(android.graphics.drawable.GradientDrawable.OVAL);
+            circle.setColor(Color.parseColor("#EDF5FF"));
+            circle.setStroke(dp(1), Color.parseColor("#C8D9EC"));
+            android.widget.FrameLayout badge = new android.widget.FrameLayout(this);
+            badge.setBackground(circle);
+            badge.setClipToOutline(true);
+            badge.addView(icon, new android.widget.FrameLayout.LayoutParams(-1, -1));
+            CustomerAppSettings.preserveArtwork(icon);
+            card.addView(badge, new LinearLayout.LayoutParams(dp(66), dp(66)));
         }
         LinearLayout copy = new LinearLayout(this);
         copy.setOrientation(LinearLayout.VERTICAL);

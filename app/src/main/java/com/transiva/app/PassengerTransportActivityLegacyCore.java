@@ -388,21 +388,23 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
         mapView.setGestureListener(new TransivaGoogleMapView.GestureListener() {
             @Override public void onGestureStart() {
                 // Setelah tujuan dikonfirmasi, menggeser peta tidak boleh mengubah nama tujuan.
-                if (deliverySelectionLocked) return;
+                if (selectingWaypoint || (!"pickup".equals(mode) && deliverySelectionLocked)) return;
                 destinationResolveGeneration++;
                 pendingDeliveryTitle = ""; pendingDeliverySubtitle = "";
-                if (deliveryBtn != null) deliveryBtn.setText("●  Mau ke mana?\nMencari lokasi…");
+                if ("pickup".equals(mode)) { if (pickupBtn != null) pickupBtn.setText("●  Jemput di mana?\nMencari lokasi…"); }
+                else if (deliveryBtn != null) deliveryBtn.setText("●  Mau ke mana?\nMencari lokasi…");
             }
             @Override public void onGestureEnd() {
-                if (deliverySelectionLocked) return;
+                if (selectingWaypoint || (!"pickup".equals(mode) && deliverySelectionLocked)) return;
                 final double lat = pickLat, lng = pickLng;
                 if (!validCoord(lat, lng)) return;
+                final boolean resolvingPickup = "pickup".equals(mode);
                 final long generation = ++destinationResolveGeneration;
                 featureRuntime.newThread(() -> {
                     final String road = reverseAddress(lat, lng);
                     final String admin = buildAdministrativeFallback(lat, lng);
                     featureRuntime.post(mainHandler, () -> resolveNearestGooglePlace(lat, lng, googleName -> {
-                        if (destroyed || deliverySelectionLocked || generation != destinationResolveGeneration) return;
+                        if (destroyed || selectingWaypoint || resolvingPickup != "pickup".equals(mode) || (!resolvingPickup && deliverySelectionLocked) || generation != destinationResolveGeneration) return;
                         String localName = findNearestPlaceName(lat, lng);
                         String landmark = cleanLandmarkName(firstNonEmpty(googleName, localName, ""));
                         String title;
@@ -412,6 +414,10 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
                         else title = String.format(Locale.US, "%.5f, %.5f", lat, lng);
                         String subtitle = compactDisplayName(road);
                         if (subtitle.equalsIgnoreCase(title) || (!landmark.isEmpty() && subtitle.toLowerCase(Locale.ROOT).contains(landmark.toLowerCase(Locale.ROOT)))) subtitle = admin;
+                        if (resolvingPickup) {
+                            if (pickupBtn != null) pickupBtn.setText("●  Jemput di mana?\n" + title + "?");
+                            return;
+                        }
                         pendingDeliveryTitle = title;
                         pendingDeliverySubtitle = subtitle;
                         if (deliveryBtn != null) deliveryBtn.setText("●  Mau ke mana?\nKe " + title + "?");
@@ -429,6 +435,7 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
                 confirmPendingDeliveryFromMap();
                 return;
             }
+            if ("pickup".equals(mode)) { setPointFromCenter(); return; }
             if (validCoord(pickupLat, pickupLng) && validCoord(deliveryLat, deliveryLng)) handleWizardPrimaryAction();
             else setPointFromCenter();
         });
@@ -1069,9 +1076,15 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
 
         LinearLayout tools = new LinearLayout(this); tools.setGravity(Gravity.CENTER_VERTICAL);
         Button paste = smallButton("Tempel link Maps", "#FFFFFF", "#0B3A78", "#C8D9EC");
-        LinearLayout.LayoutParams tlp=new LinearLayout.LayoutParams(0,dp(40),1); tlp.setMargins(0,dp(10),dp(6),0); tools.addView(paste,tlp);
+        LinearLayout.LayoutParams tlp=new LinearLayout.LayoutParams(0,-2,1); tlp.setMargins(0,dp(10),dp(6),0); tools.addView(paste,tlp);
         Button chooseMap = smallButton("Pilih di peta", "#0B7CFF", "#FFFFFF", "#0B7CFF");
-        LinearLayout.LayoutParams mlp=new LinearLayout.LayoutParams(0,dp(40),1); mlp.setMargins(dp(6),dp(10),0,0); tools.addView(chooseMap,mlp);
+        LinearLayout.LayoutParams mlp=new LinearLayout.LayoutParams(0,-2,1); mlp.setMargins(dp(6),dp(10),0,0); tools.addView(chooseMap,mlp);
+        for (Button action : new Button[]{paste, chooseMap}) {
+            action.setMinHeight(dp(48)); action.setMinimumHeight(dp(48));
+            action.setPadding(dp(10), dp(12), dp(10), dp(12));
+            action.setGravity(Gravity.CENTER); action.setMaxLines(2);
+        }
+        tools.setClipChildren(false); tools.setClipToPadding(false);
         shell.addView(tools, new LinearLayout.LayoutParams(-1,-2));
 
         TextView label=text("Hasil terdekat",16,"#0B3A78",true); LinearLayout.LayoutParams llp=new LinearLayout.LayoutParams(-1,-2); llp.setMargins(0,dp(18),0,dp(8)); shell.addView(label,llp);
@@ -1079,7 +1092,7 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
         TextView hint=text("Ketik nama tempat atau alamat. Hasil terdekat dari lokasimu akan muncul di sini.",13,"#64748B",false); hint.setPadding(dp(12),dp(18),dp(12),dp(18)); results.addView(hint);
 
         back.setOnClickListener(v -> ((android.view.ViewGroup)overlay.getParent()).removeView(overlay));
-        View.OnClickListener mapAction=v->{ ((android.view.ViewGroup)overlay.getParent()).removeView(overlay); updateModeUI(); };
+        View.OnClickListener mapAction=v->{ ((android.view.ViewGroup)overlay.getParent()).removeView(overlay); hideKeyboard(); updateModeUI(); };
         map.setOnClickListener(mapAction); chooseMap.setOnClickListener(mapAction);
         paste.setOnClickListener(v -> {
             try {

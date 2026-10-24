@@ -14,6 +14,7 @@ public class CustomerAdaptiveActivity extends Activity {
     @Override public void onConfigurationChanged(Configuration configuration) {
         super.onConfigurationChanged(configuration);
         CustomerWindowPolicy.install(this);
+        CustomerAppSettings.apply(this);
         View content = findViewById(android.R.id.content);
         if (content != null) { content.requestLayout(); content.invalidate(); }
     }

@@ -82,6 +82,10 @@ public final class TransivaGoogleMapView extends FrameLayout implements OnMapRea
     private boolean ready;
     private String selectionMode = "pickup";
     private ValueAnimator driverAnimator;
+    private boolean pickerVisible = true, tripDriverCar;
+    private String waypointSignature = "";
+    private boolean userCameraGesture;
+    private long lastDriverFrameAt;
     private final Map<String, BitmapDescriptor> iconCache = new HashMap<>();
 
     private static final LatLng DEFAULT_CENTER = new LatLng(-0.018137, 120.087380);
@@ -229,6 +233,7 @@ public final class TransivaGoogleMapView extends FrameLayout implements OnMapRea
             map.setOnCameraMoveStartedListener(reason -> {
                 if (reason == GoogleMap.OnCameraMoveStartedListener.REASON_GESTURE
                         && gestureListener != null) {
+                    userCameraGesture = true;
                     gestureListener.onGestureStart();
                 }
             });
@@ -238,10 +243,16 @@ public final class TransivaGoogleMapView extends FrameLayout implements OnMapRea
                 if (listener != null && valid(c.latitude, c.longitude)) {
                     listener.onCenterChanged(c.latitude, c.longitude);
                 }
-                if (gestureListener != null) gestureListener.onGestureEnd();
+                if (userCameraGesture && gestureListener != null) gestureListener.onGestureEnd();
+                userCameraGesture = false;
             });
         }
 
+        if (mode == Mode.TRIP) {
+            map.setOnCameraMoveStartedListener(reason -> {
+                if (reason == GoogleMap.OnCameraMoveStartedListener.REASON_GESTURE && gestureListener != null) gestureListener.onGestureStart();
+            });
+        }
         LatLng c = map.getCameraPosition().target;
         if (listener != null) listener.onReady(c.latitude, c.longitude);
     }
@@ -283,6 +294,8 @@ public final class TransivaGoogleMapView extends FrameLayout implements OnMapRea
 
     /** Menampilkan pin pemilih hanya saat pengguna sedang memilih titik. */
     public void showCenterPin(boolean show) {
+        pickerVisible = show;
+        syncPickerMarkers();
         if (centerPin != null) {
             centerPin.setVisibility(show ? VISIBLE : GONE);
         }
@@ -293,6 +306,8 @@ public final class TransivaGoogleMapView extends FrameLayout implements OnMapRea
     }
 
     public void showOrderAction(boolean show, String text) {
+        pickerVisible = false;
+        syncPickerMarkers();
         selectionMode = show ? "order" : selectionMode;
         updateCenterActionPosition(show);
         setOrderFocus(show);
@@ -340,6 +355,12 @@ public final class TransivaGoogleMapView extends FrameLayout implements OnMapRea
         }
     }
 
+    private void syncPickerMarkers() {
+        boolean visible = mode != Mode.PICKER || !pickerVisible;
+        if (pickupMarker != null) pickupMarker.setVisible(visible);
+        if (deliveryMarker != null) deliveryMarker.setVisible(visible);
+    }
+
     public void clearPickup() {
         if (pickupMarker != null) {
             pickupMarker.remove();
@@ -381,6 +402,10 @@ public final class TransivaGoogleMapView extends FrameLayout implements OnMapRea
         googleMap.animateCamera(CameraUpdateFactory.newLatLngZoom(new LatLng(lat, lng), zoom));
     }
 
+    public void followTripDriver(double lat, double lng) {
+        if (isReady() && valid(lat,lng)) googleMap.animateCamera(CameraUpdateFactory.newLatLng(new LatLng(lat,lng)));
+    }
+
     public void setPickup(double lat, double lng, String label) {
         if (!isReady() || !valid(lat, lng)) return;
         LatLng p = new LatLng(lat, lng);
@@ -392,6 +417,7 @@ public final class TransivaGoogleMapView extends FrameLayout implements OnMapRea
                     .title("Lokasi Jemput"));
         } else pickupMarker.setPosition(p);
         if (pickupMarker != null) pickupMarker.setSnippet(label == null ? "" : label);
+        syncPickerMarkers();
     }
 
     public void setDelivery(double lat, double lng, String label) {
@@ -405,9 +431,11 @@ public final class TransivaGoogleMapView extends FrameLayout implements OnMapRea
                     .title("Lokasi Pengantaran"));
         } else deliveryMarker.setPosition(p);
         if (deliveryMarker != null) deliveryMarker.setSnippet(label == null ? "" : label);
+        syncPickerMarkers();
     }
 
     public void clearWaypoints() {
+        waypointSignature = "";
         for (Marker marker : waypointMarkers) {
             try { marker.remove(); } catch (Exception ignored) {}
         }
@@ -415,8 +443,11 @@ public final class TransivaGoogleMapView extends FrameLayout implements OnMapRea
     }
 
     public void setWaypoints(JSONArray waypoints) {
-        clearWaypoints();
-        if (!isReady() || waypoints == null) return;
+        if (!isReady()) return;
+        String signature = waypoints == null ? "" : waypoints.toString();
+        if (signature.equals(waypointSignature)) return;
+        clearWaypoints(); waypointSignature = signature;
+        if (waypoints == null) return;
         for (int i = 0; i < waypoints.length() && i < 2; i++) {
             JSONObject wp = waypoints.optJSONObject(i);
             if (wp == null) continue;
@@ -471,7 +502,11 @@ public final class TransivaGoogleMapView extends FrameLayout implements OnMapRea
     public void setTripDriver(double lat, double lng, double bearing, boolean car, String name, String status) {
         if (!isReady() || !valid(lat, lng)) return;
         LatLng target = new LatLng(lat, lng);
+        long frameAt = android.os.SystemClock.elapsedRealtime();
+        long duration = lastDriverFrameAt == 0 ? 900L : Math.max(900L, Math.min(4500L, (frameAt-lastDriverFrameAt)*85/100));
+        lastDriverFrameAt = frameAt;
         if (tripDriverMarker == null) {
+            tripDriverCar = car;
             tripDriverMarker = googleMap.addMarker(new MarkerOptions()
                     .position(target)
                     .anchor(0.5f, 0.5f)
@@ -482,24 +517,34 @@ public final class TransivaGoogleMapView extends FrameLayout implements OnMapRea
                     .snippet(status == null ? "" : status));
             return;
         }
-        tripDriverMarker.setIcon(icon(car ? R.drawable.map_car_top : R.drawable.map_motor_top, 46, 46));
+        if (tripDriverCar != car) {
+            tripDriverCar = car;
+            tripDriverMarker.setIcon(icon(car ? R.drawable.map_car_top : R.drawable.map_motor_top, 46, 46));
+        }
         tripDriverMarker.setTitle(empty(name) ? "Driver" : name);
         tripDriverMarker.setSnippet(status == null ? "" : status);
-        animateDriver(tripDriverMarker.getPosition(), target, bearing);
+        animateDriver(tripDriverMarker.getPosition(), target, bearing, duration);
     }
 
-    private void animateDriver(LatLng start, LatLng end, double bearing) {
+    private void animateDriver(LatLng start, LatLng end, double bearing, long duration) {
         if (tripDriverMarker == null) return;
         if (driverAnimator != null) driverAnimator.cancel();
         driverAnimator = ValueAnimator.ofFloat(0f, 1f);
-        driverAnimator.setDuration(900L);
+        float[] distance = new float[1];
+        android.location.Location.distanceBetween(start.latitude, start.longitude, end.latitude, end.longitude, distance);
+        final float startBearing = tripDriverMarker.getRotation();
+        final float turn = (float)((normalize(bearing) - startBearing + 540d) % 360d - 180d);
+        if (distance[0] > 750f) { tripDriverMarker.setPosition(end); tripDriverMarker.setRotation((float)normalize(bearing)); return; }
+        if (distance[0] < 0.5f && Math.abs(turn) < 1f) return;
+        driverAnimator.setInterpolator(new android.view.animation.LinearInterpolator());
+        driverAnimator.setDuration(duration);
         driverAnimator.addUpdateListener(a -> {
             if (tripDriverMarker == null) return;
             float f = (float) a.getAnimatedValue();
             double lat = start.latitude + (end.latitude - start.latitude) * f;
             double lng = start.longitude + (end.longitude - start.longitude) * f;
             tripDriverMarker.setPosition(new LatLng(lat, lng));
-            tripDriverMarker.setRotation((float) normalize(bearing));
+            tripDriverMarker.setRotation((float) normalize(startBearing + turn * f));
         });
         driverAnimator.start();
     }
@@ -515,9 +560,13 @@ public final class TransivaGoogleMapView extends FrameLayout implements OnMapRea
             if (valid(lat, lng)) points.add(new LatLng(lat, lng));
         }
         if (points.size() < 2) return;
-        if (routePolyline != null) routePolyline.remove();
         int color = "on_delivery".equals(status) ? Color.rgb(22, 163, 74)
                 : ("arrived_pickup".equals(status) ? Color.rgb(245, 158, 11) : Color.rgb(37, 99, 235));
+        if (routePolyline != null) {
+            if (!routePolyline.getPoints().equals(points)) routePolyline.setPoints(points);
+            routePolyline.setColor(color);
+            return;
+        }
         routePolyline = googleMap.addPolyline(new PolylineOptions()
                 .addAll(points)
                 .width(dpF(5.5f))
@@ -564,7 +613,7 @@ public final class TransivaGoogleMapView extends FrameLayout implements OnMapRea
 
     public void onStartMap() { try { nativeMapView.onStart(); } catch (Exception ignored) {} }
     public void onResumeMap() { try { nativeMapView.onResume(); } catch (Exception ignored) {} }
-    public void onPauseMap() { try { nativeMapView.onPause(); } catch (Exception ignored) {} }
+    public void onPauseMap() { if (driverAnimator != null) driverAnimator.cancel(); try { nativeMapView.onPause(); } catch (Exception ignored) {} }
     public void onStopMap() { try { nativeMapView.onStop(); } catch (Exception ignored) {} }
     public void onDestroyMap() {
         TransivaNetworkMonitor.removeListener(networkListener);

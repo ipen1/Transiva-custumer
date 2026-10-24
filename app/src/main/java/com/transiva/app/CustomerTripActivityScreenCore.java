@@ -121,6 +121,9 @@ class CustomerTripActivityScreenCore extends CustomerAdaptiveActivity {
     protected double lastRouteFromLat = 0d, lastRouteFromLng = 0d;
     protected double lastRouteToLat = 0d, lastRouteToLng = 0d;
     protected String lastRouteStatus = "";
+    private final AtomicLong routeGeneration = new AtomicLong();
+    private String appliedRouteKey = "";
+    private boolean driverCameraFocused;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -361,7 +364,7 @@ class CustomerTripActivityScreenCore extends CustomerAdaptiveActivity {
         LinearLayout.LayoutParams liveLp = new LinearLayout.LayoutParams(-1, -2);
         liveLp.setMargins(0, 0, 0, dp(8));
         card.addView(liveBtn, liveLp);
-        liveBtn.setOnClickListener(v -> openLiveDriver());
+        liveBtn.setOnClickListener(v -> { if (mapView != null) mapView.fitAll(); });
 
         LinearLayout safetyRow = new LinearLayout(this);
         safetyRow.setOrientation(LinearLayout.HORIZONTAL);
@@ -597,7 +600,7 @@ class CustomerTripActivityScreenCore extends CustomerAdaptiveActivity {
             mapView.clearPlaces();proposalMapKey=previewKey;
             if(pendingDestinationProposal!=null)mapView.addPlace(pendingDestinationProposal.optDouble("to_lat"),pendingDestinationProposal.optDouble("to_lng"),"Usulan tujuan tambahan","Menunggu persetujuan Anda",pendingDestinationProposal.optString("address"));
         }
-        if(destinationRouteStops!=null && destinationRouteStops.length()>0)mapView.setWaypoints(destinationRouteStops);
+        mapView.setWaypoints(destinationRouteStops);
 
         if (validCoord(pickupLat, pickupLng)) {
             if (mapView != null) mapView.setPickup(pickupLat, pickupLng, "Lokasi Penjemputan");
@@ -618,10 +621,9 @@ class CustomerTripActivityScreenCore extends CustomerAdaptiveActivity {
             if (mapView != null) mapView.setTripDriver(lastDriverLat, lastDriverLng, lastBearing, "car".equals(activeDriverType), lastDriverName, popup);
         }
 
-        if (firstFocus) {
+        if (!driverCameraFocused && validCoord(lastDriverLat,lastDriverLng)) {driverCameraFocused=true; firstFocus=true;}
+        if (firstFocus && (validCoord(pickupLat,pickupLng) || validCoord(deliveryLat,deliveryLng) || validCoord(lastDriverLat,lastDriverLng))) {
             firstFocus = false;
-            if (mapView != null) mapView.fitAll();
-        } else {
             if (mapView != null) mapView.fitAll();
         }
 
@@ -712,10 +714,15 @@ class CustomerTripActivityScreenCore extends CustomerAdaptiveActivity {
         long now=System.currentTimeMillis();
         float movedFrom=distanceMeters(lastRouteFromLat,lastRouteFromLng,lastDriverLat,lastDriverLng);
         float movedTarget=distanceMeters(lastRouteToLat,lastRouteToLng,toLat,toLng);
-        if(!force && lastStatus.equals(lastRouteStatus) && movedFrom<25f && movedTarget<10f && now-lastRouteRequestAt<15000L) return;
+        String requestKey = routeTargetKey();
+        boolean sameTarget = requestKey.equals(appliedRouteKey) && movedTarget < 10f;
+        if (!force && sameTarget && (now-lastRouteRequestAt<15000L || (movedFrom<25f && now-lastRouteRequestAt<30000L))) return;
+        if (!force && now-lastRouteRequestAt<5000L && lastStatus.equals(lastRouteStatus) && movedTarget<10f) return;
         routeRequestInFlight=true; lastRouteRequestAt=now;
         final double fromLat=lastDriverLat,fromLng=lastDriverLng;
         final String status=lastStatus;
+        final long generation = routeGeneration.get();
+        final String targetKey = requestKey;
         final boolean extensionRoute=destinationRouteActive;
         final org.json.JSONArray stops=destinationRouteStops;final double finalLat=deliveryLat,finalLng=deliveryLng;
         featureRuntime.execute(() -> {
@@ -730,11 +737,21 @@ class CustomerTripActivityScreenCore extends CustomerAdaptiveActivity {
                 }}
                 StableRouteEngine.Result r=StableRouteEngine.fetch(a,b,extensionRoute?finalLat:toLat,extensionRoute?finalLng:toLng);
                 for(int n=0;n<r.latLngPoints.length();n++)points.put(r.latLngPoints.opt(n));meters+=r.distanceMeters;seconds+=r.durationSeconds;
-                lastRouteFromLat=fromLat; lastRouteFromLng=fromLng; lastRouteToLat=toLat; lastRouteToLng=toLng; lastRouteStatus=status;
-                final String pts=points.toString(); final double km=meters/1000d,sec=seconds;
-                featureRuntime.post(mainHandler, () -> { if (mapView != null) { mapView.drawOsrmRoute(points, status); mapView.fitAll(); } if (tripInfoText != null && km > 0 && sec > 0) tripInfoText.setText("Estimasi rute driver: " + String.format(Locale.US, "%.1f", km) + " KM • " + Math.max(1, (int)Math.ceil(sec / 60.0)) + " menit"); });
+                final double km=meters/1000d,sec=seconds;
+                featureRuntime.post(mainHandler, () -> {
+                    if (generation != routeGeneration.get() || !targetKey.equals(routeTargetKey()) || isFinishing() || isDestroyed() || points.length()<2) return;
+                    lastRouteFromLat=fromLat; lastRouteFromLng=fromLng; lastRouteToLat=toLat; lastRouteToLng=toLng; lastRouteStatus=status;
+                    appliedRouteKey=targetKey;
+                    if (mapView != null) mapView.drawOsrmRoute(points, status);
+                    if (tripInfoText != null && km > 0 && sec > 0) tripInfoText.setText("Estimasi rute driver: " + String.format(Locale.US, "%.1f", km) + " KM • " + Math.max(1, (int)Math.ceil(sec / 60.0)) + " menit");
+                });
             }catch(Exception error){ TransivaCrashReporter.record(error,"customer_route","stable_route"); } finally{ routeRequestInFlight=false; }
-        });
+        }, () -> routeRequestInFlight=false);
+    }
+
+    private String routeTargetKey() {
+        return lastStatus + "|" + pickupLat + "," + pickupLng + "|" + deliveryLat + "," + deliveryLng
+                + "|" + destinationRouteActive + "|" + String.valueOf(destinationRouteStops) + "|" + String.valueOf(agreedServerRoute);
     }
 
     protected float distanceMeters(double aLat,double aLng,double bLat,double bLng){
@@ -1203,6 +1220,7 @@ class CustomerTripActivityScreenCore extends CustomerAdaptiveActivity {
         if (mapView != null) mapView.onPauseMap();
         mainHandler.removeCallbacks(trackingRunnable);
         trackingGeneration.incrementAndGet(); // invalidate late network callbacks
+        routeGeneration.incrementAndGet();
         super.onPause();
     }
 
@@ -1216,6 +1234,7 @@ class CustomerTripActivityScreenCore extends CustomerAdaptiveActivity {
         featureRuntime.onResume();
         if (mapView != null) mapView.onResumeMap();
         CustomerAppSettings.apply(this);
+        mainHandler.removeCallbacks(trackingRunnable);
         if (trackingStarted && !finishedCountdownStarted) {
             fetchDriverPosition();
             mainHandler.postDelayed(trackingRunnable, TRACKING_MS);
@@ -1234,6 +1253,7 @@ class CustomerTripActivityScreenCore extends CustomerAdaptiveActivity {
 
     @Override protected void onDestroy() {
         if (isFinishedStatus(lastStatus)) stopRideProtection();
+        routeGeneration.incrementAndGet();
         featureRuntime.destroy();
         trackingGeneration.incrementAndGet();
         trackingRequestInFlight.set(false);

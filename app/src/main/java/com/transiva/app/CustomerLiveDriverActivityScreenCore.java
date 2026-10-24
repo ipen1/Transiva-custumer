@@ -33,7 +33,7 @@ class CustomerLiveDriverActivityScreenCore extends CustomerAdaptiveActivity {
     protected static final String STATUS_URL =
             "https://transiva.my.id/server/check_order_status.php";
     protected static final int TIMEOUT_MS = 25000;
-    protected static final long POLL_MS = 5000L;
+    protected static final long POLL_MS = 3000L;
     protected static final long ROUTE_REFRESH_MS = 15000L;
 
     protected final Handler handler = new Handler(Looper.getMainLooper());
@@ -61,8 +61,14 @@ class CustomerLiveDriverActivityScreenCore extends CustomerAdaptiveActivity {
     protected long previousRawAt;
 
     protected boolean mapReady;
-    protected boolean requestInFlight;
-    protected boolean routeInFlight;
+    protected volatile boolean requestInFlight;
+    private long lifecycleGeneration;
+    private boolean followDriver = true, cameraFocused;
+    private String lastRouteState = "";
+    private long lastRouteAttemptAt;
+    private String routeEstimate = "";
+    private long routeEstimateAt;
+    protected volatile boolean routeInFlight;
     protected long lastRouteAt;
     protected double lastRouteFromLat, lastRouteFromLng;
     protected double lastRouteToLat, lastRouteToLng;
@@ -77,8 +83,8 @@ class CustomerLiveDriverActivityScreenCore extends CustomerAdaptiveActivity {
     @Override protected void onCreate(Bundle state) {
         super.onCreate(state);
         try {
-            CustomerWindowPolicy.status(getWindow(), Color.parseColor("#071426"));
-            CustomerWindowPolicy.navigation(getWindow(), Color.parseColor("#071426"));
+            CustomerWindowPolicy.status(getWindow(), Color.parseColor("#F5F8FD"));
+            CustomerWindowPolicy.navigation(getWindow(), Color.parseColor("#F5F8FD"));
         } catch (Exception ignored) {}
 
         readInput();
@@ -118,7 +124,7 @@ class CustomerLiveDriverActivityScreenCore extends CustomerAdaptiveActivity {
 
     protected void buildUi(Bundle state) {
         FrameLayout page = new FrameLayout(this);
-        page.setBackgroundColor(Color.parseColor("#071426"));
+        page.setBackgroundColor(Color.parseColor("#F5F8FD"));
 
         mapView = new TransivaGoogleMapView(this, TransivaGoogleMapView.Mode.TRIP);
         mapView.initialize(state, new TransivaGoogleMapView.Listener() {
@@ -130,6 +136,10 @@ class CustomerLiveDriverActivityScreenCore extends CustomerAdaptiveActivity {
             @Override public void onCenterChanged(double lat, double lng) { }
         });
         page.addView(mapView, new FrameLayout.LayoutParams(-1, -1));
+        mapView.setGestureListener(new TransivaGoogleMapView.GestureListener(){
+            public void onGestureStart(){followDriver=false;}
+            public void onGestureEnd(){}
+        });
 
         Button back = new Button(this);
         back.setText("‹");
@@ -147,13 +157,13 @@ class CustomerLiveDriverActivityScreenCore extends CustomerAdaptiveActivity {
         LinearLayout top = new LinearLayout(this);
         top.setOrientation(LinearLayout.VERTICAL);
         top.setPadding(dp(14), dp(10), dp(14), dp(10));
-        top.setBackground(round("#E60B2038", dp(18)));
+        top.setBackground(round("#FFFFFF", dp(18)));
         FrameLayout.LayoutParams topLp = new FrameLayout.LayoutParams(-1, -2);
         topLp.gravity = Gravity.TOP;
         topLp.setMargins(dp(76), dp(18), dp(16), 0);
         page.addView(top, topLp);
 
-        driverText = text("Posisi driver", 15, "#FFFFFF", true);
+        driverText = text("Posisi driver", 15, "#17324D", true);
         statusText = text("Menghubungkan lokasi driver...", 12, "#D7E8FF", false);
         top.addView(driverText);
         statusText.setPadding(dp(10), dp(8), dp(10), dp(8));
@@ -164,7 +174,7 @@ class CustomerLiveDriverActivityScreenCore extends CustomerAdaptiveActivity {
         LinearLayout bottom = new LinearLayout(this);
         bottom.setOrientation(LinearLayout.VERTICAL);
         bottom.setPadding(dp(16), dp(14), dp(16), dp(16));
-        bottom.setBackground(round("#F20B2038", dp(24)));
+        bottom.setBackground(round("#FFFFFF", dp(24)));
         FrameLayout.LayoutParams bottomLp = new FrameLayout.LayoutParams(-1, -2);
         bottomLp.gravity = Gravity.BOTTOM;
         bottomLp.setMargins(dp(14), 0, dp(14), dp(18));
@@ -193,13 +203,18 @@ class CustomerLiveDriverActivityScreenCore extends CustomerAdaptiveActivity {
         routeBox.setOrientation(LinearLayout.VERTICAL);
         routeBox.setPadding(dp(14), dp(6), 0, dp(6));
         metrics.addView(routeBox, new LinearLayout.LayoutParams(0, -2, 1));
-        routeBox.addView(text("RUTE AKTIF", 10, "#8FC5FF", true));
-        distanceText = text("Menunggu posisi terbaru", 15, "#FFFFFF", true);
+        routeBox.addView(text("RUTE AKTIF", 10, "#1268D5", true));
+        distanceText = text("Menunggu posisi terbaru", 15, "#17324D", true);
         routeBox.addView(distanceText);
 
-        TextView note = text("Posisi diperbarui otomatis. Peta native tetap digunakan saat CDN eksternal bermasalah.", 11, "#B8CEE8", false);
+        TextView note = text("Posisi diperbarui otomatis. Geser peta untuk menjelajah, tekan Ikuti untuk kembali ke driver.", 11, "#536B83", false);
         note.setPadding(0, dp(10), 0, 0);
         bottom.addView(note);
+        Button follow = new Button(this);
+        follow.setText("⌖  Ikuti posisi driver"); follow.setAllCaps(false);
+        follow.setTextColor(Color.parseColor("#1268D5")); follow.setBackground(round("#EDF5FF",dp(14)));
+        follow.setMinHeight(dp(48)); bottom.addView(follow,new LinearLayout.LayoutParams(-1,-2));
+        follow.setOnClickListener(v -> {followDriver=true; cameraFocused=false; renderMap();});
 
         loading = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
         FrameLayout.LayoutParams loadingLp = new FrameLayout.LayoutParams(dp(42), dp(42));
@@ -212,6 +227,7 @@ class CustomerLiveDriverActivityScreenCore extends CustomerAdaptiveActivity {
     protected void fetchStatus() {
         if (requestInFlight || orderId.isEmpty()) return;
         requestInFlight = true;
+        final long generation=lifecycleGeneration;
 
         featureRuntime.execute(() -> {
             try {
@@ -219,20 +235,22 @@ class CustomerLiveDriverActivityScreenCore extends CustomerAdaptiveActivity {
                         STATUS_URL,
                         new JSONObject().put("order_id", orderId)
                 );
-                handler.post(() -> applyStatus(result));
+                featureRuntime.post(handler, () -> {if(generation==lifecycleGeneration && !isFinishing() && !isDestroyed())applyStatus(result);});
             } catch (Exception e) {
-                handler.post(() ->
+                featureRuntime.post(handler, () -> {
+                    if(generation!=lifecycleGeneration || isFinishing() || isDestroyed())return;
                         statusText.setText(
                                 "Koneksi tracking belum stabil. Mencoba lagi..."
-                        )
-                );
+                        );
+                });
             } finally {
                 requestInFlight = false;
-                handler.post(() -> {
+                featureRuntime.post(handler, () -> {
+                    if (generation!=lifecycleGeneration) return;
                     if (loading != null) loading.setVisibility(View.GONE);
                 });
             }
-        });
+        }, () -> requestInFlight=false);
     }
 
     protected void applyStatus(JSONObject res) {
@@ -249,10 +267,10 @@ class CustomerLiveDriverActivityScreenCore extends CustomerAdaptiveActivity {
         if (order == null) order = new JSONObject();
         if (driver == null) driver = new JSONObject();
 
-        status = firstNonEmpty(
+        status = CustomerOrderState.laterOf(status, firstNonEmpty(
                 res.optString("status", ""),
                 order.optString("status", "")
-        ).toLowerCase(Locale.US).trim();
+        ).toLowerCase(Locale.US).trim());
 
         driverName = firstNonEmpty(
                 driver.optString("name", ""),
@@ -416,9 +434,12 @@ class CustomerLiveDriverActivityScreenCore extends CustomerAdaptiveActivity {
         if (valid(deliveryLat, deliveryLng)) mapView.setDelivery(deliveryLat, deliveryLng, "Lokasi tujuan");
         if (valid(driverLat, driverLng)) {
             mapView.setTripDriver(driverLat, driverLng, bearing, "car".equals(driverType), driverName, status);
-            mapView.moveTo(driverLat, driverLng, 17f);
+            if (followDriver) {
+                if (!cameraFocused) {mapView.moveTo(driverLat, driverLng, 17f); cameraFocused=true;}
+                else mapView.followTripDriver(driverLat, driverLng);
+            }
             requestRouteIfNeeded();
-        } else if (valid(pickupLat, pickupLng)) {
+        } else if (!cameraFocused && valid(pickupLat, pickupLng)) {
             mapView.moveTo(pickupLat, pickupLng, 16f);
         }
     }
@@ -450,14 +471,14 @@ class CustomerLiveDriverActivityScreenCore extends CustomerAdaptiveActivity {
                 target[1]
         );
 
-        if (now - lastRouteAt < ROUTE_REFRESH_MS
-                && movedFrom < 30f
-                && movedTo < 10f) {
-            return;
-        }
-
+        boolean sameTarget = status.equals(lastRouteState) && movedTo < 10f;
+        if (sameTarget && (now-lastRouteAt<ROUTE_REFRESH_MS || (movedFrom<30f && now-lastRouteAt<30000L))) return;
+        if (now-lastRouteAttemptAt<5000L && sameTarget) return;
+        lastRouteAttemptAt=now;
         routeInFlight = true;
 
+        final long generation=lifecycleGeneration;
+        final String routeStatus=status;
         final double fromLat = driverLat;
         final double fromLng = driverLng;
         final double toLat = target[0];
@@ -473,14 +494,12 @@ class CustomerLiveDriverActivityScreenCore extends CustomerAdaptiveActivity {
                                 toLng
                         );
 
-                lastRouteAt = System.currentTimeMillis();
-                lastRouteFromLat = fromLat;
-                lastRouteFromLng = fromLng;
-                lastRouteToLat = toLat;
-                lastRouteToLng = toLng;
-
-                handler.post(() -> {
-                    if (mapView != null && mapReady) mapView.drawOsrmRoute(result.latLngPoints, status);
+                featureRuntime.post(handler, () -> {
+                    double[] currentTarget=target();
+                    if(generation!=lifecycleGeneration || !routeStatus.equals(status) || distance(toLat,toLng,currentTarget[0],currentTarget[1])>10f || isFinishing() || isDestroyed())return;
+                    lastRouteAt=System.currentTimeMillis(); lastRouteState=routeStatus;
+                    lastRouteFromLat=fromLat; lastRouteFromLng=fromLng; lastRouteToLat=toLat; lastRouteToLng=toLng;
+                    if (mapView != null && mapReady) mapView.drawOsrmRoute(result.latLngPoints, routeStatus);
                     double km = result.distanceMeters / 1000d;
                     int min = Math.max(
                             1,
@@ -489,22 +508,20 @@ class CustomerLiveDriverActivityScreenCore extends CustomerAdaptiveActivity {
                             )
                     );
 
-                    distanceText.setText(String.format(
-                            Locale.US,
-                            "%.1f km • ±%d menit",
-                            km,
-                            min
-                    ));
+                    routeEstimate=String.format(Locale.US,"%.1f km • ±%d menit",km,min);
+                    routeEstimateAt=System.currentTimeMillis();
+                    distanceText.setText(routeEstimate);
                 });
             } catch (Exception ignored) {
             } finally {
                 routeInFlight = false;
             }
-        });
+        }, () -> routeInFlight=false);
     }
 
 
     private void updateDistanceText() {
+        if (!routeEstimate.isEmpty() && status.equals(lastRouteState) && System.currentTimeMillis()-routeEstimateAt<30000L) {distanceText.setText(routeEstimate);return;}
         double[] target = target();
 
         if (valid(driverLat, driverLng)
@@ -842,6 +859,7 @@ class CustomerLiveDriverActivityScreenCore extends CustomerAdaptiveActivity {
     }
 
     @Override protected void onPause() {
+        lifecycleGeneration++;
         handler.removeCallbacks(pollTask);
 
         featureRuntime.onPause();
@@ -851,6 +869,7 @@ class CustomerLiveDriverActivityScreenCore extends CustomerAdaptiveActivity {
     }
 
     @Override protected void onDestroy() {
+        lifecycleGeneration++;
         handler.removeCallbacksAndMessages(null);
 
         featureRuntime.destroy();

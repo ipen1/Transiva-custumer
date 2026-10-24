@@ -86,9 +86,22 @@ public class CustomerSettingsActivity extends CustomerAdaptiveActivity {
         LinearLayout preferenceCard = card();
         preferenceCard.addView(toggleRow("Getar", "Aktifkan getaran untuk notifikasi dan aksi aplikasi", CustomerAppSettings.isVibrationEnabled(this), (button, checked) -> CustomerAppSettings.setVibrationEnabled(this, checked)));
         preferenceCard.addView(divider());
-        preferenceCard.addView(toggleRow("Mode Gelap", "Terapkan tema gelap pada seluruh halaman customer", CustomerAppSettings.isDarkMode(this), (button, checked) -> {
-            CustomerThemeTransition.switchTheme(this, checked);
-        }));
+        TextView themeChoice = text("", 15, "#0B3A78", true);
+        themeChoice.setPadding(dp(4), dp(14), dp(4), dp(14));
+        Runnable themeLabel = () -> themeChoice.setText("Tema aplikasi  ›\n" +
+                ("dark".equals(CustomerAppSettings.themeMode(this)) ? "Gelap" :
+                "light".equals(CustomerAppSettings.themeMode(this)) ? "Terang" : "Ikuti tema HP (otomatis)"));
+        themeLabel.run();
+        themeChoice.setOnClickListener(v -> {
+            String[] modes={"system","light","dark"};
+            String mode=CustomerAppSettings.themeMode(this);
+            int selected="dark".equals(mode)?2:"light".equals(mode)?1:0;
+            new AlertDialog.Builder(this).setTitle("Tema aplikasi")
+                    .setSingleChoiceItems(new String[]{"Ikuti tema HP (disarankan)","Terang","Gelap"}, selected, (dialog, which) -> {
+                        CustomerAppSettings.setThemeMode(this,modes[which]); themeLabel.run(); dialog.dismiss();
+                    }).setNegativeButton("Batal",null).show();
+        });
+        preferenceCard.addView(themeChoice);
         root.addView(preferenceCard);
 
         root.addView(sectionTitle("Performa & Baterai"), marginTop(18));

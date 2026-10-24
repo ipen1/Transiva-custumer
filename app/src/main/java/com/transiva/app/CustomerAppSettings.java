@@ -23,7 +23,7 @@ import java.util.WeakHashMap;
 
 /** Reversible, in-place theme updates. No Activity recreation, request replay, or form reset. */
 public final class CustomerAppSettings {
-    private static final String PREF="customer_app_settings", KEY_DARK="dark_mode", KEY_VIBRATE="vibration_enabled";
+    private static final String PREF="customer_app_settings", KEY_DARK="dark_mode", KEY_THEME="theme_mode", KEY_VIBRATE="vibration_enabled";
     public static final int DARK_PAGE=CustomerThemeColors.PAGE, DARK_CARD=CustomerThemeColors.CARD,
             DARK_CARD_SOFT=CustomerThemeColors.SOFT,DARK_BORDER=CustomerThemeColors.BORDER,
             DARK_TEXT=CustomerThemeColors.TEXT,DARK_MUTED=CustomerThemeColors.MUTED;
@@ -36,19 +36,37 @@ public final class CustomerAppSettings {
     private static boolean installed;
     private CustomerAppSettings(){}
     private static SharedPreferences prefs(Context c){return c.getApplicationContext().getSharedPreferences(PREF,Context.MODE_PRIVATE);}
-    public static boolean isDarkMode(Context c){return prefs(c).getBoolean(KEY_DARK,false);}
+    public static String themeMode(Context c){return prefs(c).getString(KEY_THEME,"system");}
+    public static boolean isDarkMode(Context c){
+        String mode=themeMode(c);
+        if ("dark".equals(mode)) return true;
+        if ("light".equals(mode)) return false;
+        return (c.getResources().getConfiguration().uiMode & android.content.res.Configuration.UI_MODE_NIGHT_MASK)
+                == android.content.res.Configuration.UI_MODE_NIGHT_YES;
+    }
+    public static void setThemeMode(Context c,String mode){
+        if (!"light".equals(mode) && !"dark".equals(mode)) mode="system";
+        prefs(c).edit().putString(KEY_THEME,mode).remove(KEY_DARK).apply();
+        refreshThemes();
+    }
+    private static void refreshThemes(){
+        onMain(()->{
+            for(Activity a:new ArrayList<>(ACTIVITIES.keySet()))if(a!=null&&!a.isFinishing()&&!a.isDestroyed())apply(a);
+            for(View root:new ArrayList<>(ROOTS.keySet()))if(root!=null){boolean dark=isDarkMode(root.getContext());paint(root,dark,0,dark?DARK_PAGE:0xffffffff);}
+        });
+    }
     public static boolean isVibrationEnabled(Context c){return prefs(c).getBoolean(KEY_VIBRATE,true);}
     public static void setVibrationEnabled(Context c,boolean value){prefs(c).edit().putBoolean(KEY_VIBRATE,value).apply();}
     public static void setDarkMode(Context context,boolean dark){
-        prefs(context).edit().putBoolean(KEY_DARK,dark).apply();
-        onMain(()->{
-            for(Activity a:new ArrayList<>(ACTIVITIES.keySet()))if(a!=null&&!a.isFinishing()&&!a.isDestroyed())apply(a);
-            for(View root:new ArrayList<>(ROOTS.keySet()))if(root!=null)paint(root,dark,0,dark?DARK_PAGE:0xffffffff);
-        });
+        setThemeMode(context,dark?"dark":"light");
     }
     public static void preserveArtwork(View view){if(view!=null)ARTWORK.put(view,true);}
     public static void install(Application app){
         if(installed)return;installed=true;
+        app.registerComponentCallbacks(new android.content.ComponentCallbacks(){
+            public void onConfigurationChanged(android.content.res.Configuration config){ MAIN.post(CustomerAppSettings::refreshThemes); }
+            public void onLowMemory(){}
+        });
         app.registerActivityLifecycleCallbacks(new Application.ActivityLifecycleCallbacks(){
             public void onActivityCreated(Activity a,Bundle state){if(owned(a))apply(a);}
             public void onActivityStarted(Activity a){if(owned(a))apply(a);}

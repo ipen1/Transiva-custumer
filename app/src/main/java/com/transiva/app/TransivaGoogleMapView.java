@@ -86,6 +86,7 @@ public final class TransivaGoogleMapView extends FrameLayout implements OnMapRea
     private String waypointSignature = "";
     private boolean userCameraGesture;
     private long lastDriverFrameAt;
+    private boolean initialDestinationSeparated, destinationPickerTouched;
     private final Map<String, BitmapDescriptor> iconCache = new HashMap<>();
 
     private static final LatLng DEFAULT_CENTER = new LatLng(-0.018137, 120.087380);
@@ -234,6 +235,7 @@ public final class TransivaGoogleMapView extends FrameLayout implements OnMapRea
                 if (reason == GoogleMap.OnCameraMoveStartedListener.REASON_GESTURE
                         && gestureListener != null) {
                     userCameraGesture = true;
+                    if ("delivery".equals(selectionMode)) destinationPickerTouched = true;
                     gestureListener.onGestureStart();
                 }
             });
@@ -362,20 +364,40 @@ public final class TransivaGoogleMapView extends FrameLayout implements OnMapRea
         // During manual pickup selection the center pin is the only pickup pin.
         if (pickupMarker != null) pickupMarker.setVisible(!selecting || "delivery".equals(selectionMode));
         if (deliveryMarker != null) deliveryMarker.setVisible(!selecting);
-        if (centerPin != null && selecting) {
-            boolean atPickup = false;
-            if ("delivery".equals(selectionMode) && pickupMarker != null && googleMap != null) {
-                LatLng pickup = pickupMarker.getPosition();
-                LatLng center = googleMap.getCameraPosition().target;
-                float[] meters = new float[1];
-                android.location.Location.distanceBetween(pickup.latitude, pickup.longitude,
-                        center.latitude, center.longitude, meters);
-                atPickup = meters[0] < 8f;
-            }
-            // At launch the center and GPS pickup coincide. Show the green pin;
-            // reveal the red destination picker after the map moves away.
-            centerPin.setVisibility(atPickup ? GONE : VISIBLE);
-        }
+        if (centerPin != null && selecting) centerPin.setVisibility(VISIBLE);
+    }
+
+    /** Separate the initial destination candidate; never commit an order destination here. */
+    public void separateInitialDestinationPicker() {
+        if (!isReady() || mode != Mode.PICKER || !pickerVisible
+                || !"delivery".equals(selectionMode) || pickupMarker == null
+                || deliveryMarker != null || initialDestinationSeparated || destinationPickerTouched) return;
+        LatLng pickup = pickupMarker.getPosition();
+        float[] meters = new float[1];
+        googleMap.stopAnimation();
+        googleMap.moveCamera(CameraUpdateFactory.newLatLngZoom(pickup, 17f));
+        LatLng candidate = initialDestinationFallback(pickup.latitude, pickup.longitude);
+        try {
+            android.graphics.Point point = googleMap.getProjection().toScreenLocation(pickup);
+            int gap = Math.min(dp(72), Math.max(dp(48), getWidth() / 4));
+            LatLng projected = googleMap.getProjection().fromScreenLocation(
+                    new android.graphics.Point(point.x + gap, point.y));
+            android.location.Location.distanceBetween(pickup.latitude, pickup.longitude,
+                    projected.latitude, projected.longitude, meters);
+            if (valid(projected.latitude, projected.longitude) && meters[0] >= 15f && meters[0] <= 300f) candidate = projected;
+        } catch (Exception ignored) { }
+        initialDestinationSeparated = true;
+        googleMap.moveCamera(CameraUpdateFactory.newLatLngZoom(candidate, 17f));
+        if (listener != null) listener.onCenterChanged(candidate.latitude, candidate.longitude);
+        syncPickerMarkers();
+    }
+
+    static LatLng initialDestinationFallback(double latitude, double longitude) {
+        // Approximately 45 m east; at the date line keep longitude in map bounds.
+        double cosine = Math.max(0.1d, Math.abs(Math.cos(Math.toRadians(latitude))));
+        double shifted = longitude + Math.toDegrees(45d / (6371000d * cosine));
+        shifted = (shifted + 540d) % 360d - 180d;
+        return new LatLng(latitude, shifted);
     }
 
     public void clearPickup() {

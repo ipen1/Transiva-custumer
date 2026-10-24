@@ -1572,6 +1572,7 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
                 liveGpsBest=loc; applyGpsPickup(loc,true);
                 pickupGpsPinned=true; updateGpsBadge(loc);
                 mode="delivery";updateModeUI();
+                if (mapView != null && !validCoord(deliveryLat, deliveryLng)) mapView.separateInitialDestinationPicker();
             }
             @Override public void onFailure(String msg) {toastDialog(msg);}
         });

@@ -16,6 +16,9 @@ import android.widget.Toast;
 /** Simple, theme-aware home for secondary Customer features. */
 public class AllServicesActivity extends CustomerAdaptiveActivity {
     private boolean dark;
+    private boolean checkingSplitBalance;
+    private final CustomerLifecycleNetworkScope splitScope = new CustomerLifecycleNetworkScope();
+    private final android.os.Handler splitHandler = new android.os.Handler(android.os.Looper.getMainLooper());
     @Override protected void onCreate(Bundle b) {
         super.onCreate(b); dark = false; // Source colors stay light; the shared theme engine renders both modes.
         CustomerWindowPolicy.status(getWindow(), Color.parseColor(dark ? "#07111F" : "#075ED1"));
@@ -44,8 +47,61 @@ public class AllServicesActivity extends CustomerAdaptiveActivity {
         TextView i=tx(icon,25,"#0B3A78",false); card.addView(i,new LinearLayout.LayoutParams(dp(42),dp(42)));
         LinearLayout copy=new LinearLayout(this); copy.setOrientation(LinearLayout.VERTICAL); copy.addView(tx(title,15,"#0B3A78",true)); copy.addView(tx(sub,11,"#64748B",false)); card.addView(copy,new LinearLayout.LayoutParams(0,-2,1));
         TextView arrow=tx("›",28,"#0878F9",false); card.addView(arrow);
-        card.setOnClickListener(v->{ if(cls!=null) startActivity(new Intent(this,cls)); else Toast.makeText(this,"TransMart segera hadir.",Toast.LENGTH_SHORT).show(); });
+        card.setOnClickListener(v->{ if("Split Pay".equals(title)) { showSplitPayInfo(); return; } if(cls!=null) startActivity(new Intent(this,cls)); else Toast.makeText(this,"TransMart segera hadir.",Toast.LENGTH_SHORT).show(); });
         root.addView(card,lp(8,0));
+    }
+    private void showSplitPayInfo() {
+        if (checkingSplitBalance) return;
+        new TransivaAlertDialogBuilder(this).setTitle("Split Pay menggunakan TransPay")
+                .setMessage("Patungan perjalanan hanya tersedia dengan pembayaran TransPay (Transiva Pay). Pastikan saldo terisi dan cukup untuk bagian pembayaranmu.")
+                .setNegativeButton("Batal", null)
+                .setNeutralButton("Isi saldo", (d,w) -> startActivity(new Intent(this, CustomerTopUpActivity.class)))
+                .setPositiveButton("Lanjut", (d,w) -> checkSplitBalance()).show();
+    }
+    private void checkSplitBalance() {
+        if (checkingSplitBalance) return;
+        checkingSplitBalance = true;
+        Toast.makeText(this, "Memeriksa saldo TransPay...", Toast.LENGTH_SHORT).show();
+        splitScope.newThread(() -> {
+            try {
+                org.json.JSONObject result = TransivaHttpRepository.getJsonOnce(this, ApiConfig.server("getBalance.php"), 7000);
+                if (!result.optBoolean("success") || !result.has("balance") || result.isNull("balance"))
+                    throw new IllegalStateException("Saldo belum dapat diverifikasi");
+                final double balance = result.optDouble("balance", Double.NaN);
+                if (Double.isNaN(balance) || Double.isInfinite(balance)) throw new IllegalStateException("Saldo tidak valid");
+                splitScope.post(splitHandler, () -> {
+                    checkingSplitBalance = false;
+                    if (isFinishing() || isDestroyed()) return;
+                    if (balance <= 0) {
+                        new TransivaAlertDialogBuilder(this).setTitle("Saldo TransPay kosong")
+                                .setMessage("Isi saldo TransPay terlebih dahulu untuk menggunakan Split Pay.")
+                                .setNegativeButton("Tutup", null)
+                                .setPositiveButton("Isi saldo", (d,w) -> startActivity(new Intent(this, CustomerTopUpActivity.class))).show();
+                        return;
+                    }
+                    new TransivaAlertDialogBuilder(this).setTitle("Pilih perjalanan Split Pay")
+                            .setItems(new String[]{"TransRide • Motor", "TransCar • Mobil"}, (d,which) -> {
+                                Intent intent = new Intent(this, which == 0 ? TransRideActivity.class : PassengerCarActivity.class);
+                                intent.putExtra("split_pay_entry", true);
+                                startActivity(intent);
+                            }).setNegativeButton("Batal", null).show();
+                });
+            } catch (Exception e) {
+                splitScope.post(splitHandler, () -> {
+                    checkingSplitBalance = false;
+                    if (isFinishing() || isDestroyed()) return;
+                    new TransivaAlertDialogBuilder(this).setTitle("Saldo belum dapat diperiksa")
+                            .setMessage("Periksa koneksi lalu coba lagi untuk menggunakan Split Pay.")
+                            .setNegativeButton("Tutup", null)
+                            .setPositiveButton("Coba lagi", (d,w) -> checkSplitBalance()).show();
+                });
+            }
+        }).start();
+    }
+    @Override protected void onDestroy() {
+        splitScope.destroy();
+        splitHandler.removeCallbacksAndMessages(null);
+        super.onDestroy();
     }
     private LinearLayout.LayoutParams lp(int top,int bottom){LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(-1,-2);p.setMargins(0,dp(top),0,dp(bottom));return p;}
     private TextView tx(String s,int z,String color,boolean bold){TextView t=new TextView(this);t.setText(s);t.setTextSize(z);t.setTextColor(c(color));if(bold)t.setTypeface(Typeface.DEFAULT,Typeface.BOLD);return t;}

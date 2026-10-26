@@ -202,6 +202,7 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
         readUser();
         familyMemberId = getIntent() == null ? 0 : getIntent().getIntExtra("family_member_id", 0);
         familyMemberName = getIntent() == null ? "" : firstNonEmpty(getIntent().getStringExtra("family_member_name"), "");
+        if (getIntent() != null && getIntent().getBooleanExtra("split_pay_entry", false)) paymentMethod = "balance";
         if(savedInstanceState!=null) driverNoteDraft=savedInstanceState.getString("driver_note_draft","");
         buildLayout();
         applySmartFavoriteIntent();
@@ -492,7 +493,7 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
         quickRow.setGravity(Gravity.CENTER_VERTICAL);
         bottomCard.addView(quickRow, new LinearLayout.LayoutParams(-1, dp(42)));
 
-        paymentChoiceBtn = smallButton("💵 Pembayaran: Tunai", "#FFFFFF", "#0B3A78", "#C8D9EC");
+        paymentChoiceBtn = smallButton("balance".equals(paymentMethod) ? "💳 Pembayaran: Transiva Pay" : "💵 Pembayaran: Tunai", "#FFFFFF", "#0B3A78", "#C8D9EC");
         voucherChoiceBtn = smallButton("🏷 Voucher", "#FFFFFF", "#0B3A78", "#C8D9EC");
         paymentChoiceBtn.setTextSize(10);
         voucherChoiceBtn.setTextSize(10);
@@ -914,11 +915,11 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
 
     protected void updateTransPayOnlyFeatures() {
         boolean show="balance".equals(paymentMethod);
-        if(familyBtn!=null) familyBtn.setVisibility(show?View.VISIBLE:View.GONE);
+        if(familyBtn!=null) familyBtn.setVisibility(show || familyMemberId > 0 ? View.VISIBLE : View.GONE);
         if(waypointBtn!=null) waypointBtn.setVisibility(View.GONE);
         if(groupRideBtn!=null) groupRideBtn.setVisibility(show?View.VISIBLE:View.GONE);
         if(!show){
-            familyMemberId=0; familyMemberName="";
+            // Payment selection must not erase the passenger selected in Transiva Family.
             ecosystemFeatures.groupSize=1; ecosystemFeatures.splitFareMode="none";
         }
     }

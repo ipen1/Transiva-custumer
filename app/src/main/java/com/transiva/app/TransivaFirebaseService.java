@@ -118,6 +118,8 @@ public class TransivaFirebaseService extends FirebaseMessagingService {
                 "general"
         ).toLowerCase();
 
+        if (isChat(type) && !CustomerChatPushGuard.accept(this, data)) return;
+
         if ("split_bill_update".equals(type) || "split_bill_invite".equals(type)) {
             Intent rt = new Intent("com.transiva.app.SPLIT_BILL_REALTIME");
             rt.setPackage(getPackageName());

@@ -19,6 +19,7 @@ public class TransivaCustomerApplication extends Application implements Applicat
     @Override public void onCreate() {
         super.onCreate();
         SecureTokenStore.migrateLegacy(this);
+        CustomerChatNoticeState.ensure(this);
         CallDeliveryTrace.resume(this);
         CallReliabilityRuntime.install(this);
         instance = this;
@@ -46,6 +47,11 @@ public class TransivaCustomerApplication extends Application implements Applicat
         AppUpdateRuntimeGate.onActivityResumed(activity);
         NetworkStatusBanner.attach(activity);
         if (activity instanceof SplashActivity || activity instanceof UpdateDownloadActivity) return;
+        SessionManager chatSession = new SessionManager(this);
+        if (chatSession.isLoggedIn() && "customer".equalsIgnoreCase(chatSession.getRole())) {
+            try { CustomerChatNotificationPoller.start(this, Integer.parseInt(chatSession.getUserId())); }
+            catch (NumberFormatException ignored) { }
+        }
         CustomerProfileCache.warm(this);
         main.postDelayed(() -> {
             if (!activity.isFinishing()) {

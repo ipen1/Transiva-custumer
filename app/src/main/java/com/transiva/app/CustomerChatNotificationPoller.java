@@ -7,7 +7,6 @@ import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.content.Context;
 import android.content.Intent;
-import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.os.Build;
 import android.os.Handler;
@@ -27,12 +26,6 @@ public final class CustomerChatNotificationPoller {
 
     private static final String CHANNEL_ID =
             "transiva_chat_messages";
-
-    private static final String PREFS =
-            "transiva_chat_notification_state";
-
-    private static final String KEY_LAST_ID =
-            "last_incoming_chat_id";
 
     private static final long INTERVAL_MS = 8000L;
 
@@ -56,6 +49,7 @@ public final class CustomerChatNotificationPoller {
         if(!session.isLoggedIn()||!String.valueOf(currentUserId).equals(session.getUserId()))return;
         if(running&&userId==currentUserId&&owner!=null&&owner.matches(app))return;
         stop();appContext=app;userId=currentUserId;owner=CustomerTransportSession.capture(app);running=true;
+        CustomerChatNoticeState.ensure(app);
         createChannel(app);HANDLER.post(checkRunnable);
     }
     public static synchronized void stop() {
@@ -65,6 +59,7 @@ public final class CustomerChatNotificationPoller {
         userId=0;openRoom="";appContext=null;owner=null;HANDLER.removeCallbacks(checkRunnable);
     }
     public static synchronized void setOpenRoom(String room){openRoom=normalizeRoom(room);}
+    static synchronized boolean isOpenRoom(String room){return !openRoom.isEmpty()&&openRoom.equals(normalizeRoom(room));}
     public static synchronized void clearOpenRoom(String room){if(openRoom.equals(normalizeRoom(room)))openRoom="";}
 
     public static void requestPermission(
@@ -113,9 +108,12 @@ public final class CustomerChatNotificationPoller {
         if(!owner.matches(appContext)){stop();return;}
         final Context context=appContext;final int id=userId;final CustomerTransportSession session=owner;
         final long epoch=generation,request=++serial;activeRequest=request;requestInFlight=true;
-        final SharedPreferences preferences=context.getSharedPreferences(PREFS+"_"+id,Context.MODE_PRIVATE);
-        // Do not import the old global cursor: its owner cannot be established safely.
-        final int lastId=preferences.getInt(KEY_LAST_ID,0);
+        final String user=String.valueOf(id);
+        final long noticeBoundary=CustomerChatNoticeState.boundary(context,user);
+        final int storedCursor=CustomerChatNoticeState.cursor(context,user);
+        final int lastId=Math.max(0,storedCursor);
+        final boolean bootstrap=storedCursor<0;
+        final int maxAge=CustomerChatNoticeState.maxAge(noticeBoundary);
         deadline=()->{synchronized(CustomerChatNotificationPoller.class){
             if(epoch!=generation||request!=activeRequest)return;
             if(future!=null)future.cancel(true);finish(epoch,request);
@@ -126,7 +124,8 @@ public final class CustomerChatNotificationPoller {
             try{
                 if(!current(epoch,request,context,session))return;
                 String endpoint="https://transiva.my.id/server/get_customer_chat_updates.php?user_id="
-                        +URLEncoder.encode(String.valueOf(id),StandardCharsets.UTF_8.name())+"&last_id="+lastId;
+                        +URLEncoder.encode(String.valueOf(id),StandardCharsets.UTF_8.name())+"&last_id="+lastId+"&notification_policy=3&bootstrap="+(bootstrap?"1":"0")
+                        +"&max_age_seconds="+maxAge;
                 response=TransivaHttpRepository.getJsonOnce(context,endpoint,15000,session);
             }catch(Exception ignored){}finally{
                 final JSONObject result=response;
@@ -134,16 +133,21 @@ public final class CustomerChatNotificationPoller {
                     synchronized(CustomerChatNotificationPoller.class){
                         try{
                             if(!current(epoch,request,context,session)||result==null||!result.optBoolean("success",false))return;
+                            // Never consume legacy history if the server has not been upgraded yet.
+                            if(result.optInt("notification_policy",0)!=3)return;
+                            if(CustomerChatNoticeState.boundary(context,user)!=noticeBoundary)return;
                             JSONArray messages=result.optJSONArray("messages");
                             if(messages!=null)for(int i=0;i<messages.length();i++){
                                 if(!current(epoch,request,context,session))return;
                                 JSONObject message=messages.optJSONObject(i);
                                 if(message==null||message.optInt("id",0)<=lastId)continue;
-                                if(!normalizeRoom(message.optString("room_id","")).equals(openRoom))showNotification(context,message);
+                                int messageId=message.optInt("id",0);
+                                if(CustomerChatNoticeState.claim(context,user,noticeBoundary,messageId)
+                                        && !isOpenRoom(message.optString("room_id","")))showNotification(context,message);
                             }
                             if(current(epoch,request,context,session)){
                                 int latest=Math.max(lastId,result.optInt("last_id",lastId));
-                                if(latest>lastId)preferences.edit().putInt(KEY_LAST_ID,latest).apply();
+                                CustomerChatNoticeState.advance(context,user,noticeBoundary,latest);
                             }
                         }finally{finish(epoch,request);}
                     }

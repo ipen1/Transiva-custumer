@@ -120,6 +120,7 @@ public class SessionManager {
 
             // Respons profile/dashboard tidak selalu membawa token. Jangan pernah
             // menghapus Bearer token aktif hanya karena field token tidak ada/kosong.
+            String previousChatToken = getToken();
             String tokenToSave = firstNonEmpty(
                     clean.optString("token", ""),
                     sameAccount ? getToken() : ""
@@ -151,6 +152,8 @@ public class SessionManager {
 
             e.apply();
 
+            CustomerChatNoticeState.begin(appContext, incomingId, tokenToSave,
+                    !sameAccount || !tokenToSave.equals(previousChatToken));
             if (!sameAccount) UnifiedLiveOrderCenter.clear(appContext);
             syncLegacyFlagsAfterLogin(role);
 

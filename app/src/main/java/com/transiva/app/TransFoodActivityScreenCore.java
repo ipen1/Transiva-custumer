@@ -594,9 +594,9 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
         merchantTitleRow.addView(merchantFav, new LinearLayout.LayoutParams(dp(42), dp(42)));
         resto.addView(merchantTitleRow);
 
-        String category = firstNonEmpty(activeRestaurant.optString("category"), "Makanan & minuman");
+        String merchantCategory = firstNonEmpty(activeRestaurant.optString("category"), "Makanan & minuman");
         String location = activeRestaurant.isNull("distance_km") ? "" : String.format(Locale.US, " · %.1f km", activeRestaurant.optDouble("distance_km", 0));
-        resto.addView(text(category + location, 12, "#64748B", false));
+        resto.addView(text(merchantCategory + location, 12, "#64748B", false));
         double socialRating = activeRestaurant.optDouble("social_rating", activeRestaurant.optDouble("rating", 0));
         int socialReviews = activeRestaurant.optInt("social_review_count", activeRestaurant.optInt("review_count", 0));
         String ratingLabel = socialReviews > 0 ? "★ " + String.format(Locale.US, "%.1f", socialRating) + " · " + socialReviews + " ulasan  ›" : "☆ Belum ada ulasan  ›";

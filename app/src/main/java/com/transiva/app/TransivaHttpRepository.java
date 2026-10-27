@@ -16,8 +16,10 @@ public final class TransivaHttpRepository {
     private static final int MAX_RESPONSE_BYTES = 4 * 1024 * 1024;
     public static final class ServerResponseException extends Exception {
         public final int status;
+        public final JSONObject response;
         public ServerResponseException(String message) { this(message, 0); }
-        public ServerResponseException(String message, int status) { super(message); this.status = status; }
+        public ServerResponseException(String message, int status) { this(message, status, null); }
+        public ServerResponseException(String message, int status, JSONObject response) { super(message); this.status = status; this.response = response; }
     }
     private TransivaHttpRepository() { }
     public static JSONObject getJson(Context context, String url, int timeoutMs) throws Exception {
@@ -90,8 +92,9 @@ public final class TransivaHttpRepository {
                 owner.check(context);
                 if (code >= 200 && code < 300) return new JSONObject(raw.isEmpty() ? "{}" : raw);
                 String message = "Server belum dapat memproses permintaan (" + code + ").";
-                try { message = new JSONObject(raw).optString("message", message); } catch (Exception ignored) { }
-                throw new ServerResponseException(message, code);
+                JSONObject errorBody = null;
+                try { errorBody = new JSONObject(raw); message = errorBody.optString("message", message); } catch (Exception ignored) { }
+                throw new ServerResponseException(message, code, errorBody);
             } catch (ServerResponseException error) {
                 // Do not let a generic catch accidentally retry 401/403/404/429.
                 if (attempt >= retries || !NetworkSafetyRules.retryableStatus(error.status)) throw error;

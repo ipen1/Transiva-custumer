@@ -575,44 +575,58 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
         resto.setPadding(dp(16), dp(14), dp(16), dp(14));
 
         ImageView merchantBanner = new ImageView(this);
-        merchantBanner.setScaleType(ImageView.ScaleType.CENTER_CROP);
-        merchantBanner.setBackgroundColor(Color.parseColor("#EAF4FF"));
-        LinearLayout.LayoutParams bannerLp = new LinearLayout.LayoutParams(-1, dp(150));
+        merchantBanner.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        merchantBanner.setBackground(round("#EAF4FF", dp(16)));
+        merchantBanner.setClipToOutline(true);
+        LinearLayout.LayoutParams bannerLp = new LinearLayout.LayoutParams(-1, dp(170));
         bannerLp.setMargins(0, 0, 0, dp(12));
         resto.addView(merchantBanner, bannerLp);
-        loadImage(merchantBanner, absoluteUrl(firstNonEmpty(activeRestaurant.optString("banner"), "assets/no-image.png")));
+        RemoteImageLoader.loadPreserveScale(merchantBanner, absoluteUrl(firstNonEmpty(activeRestaurant.optString("banner"), "assets/no-image.png")), 0);
 
         LinearLayout merchantTitleRow = new LinearLayout(this);
         merchantTitleRow.setGravity(Gravity.CENTER_VERTICAL);
-        TextView merchantName = text(firstNonEmpty(activeRestaurant.optString("name"), "Merchant"), 19, "#0B3A78", true);
+        TextView merchantName = text(firstNonEmpty(activeRestaurant.optString("name"), "Merchant"), 20, "#0B3A78", true);
+        merchantName.setMaxLines(2);
         merchantTitleRow.addView(merchantName, new LinearLayout.LayoutParams(0, -2, 1));
         ImageButton merchantFav = favoriteButton(activeRestaurant.optBoolean("is_favorite"));
         merchantFav.setContentDescription("Favoritkan merchant");
         merchantFav.setOnClickListener(v -> toggleFavorite("merchant", activeRestaurant.optInt("id", 0), activeRestaurant, merchantFav));
-        merchantTitleRow.addView(merchantFav, new LinearLayout.LayoutParams(dp(46), dp(46)));
+        merchantTitleRow.addView(merchantFav, new LinearLayout.LayoutParams(dp(42), dp(42)));
         resto.addView(merchantTitleRow);
-        Button followStore = new KabarMitraUi(this).button("Memuat status mengikuti…");
-        resto.addView(followStore);
-        KabarMitraView.bindFollow(this, featureRuntime, mainHandler, activeRestaurant.optInt("id", 0), followStore);
 
+        String category = firstNonEmpty(activeRestaurant.optString("category"), "Makanan & minuman");
+        String location = activeRestaurant.isNull("distance_km") ? "" : String.format(Locale.US, " · %.1f km", activeRestaurant.optDouble("distance_km", 0));
+        resto.addView(text(category + location, 12, "#64748B", false));
         double socialRating = activeRestaurant.optDouble("social_rating", activeRestaurant.optDouble("rating", 0));
         int socialReviews = activeRestaurant.optInt("social_review_count", activeRestaurant.optInt("review_count", 0));
-        TextView merchantRating = text("⭐ " + String.format(Locale.US, "%.1f", socialRating) + " • " + socialReviews + " penilaian customer  ›", 12, "#64748B", true);
-        merchantRating.setPadding(0, dp(7), 0, dp(2));
+        String ratingLabel = socialReviews > 0 ? "★ " + String.format(Locale.US, "%.1f", socialRating) + " · " + socialReviews + " ulasan  ›" : "☆ Belum ada ulasan  ›";
+        TextView merchantRating = text(ratingLabel, 12, "#64748B", true);
+        merchantRating.setPadding(0, dp(7), 0, dp(8));
         merchantRating.setOnClickListener(v -> showMerchantReviews(activeRestaurant));
         resto.addView(merchantRating);
+
         boolean accepting = activeRestaurant.optInt("is_open", 1) == 1;
-        String reason = firstNonEmpty(activeRestaurant.optString("availability_reason"), accepting ? "Menerima pesanan" : "Merchant sedang tidak menerima pesanan");
-        TextView operational = text(accepting ? "🟢 Menerima pesanan" : ("🔴 " + reason), 13, accepting ? "#16A34A" : "#EF4444", true);
-        operational.setPadding(0, dp(5), 0, 0);
-        resto.addView(operational);
+        String reason = firstNonEmpty(activeRestaurant.optString("availability_reason"), "Merchant sedang tidak menerima pesanan");
+        LinearLayout actions = new LinearLayout(this);
+        actions.setGravity(Gravity.CENTER_VERTICAL);
+        TextView operational = text(accepting ? "● Menerima pesanan" : "● Toko sedang tutup", 11, accepting ? "#16A34A" : "#EF4444", true);
+        operational.setMaxLines(2);
+        actions.addView(operational, new LinearLayout.LayoutParams(0, -2, 1));
+        Button followStore = new KabarMitraUi(this).button("Memuat…");
+        followStore.setTextSize(12);followStore.setMaxLines(1);
+        followStore.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        LinearLayout.LayoutParams followLp = new LinearLayout.LayoutParams(dp(120), dp(44));
+        followLp.setMargins(dp(8), 0, 0, 0);
+        actions.addView(followStore, followLp);
+        KabarMitraView.bindFollow(this, featureRuntime, mainHandler, activeRestaurant.optInt("id", 0), followStore);
+        resto.addView(actions);
+        if (!accepting) resto.addView(text(reason, 12, "#64748B", false));
         String todayHours = firstNonEmpty(activeRestaurant.optString("today_hours"), "");
         if (!todayHours.isEmpty()) {
-            TextView hours = text("🕒 Jam hari ini: " + todayHours, 12, "#64748B", false);
-            hours.setPadding(0, dp(4), 0, 0);
+            TextView hours = text("Jam hari ini · " + todayHours, 12, "#64748B", false);
+            hours.setPadding(0, dp(8), 0, 0);
             resto.addView(hours);
         }
-        resto.addView(text((hasRestoLocation() ? "📍 Lokasi merchant tersedia" : "⚠️ Lokasi merchant belum tersedia"), 13, "#64748B", false));
         if (menuSearchQuery != null && menuSearchQuery.trim().length() > 0) {
             TextView fromSearch = text("Hasil pencarian: " + menuSearchQuery, 12, "#0B7CFF", true);
             fromSearch.setPadding(0, dp(8), 0, 0);
@@ -620,6 +634,7 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
         }
         addWithMargin(resto, 0, 0, 0, dp(14));
 
+        addWithMargin(text("Menu pilihan", 17, "#123B6B", true), 0, 0, 0, dp(8));
         int shown = 0;
         String q = menuSearchQuery == null ? "" : menuSearchQuery.trim().toLowerCase(Locale.ROOT);
         for (JSONObject m : menus) {
@@ -644,20 +659,25 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
         if (trackStock && stock <= 0) active = false;
 
         LinearLayout card = card();
-        card.setOrientation(LinearLayout.HORIZONTAL);
-        card.setPadding(dp(10), dp(10), dp(10), dp(10));
+        card.setOrientation(LinearLayout.VERTICAL);
+        card.setPadding(dp(12), dp(12), dp(12), dp(12));
+        LinearLayout mainRow = new LinearLayout(this);
+        mainRow.setGravity(Gravity.TOP);
+        card.addView(mainRow, new LinearLayout.LayoutParams(-1, -2));
         card.setAlpha(active ? 1f : 0.55f);
 
         ImageView img = new ImageView(this);
         img.setScaleType(ImageView.ScaleType.CENTER_CROP);
         img.setBackgroundColor(Color.parseColor("#EAF4FF"));
-        card.addView(img, new LinearLayout.LayoutParams(dp(92), dp(92)));
+        img.setBackground(round("#EAF4FF", dp(14)));
+        img.setClipToOutline(true);
+        mainRow.addView(img, new LinearLayout.LayoutParams(dp(84), dp(84)));
         loadImage(img, absoluteUrl(firstNonEmpty(m.optString("image"), "assets/no-image.png")));
 
         LinearLayout body = new LinearLayout(this);
         body.setOrientation(LinearLayout.VERTICAL);
         body.setPadding(dp(12), 0, 0, 0);
-        card.addView(body, new LinearLayout.LayoutParams(0, -2, 1));
+        mainRow.addView(body, new LinearLayout.LayoutParams(0, -2, 1));
 
         body.addView(text(firstNonEmpty(m.optString("name"), "Menu"), 16, "#0F172A", true));
         body.addView(text(firstNonEmpty(m.optString("category"), "Menu"), 12, "#94A3B8", false));
@@ -665,7 +685,8 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
         String desc = firstNonEmpty(m.optString("description"), "");
         if (!desc.isEmpty()) {
             TextView d = text(desc, 12, "#64748B", false);
-            d.setMaxLines(3);
+            d.setMaxLines(2);
+            d.setEllipsize(android.text.TextUtils.TruncateAt.END);
             d.setPadding(0, dp(4), 0, 0);
             body.addView(d);
         }
@@ -680,18 +701,26 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
         price.setPadding(0, dp(merchantDiscount?2:6), 0, dp(4));
         body.addView(price);
 
+        LinearLayout footer = new LinearLayout(this);
+        footer.setGravity(Gravity.CENTER_VERTICAL);
+        footer.setPadding(0, dp(10), 0, 0);
+        card.addView(footer, new LinearLayout.LayoutParams(-1, -2));
         LinearLayout socialRow = new LinearLayout(this);
         socialRow.setGravity(Gravity.CENTER_VERTICAL);
         ImageButton fav = favoriteButton(m.optBoolean("is_favorite"));
         fav.setContentDescription("Favoritkan menu");
         fav.setOnClickListener(v -> toggleFavorite("menu", m.optInt("id", 0), m, fav));
-        socialRow.addView(fav, new LinearLayout.LayoutParams(dp(44), dp(40)));
+        socialRow.addView(fav, new LinearLayout.LayoutParams(dp(40), dp(40)));
         Button review = choiceButton("⭐ " + String.format(Locale.US, "%.1f", m.optDouble("rating", 0)) + " (" + m.optInt("review_count", 0) + ")", false);
         LinearLayout.LayoutParams reviewLp = new LinearLayout.LayoutParams(-2, dp(40));
         reviewLp.setMargins(dp(8), 0, 0, 0);
         socialRow.addView(review, reviewLp);
         review.setOnClickListener(v -> showMenuReviews(m));
-        body.addView(socialRow);
+        review.setTextSize(11);
+        review.setMinWidth(0);
+        review.setMinimumWidth(0);
+        review.setPadding(dp(6), 0, dp(6), 0);
+        footer.addView(socialRow, new LinearLayout.LayoutParams(0, -2, 1));
 
         if (trackStock) {
             String stockText = stock <= 0 ? "Stok habis" : ("Stok tersisa: " + stock);
@@ -718,9 +747,9 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
             value.setGravity(Gravity.CENTER);
             value.setIncludeFontPadding(false);
             qty.addView(minus, new LinearLayout.LayoutParams(dp(40), dp(40)));
-            qty.addView(value, new LinearLayout.LayoutParams(dp(46), dp(40)));
+            qty.addView(value, new LinearLayout.LayoutParams(dp(30), dp(40)));
             qty.addView(plus, new LinearLayout.LayoutParams(dp(40), dp(40)));
-            body.addView(qty);
+            footer.addView(qty, new LinearLayout.LayoutParams(-2, -2));
 
             minus.setOnClickListener(v -> {
                 removeOneFromCart(m.optInt("id", 0));

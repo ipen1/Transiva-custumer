@@ -50,13 +50,43 @@ public final class ReliableOrderClient {
                 throw new PendingAttemptException("Percobaan order belum dapat disimpan di perangkat.");
             if(!user.equals(new SessionManager(app).getUserId()))throw new InterruptedException("Account changed");
             body.put("id",key);body.put("user_id",user);
-            JSONObject result=TransivaHttpRepository.postJsonIdempotent(app,url,body,timeout,key);
-            clear(prefs,slot);return result;
+            try {
+                JSONObject result=TransivaHttpRepository.postJsonIdempotent(app,url,body,timeout,key);
+                clear(prefs,slot);return result;
+            } catch (Exception error) {
+                if (definitelyRejected(error)) { clear(prefs,slot); throw error; }
+                // A missing HTTP acknowledgement may still have committed: resolve the SAME key.
+                if (!Thread.currentThread().isInterrupted() && (error instanceof java.io.IOException
+                        || error instanceof org.json.JSONException
+                        || (error instanceof TransivaHttpRepository.ServerResponseException
+                            && ((TransivaHttpRepository.ServerResponseException)error).status>=500))) {
+                    try {
+                        String recoveryUrl=url.substring(0,url.lastIndexOf('/')+1)+"customer_resolve_order_attempt.php?attempt_key="+java.net.URLEncoder.encode(key,"UTF-8");
+                        JSONObject found=TransivaHttpRepository.getJsonOnce(app,recoveryUrl,Math.min(timeout,6000));
+                        JSONObject receipt=found.optJSONObject("order_response");
+                        if(found.optBoolean("success") && found.optBoolean("attempt_found") && receipt!=null
+                                && user.equals(new SessionManager(app).getUserId())) {
+                            clear(prefs,slot);receipt.put("recovered_attempt",true);return receipt;
+                        }
+                    } catch(Exception ignored) { /* Preserve the key until its outcome is known. */ }
+                }
+                throw error;
+            }
         }finally{synchronized(ReliableOrderClient.class){IN_FLIGHT.remove(slot);}}
     }
     private static void clear(SharedPreferences prefs,String slot){prefs.edit().remove(slot+":payload").remove(slot+":key").commit();}
+    static boolean definitelyRejected(Exception error) {
+        if(!(error instanceof TransivaHttpRepository.ServerResponseException))return false;
+        JSONObject response=((TransivaHttpRepository.ServerResponseException)error).response;
+        return response!=null && Boolean.FALSE.equals(response.opt("order_created"))
+                && !response.optBoolean("success") && !"ORDER_OUTCOME_UNKNOWN".equals(response.optString("code"));
+    }
     public static String failureMessage(Exception error){
         if(error instanceof PendingAttemptException)return error.getMessage();
+        if(error instanceof TransivaHttpRepository.ServerResponseException) {
+            String message=error.getMessage();
+            if(message!=null&&!message.trim().isEmpty())return definitelyRejected(error)?message:message+"\nPeriksa Aktivitas sebelum membuat pesanan lain.";
+        }
         return "Hasil order belum dapat dipastikan. Periksa Aktivitas atau coba ulang pesanan yang sama.";
     }
 }

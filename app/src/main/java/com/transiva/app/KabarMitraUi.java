@@ -52,52 +52,5 @@ final class KabarMitraUi {
   }
   if(seen.isEmpty())parent.addView(text("Belum ada story aktif. Ikuti toko pilihanmu.",12,false));else parent.addView(sc,new LinearLayout.LayoutParams(-1,-2));
  }
- void viewer(JSONArray all,int rid,long serverTime){
-  ArrayList<JSONObject> items=new ArrayList<>();
-  if(all!=null)for(int n=all.length()-1;n>=0;n--){JSONObject story=all.optJSONObject(n);if(story!=null&&story.optInt("restaurant_id")==rid&&story.optLong("expires_at")>serverTime)items.add(story);}
-  if(items.isEmpty()||a.isFinishing())return;
-  Dialog dialog=new Dialog(a);dialog.requestWindowFeature(Window.FEATURE_NO_TITLE);
-  LinearLayout root=new LinearLayout(a);root.setOrientation(LinearLayout.VERTICAL);root.setPadding(dp(14),dp(12),dp(14),dp(12));root.setBackgroundColor(Color.parseColor("#071221"));root.setFitsSystemWindows(true);
-  FoodStoryProgressView progress=new FoodStoryProgressView(a);LinearLayout.LayoutParams barLp=new LinearLayout.LayoutParams(-1,dp(3));barLp.bottomMargin=dp(10);root.addView(progress,barLp);
-  LinearLayout toolbar=new LinearLayout(a);toolbar.setGravity(Gravity.CENTER_VERTICAL);
-  TextView heading=text("",17,true);heading.setTextColor(Color.WHITE);heading.setMaxLines(1);toolbar.addView(heading,new LinearLayout.LayoutParams(0,-2,1));
-  Button close=button("×");close.setTextSize(22);toolbar.addView(close,new LinearLayout.LayoutParams(dp(44),dp(44)));root.addView(toolbar);
-  TextView counter=text("",11,false);counter.setTextColor(0xFFB9C9DA);root.addView(counter);
-  ImageView image=new ImageView(a);image.setScaleType(ImageView.ScaleType.FIT_CENTER);root.addView(image,new LinearLayout.LayoutParams(-1,0,1));
-  TextView caption=text("",14,false);caption.setTextColor(Color.WHITE);caption.setMaxLines(4);root.addView(caption);
-  Button next=button("Berikutnya ›");root.addView(next,new LinearLayout.LayoutParams(-1,dp(44)));dialog.setContentView(root);
-  Handler handler=new Handler(Looper.getMainLooper());long anchor=SystemClock.elapsedRealtime();int[] at={0};long[] started={-1},deadline={0};boolean[] closing={false};
-  Runnable dismiss=()->{if(closing[0])return;closing[0]=true;handler.removeCallbacksAndMessages(null);root.animate().cancel();root.animate().alpha(0f).scaleX(.96f).scaleY(.96f).setDuration(150).withEndAction(dialog::dismiss).start();};
-  Runnable show=()->{
-   long now=serverTime+(SystemClock.elapsedRealtime()-anchor)/1000;
-   while(at[0]<items.size()&&items.get(at[0]).optLong("expires_at")<=now)at[0]++;
-   if(at[0]>=items.size()){dismiss.run();return;}
-   JSONObject story=items.get(at[0]);heading.setText(story.optString("name","Kabar Mitra"));caption.setText(story.optString("caption"));counter.setText((at[0]+1)+" / "+items.size()+" · Memuat foto…");started[0]=-1;deadline[0]=SystemClock.elapsedRealtime()+15000;progress.showProgress(items.size(),at[0],0);image(image,story.optString("image"));
-   if(image.getDrawable()!=null){started[0]=SystemClock.elapsedRealtime();counter.setText((at[0]+1)+" / "+items.size()+" · Story hari ini");}
-  };
-  Runnable advance=()->{if(!closing[0]){at[0]++;show.run();}};
-  next.setOnClickListener(v->advance.run());image.setOnClickListener(v->advance.run());close.setOnClickListener(v->dismiss.run());
-  dialog.setOnKeyListener((d,key,event)->{if(key==android.view.KeyEvent.KEYCODE_BACK){if(event.getAction()==android.view.KeyEvent.ACTION_UP)dismiss.run();return true;}return false;});
-  Runnable[] tick={null};tick[0]=()->{
-   if(!dialog.isShowing()||closing[0]||at[0]>=items.size())return;
-   long elapsed=SystemClock.elapsedRealtime(),now=serverTime+(elapsed-anchor)/1000;
-   if(items.get(at[0]).optLong("expires_at")<=now){advance.run();}
-   else if(started[0]<0){
-    if(image.getDrawable()!=null){started[0]=elapsed;counter.setText((at[0]+1)+" / "+items.size()+" · Story hari ini");}
-    else if(elapsed>=deadline[0]){Toast.makeText(a,"Foto belum bisa dimuat. Lanjut cerita berikutnya, ya.",Toast.LENGTH_SHORT).show();advance.run();}
-   }else{
-    float fraction=FoodStoryProgressView.fraction(started[0],elapsed);progress.showProgress(items.size(),at[0],fraction);
-    if(fraction>=1f)advance.run();
-   }
-   if(dialog.isShowing()&&!closing[0])handler.postDelayed(tick[0],16);
-  };
-  android.app.Application.ActivityLifecycleCallbacks lifecycle=new android.app.Application.ActivityLifecycleCallbacks(){
-   public void onActivityCreated(Activity x,android.os.Bundle b){}public void onActivityStarted(Activity x){}public void onActivityResumed(Activity x){}public void onActivityPaused(Activity x){}
-   public void onActivityStopped(Activity x){if(x==a)dialog.dismiss();}public void onActivitySaveInstanceState(Activity x,android.os.Bundle b){}public void onActivityDestroyed(Activity x){if(x==a)dialog.dismiss();}
-  };
-  a.getApplication().registerActivityLifecycleCallbacks(lifecycle);
-  dialog.setOnDismissListener(d->{handler.removeCallbacksAndMessages(null);root.animate().cancel();a.getApplication().unregisterActivityLifecycleCallbacks(lifecycle);});
-  dialog.show();if(dialog.getWindow()!=null){dialog.getWindow().setBackgroundDrawableResource(android.R.color.transparent);dialog.getWindow().setLayout(-1,-1);dialog.getWindow().setWindowAnimations(0);}
-  root.setAlpha(0f);root.setScaleX(.94f);root.setScaleY(.94f);root.setTranslationY(dp(12));show.run();root.animate().alpha(1f).scaleX(1f).scaleY(1f).translationY(0f).setDuration(230).setInterpolator(new android.view.animation.DecelerateInterpolator()).start();handler.postDelayed(tick[0],16);
- }
+ void viewer(JSONArray all,int rid,long serverTime){new FoodStoryViewer(this,all,rid,serverTime).open();}
 }

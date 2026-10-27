@@ -85,6 +85,11 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
 
     private FoodStoryRail foodStoryRail;
     private boolean favoritesLoading, favoritesLoaded, foodOrderSubmitting;
+    private boolean voucherExpanded, editingCheckoutAddress;
+    private String voucherDraft="";
+    private int checkoutQuoteGeneration;
+    private boolean checkoutQuoteReady;
+    private Button checkoutSubmitButton;
     private String favoritesError="";
     private final java.util.Set<Integer> favoriteMerchantIds=new java.util.HashSet<>();
     private final java.util.Set<Integer> favoriteMenuIds=new java.util.HashSet<>();
@@ -141,8 +146,11 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
                 if (!code.isEmpty()) voucherCode = code;
             }
         }));
-        showRestaurantList();
-        loadRestaurants(true);
+        int storyRid=getIntent()==null?0:getIntent().getIntExtra("story_restaurant_id",0);
+        if(storyRid>0){
+            try{activeRestaurant=new JSONObject();activeRestaurant.put("id",storyRid);activeRestaurant.put("name",getIntent().getStringExtra("story_restaurant_name"));}catch(Exception ignored){}
+            showMenuPage();loadMenus(storyRid);
+        }else{showRestaurantList();loadRestaurants(true);}
     }
 
     protected void loadSession() {
@@ -521,6 +529,18 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
         return popularity + rating + distance + newest + discount;
     }
 
+    void openStoryMerchant(int rid,String name){
+        if(rid<=0||currentScreen==3)return;
+        if(activeRestaurant!=null&&activeRestaurant.optInt("id")==rid){menuSearchQuery="";showMenuPage();return;}
+        Runnable open=()->{
+            JSONObject store=findRestaurantById(rid);
+            if(store==null){store=new JSONObject();try{store.put("id",rid);store.put("name",name);}catch(Exception ignored){}}
+            activeRestaurant=store;cart.clear();menus.clear();menusLoadFinished=false;menuSearchQuery="";showMenuPage();loadMenus(rid);
+        };
+        if(!cart.isEmpty())new TransivaAlertDialogBuilder(this).setTitle("Pindah toko?").setMessage("Isi keranjang dari toko sebelumnya akan dikosongkan.").setPositiveButton("Pindah toko",(d,w)->open.run()).setNegativeButton("Tetap di sini",null).show();
+        else open.run();
+    }
+
     protected void openRestaurantFromSearch(MenuSearchItem item) {
         JSONObject r = findRestaurantById(item.restaurantId);
         if (r == null) r = item.restaurant;
@@ -627,6 +647,7 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
 
     protected void showMenuPage() {
         currentScreen = 1;
+        clearStickyCartBar();
         root.removeAllViews();
         buildTopBar("Detail Merchant", firstNonEmpty(activeRestaurant != null ? activeRestaurant.optString("name") : "", "Menu makanan"), true);
         if (menus.isEmpty()) addStatus(menusLoadFinished ? "Belum ada menu makanan yang tersedia dari merchant ini." : "Memuat menu...");
@@ -641,26 +662,24 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
 
         menuQuantityViews.clear();
         merchantAvatars.clear();
-        KabarMitraUi.Avatar merchantProfile = merchantAvatar(activeRestaurant, 84);
-        LinearLayout.LayoutParams avatarLp = new LinearLayout.LayoutParams(dp(84), dp(84));
-        avatarLp.gravity = Gravity.CENTER_HORIZONTAL;
-        avatarLp.bottomMargin = dp(8);
-        resto.addView(merchantProfile, avatarLp);
-
-        LinearLayout merchantTitleRow = new LinearLayout(this);
-        merchantTitleRow.setGravity(Gravity.CENTER_VERTICAL);
-        TextView merchantName = text(firstNonEmpty(activeRestaurant.optString("name"), "Merchant"), 20, "#0B3A78", true);
-        merchantName.setMaxLines(2);
-        merchantTitleRow.addView(merchantName, new LinearLayout.LayoutParams(0, -2, 1));
+        LinearLayout identity = new LinearLayout(this);
+        identity.setGravity(Gravity.CENTER_VERTICAL);
+        KabarMitraUi.Avatar merchantProfile = merchantAvatar(activeRestaurant, 64);
+        identity.addView(merchantProfile,new LinearLayout.LayoutParams(dp(64),dp(64)));
+        LinearLayout identityWords=new LinearLayout(this);identityWords.setOrientation(LinearLayout.VERTICAL);
+        identityWords.setPadding(dp(12),0,dp(6),0);
+        TextView merchantName = text(firstNonEmpty(activeRestaurant.optString("name"), "Merchant"), 19, "#0F172A", true);
+        merchantName.setMaxLines(2);identityWords.addView(merchantName);
+        identity.addView(identityWords,new LinearLayout.LayoutParams(0,-2,1));
         ImageButton merchantFav = favoriteButton(activeRestaurant.optBoolean("is_favorite"));
         merchantFav.setContentDescription("Favoritkan merchant");
         merchantFav.setOnClickListener(v -> toggleFavorite("merchant", activeRestaurant.optInt("id", 0), activeRestaurant, merchantFav));
-        merchantTitleRow.addView(merchantFav, new LinearLayout.LayoutParams(dp(42), dp(42)));
-        resto.addView(merchantTitleRow);
+        identity.addView(merchantFav,new LinearLayout.LayoutParams(dp(44),dp(44)));
+        resto.addView(identity);
 
         String merchantCategory = firstNonEmpty(activeRestaurant.optString("category"), "Makanan & minuman");
         String location = activeRestaurant.isNull("distance_km") ? "" : String.format(Locale.US, " · %.1f km", activeRestaurant.optDouble("distance_km", 0));
-        resto.addView(text(merchantCategory + location, 12, "#64748B", false));
+        identityWords.addView(text(merchantCategory + location, 12, "#64748B", false));
         double socialRating = activeRestaurant.optDouble("social_rating", activeRestaurant.optDouble("rating", 0));
         int socialReviews = activeRestaurant.optInt("social_review_count", activeRestaurant.optInt("review_count", 0));
         String ratingLabel = socialReviews > 0 ? "★ " + String.format(Locale.US, "%.1f", socialRating) + " · " + socialReviews + " ulasan  ›" : "☆ Belum ada ulasan  ›";
@@ -676,7 +695,7 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
         TextView operational = text(accepting ? "● Menerima pesanan" : "● Toko sedang tutup", 11, accepting ? "#16A34A" : "#EF4444", true);
         operational.setMaxLines(2);
         actions.addView(operational, new LinearLayout.LayoutParams(0, -2, 1));
-        Button followStore = new KabarMitraUi(this).button("Memuat…");
+        Button followStore = choiceButton("Memuat…", false);
         followStore.setTextSize(12);followStore.setMaxLines(1);
         followStore.setEllipsize(android.text.TextUtils.TruncateAt.END);
         LinearLayout.LayoutParams followLp = new LinearLayout.LayoutParams(dp(120), dp(44));
@@ -691,14 +710,12 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
             hours.setPadding(0, dp(8), 0, 0);
             resto.addView(hours);
         }
-        if (menuSearchQuery != null && menuSearchQuery.trim().length() > 0) {
-            TextView fromSearch = text("Hasil pencarian: " + menuSearchQuery, 12, "#0B7CFF", true);
-            fromSearch.setPadding(0, dp(8), 0, 0);
-            resto.addView(fromSearch);
+        addWithMargin(resto, 0, 0, 0, dp(12));
+        addWithMargin(text("Menu pilihan", 17, "#123B6B", true), 0, 0, 0, dp(6));
+        if (menuSearchQuery != null && !menuSearchQuery.trim().isEmpty()) {
+            TextView fromSearch=text("Hasil untuk “"+menuSearchQuery+"”",12,"#64748B",false);
+            addWithMargin(fromSearch,0,0,0,dp(8));
         }
-        addWithMargin(resto, 0, 0, 0, dp(14));
-
-        addWithMargin(text("Menu pilihan", 17, "#123B6B", true), 0, 0, 0, dp(8));
         int shown = 0;
         String q = menuSearchQuery == null ? "" : menuSearchQuery.trim().toLowerCase(Locale.ROOT);
         for (JSONObject m : menus) {
@@ -753,6 +770,9 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
             d.setEllipsize(android.text.TextUtils.TruncateAt.END);
             d.setPadding(0, dp(4), 0, 0);
             body.addView(d);
+            img.setContentDescription("Lihat detail "+m.optString("name","menu"));
+            img.setOnClickListener(v -> showMenuDescription(m));
+            d.setOnClickListener(v -> showMenuDescription(m));
         }
 
         boolean merchantDiscount = m.optInt("discount_active",0) == 1 && m.optDouble("discount_percent",0) > 0;
@@ -767,6 +787,8 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
 
         LinearLayout footer = new LinearLayout(this);
         footer.setGravity(Gravity.CENTER_VERTICAL);
+        boolean compactFooter=getResources().getConfiguration().screenWidthDp<360 || getResources().getConfiguration().fontScale>1.2f;
+        footer.setOrientation(compactFooter?LinearLayout.VERTICAL:LinearLayout.HORIZONTAL);
         footer.setPadding(0, dp(10), 0, 0);
         card.addView(footer, new LinearLayout.LayoutParams(-1, -2));
         LinearLayout socialRow = new LinearLayout(this);
@@ -784,7 +806,7 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
         review.setMinWidth(0);
         review.setMinimumWidth(0);
         review.setPadding(dp(6), 0, dp(6), 0);
-        footer.addView(socialRow, new LinearLayout.LayoutParams(0, -2, 1));
+        footer.addView(socialRow, compactFooter?new LinearLayout.LayoutParams(-1,-2):new LinearLayout.LayoutParams(0, -2, 1));
 
         if (trackStock) {
             String stockText = stock <= 0 ? "Stok habis" : ("Stok tersisa: " + stock);
@@ -814,7 +836,7 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
             qty.addView(minus, new LinearLayout.LayoutParams(dp(40), dp(40)));
             qty.addView(value, new LinearLayout.LayoutParams(dp(30), dp(40)));
             qty.addView(plus, new LinearLayout.LayoutParams(dp(40), dp(40)));
-            footer.addView(qty, new LinearLayout.LayoutParams(-2, -2));
+            LinearLayout.LayoutParams qtyLp=new LinearLayout.LayoutParams(-2,-2);if(compactFooter){qtyLp.gravity=Gravity.END;qtyLp.topMargin=dp(6);}footer.addView(qty,qtyLp);
 
             minus.setOnClickListener(v -> {
                 removeOneFromCart(m.optInt("id", 0));
@@ -834,6 +856,17 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
             });
         }
         addWithMargin(card, 0, 0, 0, dp(12));
+    }
+
+    private void showMenuDescription(JSONObject menu) {
+        ScrollView scroll=new ScrollView(this);LinearLayout body=new LinearLayout(this);
+        body.setOrientation(LinearLayout.VERTICAL);body.setPadding(dp(20),dp(12),dp(20),dp(16));scroll.addView(body);
+        ImageView photo=new ImageView(this);photo.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        body.addView(photo,new LinearLayout.LayoutParams(-1,dp(200)));
+        RemoteImageLoader.loadPreserveScale(photo,absoluteUrl(firstNonEmpty(menu.optString("image"),"assets/no-image.png")),0);
+        TextView description=text(firstNonEmpty(menu.optString("description"),"Belum ada deskripsi menu."),14,"#64748B",false);
+        description.setPadding(0,dp(12),0,0);body.addView(description);
+        new TransivaAlertDialogBuilder(this).setTitle(menu.optString("name","Detail menu")).setView(scroll).setPositiveButton("Selesai",null).show();
     }
 
     protected boolean hasSelectableOptions(JSONArray groups) {
@@ -1025,6 +1058,7 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
             ((FrameLayout) stickyCartBar.getParent()).removeView(stickyCartBar);
         }
         stickyCartBar = null;
+        checkoutSubmitButton = null;
         cartQuantityLabel = null; cartTotalLabel = null;
         if (root != null) root.setPadding(dp(16), dp(18), dp(16), dp(28));
     }
@@ -1039,7 +1073,7 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
         if (!cart.isEmpty() && currentScreen == 1 && stickyCartBar != null && stickyCartBar.getParent() == page
                 && cartQuantityLabel != null && cartTotalLabel != null) {
             int count = 0; for (CartItem item : cart) count += item.qty;
-            cartQuantityLabel.setText(count + " item • Total Belanja");
+            cartQuantityLabel.setText(count + " item · Subtotal makanan");
             cartTotalLabel.setText(rupiah(foodTotal()));
             return;
         }
@@ -1053,7 +1087,7 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
         LinearLayout left = new LinearLayout(this);
         left.setOrientation(LinearLayout.VERTICAL);
         int totalQty = 0; for (CartItem c : cart) totalQty += c.qty;
-        cartQuantityLabel = text(totalQty + " item • Total Belanja", 12, "#64748B", false);
+        cartQuantityLabel = text(totalQty + " item · Subtotal makanan", 12, "#64748B", false);
         cartTotalLabel = text(rupiah(foodTotal()), 20, "#0B3A78", true);
         left.addView(cartQuantityLabel);
         left.addView(cartTotalLabel);
@@ -1061,16 +1095,18 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
         Button checkout = primaryButton("Checkout");
         checkout.setOnClickListener(v -> showCheckout());
         bar.addView(checkout, new LinearLayout.LayoutParams(dp(130), dp(48)));
-        FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(-1, dp(78));
+        FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(-1, -2);
         lp.gravity = Gravity.BOTTOM;
         lp.setMargins(dp(12), 0, dp(12), dp(10));
         page.addView(bar, lp);
         stickyCartBar = bar;
         root.setPadding(dp(16), dp(18), dp(16), dp(116));
+        bar.addOnLayoutChangeListener((v,l,t,r,b,ol,ot,or,ob)->{if(stickyCartBar==bar&&currentScreen==1)root.setPadding(dp(16),dp(18),dp(16),bar.getHeight()+dp(28));});
     }
 
     protected void showCheckout() {
         currentScreen = 2;
+        voucherDraft=voucherCode;voucherExpanded=false;
         clearStickyCartBar();
         root.removeAllViews();
         buildTopBar("Checkout", "Cek pesanan dan pilih pengantaran", true);
@@ -1081,116 +1117,105 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
 
 
     protected void renderCheckout() {
+        if(currentScreen!=2 || root==null || activeRestaurant==null)return;
+        int scrollY=foodScroll==null?0:foodScroll.getScrollY();
+        clearStickyCartBar();
         root.removeViews(1, Math.max(0, root.getChildCount() - 1));
-        LinearLayout info = card();
-        info.setPadding(dp(16), dp(14), dp(16), dp(14));
-        info.addView(text("Resto", 12, "#64748B", true));
-        info.addView(text(firstNonEmpty(activeRestaurant.optString("name"), "Merchant"), 16, "#0F172A", true));
-        String opReason = firstNonEmpty(activeRestaurant.optString("availability_reason"), "");
-        String opHours = firstNonEmpty(activeRestaurant.optString("today_hours"), "");
-        if (!opHours.isEmpty()) info.addView(text("🕒 " + opHours, 12, "#64748B", false));
-        if (activeRestaurant.optInt("is_open", 1) != 1 && !opReason.isEmpty()) info.addView(text("🔴 " + opReason, 12, "#EF4444", true));
-        TextView jarak = text(distanceKm > 0 ? ("Jarak pengantaran: " + String.format(Locale.US, "%.2f", distanceKm) + " km") : "Lokasi belum lengkap, ongkir belum bisa dihitung", 13, distanceKm > 0 ? "#64748B" : "#EF4444", false);
-        jarak.setPadding(0, dp(8), 0, 0);
-        info.addView(jarak);
-        addWithMargin(info, 0, 0, 0, dp(14));
+        LinearLayout address=checkoutCard();
+        LinearLayout addressTitle=new LinearLayout(this);addressTitle.setGravity(Gravity.CENTER_VERTICAL);
+        addressTitle.addView(text("Antar ke",13,"#0F172A",true),new LinearLayout.LayoutParams(0,-2,1));
+        Button edit=choiceButton("Ubah",false);edit.setTextSize(12);
+        edit.setOnClickListener(v->{editingCheckoutAddress=true;DeliveryAddressGate.edit(this,"TransFood");});
+        addressTitle.addView(edit,new LinearLayout.LayoutParams(dp(64),dp(44)));address.addView(addressTitle);
+        address.addView(text("Penerima · "+firstNonEmpty(new SessionManager(this).getName(),username,"Customer"),12,"#64748B",false));
+        TextView addressText=text(firstNonEmpty(DeliveryAddressGate.address(this),"Alamat belum tersedia"),13,"#64748B",false);
+        addressText.setMaxLines(3);addressText.setEllipsize(android.text.TextUtils.TruncateAt.END);address.addView(addressText);
+        addWithMargin(address,0,0,0,dp(10));
 
-        for (CartItem item : cart) {
-            LinearLayout row = card();
-            row.setOrientation(LinearLayout.HORIZONTAL);
-            row.setGravity(Gravity.CENTER_VERTICAL);
-            row.setPadding(dp(14), dp(12), dp(14), dp(12));
-            LinearLayout col = new LinearLayout(this);
-            col.setOrientation(LinearLayout.VERTICAL);
-            col.addView(text(item.name, 15, "#0F172A", true));
-            if (item.optionText != null && !item.optionText.isEmpty()) {
-                TextView options = text(item.optionText, 11, "#7C3AED", false);
-                options.setPadding(0, dp(2), 0, 0);
-                col.addView(options);
-            }
-            col.addView(text(item.qty + " x " + rupiah(item.price), 12, "#64748B", false));
-            row.addView(col, new LinearLayout.LayoutParams(0, -2, 1));
-            row.addView(text(rupiah(item.price * item.qty), 14, "#0B7CFF", true));
-            addWithMargin(row, 0, 0, 0, dp(10));
+        LinearLayout items=checkoutCard();
+        items.addView(text(firstNonEmpty(activeRestaurant.optString("name"),"Merchant"),15,"#0F172A",true));
+        items.addView(text(distanceKm>0?"Jarak antar · "+String.format(Locale.US,"%.2f",distanceKm)+" km":"Jarak antar belum tersedia",12,"#64748B",false));
+        String hours=activeRestaurant.optString("today_hours");
+        if(!hours.isEmpty())items.addView(text("Jam hari ini · "+hours,12,"#64748B",false));
+        if(activeRestaurant.optInt("is_open",1)!=1)items.addView(text(firstNonEmpty(activeRestaurant.optString("availability_reason"),"Merchant sedang tutup"),12,"#EF4444",true));
+        for(CartItem item:cart){
+            LinearLayout row=new LinearLayout(this);row.setGravity(Gravity.CENTER_VERTICAL);row.setPadding(0,dp(10),0,dp(4));
+            LinearLayout words=new LinearLayout(this);words.setOrientation(LinearLayout.VERTICAL);words.setPadding(0,0,dp(8),0);
+            words.addView(text(item.name,14,"#0F172A",true));
+            if(item.optionText!=null&&!item.optionText.isEmpty())words.addView(text(item.optionText,11,"#64748B",false));
+            words.addView(text(item.qty+" × "+rupiah(item.price),12,"#64748B",false));
+            row.addView(words,new LinearLayout.LayoutParams(0,-2,1));row.addView(text(rupiah(item.price*item.qty),14,"#0F172A",true));items.addView(row);
         }
+        addWithMargin(items,0,0,0,dp(10));
 
-        LinearLayout delivery = card();
-        delivery.setPadding(dp(14), dp(14), dp(14), dp(14));
-        delivery.addView(text("Pilih Pengantaran", 16, "#0B3A78", true));
-        LinearLayout row = new LinearLayout(this);
-        row.setOrientation(LinearLayout.HORIZONTAL);
-        row.setPadding(0, dp(10), 0, 0);
-        Button standard = choiceButton("Standar\n" + rupiah(standardFee), "standard".equals(deliveryMode));
-        String hematCaption = "Hemat • Coin\n" + hematRemaining + " koin";
-        Button hemat = choiceButton(hematCaption, "hemat".equals(deliveryMode));
-        hemat.setPadding(dp(8), 0, dp(8), 0);
-        hemat.setMinWidth(0);
-        hemat.setMinimumWidth(0);
-        TierBadgeUi.applyToButton(hemat, hematTier, dp(24), dp(3));
-        boolean coinReady = hematRemaining >= hematLimit;
-        hemat.setEnabled(coinReady);
-        hemat.setAlpha(coinReady ? 1f : 0.5f);
-        standard.setOnClickListener(v -> { deliveryMode = "standard"; deliveryFee = standardFee; renderCheckout(); });
-        hemat.setOnClickListener(v -> { deliveryMode = "hemat"; deliveryFee = standardFee; renderCheckout(); });
-        row.addView(standard, new LinearLayout.LayoutParams(0, dp(60), 1));
-        LinearLayout.LayoutParams hlp = new LinearLayout.LayoutParams(0, dp(60), 1); hlp.setMargins(dp(10),0,0,0);
-        row.addView(hemat, hlp);
-        delivery.addView(row);
-        addWithMargin(delivery, 0, 0, 0, dp(14));
+        LinearLayout delivery=checkoutCard();delivery.addView(text("Pengantaran",14,"#0F172A",true));
+        boolean coinReady=hematRemaining>=hematLimit;
+        LinearLayout choices=new LinearLayout(this);choices.setPadding(0,dp(8),0,0);
+        Button standard=checkoutChoice("Standar\n"+rupiah(standardFee),"standard".equals(deliveryMode));
+        Button hemat=checkoutChoice("Hemat · Coin\n"+hematRemaining+" koin","hemat".equals(deliveryMode));
+        hemat.setEnabled(coinReady);hemat.setAlpha(coinReady?1f:.65f);
+        standard.setOnClickListener(v->{deliveryMode="standard";deliveryFee=standardFee;renderCheckout();});
+        hemat.setOnClickListener(v->{deliveryMode="hemat";deliveryFee=standardFee;renderCheckout();});
+        addCheckoutPair(choices,standard,hemat,56);delivery.addView(choices);
+        if(!coinReady){TextView why=text("Saldo "+hematRemaining+" koin · perlu minimal "+hematLimit+" koin untuk Hemat.",11,"#64748B",false);why.setPadding(0,dp(6),0,0);delivery.addView(why);}
+        addWithMargin(delivery,0,0,0,dp(10));
 
-        LinearLayout voucherCard = card();
-        voucherCard.setPadding(dp(14), dp(14), dp(14), dp(14));
-        voucherCard.addView(text("Voucher Ongkir", 16, "#0B3A78", true));
-        voucherCard.addView(text("Voucher hanya berlaku untuk akun terverifikasi. Masukkan kode promo atau voucher Royalti.", 12, "#64748B", false));
-        EditText voucherField = new EditText(this);
-        voucherField.setSingleLine(true); voucherField.setHint("Contoh: TRV-XXXXXXXXXXXX"); voucherField.setText(voucherCode);
-        voucherCard.addView(voucherField, new LinearLayout.LayoutParams(-1, dp(52)));
-        Button saveVoucher = choiceButton(voucherCode.isEmpty()?"Gunakan Voucher":"Voucher: "+voucherCode, !voucherCode.isEmpty());
-        saveVoucher.setOnClickListener(v -> { voucherCode = voucherField.getText().toString().trim().toUpperCase(Locale.US); renderCheckout(); });
-        LinearLayout.LayoutParams svlp=new LinearLayout.LayoutParams(-1,dp(48));svlp.setMargins(0,dp(8),0,0);voucherCard.addView(saveVoucher,svlp);
-        addWithMargin(voucherCard, 0, 0, 0, dp(14));
+        LinearLayout voucher=checkoutCard();
+        TextView voucherToggle=text(voucherCode.isEmpty()?"Punya voucher? Gunakan  ›":"Voucher dipilih · "+voucherCode+"  ›",13,"#0B7CFF",true);
+        voucherToggle.setGravity(Gravity.CENTER_VERTICAL);voucherToggle.setMinHeight(dp(44));voucher.addView(voucherToggle);
+        LinearLayout form=new LinearLayout(this);form.setOrientation(LinearLayout.VERTICAL);form.setVisibility(voucherExpanded?View.VISIBLE:View.GONE);
+        form.addView(text("Voucher berlaku untuk akun terverifikasi. Potongan dikonfirmasi saat pesanan diproses.",11,"#64748B",false));
+        EditText code=new EditText(this);code.setSingleLine(true);code.setTextSize(14);code.setHint("Masukkan kode voucher");code.setText(voucherDraft);
+        code.addTextChangedListener(new TextWatcher(){public void beforeTextChanged(CharSequence s,int start,int count,int after){}public void onTextChanged(CharSequence s,int start,int before,int count){voucherDraft=s.toString();}public void afterTextChanged(Editable e){}});
+        form.addView(code,new LinearLayout.LayoutParams(-1,dp(48)));
+        Button apply=choiceButton("Gunakan voucher",false);apply.setTextSize(13);form.addView(apply,new LinearLayout.LayoutParams(-1,dp(44)));
+        apply.setOnClickListener(v->{voucherCode=voucherDraft.trim().toUpperCase(Locale.US);voucherDraft=voucherCode;voucherExpanded=false;hideFoodKeyboard(code);renderCheckout();});
+        voucherToggle.setOnClickListener(v->{voucherExpanded=!voucherExpanded;form.setVisibility(voucherExpanded?View.VISIBLE:View.GONE);if(!voucherExpanded)hideFoodKeyboard(code);voucherToggle.setText(voucherExpanded?"Voucher ongkir  ⌃":voucherCode.isEmpty()?"Punya voucher? Gunakan  ›":"Voucher dipilih · "+voucherCode+"  ›");});
+        voucher.addView(form);addWithMargin(voucher,0,0,0,dp(10));
 
-        LinearLayout pay = card();
-        pay.setPadding(dp(14), dp(14), dp(14), dp(14));
-        pay.addView(text("Pilih Pembayaran", 16, "#0B3A78", true));
-        LinearLayout prow = new LinearLayout(this);
-        prow.setOrientation(LinearLayout.HORIZONTAL);
-        prow.setPadding(0, dp(10), 0, 0);
-        Button cash = choiceButton("Tunai", "cash".equals(paymentMethod));
-        Button balance = choiceButton("Saldo", "balance".equals(paymentMethod));
-        cash.setOnClickListener(v -> { paymentMethod = "cash"; renderCheckout(); });
-        balance.setOnClickListener(v -> { paymentMethod = "balance"; renderCheckout(); });
-        prow.addView(cash, new LinearLayout.LayoutParams(0, dp(52), 1));
-        LinearLayout.LayoutParams blp = new LinearLayout.LayoutParams(0, dp(52), 1); blp.setMargins(dp(10),0,0,0);
-        prow.addView(balance, blp);
-        pay.addView(prow);
-        if ("balance".equals(paymentMethod)) {
-            Button split = choiceButton(splitBillManager != null && splitBillManager.groupSize()>1 ? (splitBillManager.ready()?"✅ Split Bill "+splitBillManager.groupSize():"⏳ Split Bill "+splitBillManager.groupSize()) : "👥 Split Bill", splitBillManager != null && splitBillManager.groupSize()>1);
-            split.setOnClickListener(v -> showFoodSplitDialog());
-            LinearLayout.LayoutParams slp=new LinearLayout.LayoutParams(-1,dp(50));slp.setMargins(0,dp(10),0,0);pay.addView(split,slp);
-        } else if (splitBillManager != null && splitBillManager.groupSize()>1) splitBillManager.clear();
-        addWithMargin(pay, 0, 0, 0, dp(14));
+        LinearLayout pay=checkoutCard();pay.addView(text("Pembayaran",14,"#0F172A",true));
+        LinearLayout payments=new LinearLayout(this);payments.setPadding(0,dp(8),0,0);
+        Button cash=checkoutChoice("Tunai","cash".equals(paymentMethod));Button balance=checkoutChoice("Transiva Pay","balance".equals(paymentMethod));
+        cash.setOnClickListener(v->{paymentMethod="cash";renderCheckout();});balance.setOnClickListener(v->{paymentMethod="balance";renderCheckout();});
+        addCheckoutPair(payments,cash,balance,48);pay.addView(payments);
+        if("balance".equals(paymentMethod)){
+            Button split=choiceButton(splitBillManager!=null&&splitBillManager.groupSize()>1?(splitBillManager.ready()?"✓ Split Bill ":"Menunggu Split Bill ")+splitBillManager.groupSize()+" orang":"Split Bill · Bayar bersama",false);
+            split.setTextSize(12);split.setOnClickListener(v->showFoodSplitDialog());LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-1,dp(44));lp.topMargin=dp(6);pay.addView(split,lp);
+        }else if(splitBillManager!=null&&splitBillManager.groupSize()>1)splitBillManager.clear();
+        addWithMargin(pay,0,0,0,dp(10));
 
-        LinearLayout total = card();
-        total.setPadding(dp(16), dp(14), dp(16), dp(14));
-        double grossTotal = foodTotal() + standardFee;
-        double coinDiscount = 0;
-        if ("hemat".equals(deliveryMode) && hematRemaining >= hematLimit) {
-            coinDiscount = CustomerFinancialRules.foodCoinDiscount(hematRemaining, coinValueRupiah, grossTotal, coinMinOrderAfterDiscount);
-        }
-        total.addView(summaryLine("Total makanan", foodTotal()));
-        total.addView(summaryLine("Ongkir", standardFee));
-        if (coinDiscount > 0) total.addView(summaryLine("Potongan Transiva Coin", -coinDiscount));
-        lastFoodQuote = (int)Math.round(Math.max(0, grossTotal - coinDiscount));
-        total.addView(summaryLine("Total bayar", Math.max(0, grossTotal - coinDiscount)));
-        boolean acceptingNow = activeRestaurant != null && activeRestaurant.optInt("is_open", 1) == 1;
-        Button order = primaryButton(acceptingNow ? "Buat Pesanan" : "Merchant Tidak Menerima Pesanan");
-        order.setEnabled(acceptingNow);
-        order.setAlpha(acceptingNow ? 1f : 0.55f);
-        LinearLayout.LayoutParams olp = new LinearLayout.LayoutParams(-1, dp(52)); olp.setMargins(0, dp(12), 0, 0);
-        total.addView(order, olp);
-        order.setOnClickListener(v -> createFoodOrder());
-        addWithMargin(total, 0, 0, 0, dp(20));
+        LinearLayout total=checkoutCard();total.addView(text("Rincian pembayaran",14,"#0F172A",true));
+        double grossTotal=foodTotal()+standardFee;
+        double coinDiscount=0;
+        if("hemat".equals(deliveryMode)&&hematRemaining>=hematLimit)coinDiscount=CustomerFinancialRules.foodCoinDiscount(hematRemaining,coinValueRupiah,grossTotal,coinMinOrderAfterDiscount);
+        total.addView(summaryLine("Subtotal makanan",foodTotal()));total.addView(summaryLine("Ongkir",standardFee));
+        if(coinDiscount>0)total.addView(summaryLine("Potongan Transiva Coin",-coinDiscount));
+        double amount=Math.max(0,grossTotal-coinDiscount);lastFoodQuote=(int)Math.round(amount);
+        if(!checkoutQuoteReady)total.addView(text("Ongkir belum terkonfirmasi. Coba hitung kembali sebelum memesan.",12,"#EF4444",false));
+        total.addView(summaryLine("Total bayar",amount));addWithMargin(total,0,0,0,dp(12));
+        buildCheckoutBar(amount);
+        if(foodScroll!=null)foodScroll.post(()->{if(currentScreen==2)foodScroll.scrollTo(0,scrollY);});
+    }
+
+    private void hideFoodKeyboard(View field){android.view.inputmethod.InputMethodManager keyboard=(android.view.inputmethod.InputMethodManager)getSystemService(INPUT_METHOD_SERVICE);if(keyboard!=null)keyboard.hideSoftInputFromWindow(field.getWindowToken(),0);}
+    private LinearLayout checkoutCard(){LinearLayout c=card();c.setPadding(dp(14),dp(12),dp(14),dp(12));return c;}
+    private Button checkoutChoice(String label,boolean selected){
+        Button b=choiceButton((selected?"✓ ":"")+label,selected);b.setTextSize(13);b.setMinWidth(0);b.setMinimumWidth(0);b.setPadding(dp(6),0,dp(6),0);b.setContentDescription(label+(selected?", dipilih":""));return b;
+    }
+    private void addCheckoutPair(LinearLayout row,View left,View right,int height){
+        row.addView(left,new LinearLayout.LayoutParams(0,dp(height),1));LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(0,dp(height),1);lp.leftMargin=dp(8);row.addView(right,lp);
+    }
+    private void buildCheckoutBar(double amount){
+        LinearLayout bar=checkoutCard();bar.setGravity(Gravity.CENTER_VERTICAL);bar.setElevation(dp(12));
+        boolean narrow=getResources().getConfiguration().screenWidthDp<360 || getResources().getConfiguration().fontScale>1.2f;
+        bar.setOrientation(narrow?LinearLayout.VERTICAL:LinearLayout.HORIZONTAL);
+        LinearLayout words=new LinearLayout(this);words.setOrientation(LinearLayout.VERTICAL);words.addView(text("Total bayar",11,"#64748B",false));words.addView(text(rupiah(amount),20,"#0F172A",true));
+        bar.addView(words,narrow?new LinearLayout.LayoutParams(-1,-2):new LinearLayout.LayoutParams(0,-2,1));
+        boolean accepting=activeRestaurant.optInt("is_open",1)==1;
+        Button order=primaryButton(!checkoutQuoteReady?"Coba hitung ongkir":accepting?"Buat Pesanan":"Toko sedang tutup");checkoutSubmitButton=order;order.setTextSize(14);order.setEnabled(accepting&&!foodOrderSubmitting);order.setAlpha(accepting?1f:.55f);order.setOnClickListener(v->{if(checkoutQuoteReady)createFoodOrder();else calculateOngkirThenRender();});
+        LinearLayout.LayoutParams olp=new LinearLayout.LayoutParams(narrow?-1:dp(150),dp(48));if(narrow)olp.topMargin=dp(8);else olp.leftMargin=dp(8);bar.addView(order,olp);
+        FrameLayout.LayoutParams lp=new FrameLayout.LayoutParams(-1,-2,Gravity.BOTTOM);lp.setMargins(dp(12),0,dp(12),dp(10));page.addView(bar,lp);stickyCartBar=bar;
+        bar.addOnLayoutChangeListener((v,l,t,r,b,ol,ot,or,ob)->{if(stickyCartBar==bar&&currentScreen==2)root.setPadding(dp(16),dp(18),dp(16),bar.getHeight()+dp(28));});
     }
 
     protected void showFoodSplitDialog() {
@@ -1408,36 +1433,35 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
     }
 
     protected void calculateOngkirThenRender() {
-        setLoading(true);
-        featureRuntime.execute(() -> {
+        if(currentScreen!=2||activeRestaurant==null)return;
+        final int quoteGeneration=++checkoutQuoteGeneration,restaurantId=activeRestaurant.optInt("id");
+        final String quoteMode=deliveryMode;
+        checkoutQuoteReady=false;clearStickyCartBar();setLoading(true);
+        java.util.concurrent.Future<?> task=featureRuntime.execute(() -> {
             try {
-                String url = BASE_URL + "server/calculateOngkir.php?service_type=Transbike" +
-                        "&restaurant_id=" + Uri.encode(String.valueOf(activeRestaurant.optInt("id", 0))) +
-                        "&user_id=" + Uri.encode(String.valueOf(userId)) +
-                        "&delivery_mode=" + Uri.encode(deliveryMode) +
-                        "&v=" + System.currentTimeMillis();
-                JSONObject res = getJson(url);
-                if (!res.optBoolean("success", false)) throw new Exception(firstNonEmpty(res.optString("message"), "Gagal menghitung ongkir"));
-                standardFee = res.optDouble("standard_price", res.optDouble("price", 0));
-                // TransFood Hemat memakai coin pada total checkout, bukan memotong ongkir dua kali.
-                deliveryFee = standardFee;
-                hematFee = standardFee;
-                distanceKm = res.optDouble("distance_km", 0);
-                hematRemaining = res.optInt("hemat_remaining", 0);
-                hematLimit = res.optInt("hemat_limit", 0);
-                hematTier = firstNonEmpty(res.optString("hemat_tier"), "BRONZE");
-                coinValueRupiah = res.optInt("coin_value_rupiah", 1);
-                coinMinOrderAfterDiscount = res.optInt("coin_min_order_after_discount", 1000);
-                TierBadgeUi.saveActiveTier(this, hematTier);
-                featureRuntime.post(mainHandler, () -> { setLoading(false); renderCheckout(); });
-            } catch (Exception e) {
-                featureRuntime.post(mainHandler, () -> { setLoading(false); deliveryFee = standardFee = hematFee = 0; distanceKm = 0; renderCheckout(); showInfo("Ongkir", e.getMessage()); });
-            }
-        });
+                String url=BASE_URL+"server/calculateOngkir.php?service_type=Transbike&restaurant_id="+restaurantId+"&user_id="+userId+"&delivery_mode="+Uri.encode(quoteMode)+"&v="+System.currentTimeMillis();
+                JSONObject res=getJson(url);
+                if(!res.optBoolean("success",false))throw new Exception(firstNonEmpty(res.optString("message"),"Gagal menghitung ongkir"));
+                featureRuntime.post(mainHandler,()->{
+                    if(quoteGeneration!=checkoutQuoteGeneration||currentScreen!=2||activeRestaurant==null||activeRestaurant.optInt("id")!=restaurantId)return;
+                    standardFee=res.optDouble("standard_price",res.optDouble("price",0));
+                    // Keep the existing server quote and Coin calculation; commit one response on the UI thread.
+                    deliveryFee=hematFee=standardFee;distanceKm=res.optDouble("distance_km",0);
+                    hematRemaining=res.optInt("hemat_remaining",0);hematLimit=res.optInt("hemat_limit",0);
+                    hematTier=firstNonEmpty(res.optString("hemat_tier"),"BRONZE");coinValueRupiah=res.optInt("coin_value_rupiah",1);coinMinOrderAfterDiscount=res.optInt("coin_min_order_after_discount",1000);
+                    TierBadgeUi.saveActiveTier(this,hematTier);checkoutQuoteReady=true;setLoading(false);renderCheckout();
+                });
+            }catch(Exception e){featureRuntime.post(mainHandler,()->{
+                if(quoteGeneration!=checkoutQuoteGeneration||currentScreen!=2)return;
+                setLoading(false);deliveryFee=standardFee=hematFee=0;distanceKm=0;renderCheckout();showInfo("Ongkir",e.getMessage());
+            });}
+        },()->featureRuntime.post(mainHandler,()->{if(quoteGeneration==checkoutQuoteGeneration&&currentScreen==2){setLoading(false);renderCheckout();showInfo("Ongkir","Sistem sedang sibuk. Coba hitung ongkir lagi, ya.");}}));
+        if(task==null){setLoading(false);renderCheckout();showInfo("Ongkir","Sistem sedang sibuk. Coba hitung ongkir lagi, ya.");}
     }
 
     protected void createFoodOrder() {
         if(foodOrderSubmitting || currentScreen==3)return;
+        if(!checkoutQuoteReady){calculateOngkirThenRender();return;}
         if (userId <= 0) { showInfo("Login", "User ID tidak ditemukan. Silakan login ulang."); return; }
         if (activeRestaurant == null || activeRestaurant.optInt("id", 0) <= 0) { showInfo("Gagal", "Merchant tidak valid."); return; }
         if (activeRestaurant.optInt("is_open", 1) != 1) {
@@ -1446,43 +1470,47 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
         }
         if (cart.isEmpty()) { showInfo("Keranjang kosong", "Tambahkan menu terlebih dahulu."); return; }
         if ("balance".equals(paymentMethod) && splitBillManager != null && splitBillManager.groupSize()>1 && !splitBillManager.ready()) { showInfo("Split Bill","Tunggu semua peserta menerima undangan."); splitBillManager.showStatus(); return; }
-        foodOrderSubmitting=true;
+        final JSONObject payload = new JSONObject();
+        try {
+            payload.put("user_id", userId);
+            payload.put("restaurant_id", activeRestaurant.optInt("id", 0));
+            payload.put("delivery_mode", deliveryMode);
+            payload.put("payment_method", paymentMethod);
+            payload.put("voucher_code", voucherCode);
+            if (splitBillManager != null && !splitBillManager.sessionKey().isEmpty()) payload.put("split_session_key", splitBillManager.sessionKey());
+            if (splitBillManager != null && splitBillManager.groupSize() > 1) payload.put("split_bill_required", true);
+            JSONArray items = new JSONArray();
+            for (CartItem c : cart) {
+                JSONObject o = new JSONObject();
+                o.put("id", c.id);
+                o.put("qty", c.qty);
+                o.put("selected_options", c.selectedOptions == null ? new JSONArray() : c.selectedOptions);
+                items.put(o);
+            }
+            payload.put("items", items);
+        }catch(Exception invalid){showInfo("Pesanan","Rincian pesanan belum siap. Silakan coba lagi.");return;}
+        foodOrderSubmitting=true;if(checkoutSubmitButton!=null)checkoutSubmitButton.setEnabled(false);
         setLoading(true);
         java.util.concurrent.Future<?> submission=featureRuntime.execute(() -> {
             try {
-                JSONObject payload = new JSONObject();
-                payload.put("user_id", userId);
-                payload.put("restaurant_id", activeRestaurant.optInt("id", 0));
-                payload.put("delivery_mode", deliveryMode);
-                payload.put("payment_method", paymentMethod);
-                payload.put("voucher_code", voucherCode);
-                if (splitBillManager != null && !splitBillManager.sessionKey().isEmpty()) payload.put("split_session_key", splitBillManager.sessionKey());
-                if (splitBillManager != null && splitBillManager.groupSize() > 1) payload.put("split_bill_required", true);
-                JSONArray items = new JSONArray();
-                for (CartItem c : cart) {
-                    JSONObject o = new JSONObject();
-                    o.put("id", c.id);
-                    o.put("qty", c.qty);
-                    o.put("selected_options", c.selectedOptions == null ? new JSONArray() : c.selectedOptions);
-                    items.put(o);
-                }
-                payload.put("items", items);
                 JSONObject res = ReliableOrderClient.create(this, BASE_URL + "server/create_food_order.php", payload, TIMEOUT_MS);
                 boolean ok = res.optBoolean("success", false);
                 String msg = firstNonEmpty(res.optString("message"), ok ? "Pesanan berhasil dibuat" : "Gagal membuat pesanan");
                 featureRuntime.post(mainHandler, () -> {
-                    foodOrderSubmitting=false;
+                    foodOrderSubmitting=false;restoreCheckoutSubmit();
                     setLoading(false);
                     if (ok) {
                         showFoodOrderSuccess(res.optString("order_id", ""), 0);
                     } else showInfo("Gagal", msg);
                 });
             } catch (Exception e) {
-                featureRuntime.post(mainHandler, () -> { foodOrderSubmitting=false; setLoading(false); showInfo("Error", ReliableOrderClient.failureMessage(e)); });
+                featureRuntime.post(mainHandler, () -> { foodOrderSubmitting=false;restoreCheckoutSubmit(); setLoading(false); showInfo("Error", ReliableOrderClient.failureMessage(e)); });
             }
-        });
-        if(submission==null){foodOrderSubmitting=false;setLoading(false);showInfo("Coba lagi","Sistem sedang sibuk. Silakan coba lagi sebentar.");}
+        },()->featureRuntime.post(mainHandler,()->{foodOrderSubmitting=false;restoreCheckoutSubmit();setLoading(false);showInfo("Coba lagi","Sistem sedang sibuk. Silakan coba lagi sebentar.");}));
+        if(submission==null){foodOrderSubmitting=false;restoreCheckoutSubmit();setLoading(false);showInfo("Coba lagi","Sistem sedang sibuk. Silakan coba lagi sebentar.");}
     }
+
+    private void restoreCheckoutSubmit(){if(checkoutSubmitButton!=null)checkoutSubmitButton.setEnabled(activeRestaurant!=null&&activeRestaurant.optInt("is_open",1)==1);}
 
     private void showFoodOrderSuccess(String orderId,long due){
         if(foodScroll!=null)foodScroll.setFillViewport(true);
@@ -1768,8 +1796,10 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
     }
 
     private void handleBack() {
+        if(foodOrderSubmitting){android.widget.Toast.makeText(this,"Pesanan sedang diproses. Tunggu sebentar, ya.",android.widget.Toast.LENGTH_SHORT).show();return;}
         if(currentScreen==3){returnToDashboard();return;}
         if (currentScreen == 2) {
+            checkoutQuoteGeneration++;setLoading(false);
             showMenuPage();
             return;
         }
@@ -1805,7 +1835,9 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
     }
 
     private TextView text(String s, int sp, String color, boolean bold) {
-        TextView t = new TextView(this); t.setText(s); t.setTextSize(sp); t.setTextColor(Color.parseColor(color));
+        TextView t = new TextView(this); t.setText(s); t.setTextSize(sp); if("#0F172A".equals(color)||"#0B3A78".equals(color)||"#123B6B".equals(color))color=CustomerAppSettings.isDarkMode(this)?"#EEF5FF":"#133152";
+        else if("#64748B".equals(color)||"#94A3B8".equals(color))color=CustomerAppSettings.isDarkMode(this)?"#A9B8CC":"#60758E";
+        t.setTextColor(Color.parseColor(color));
         if (bold) t.setTypeface(Typeface.DEFAULT, Typeface.BOLD); return t;
     }
 
@@ -1864,6 +1896,7 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
         refreshMerchantStories();
         if (!DeliveryAddressGate.valid(this)) { return; }
         if(root==null){recreate();return;}
+        if(editingCheckoutAddress){editingCheckoutAddress=false;if(currentScreen==2){clearStickyCartBar();root.removeViews(1,Math.max(0,root.getChildCount()-1));addStatus("Memperbarui alamat dan ongkir…");calculateOngkirThenRender();}}
         if (currentScreen == 0 && root != null) showRestaurantList();
         mainHandler.removeCallbacks(realtimeFoodRefresh);
         mainHandler.postDelayed(realtimeFoodRefresh, CustomerPerformanceManager.pollingBackground(this, 30000L));

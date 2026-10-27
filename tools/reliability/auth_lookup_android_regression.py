@@ -6,8 +6,12 @@ stale-result rejection even when HTTP ignores thread interruption.
 """
 from pathlib import Path
 import tempfile,subprocess,shutil,argparse
-parser=argparse.ArgumentParser(description=__doc__);parser.add_argument("--repeat",type=int,default=1);args=parser.parse_args()
+parser=argparse.ArgumentParser(description=__doc__)
+parser.add_argument("--repeat",type=int,default=1)
+parser.add_argument("--worker-stress",type=int,default=0,help="Repeat controlled worker fill/drain cycles per JVM (test fixture only)")
+args=parser.parse_args()
 if not 1<=args.repeat<=100:parser.error("--repeat must be 1..100")
+if not 0<=args.worker_stress<=500:parser.error("--worker-stress must be 0..500")
 root=Path(__file__).resolve().parents[2];src=root/'app/src/main/java/com/transiva/app'
 with tempfile.TemporaryDirectory(prefix='transiva-auth-lookups-java-') as tmp:
  p=Path(tmp)
@@ -72,13 +76,30 @@ public class AuthLookupRuntimeCheck {
    public Object get(long n,TimeUnit unit)throws InterruptedException,ExecutionException,TimeoutException{return original.get(n,unit);}
   });
  }
+ // Only fixture setup retries admission: the saturation request under test never does.
+ // A completed filler Future can precede the pool worker returning to getTask().
+ // Do not treat that bookkeeping window as an auth/network failure.
+ static Future<?> admitFixtureWorker(Runnable task)throws Exception{
+  long deadline=System.nanoTime()+TimeUnit.SECONDS.toNanos(5);
+  while(true){
+   Future<?> future=TransivaNetworkExecutor.execute(task);
+   try{future.get(0,TimeUnit.NANOSECONDS);return future;}
+   catch(TimeoutException accepted){return future;}
+   catch(ExecutionException failed){
+    if(!(failed.getCause() instanceof RejectedExecutionException))throw failed;
+    if(System.nanoTime()>=deadline)throw new AssertionError("fixture worker admission did not recover before deadline",failed);
+    java.util.concurrent.locks.LockSupport.parkNanos(TimeUnit.MILLISECONDS.toNanos(1));
+    if(Thread.currentThread().isInterrupted())throw new InterruptedException("fixture admission interrupted");
+   }
+  }
+ }
  static class Workers {
   final CountDownLatch release=new CountDownLatch(1);final List<Future<?>> futures=new ArrayList<>();
   Workers(int n)throws Exception{CountDownLatch began=new CountDownLatch(n==70?6:4);
-   for(int x=0;x<n;x++)futures.add(TransivaNetworkExecutor.execute(()->{began.countDown();try{release.await();}catch(InterruptedException e){Thread.currentThread().interrupt();}}));
+   for(int x=0;x<n;x++)futures.add(admitFixtureWorker(()->{began.countDown();try{release.await();}catch(InterruptedException e){Thread.currentThread().interrupt();}}));
    check(began.await(5,TimeUnit.SECONDS),"fixture workers start");
   }
-  void drain()throws Exception{release.countDown();for(Future<?> f:futures)f.get(5,TimeUnit.SECONDS);TransivaNetworkExecutor.submit(()->null).get(5,TimeUnit.SECONDS);}
+  void drain()throws Exception{release.countDown();for(Future<?> f:futures)f.get(5,TimeUnit.SECONDS);admitFixtureWorker(()->{}).get(5,TimeUnit.SECONDS);}
  }
  public static void main(String[] ignored)throws Exception{
   Context context=new Context();AtomicInteger applied=new AtomicInteger();
@@ -105,6 +126,9 @@ public class AuthLookupRuntimeCheck {
   new AuthPublicRequest().start(context,"B",new JSONObject(),r->{check("B".equals(r.optString("value")),"latest field result is preserved");stale.incrementAndGet();});
   until(()->stale.get()==1,true);int beforeLate=Handler.postCount();old.release.countDown();check(old.exited.await(5,TimeUnit.SECONDS),"old HTTP completes after new field callback");
   until(()->Handler.postCount()>beforeLate,false);Handler.flush();check(stale.get()==1,"old field response cannot overwrite new lookup");
+  int rounds=ignored.length==0?0:Integer.parseInt(ignored[0]);
+  for(int cycle=0;cycle<rounds;cycle++){Workers stress=new Workers(70);stress.drain();}
+  if(rounds>0)System.out.println("PASS "+rounds+" worker fixture fill/drain stress cycles");
  }
 }'''}
  for name,text in files.items():f=p/name;f.parent.mkdir(parents=True,exist_ok=True);f.write_text(text)
@@ -112,5 +136,5 @@ public class AuthLookupRuntimeCheck {
  compiler=['javac'] if shutil.which('javac') else ['java','--module','jdk.compiler/com.sun.tools.javac.Main']
  subprocess.run(compiler+['-d',str(p/'classes')]+[str(f) for f in p.rglob('*.java')],check=True)
  for run in range(args.repeat):
-  subprocess.run(['java','-cp',str(p/'classes'),'com.transiva.app.AuthLookupRuntimeCheck'],check=True,timeout=30)
+  subprocess.run(['java','-cp',str(p/'classes'),'com.transiva.app.AuthLookupRuntimeCheck',str(args.worker_stress)],check=True,timeout=30+args.worker_stress*2)
  print(f'PASS auth lookup runtime: {args.repeat} fresh JVM runs; request-owned gates, concrete callback barriers')

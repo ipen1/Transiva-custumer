@@ -279,7 +279,11 @@ public class CustomerNotificationActivity extends CustomerAdaptiveActivity {
         String type = item.optString("type", "general").toLowerCase(Locale.ROOT);
         String orderId = item.optString("order_id", "");
         Intent intent;
-        if (type.contains("chat") || type.contains("message")) {
+        if ("merchant_order_status".equals(type) || ((type.contains("order")||type.contains("trip")) && orderId.toUpperCase(Locale.ROOT).startsWith("FOOD-"))) {
+            intent=new Intent(this,CustomerFoodOrderStatusActivity.class);intent.putExtra("order_id",orderId);
+            for(String key:new String[]{"status","restaurant_name","merchant_reject_reason"})intent.putExtra(key,item.optString(key,""));
+            // Older saved notifications have no metadata; the read-only endpoint resolves them.
+        } else if (type.contains("chat") || type.contains("message")) {
             intent = new Intent(this, CustomerChatActivity.class);
             intent.putExtra("room_id", item.optString("room_id", ""));
         } else if (type.contains("wallet") || type.contains("saldo") || type.contains("deposit")) {

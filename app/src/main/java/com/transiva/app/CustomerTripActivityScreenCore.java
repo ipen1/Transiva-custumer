@@ -89,6 +89,7 @@ class CustomerTripActivityScreenCore extends CustomerAdaptiveActivity {
     protected Button receivedButton, approvePriceButton, rejectPriceButton;
     private Button shareTripButton;
     private boolean shareBusy;
+    private boolean tripLayoutBuilt, foodStatusRouted;
 
     protected String orderId = "";
     protected String activeDriverType = "motor";
@@ -135,31 +136,48 @@ class CustomerTripActivityScreenCore extends CustomerAdaptiveActivity {
         } catch (Exception ignored) {}
 
         readIntentAndSavedData();
-        buildLayout();
-        if (trackingOnly) {
-            if (driverNameText != null) driverNameText.setVisibility(View.GONE);
-            if (driverTypeText != null) driverTypeText.setVisibility(View.GONE);
-            if (driverPlateText != null) driverPlateText.setVisibility(View.GONE);
-            if (driverPhotoView != null) driverPhotoView.setVisibility(View.GONE);
-            if (paymentInfoText != null) paymentInfoText.setVisibility(View.GONE);
-            if (receivedButton != null) receivedButton.setVisibility(View.GONE);
-            if (approvePriceButton != null) approvePriceButton.setVisibility(View.GONE);
-            if (rejectPriceButton != null) rejectPriceButton.setVisibility(View.GONE);
+        // Old PendingIntents and history links can still target Trip without status metadata.
+        if(!trackingOnly&&orderId.toUpperCase(Locale.ROOT).startsWith("FOOD-")&&!getIntent().getBooleanExtra("food_status_resolved",false)){
+            Intent food=new Intent(this,CustomerFoodOrderStatusActivity.class).putExtra("order_id",orderId);
+            for(String key:new String[]{"status","restaurant_name","merchant_reject_reason"})food.putExtra(key,getIntent().getStringExtra(key));
+            foodStatusRouted=true;startActivity(food);finish();return;
         }
-
-        if (orderId.length() == 0) {
-            showInfo("Order tidak ditemukan", "ID order tidak ditemukan. Silakan ulangi order.");
-            return;
-        }
-
-        if (!validCoord(pickupLat, pickupLng)) {
-            statusText.setText("Mengambil data lokasi order...");
-        }
-
-        // Tracking tidak menunggu peta siap. Saat native map selesai initialize,
-        // marker/rute terbaru langsung dipush oleh listener onReady().
+        if(trackingOnly){buildLayout();tripLayoutBuilt=true;}
+        else buildStatusGate();
+        if(orderId.length()==0){statusText.setText("ID pesanan belum ditemukan. Kembali ke beranda untuk memeriksanya.");return;}
         startTrackingOnce();
-        startRideProtectionIfEnabled();
+    }
+
+    private void buildStatusGate(){
+        LinearLayout gate=new LinearLayout(this);gate.setOrientation(LinearLayout.VERTICAL);gate.setGravity(Gravity.CENTER);gate.setPadding(dp(24),dp(24),dp(24),dp(24));
+        gate.setBackgroundColor(CustomerAppSettings.isDarkMode(this)?0xFF071426:0xFFF7FAFF);
+        gate.addView(new ProgressBar(this),new LinearLayout.LayoutParams(dp(36),dp(36)));
+        statusText=text("Memeriksa status pesanan…",16,CustomerAppSettings.isDarkMode(this)?"#EEF5FF":"#133152",true);statusText.setGravity(Gravity.CENTER);statusText.setPadding(0,dp(16),0,dp(16));gate.addView(statusText);
+        Button retry=outlineButton("Coba lagi");retry.setOnClickListener(v->fetchDriverPosition());gate.addView(retry,new LinearLayout.LayoutParams(-1,dp(48)));
+        Button home=outlineButton("Ke beranda");home.setOnClickListener(v->goToHome());gate.addView(home,new LinearLayout.LayoutParams(-1,dp(48)));setContentView(gate);
+    }
+
+    private void openFoodStatus(JSONObject response){
+        if(foodStatusRouted)return;foodStatusRouted=true;trackingStarted=false;
+        trackingGeneration.incrementAndGet();routeGeneration.incrementAndGet();mainHandler.removeCallbacks(trackingRunnable);if(orderId.equals(getSharedPreferences("transiva",MODE_PRIVATE).getString("active_order_id","")))stopRideProtection();
+        if(mapView!=null){mapView.setVisibility(View.GONE);mapReady=false;}
+        JSONObject order=FoodOrderDecision.order(response);
+        Intent intent=new Intent(this,CustomerFoodOrderStatusActivity.class).putExtra("order_id",orderId);
+        intent.putExtra("status",FoodOrderDecision.rejected(response)?"merchant_rejected":FoodOrderDecision.status(response));
+        intent.putExtra("merchant_reject_reason",FoodOrderDecision.reason(response));intent.putExtra("restaurant_name",order.optString("restaurant_name",""));
+        startActivity(intent);finish();
+    }
+
+    @Override protected void onNewIntent(Intent intent){
+        super.onNewIntent(intent);setIntent(intent);
+        String incoming=firstNonEmpty(intent.getStringExtra("order_id"),intent.getStringExtra("active_order_id"));
+        if((incoming.toUpperCase(Locale.ROOT).startsWith("FOOD-")||"merchant_rejected".equals(intent.getStringExtra("status")))&&!intent.getBooleanExtra("food_status_resolved",false)){
+            foodStatusRouted=true;trackingStarted=false;trackingGeneration.incrementAndGet();routeGeneration.incrementAndGet();mainHandler.removeCallbacks(trackingRunnable);
+            if(mapView!=null)mapView.setVisibility(View.GONE);
+            Intent food=new Intent(this,CustomerFoodOrderStatusActivity.class).putExtra("order_id",incoming);
+            for(String key:new String[]{"status","restaurant_name","merchant_reject_reason"})food.putExtra(key,intent.getStringExtra(key));
+            startActivity(food);finish();
+        }else recreate();
     }
 
     protected void startRideProtectionIfEnabled() {
@@ -422,7 +440,7 @@ class CustomerTripActivityScreenCore extends CustomerAdaptiveActivity {
     }
 
     protected void fetchDriverPosition() {
-        if (orderId.length() == 0 || finishedCountdownStarted || isFinishing() || isDestroyed()) return;
+        if (orderId.length() == 0 || foodStatusRouted || finishedCountdownStarted || isFinishing() || isDestroyed()) return;
         if (!trackingRequestInFlight.compareAndSet(false, true)) return;
 
         final long generation = trackingGeneration.incrementAndGet();
@@ -463,6 +481,8 @@ class CustomerTripActivityScreenCore extends CustomerAdaptiveActivity {
 
 
     protected void handleStatusResponse(JSONObject res) {
+        if(!trackingOnly&&FoodOrderDecision.needsFoodScreen(res,orderId)){openFoodStatus(res);return;}
+        if(!tripLayoutBuilt){buildLayout();tripLayoutBuilt=true;if(mapView!=null){mapView.onStartMap();mapView.onResumeMap();}startRideProtectionIfEnabled();}
         JSONObject driver = res.optJSONObject("driver");
         if (driver == null) driver = new JSONObject();
         JSONObject order = res.optJSONObject("order");
@@ -784,7 +804,7 @@ class CustomerTripActivityScreenCore extends CustomerAdaptiveActivity {
 
     protected void setStatusText(String status, String driverName, boolean hasLocation) {
         // The shared hero owns the status title and explanation. Keep tracking health separate.
-        boolean waitingForLocation = !hasLocation && !isFinishedStatus(status);
+        boolean waitingForLocation = !hasLocation && !CustomerOrderState.isEnded(status);
         statusText.setText(waitingForLocation ? "Lokasi driver sedang diperbarui…" : "");
         statusText.setVisibility(waitingForLocation ? View.VISIBLE : View.GONE);
     }

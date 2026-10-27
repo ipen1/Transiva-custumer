@@ -25,6 +25,10 @@ public final class TransivaNotificationStore {
             String roomId,
             String url
     ) {
+        add(context,type,title,body,orderId,roomId,url,null);
+    }
+
+    public static synchronized void add(Context context,String type,String title,String body,String orderId,String roomId,String url,java.util.Map<String,String> data) {
         if (context == null) return;
         try {
             SharedPreferences prefs = context.getSharedPreferences(PREF, Context.MODE_PRIVATE);
@@ -39,6 +43,9 @@ public final class TransivaNotificationStore {
             item.put("room_id", safe(roomId, ""));
             item.put("url", safe(url, ""));
             item.put("time", System.currentTimeMillis());
+            if(data!=null)for(String key:new String[]{"status","restaurant_name","merchant_reject_reason","order_type"}){
+                String value=data.get(key);if(value!=null&&!value.trim().isEmpty())item.put(key,value.trim());
+            }
             newItems.put(item);
 
             for (int i = 0; i < oldItems.length() && newItems.length() < MAX_ITEMS; i++) {

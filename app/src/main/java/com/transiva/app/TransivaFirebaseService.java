@@ -276,7 +276,8 @@ public class TransivaFirebaseService extends FirebaseMessagingService {
                 body,
                 orderId,
                 roomId,
-                url
+                url,
+                data
         );
 
         String event = data != null ? first(data.get("event"), data.get("status"), "").toLowerCase() : "";
@@ -493,6 +494,14 @@ public class TransivaFirebaseService extends FirebaseMessagingService {
             intent.putExtra("room_id", first(roomId, orderId));
             intent.putExtra("order_id", orderId);
             intent.putExtra("from_fcm", true);
+            return intent;
+        }
+
+        if ("merchant_order_status".equals(type) || "food_order_status".equalsIgnoreCase(screen)
+                || (isOrder(type) && orderId != null && orderId.toUpperCase(java.util.Locale.ROOT).startsWith("FOOD-"))) {
+            Intent intent = new Intent(this, CustomerFoodOrderStatusActivity.class);
+            intent.putExtra("order_id",orderId);intent.putExtra("from_fcm",true);
+            if(data!=null)for(String key:new String[]{"status","restaurant_name","merchant_reject_reason"})intent.putExtra(key,first(data.get(key),""));
             return intent;
         }
 

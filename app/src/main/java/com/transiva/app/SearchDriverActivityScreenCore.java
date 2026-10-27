@@ -650,6 +650,17 @@ class SearchDriverActivityScreenCore extends CustomerAdaptiveActivity {
                     }
                 }
 
+                if(FoodOrderDecision.isFood(res,activeOrderId)&&FoodOrderDecision.terminal(res)){
+                    featureRuntime.post(mainHandler,()->{
+                        if(isFinishing()||isDestroyed())return;destroyLoops();
+                        Intent result=new Intent(this,CustomerFoodOrderStatusActivity.class).putExtra("order_id",activeOrderId);
+                        result.putExtra("status",FoodOrderDecision.rejected(res)?"merchant_rejected":FoodOrderDecision.status(res));
+                        result.putExtra("merchant_reject_reason",FoodOrderDecision.reason(res));
+                        result.putExtra("restaurant_name",FoodOrderDecision.order(res).optString("restaurant_name",""));
+                        startActivity(result);finish();
+                    });return;
+                }
+
                 if (status.equals("canceled") || status.equals("cancelled")) {
                     CustomerRedispatchService.stop(this);
                     clearOrderPrefs();

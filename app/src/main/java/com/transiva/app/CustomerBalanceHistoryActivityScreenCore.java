@@ -923,7 +923,10 @@ class CustomerBalanceHistoryActivityScreenCore extends CustomerAdaptiveActivity 
                 JSONObject response=request.read(SUMMARY_URL,payload,20000);JSONArray array=response.optJSONArray("transactions");
                 if(!response.optBoolean("success",false)||array==null)throw new IllegalStateException("Gagal memuat transaksi");
                 final int balance=response.getInt("balance"),income=response.optInt("income"),expense=response.optInt("expense"),pending=response.optInt("pending");
-                List<JSONObject> fresh=new ArrayList<>();for(int i=0;i<array.length();i++){JSONObject item=array.optJSONObject(i);if(item!=null)fresh.add(item);}
+                List<JSONObject> fresh=new ArrayList<>();for(int i=0;i<array.length();i++){JSONObject item=array.optJSONObject(i);if(item!=null){
+                    if("cash".equalsIgnoreCase(item.optString("payment_channel")))item.put("status",CustomerBalanceFormatter.cashOrderStatus(item.optString("order_status"),item.optString("status")));
+                    fresh.add(item);
+                }}
                 postWallet(request,generation,() -> {
                     loadingData=false;walletRead=null;setLoading(false);
                     if(requestedDays!=periodDays){loadWallet();return;}
@@ -1052,7 +1055,7 @@ class CustomerBalanceHistoryActivityScreenCore extends CustomerAdaptiveActivity 
     }
     private String transactionStatus(JSONObject item){
         String status=item.optString("status");
-        if(status.equals("cancelled")||status.equals("canceled"))return "Dibatalkan";
+        if(status.equals("cancelled")||status.equals("canceled"))return "cash".equals(item.optString("payment_channel"))?"Dibatalkan · Tidak perlu dibayar":"Dibatalkan";
         if("cash".equals(item.optString("payment_channel"))){if(status.equals("success"))return "Dibayar tunai";if(status.equals("pending"))return "Menunggu pembayaran";}
         return statusLabel(status);
     }
@@ -1063,8 +1066,8 @@ class CustomerBalanceHistoryActivityScreenCore extends CustomerAdaptiveActivity 
     private void showTransactionDetails(JSONObject item){
         boolean cash="cash".equals(item.optString("payment_channel"));
         String body="Nominal: "+rupiah(item.optInt("amount"))+"\nMetode: "+(cash?"Tunai":"Transiva Pay")+"\nStatus: "+transactionStatus(item)+"\nWaktu: "+formatDate(item.optString("created_at"))+"\nReferensi: "+item.optString("reference","-")+"\n\n"+item.optString("description");
-        if(cash&&item.has("waiting_fee"))body+="\n\nOngkir: "+rupiah(item.optInt("fare_before_waiting"))+"\nSmart Waiting: "+rupiah(item.optInt("waiting_fee"))+"\nTotal: "+rupiah(item.optInt("amount"));
-        body+=cash?"\n\nPembayaran tunai tidak memotong saldo Transiva Pay.":"\n\nSaldo sebelum: "+rupiah(item.optInt("balance_before"))+"\nSaldo setelah: "+rupiah(item.optInt("balance_after"));
+        if(cash&&!"cancelled".equals(item.optString("status"))&&item.has("waiting_fee"))body+="\n\nOngkir: "+rupiah(item.optInt("fare_before_waiting"))+"\nSmart Waiting: "+rupiah(item.optInt("waiting_fee"))+"\nTotal: "+rupiah(item.optInt("amount"));
+        body+=cash&&"cancelled".equals(item.optString("status"))?"\n\nPesanan sudah dibatalkan. Tidak ada pembayaran tunai yang perlu dilakukan dan tidak ada saldo Transiva Pay yang dipotong.":cash?"\n\nPembayaran tunai tidak memotong saldo Transiva Pay.":"\n\nSaldo sebelum: "+rupiah(item.optInt("balance_before"))+"\nSaldo setelah: "+rupiah(item.optInt("balance_after"));
         new TransivaAlertDialogBuilder(this).setTitle(item.optString("title","Detail transaksi")).setMessage(body).setPositiveButton("Tutup",null).show();
     }
 

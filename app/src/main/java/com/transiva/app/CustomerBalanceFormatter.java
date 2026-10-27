@@ -19,6 +19,20 @@ public final class CustomerBalanceFormatter {
         return "Mutasi Saldo";
     }
 
+    /** Cash presentation only; never changes wallet transactions or requests a refund. */
+    public static String cashOrderStatus(String orderStatus, String fallback) {
+        String value = orderStatus == null ? "" : orderStatus.trim().toLowerCase(Locale.ROOT).replace('-', '_').replace(' ', '_');
+        if (value.isEmpty()) value = fallback == null ? "" : fallback.trim().toLowerCase(Locale.ROOT).replace('-', '_').replace(' ', '_');
+        switch (value) {
+            case "cancelled": case "canceled": case "cancel": case "rejected": case "merchant_rejected":
+            case "customer_cancelled": case "customer_canceled": case "driver_cancelled": case "driver_canceled":
+            case "expired": case "failed": case "dibatalkan": return "cancelled";
+            case "finished": case "completed": case "finish": case "complete": case "done": case "delivered": case "selesai":
+            case "success": return "success";
+            default: return "pending";
+        }
+    }
+
     public static String statusLabel(String status) {
         String value = status == null ? "" : status.toLowerCase(Locale.US);
         if (value.equals("pending") || value.equals("processing")) return "Diproses";

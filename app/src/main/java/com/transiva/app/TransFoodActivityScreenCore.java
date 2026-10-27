@@ -161,9 +161,9 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
         buildTopBar("Transfood", "Makanan favorit, diantar lebih cepat", true);
         addPremiumHero();
         addDeliveryLocationRow();
-        addHomeSearchBar();
+        if (!"kabar".equals(homeMode)) addHomeSearchBar();
         addQuickMenus();
-        addHomeSectionHeader();
+        if (!"kabar".equals(homeMode)) addHomeSectionHeader();
 
         homeResultsBox = new LinearLayout(this);
         homeResultsBox.setOrientation(LinearLayout.VERTICAL);
@@ -215,7 +215,7 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
         panel.addView(row, new LinearLayout.LayoutParams(-1, -2));
         addQuickMenu(row, "Terdekat", "ic_food_nearby", "nearby");
         addQuickMenu(row, "Diskon", "ic_food_discount", "discount");
-        addQuickMenu(row, "Terbaru", "ic_food_new", "newest");
+        addQuickMenu(row, "Kabar Mitra", "ic_kabar_mitra", "kabar");
         addQuickMenu(row, "Favorit", "ic_food_best", "best");
         addWithMargin(panel, 0, 0, 0, dp(12));
     }
@@ -230,7 +230,7 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
 
         ImageView icon = new ImageView(this);
         icon.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
-        int id = getResources().getIdentifier(drawableName, "drawable", getPackageName());
+        int id = "ic_kabar_mitra".equals(drawableName) ? R.drawable.ic_kabar_mitra : getResources().getIdentifier(drawableName, "drawable", getPackageName());
         if (id != 0) icon.setImageResource(id);
         item.addView(icon, new LinearLayout.LayoutParams(dp(42), dp(42)));
 
@@ -286,6 +286,16 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
 
     protected void renderHomeResults() {
         if (homeResultsBox == null) return;
+        if ("kabar".equals(homeMode)) {
+            if (homeResultsBox.getChildCount() == 0 || !(homeResultsBox.getChildAt(0) instanceof KabarMitraView)) {
+                homeResultsBox.removeAllViews();
+                homeResultsBox.addView(new KabarMitraView(this, featureRuntime, mainHandler, store -> {
+                    activeRestaurant = store; menus.clear(); cart.clear();
+                    menuSearchQuery = ""; showMenuPage(); loadMenus(store.optInt("id", 0));
+                }));
+            }
+            return;
+        }
         homeResultsBox.removeAllViews();
 
         if (restaurants.isEmpty()) {
@@ -581,6 +591,9 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
         merchantFav.setOnClickListener(v -> toggleFavorite("merchant", activeRestaurant.optInt("id", 0), activeRestaurant, merchantFav));
         merchantTitleRow.addView(merchantFav, new LinearLayout.LayoutParams(dp(46), dp(46)));
         resto.addView(merchantTitleRow);
+        Button followStore = new KabarMitraUi(this).button("Memuat status mengikuti…");
+        resto.addView(followStore);
+        KabarMitraView.bindFollow(this, featureRuntime, mainHandler, activeRestaurant.optInt("id", 0), followStore);
 
         double socialRating = activeRestaurant.optDouble("social_rating", activeRestaurant.optDouble("rating", 0));
         int socialReviews = activeRestaurant.optInt("social_review_count", activeRestaurant.optInt("review_count", 0));

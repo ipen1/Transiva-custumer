@@ -11,6 +11,8 @@ import threading
 import time
 import types
 import unittest
+import subprocess
+import shutil
 from unittest.mock import patch
 
 spec=importlib.util.spec_from_file_location('paired_host',pathlib.Path(__file__).with_name('paired_release_gate.py'))
@@ -182,6 +184,53 @@ class PairedGateTest(unittest.TestCase):
         for content in [text,json.dumps(r)]:
             self.assertNotIn(f.password,content);self.assertNotIn(f.nonce,content)
         self.assertNotIn('pair_event=',text)
+    def test_real_capture_readiness_transients_timeout_permissions_and_cleanup(self):
+        # Compile the actual Android fixture readiness method against a controlled AudioRecord.
+        source=pathlib.Path(__file__).resolve().parents[2]/'app/src/androidTest/java/com/transiva/app/ReleasePairedCallTest.java'
+        text=source.read_text();begin=text.index('    static int awaitAudioReady(');end=text.index('    private long inboundAudioPackets()',begin)
+        probe=text[begin:end]
+        adapters={
+            'android/Manifest.java':'package android;public class Manifest{public static class permission{public static final String RECORD_AUDIO="audio";}}',
+            'android/content/pm/PackageManager.java':'package android.content.pm;public class PackageManager{public static final int PERMISSION_GRANTED=0;}',
+            'android/content/Context.java':'package android.content;public class Context{public boolean denied;public int checkSelfPermission(String p){return denied?-1:0;}}',
+            'android/os/SystemClock.java':'package android.os;public class SystemClock{public static long now;public static long elapsedRealtime(){return now;}public static void sleep(long ms){now+=ms;}}',
+            'android/media/AudioFormat.java':'package android.media;public class AudioFormat{public static final int CHANNEL_IN_MONO=16,ENCODING_PCM_16BIT=2;}',
+            'android/media/MediaRecorder.java':'package android.media;public class MediaRecorder{public static class AudioSource{public static final int VOICE_COMMUNICATION=7;}}',
+            'android/media/AudioRecord.java':r"""package android.media;public class AudioRecord{
+                public static final int STATE_INITIALIZED=1,RECORDSTATE_RECORDING=3,READ_NON_BLOCKING=1;
+                public static int created,released,started,stopped,mode,minimum=512;private boolean recording;
+                public static int getMinBufferSize(int rate,int channel,int format){if(rate!=48000)throw new AssertionError();return minimum;}
+                public AudioRecord(int src,int rate,int channel,int format,int size){created++;if(rate!=48000||size<1920)throw new AssertionError();if(mode==1&&created<=2)throw new IllegalArgumentException("AudioFlinger unknown UID");}
+                public int getState(){return mode==2?0:STATE_INITIALIZED;}
+                public void startRecording(){started++;recording=true;}
+                public int getRecordingState(){return recording?RECORDSTATE_RECORDING:1;}
+                public int read(byte[] b,int offset,int n,int flags){if(mode==3)return 0;if(mode==4&&created<=2)return -3;return n;}
+                public void stop(){stopped++;recording=false;}public void release(){released++;}
+                public static void reset(int m){mode=m;created=released=started=stopped=0;minimum=512;android.os.SystemClock.now=0;}
+            }""",
+        }
+        harness=r"""import android.content.Context;import android.os.SystemClock;import android.media.*;
+        public class CaptureReadyProbe{METHOD
+            static void check(boolean ok,String message){if(!ok)throw new AssertionError(message);}
+            public static void main(String[] args){Context context=new Context();
+                AudioRecord.reset(0);check(awaitAudioReady(context)==1,"healthy capture");check(AudioRecord.released==1&&AudioRecord.stopped==1,"success cleanup");
+                AudioRecord.reset(1);check(awaitAudioReady(context)==3,"fresh-install unknown UID retries");check(AudioRecord.released==1,"failed constructors must not release null");
+                AudioRecord.reset(4);check(awaitAudioReady(context)==3,"negative PCM read retries");check(AudioRecord.released==3&&AudioRecord.stopped==3,"all retry recorders released");
+                for(int mode:new int[]{2,3}){AudioRecord.reset(mode);try{awaitAudioReady(context);throw new RuntimeException("persistent failure passed");}catch(AssertionError expected){check(expected.getMessage().contains("30s"),"timeout diagnostics");}check(SystemClock.now>=30000&&SystemClock.now<=30250,"bounded retry");check(AudioRecord.created==AudioRecord.released,"timeout releases all probes");}
+                AudioRecord.reset(0);context.denied=true;try{awaitAudioReady(context);throw new RuntimeException("permission bypass");}catch(SecurityException expected){}check(AudioRecord.created==0,"denied permission never opens capture");context.denied=false;
+                AudioRecord.reset(0);AudioRecord.minimum=-2;try{awaitAudioReady(context);throw new RuntimeException("unsupported format passed");}catch(AssertionError expected){check(expected.getMessage().contains("unsupported"),"unsupported format diagnosis");}check(AudioRecord.created==0,"invalid format not retried");
+                System.out.println("PASS real audio readiness: healthy PCM, transient unknown UID, negative reads, bounded uninitialized/no-PCM failures, denied permission, unsupported format, cleanup");
+            }
+        }""".replace('METHOD',probe)
+        with tempfile.TemporaryDirectory(prefix='audio-readiness-test-') as directory:
+            root=pathlib.Path(directory)
+            for name,content in adapters.items():
+                path=root/name;path.parent.mkdir(parents=True,exist_ok=True);path.write_text(content)
+            (root/'CaptureReadyProbe.java').write_text(harness)
+            compiler=['javac'] if shutil.which('javac') else ['java','--module','jdk.compiler/com.sun.tools.javac.Main']
+            subprocess.run(compiler+['-d',str(root/'classes'),*map(str,root.rglob('*.java'))],check=True)
+            subprocess.run(['java','-cp',str(root/'classes'),'CaptureReadyProbe'],check=True,timeout=15)
+
     def test_android_fixture_holds_peer_after_done(self):
         source=pathlib.Path(__file__).resolve().parents[2]/'app/src/androidTest/java/com/transiva/app/ReleasePairedCallTest.java'
         text=source.read_text();done=text.index('event("done",')

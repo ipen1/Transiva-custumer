@@ -3,11 +3,13 @@
 from pathlib import Path
 import subprocess,tempfile,json,os,shutil
 root=Path(__file__).resolve().parent;src=root.parents[1]/'app/src/main/java/com/transiva/app'
-for suite,classes,main in [('http',['TransivaHttpRepository','CustomerApiClient','NetworkSafetyRules','CustomerTransportSession'],'HttpSessionProbe'),('poller',['CustomerChatNotificationPoller','CustomerChatNoticeState','CustomerChatPushGuard','CustomerChatPreviewFormatter','NetworkSafetyRules','CustomerTransportSession'],'PollerProbe')]:
+for suite,classes,main in [('http',['TransivaHttpRepository','CustomerApiClient','NetworkSafetyRules','CustomerTransportSession','CustomerLoadingCoordinator','CustomerRequestCancellation','CustomerReadCachePolicy'],'HttpSessionProbe'),('poller',['CustomerChatNotificationPoller','CustomerChatNoticeState','CustomerChatPushGuard','CustomerChatPreviewFormatter','NetworkSafetyRules','CustomerTransportSession'],'PollerProbe')]:
  with tempfile.TemporaryDirectory(prefix='transiva-session-') as d:
   p=Path(d)
   for name,text in json.loads((root/'session-fixtures'/f'{suite}.json').read_text()).items():
    f=p/name;f.parent.mkdir(parents=True,exist_ok=True);f.write_text(text)
+  if suite=='http':
+   stub=p/'com/transiva/app/OfflineJsonCache.java';stub.write_text('package com.transiva.app;import android.content.Context;import org.json.JSONObject;class OfflineJsonCache{static String scoped(Context c,String k){return k;}static JSONObject getScoped(Context c,String k,long t,boolean s){return null;}static void putScoped(Context c,String k,JSONObject j){}}')
   files=list(p.rglob('*.java'))+[src/(name+'.java') for name in classes]
   compiler=[os.environ['JAVAC_BIN']] if os.environ.get('JAVAC_BIN') else (['javac'] if shutil.which('javac') else ['java','--module','jdk.compiler/com.sun.tools.javac.Main'])
   subprocess.run(compiler+['-cp',os.environ['JSON_JAR'],'-d',str(p/'classes'),*map(str,files)],check=True)

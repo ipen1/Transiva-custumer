@@ -80,7 +80,7 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
     private int pendingProfileRid,profileStoryGeneration;
     private int menuLoadGeneration;
     private final Runnable storyExpiryTick = new Runnable(){public void run(){
-        updateMerchantAvatars(); mainHandler.postDelayed(this, 5000);
+        updateMerchantAvatars(); updateFoodStoryRail(); mainHandler.postDelayed(this, 1000);
     }};
 
     private FoodStoryRail foodStoryRail;
@@ -222,11 +222,6 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
         homeResultsBox = new LinearLayout(this);
         homeResultsBox.setOrientation(LinearLayout.VERTICAL);
         root.addView(homeResultsBox, new LinearLayout.LayoutParams(-1, -2));
-        // Merchant content is placed ahead of stories: stories never block first content.
-        if (foodStoryRail != null) {
-            root.removeView(foodStoryRail);
-            root.addView(foodStoryRail, new LinearLayout.LayoutParams(-1, -2));
-        }
         renderHomeResults();
         if (foodScroll != null && savedHomeScroll > 0) foodScroll.post(() -> foodScroll.scrollTo(0, savedHomeScroll));
     }

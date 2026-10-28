@@ -27,7 +27,14 @@ jobs:
       - name: Verify backend test source fingerprints
         run: python3 tools/reliability/verify_sources.py
       - name: Install PHP database extension
-        run: sudo apt-get update && sudo apt-get install -y php-cli php-mysql php-mbstring
+        run: sudo apt-get update && sudo apt-get install -y php-cli php-mysql php-mbstring php-sqlite3 libandroid-json-java
+      - name: Gate loading coordinator and referral cash v2
+        env:
+          JSON_JAR: /usr/share/java/com.android.json.jar
+        run: |
+          set -euo pipefail
+          python3 tools/reliability/loading_referral_regression.py
+          RF_TEST_PASSWORD=integration-only python3 tools/reliability/loading_referral_regression.py --mysql
       - name: Test auth receipts, one-time proofs, and network lifecycle
         run: |
           set -euo pipefail

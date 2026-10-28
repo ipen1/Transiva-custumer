@@ -333,7 +333,7 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
             @Override public void onTextChanged(CharSequence s, int start, int before, int count) {
                 homeSearchQuery = s == null ? "" : s.toString();
                 if (homeSearchRunnable != null) mainHandler.removeCallbacks(homeSearchRunnable);
-                homeSearchRunnable = () -> renderHomeResults();
+                homeSearchRunnable = () -> { renderHomeResults(); loadMenuSearch(homeSearchQuery); };
                 mainHandler.postDelayed(homeSearchRunnable, 280);
             }
             @Override public void afterTextChanged(Editable e) {}
@@ -1279,61 +1279,45 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
         });
     }
 
-    protected void loadAllMenuIndex() {
-        if (menuIndexLoading || android.os.SystemClock.elapsedRealtime() - lastMenuIndexAt < 120000L) return;
+    private int menuSearchGeneration = 0;
+    private String lastMenuQuery = "";
+    protected void loadAllMenuIndex() { loadMenuSearch(""); }
+    private void loadMenuSearch(String query) {
+        final String requested = query == null ? "" : query.trim();
+        final int generation = ++menuSearchGeneration;
+        if (requested.equals(lastMenuQuery) && android.os.SystemClock.elapsedRealtime()-lastMenuIndexAt < 30000L) return;
         menuIndexLoading = true;
-        final List<JSONObject> indexMerchants = new ArrayList<>(restaurants);
         featureRuntime.execute(() -> {
             try {
+                JSONObject response = getJson(BASE_URL + "server/search_food_menus.php?user_id=" + userId + "&q=" + Uri.encode(requested) + "&limit=40");
+                if (!response.optBoolean("success", false)) throw new Exception("Search unavailable");
+                JSONArray rows = response.optJSONArray("menus");
                 List<MenuSearchItem> fresh = new ArrayList<>();
-                // Bound initial index requests; full catalog requires server-side search.
-                int indexedMerchants = 0;
-                for (JSONObject r : indexMerchants) {
-                    if (indexedMerchants++ >= 8) break;
-                    int rid = r.optInt("id", 0);
-                    if (rid <= 0) continue;
-                    try {
-                        JSONObject res = getJson(BASE_URL + "server/get_food_menus.php?restaurant_id=" + rid + "&v=" + System.currentTimeMillis());
-                        JSONArray arr = res.optJSONArray("menus");
-                        if (arr == null) continue;
-                        for (int i = 0; i < arr.length(); i++) {
-                            JSONObject m = arr.getJSONObject(i);
-                            MenuSearchItem item = new MenuSearchItem();
-                            item.restaurantId = rid;
-                            item.restaurantName = firstNonEmpty(r.optString("name"), "Merchant");
-                            item.restaurant = r;
-                            item.menuId = m.optInt("id", 0);
-                            item.menuName = firstNonEmpty(m.optString("name"), "Menu");
-                            item.category = firstNonEmpty(m.optString("category"), "Menu");
-                            item.description = firstNonEmpty(m.optString("description"), "");
-                            item.image = firstNonEmpty(m.optString("image"), "assets/no-image.png");
-                            item.price = m.optDouble("price", 0);
-                            item.originalPrice = m.optDouble("original_display_price", m.optDouble("original_price", item.price));
-                            item.discountPercent = m.optDouble("discount_percent", 0);
-                            item.discountActive = m.optInt("discount_active",0) == 1 && item.discountPercent > 0;
-                            item.salesCount = m.optLong("sales_count", 0);
-                            item.restaurantRating = r.optDouble("rating", 0);
-                            item.restaurantDistanceKm = r.isNull("distance_km") ? 15d : r.optDouble("distance_km", 15d);
-                            item.active = m.optInt("is_active", 1) == 1;
-                            item.trackStock = m.optInt("track_stock", 0) == 1;
-                            item.stock = m.optInt("stock", -1);
-                            if (item.active) fresh.add(item);
-                        }
-                    } catch (Exception ignored) {}
+                if (rows != null) for (int i=0; i<rows.length(); i++) {
+                    JSONObject m=rows.optJSONObject(i); if(m==null)continue;
+                    MenuSearchItem item=new MenuSearchItem();
+                    item.restaurantId=m.optInt("restaurant_id");item.menuId=m.optInt("id");
+                    item.restaurantName=m.optString("restaurant_name","Merchant");
+                    item.menuName=m.optString("name","Menu");item.category=m.optString("category","Menu");
+                    item.description=m.optString("description","");item.image=m.optString("image","assets/no-image.png");
+                    item.price=m.optDouble("price");item.originalPrice=m.optDouble("original_price",item.price);
+                    item.discountPercent=m.optDouble("discount_percent");item.discountActive=m.optInt("discount_active")==1;
+                    item.restaurantRating=m.optDouble("restaurant_rating");item.restaurantDistanceKm=15d;
+                    item.active=true;item.stock=-1;
+                    for(JSONObject r:restaurants)if(r.optInt("id")==item.restaurantId){item.restaurant=r;item.restaurantDistanceKm=r.optDouble("distance_km",15d);break;}
+                    if(item.restaurant==null){item.restaurant=new JSONObject();item.restaurant.put("id",item.restaurantId);item.restaurant.put("name",item.restaurantName);}
+                    fresh.add(item);
                 }
-                featureRuntime.post(mainHandler, () -> {
-                    menuIndexLoading = false;
-                    lastMenuIndexAt = android.os.SystemClock.elapsedRealtime();
-                    StringBuilder fingerprint = new StringBuilder();
-                    for (MenuSearchItem item : fresh) fingerprint.append(item.restaurantId).append(':').append(item.menuId).append(':').append(item.price).append(':').append(item.stock).append(';');
-                    if (!fingerprint.toString().equals(menuIndexSignature)) {
-                        menuIndexSignature = fingerprint.toString();
-                        allMenuSearchItems.clear();
-                        allMenuSearchItems.addAll(fresh);
-                        if (currentScreen == 0 && activeRestaurant == null) renderHomeResults();
+                featureRuntime.post(mainHandler,()->{
+                    if(generation!=menuSearchGeneration)return;
+                    menuIndexLoading=false;lastMenuQuery=requested;lastMenuIndexAt=android.os.SystemClock.elapsedRealtime();
+                    String signature=response.optString("signature",fresh.toString());
+                    if(!signature.equals(menuIndexSignature)){
+                        menuIndexSignature=signature;allMenuSearchItems.clear();allMenuSearchItems.addAll(fresh);
+                        if(currentScreen==0&&activeRestaurant==null)renderHomeResults();
                     }
                 });
-            } catch (Exception ignored) { featureRuntime.post(mainHandler, () -> menuIndexLoading = false); }
+            }catch(Exception ignored){featureRuntime.post(mainHandler,()->{if(generation==menuSearchGeneration)menuIndexLoading=false;});}
         });
     }
 

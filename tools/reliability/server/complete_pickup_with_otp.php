@@ -72,7 +72,7 @@ mysqli_stmt_close($stmt);
 
 if (!$row) out(['success'=>false, 'message'=>'Order pickup tidak ditemukan untuk driver ini']);
 $settlement=pickup_finish_payment_locked($conn,$row,$auth,$otp);
-if(!empty($settlement['idempotent'])){mysqli_commit($conn);$pickupTransaction=false;out(['success'=>true,'status'=>'finished','idempotent'=>true]);}
+if(!empty($settlement['idempotent'])){if(!mysqli_commit($conn))throw new RuntimeException('Komit transaksi belum terkonfirmasi.');$pickupTransaction=false;out(['success'=>true,'status'=>'finished','idempotent'=>true]);}
 
 if (!ensureFinishedStatusSupported($conn)) {
     out(['success'=>false, 'message'=>'Kolom status pickup belum mendukung status selesai']);
@@ -99,7 +99,8 @@ if ($saved !== 'finished') {
     mysqli_rollback($conn); out(['success'=>false, 'message'=>'Status selesai gagal tersimpan di database']);
 }
 
-mysqli_commit($conn);$pickupTransaction=false;
+if(!mysqli_commit($conn))throw new RuntimeException('Komit transaksi belum terkonfirmasi.');$pickupTransaction=false;
+require_once __DIR__.'/referral_cash_helper.php';rf_process_safe($conn,(int)($row['user_id']??0));
 $row['order_type']='TransSend';$coinReward=['awarded'=>false,'coins'=>0,'deferred'=>true];
 try{$coinReward=coin_award_finished_order($conn,$row);ri_point_sync_from_sources($conn,(int)($row['user_id']??0));}catch(Throwable $e){error_log('PICKUP_REWARD_DEFERRED type='.get_class($e));}
 out([

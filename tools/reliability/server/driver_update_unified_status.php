@@ -71,7 +71,7 @@ if(strcasecmp($orderDriver,$driver)!==0 && strcasecmp($orderDriver2,$driver)!==0
   mysqli_rollback($conn); out(["success"=>false,"code"=>"ORDER_OWNERSHIP","message"=>"Order bukan milik driver ini"],403);
 }
 $current = strtolower(trim((string)($order['status'] ?? '')));
-if($current === $status){ if($table==='pickup_orders' && $status==='finished')pickup_finish_payment_locked($conn,$order,$auth,$otp); mysqli_commit($conn);$unifiedTransaction=false; out(["success"=>true,"message"=>"Status sudah tersimpan","status"=>$status,"idempotent"=>true]); }
+if($current === $status){ if($table==='pickup_orders' && $status==='finished')pickup_finish_payment_locked($conn,$order,$auth,$otp); if(!mysqli_commit($conn))throw new RuntimeException('Komit transaksi belum terkonfirmasi.');$unifiedTransaction=false; out(["success"=>true,"message"=>"Status sudah tersimpan","status"=>$status,"idempotent"=>true]); }
 if(in_array($current,['finished','completed','canceled','cancelled'],true)){
   mysqli_rollback($conn); out(["success"=>false,"code"=>"ORDER_FINAL","message"=>"Order sudah berada pada status final"],409);
 }
@@ -102,12 +102,13 @@ if($status==='arrived_pickup')sw_start($conn,$table,$order,'pickup','Penjemputan
 if($status==='arrived_delivery')sw_start($conn,$table,$order,'delivery','Tujuan akhir');
 if(in_array($status,['picked_up','on_delivery'],true))sw_close($conn,$table,$id);
 $coinReward=['awarded'=>false,'coins'=>0];
-mysqli_commit($conn);$unifiedTransaction=false;
+if(!mysqli_commit($conn))throw new RuntimeException('Komit transaksi belum terkonfirmasi.');$unifiedTransaction=false;
 }catch(DomainException $e){out(['success'=>false,'message'=>$e->getMessage()],409);}
 catch(Throwable $e){error_log('UNIFIED_STATUS_TRANSACTION_FAILED type='.get_class($e));out(['success'=>false,'message'=>'Status belum tersimpan. Muat ulang pesanan dan coba kembali.'],503);}
 try{
 if($status==='finished'){
   if($table==='pickup_orders')$order['order_type']='TransSend';
+  require_once __DIR__.'/referral_cash_helper.php';rf_process_safe($conn,(int)($order['user_id']??$order['customer_id']??0));
   $coinReward=transiva_coin_award_safe($conn,$order);
   try{ri_point_sync_from_sources($conn,(int)($order['user_id']??0));}catch(Throwable $e){error_log('POINT_SYNC_NON_FATAL unified order='.(string)($order['order_id']??$id).' error='.$e->getMessage());}
 }

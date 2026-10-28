@@ -3,6 +3,10 @@ package com.transiva.app;
 import android.app.*;
 import android.content.*;
 import android.os.*;
+import android.media.AudioFormat;
+import android.media.AudioManager;
+import android.media.AudioRecord;
+import android.media.MediaRecorder;
 import android.util.Base64;
 import android.util.Rational;
 import android.widget.FrameLayout;
@@ -38,6 +42,54 @@ public class ReleasePairedCallTest {
     private final AtomicReference<Throwable> error=new AtomicReference<>();
     private final List<IceCandidate> pending=new ArrayList<>();private boolean remoteSet;
     private ScheduledExecutorService capture;
+    private AudioManager audioManager;private int originalAudioMode;
+    // API 36 fresh installs can reach the test before AudioFlinger knows the UID.
+    // Probe actual capture BEFORE constructing WebRTC's one-shot native recorder.
+    static int awaitAudioReady(Context context){
+        if(context.checkSelfPermission(android.Manifest.permission.RECORD_AUDIO)!=android.content.pm.PackageManager.PERMISSION_GRANTED)
+            throw new SecurityException("Paired audio test needs RECORD_AUDIO permission");
+        int minimum=AudioRecord.getMinBufferSize(48000,AudioFormat.CHANNEL_IN_MONO,AudioFormat.ENCODING_PCM_16BIT);
+        if(minimum<=0)throw new AssertionError("48 kHz mono capture unsupported: "+minimum);
+        long deadline=SystemClock.elapsedRealtime()+30000;int attempts=0;String last="not initialized";
+        while(SystemClock.elapsedRealtime()<deadline){
+            AudioRecord probe=null;attempts++;
+            try{
+                probe=new AudioRecord(MediaRecorder.AudioSource.VOICE_COMMUNICATION,48000,
+                        AudioFormat.CHANNEL_IN_MONO,AudioFormat.ENCODING_PCM_16BIT,Math.max(minimum*2,1920));
+                if(probe.getState()==AudioRecord.STATE_INITIALIZED){
+                    probe.startRecording();
+                    if(probe.getRecordingState()==AudioRecord.RECORDSTATE_RECORDING){
+                        byte[] pcm=new byte[960];long readDeadline=Math.min(deadline,SystemClock.elapsedRealtime()+1000);
+                        while(SystemClock.elapsedRealtime()<readDeadline){
+                            int count=probe.read(pcm,0,pcm.length,AudioRecord.READ_NON_BLOCKING);
+                            if(count>0)return attempts;
+                            if(count<0){last="AudioRecord read error "+count;break;}
+                            last="AudioRecord produced no PCM";SystemClock.sleep(20);
+                        }
+                    }else last="AudioRecord did not enter recording state";
+                }else last="AudioRecord state uninitialized (AudioFlinger UID registration may still be pending)";
+            }catch(SecurityException denied){throw denied;
+            }catch(IllegalArgumentException|IllegalStateException transientAudio){last=transientAudio.toString();
+            }finally{
+                if(probe!=null){try{if(probe.getRecordingState()==AudioRecord.RECORDSTATE_RECORDING)probe.stop();}finally{probe.release();}}
+            }
+            SystemClock.sleep(250);
+        }
+        throw new AssertionError("Audio capture not ready after 30s / "+attempts+" attempts: "+last);
+    }
+    private long inboundAudioPackets()throws InterruptedException{
+        CountDownLatch complete=new CountDownLatch(1);AtomicLong packets=new AtomicLong();
+        peer.getStats(report->{for(RTCStats stat:report.getStatsMap().values()){
+            Map<String,Object> members=stat.getMembers();Object kind=members.get("kind");if(kind==null)kind=members.get("mediaType");
+            if("inbound-rtp".equals(stat.getType())&&"audio".equals(String.valueOf(kind))){Object n=members.get("packetsReceived");if(n instanceof Number)packets.addAndGet(((Number)n).longValue());}
+        }complete.countDown();});
+        assertTrue("Audio stats callback timed out",complete.await(5,TimeUnit.SECONDS));return packets.get();
+    }
+    private long awaitInboundAudio(long previous)throws InterruptedException{
+        long deadline=SystemClock.elapsedRealtime()+10000;long received=0;
+        do{if(error.get()!=null)throw new AssertionError(error.get());received=inboundAudioPackets();if(received>previous)return received;SystemClock.sleep(200);}while(SystemClock.elapsedRealtime()<deadline);
+        throw new AssertionError("No inbound audio progress: previous="+previous+", received="+received);
+    }
     private void event(String type){event(type,new JSONObject());}
     private void event(String type,JSONObject value){try{value.put("type",type);Bundle b=new Bundle();b.putString("pair_event",Base64.encodeToString(value.toString().getBytes(StandardCharsets.UTF_8),Base64.NO_WRAP));instrumentation.sendStatus(2,b);}catch(Exception e){error.set(e);}}
     private void publish(String type,String sdp){try{event(type,new JSONObject().put("sdp",sdp));}catch(Exception e){error.set(e);}}
@@ -77,10 +129,19 @@ public class ReleasePairedCallTest {
         boolean registered=false;
         try{
             WebRtcNativeRuntime.initialize(context);egl=EglBase.create();
-            adm=JavaAudioDeviceModule.builder(context).setUseHardwareAcousticEchoCanceler(false).setUseHardwareNoiseSuppressor(false).createAudioDeviceModule();
-            factory=PeerConnectionFactory.builder().setAudioDeviceModule(adm).setVideoEncoderFactory(new DefaultVideoEncoderFactory(egl.getEglBaseContext(),true,true)).setVideoDecoderFactory(new DefaultVideoDecoderFactory(egl.getEglBaseContext())).createPeerConnectionFactory();
             activity=(WebRtcCallActivity)instrumentation.startActivitySync(new Intent(context,WebRtcCallActivity.class).putExtra("call_type","video").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
             instrumentation.runOnMainSync(()->{try{renderer=new CallTextureRenderer(activity);renderer.init(egl.getEglBaseContext(),null);FrameLayout stage=(FrameLayout)ReleaseCallLifecycleTest.field(activity,"stage");stage.addView(renderer,new FrameLayout.LayoutParams(-1,-1));}catch(Exception e){throw new AssertionError(e);}});
+            audioManager=(AudioManager)context.getSystemService(Context.AUDIO_SERVICE);originalAudioMode=audioManager.getMode();
+            instrumentation.runOnMainSync(()->audioManager.setMode(AudioManager.MODE_IN_COMMUNICATION));
+            int audioAttempts=awaitAudioReady(context);event("audio_ready",new JSONObject().put("attempts",audioAttempts).put("sample_rate",48000));
+            adm=JavaAudioDeviceModule.builder(context).setSampleRate(48000)
+                    .setUseHardwareAcousticEchoCanceler(false).setUseHardwareNoiseSuppressor(false)
+                    .setAudioRecordErrorCallback(new JavaAudioDeviceModule.AudioRecordErrorCallback(){
+                        public void onWebRtcAudioRecordInitError(String message){error.compareAndSet(null,new AssertionError("Audio capture init: "+message));}
+                        public void onWebRtcAudioRecordStartError(JavaAudioDeviceModule.AudioRecordStartErrorCode code,String message){error.compareAndSet(null,new AssertionError("Audio capture start: "+code+": "+message));}
+                        public void onWebRtcAudioRecordError(String message){error.compareAndSet(null,new AssertionError("Audio capture: "+message));}
+                    }).createAudioDeviceModule();
+            factory=PeerConnectionFactory.builder().setAudioDeviceModule(adm).setVideoEncoderFactory(new DefaultVideoEncoderFactory(egl.getEglBaseContext(),true,true)).setVideoDecoderFactory(new DefaultVideoDecoderFactory(egl.getEglBaseContext())).createPeerConnectionFactory();
             PeerConnection.IceServer turn=PeerConnection.IceServer.builder(args.getString("pair_turn")).setUsername("ci").setPassword(args.getString("pair_turn_password")).createIceServer();
             PeerConnection.RTCConfiguration config=new PeerConnection.RTCConfiguration(Collections.singletonList(turn));config.sdpSemantics=PeerConnection.SdpSemantics.UNIFIED_PLAN;config.iceTransportsType=PeerConnection.IceTransportsType.RELAY;
             peer=factory.createPeerConnection(config,new PeerConnection.Observer(){
@@ -97,14 +158,14 @@ public class ReleasePairedCallTest {
             capture=Executors.newSingleThreadScheduledExecutor();capture.scheduleAtFixedRate(()->{JavaI420Buffer buffer=JavaI420Buffer.allocate(160,120);for(int n=0;n<buffer.getDataY().capacity();n++)buffer.getDataY().put(n,(byte)160);for(int n=0;n<buffer.getDataU().capacity();n++)buffer.getDataU().put(n,(byte)128);for(int n=0;n<buffer.getDataV().capacity();n++)buffer.getDataV().put(n,(byte)128);VideoFrame frame=new VideoFrame(buffer,0,System.nanoTime());videoSource.getCapturerObserver().onFrameCaptured(frame);frame.release();},0,100,TimeUnit.MILLISECONDS);
             if(caller)channel(peer.createDataChannel("ci",new DataChannel.Init()));
             ContextCompat.registerReceiver(context,receiver,new IntentFilter(action),ContextCompat.RECEIVER_EXPORTED);registered=true;event("ready",new JSONObject().put("protocol_version",2));
-            if(caller){assertTrue(go.await(30,TimeUnit.SECONDS));instrumentation.runOnMainSync(()->peer.createOffer(description("offer"),new MediaConstraints()));}
+            if(caller){assertTrue(go.await(60,TimeUnit.SECONDS));instrumentation.runOnMainSync(()->peer.createOffer(description("offer"),new MediaConstraints()));}
             long deadline=SystemClock.elapsedRealtime()+70000;
             while((!connected.get()||!pong.get()||frames.get()<3)&&error.get()==null&&SystemClock.elapsedRealtime()<deadline)SystemClock.sleep(100);
-            if(error.get()!=null)throw new AssertionError(error.get());assertTrue("Peer did not connect",connected.get());assertTrue("No data acknowledgement",pong.get());assertTrue("No decoded remote video",frames.get()>=3);event("media");
+            if(error.get()!=null)throw new AssertionError(error.get());assertTrue("Peer did not connect",connected.get());assertTrue("No data acknowledgement",pong.get());assertTrue("No decoded remote video",frames.get()>=3);long audioBeforeTransition=awaitInboundAudio(0);event("media");
             assertTrue("Host did not finish network/PiP/lock phase",finish.await(100,TimeUnit.SECONDS));
             if(error.get()!=null)throw new AssertionError(error.get());assertTrue("Media not reconnected after transition",connected.get());assertTrue("Media did not continue after ICE restart",restartFrames.get()>=0&&frames.get()>restartFrames.get()+3);
-            CountDownLatch stats=new CountDownLatch(1);AtomicLong receivedAudio=new AtomicLong();peer.getStats(report->{for(RTCStats stat:report.getStatsMap().values()){Map<String,Object> m=stat.getMembers();if("inbound-rtp".equals(stat.getType())&&"audio".equals(String.valueOf(m.get("kind")))){Object n=m.get("packetsReceived");if(n instanceof Number)receivedAudio.addAndGet(((Number)n).longValue());}}stats.countDown();});assertTrue(stats.await(10,TimeUnit.SECONDS));assertTrue("No inbound audio packets",receivedAudio.get()>0);
-            event("done",new JSONObject().put("video_frames",frames.get()).put("audio_packets",receivedAudio.get()));
+            long receivedAudio=awaitInboundAudio(audioBeforeTransition);
+            event("done",new JSONObject().put("video_frames",frames.get()).put("audio_packets",receivedAudio));
             // done acknowledges verified media, not permission to close this peer.
             // The other device may still be collecting stats/asserting connected.
             // Keep media alive until the host has received BOTH acknowledgements.
@@ -115,6 +176,7 @@ public class ReleasePairedCallTest {
             if(remoteVideo!=null&&renderer!=null)remoteVideo.removeSink(renderer);if(data!=null){data.unregisterObserver();data.close();data.dispose();}if(peer!=null){peer.close();peer.dispose();}
             instrumentation.runOnMainSync(()->{if(renderer!=null)renderer.release();if(activity!=null)activity.finish();});
             if(video!=null)video.dispose();if(videoSource!=null)videoSource.dispose();if(audio!=null)audio.dispose();if(audioSource!=null)audioSource.dispose();if(factory!=null)factory.dispose();if(adm!=null)adm.release();if(egl!=null)egl.release();
+            if(audioManager!=null)instrumentation.runOnMainSync(()->audioManager.setMode(originalAudioMode));
         }
     }
 }

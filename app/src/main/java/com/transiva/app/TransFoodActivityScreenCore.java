@@ -77,7 +77,7 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
     private JSONObject detailStoryResponse;
     private int detailStoryRid;
     private long detailStoryAnchor;
-    private final java.util.Set<Integer> storyLookups = new java.util.HashSet<>();
+    private int pendingProfileRid,profileStoryGeneration;
     private int menuLoadGeneration;
     private final Runnable storyExpiryTick = new Runnable(){public void run(){
         updateMerchantAvatars(); mainHandler.postDelayed(this, 5000);
@@ -186,7 +186,7 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
         scroll.refresh = () -> {
             kabarNextFetch=0;
             refreshMerchantStories(scroll::finishRefresh);
-            loadRestaurants(false);
+            catalogRefreshEpoch=System.currentTimeMillis();loadRestaurants(false);
             if("favorites".equals(homeMode))loadFavoriteIds();
         };
         root = new LinearLayout(this);
@@ -203,6 +203,8 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
     }
 
     protected void showRestaurantList() {
+        ++menuLoadGeneration;featureRuntime.cancel("food-menus");featureRuntime.cancel("food-social");featureRuntime.cancel("food-profile-story");++profileStoryGeneration;pendingProfileRid=0;
+        renderedMenuRid=0;
         setLoading(false);
         currentScreen = 0;
         if(foodScroll!=null)foodScroll.setFillViewport(false);
@@ -268,14 +270,14 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
         foodStoryRail=new FoodStoryRail(this,()->{
             homeMode="favorites".equals(homeMode)?"nearby":"favorites";
             if(foodScroll!=null)savedHomeScroll=foodScroll.getScrollY();
-            showRestaurantList();
+            showRestaurantList();loadRestaurants(true);loadMenuSearch(homeSearchQuery);
             if("favorites".equals(homeMode))loadFavoriteIds();
         });
         addWithMargin(foodStoryRail,0,0,0,dp(8));
         updateFoodStoryRail();
     }
     private void updateFoodStoryRail(){
-        if(foodStoryRail!=null && currentScreen==0)foodStoryRail.update(kabarFeed,storyNow(),"favorites".equals(homeMode));
+        if(foodStoryRail!=null && currentScreen==0)foodStoryRail.update(kabarFeed,storyNow(),"favorites".equals(homeMode),storyHasMore,kabarFetching,this::loadMoreStories);
     }
 
     protected void addQuickMenu(LinearLayout row, String label, String drawableName, String mode) {
@@ -299,7 +301,7 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
         item.setOnClickListener(v -> {
             homeMode = mode;
             if (foodScroll != null) savedHomeScroll = foodScroll.getScrollY();
-            showRestaurantList();
+            showRestaurantList();loadRestaurants(true);if("favorites".equals(mode))loadFavoriteIds();loadMenuSearch(homeSearchQuery);
         });
         row.addView(item, new LinearLayout.LayoutParams(0, -2, 1));
     }
@@ -310,7 +312,7 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
         TextView title = text("favorites".equals(homeMode)?"Favoritmu":"Pilihan di sekitarmu", 16, "#123B6B", true);
         row.addView(title, new LinearLayout.LayoutParams(0, -2, 1));
         TextView tag = text("favorites".equals(homeMode)?"Semua toko":"", 12, "#087BFF", true);
-        tag.setOnClickListener(v->{homeMode="nearby";showRestaurantList();});
+        tag.setOnClickListener(v->{homeMode="nearby";showRestaurantList();loadRestaurants(true);loadMenuSearch(homeSearchQuery);});
         row.addView(tag);
         addWithMargin(row, 0, 0, 0, dp(8));
     }
@@ -332,8 +334,10 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
             @Override public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
             @Override public void onTextChanged(CharSequence s, int start, int before, int count) {
                 homeSearchQuery = s == null ? "" : s.toString();
+                ++menuSearchGeneration;featureRuntime.cancel("food-search");menuIndexLoading=false;lastMenuIndexAt=0;menuSearchOffset=0;menuSearchHasMore=false;
                 if (homeSearchRunnable != null) mainHandler.removeCallbacks(homeSearchRunnable);
-                homeSearchRunnable = () -> { renderHomeResults(); loadMenuSearch(homeSearchQuery); };
+                ++restaurantGeneration;featureRuntime.cancel("food-merchants");restaurantsLoading=false;
+                homeSearchRunnable = () -> { renderHomeResults(); loadMenuSearch(homeSearchQuery); loadRestaurants(false); };
                 mainHandler.postDelayed(homeSearchRunnable, 280);
             }
             @Override public void afterTextChanged(Editable e) {}
@@ -345,9 +349,11 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
 
     protected void renderHomeResults() {
         if (homeResultsBox == null || currentScreen != 0) return;
-        homeResultsBox.removeAllViews();
+        LinearLayout liveResults=homeResultsBox;renderLiveHome=liveResults;
+        homeResultsBox=new LinearLayout(this);homeResultsBox.setOrientation(LinearLayout.VERTICAL);
+        try {
 
-        if (restaurants.isEmpty()) {
+        if (restaurants.isEmpty() && homeSearchQuery.trim().isEmpty() && !"favorites".equals(homeMode)) {
             String msg = !restaurantsLoadFinished ? "Menyiapkan merchant di sekitarmu..."
                     : !foodLoadError.isEmpty() ? "Koneksi terganggu. Merchant belum berhasil dimuat."
                     : "Belum ada merchant yang menerima pesanan di area ini.";
@@ -363,7 +369,7 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
         }
 
         String q = homeSearchQuery == null ? "" : homeSearchQuery.trim().toLowerCase(Locale.ROOT);
-        if("favorites".equals(homeMode)) { renderFavorites(q); return; }
+        if("favorites".equals(homeMode)) { renderFavorites(q);addHomePageControls(q);return; }
 
         List<MenuSearchItem> menuHits = new ArrayList<>();
         if (q.length() > 0) {
@@ -398,10 +404,10 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
             addWithMarginTo(homeResultsBox, menuTitle, 0, 0, 0, dp(10));
 
             if (menuHits.isEmpty()) {
-                String msg = allMenuSearchItems.isEmpty() ? "Index menu sedang dimuat, coba lanjut ketik atau tunggu sebentar." : "Menu tidak ditemukan untuk: " + homeSearchQuery;
+                String msg = menuIndexLoading ? "Mencari menu…" : "Menu belum ditemukan. Coba kata lain atau muat lagi.";
                 addStatusTo(homeResultsBox, msg);
             } else {
-                int limit = Math.min(menuHits.size(), 30);
+                int limit = menuHits.size();
                 for (int i = 0; i < limit; i++) addMenuSearchCard(homeResultsBox, menuHits.get(i));
                 if (menuHits.size() > limit) addStatusTo(homeResultsBox, "+" + (menuHits.size() - limit) + " menu lain. Ketik lebih spesifik agar hasil makin tepat.");
             }
@@ -426,6 +432,25 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
             addStatusTo(homeResultsBox, q.isEmpty() ? "Belum ada merchant untuk filter ini." : "Merchant tidak ditemukan untuk: " + homeSearchQuery);
         } else {
             addRestaurantGrid(homeResultsBox, restoHits);
+        }
+        addHomePageControls(q);
+        } finally {
+            LinearLayout plan=homeResultsBox;homeResultsBox=liveResults;
+            IncrementalLinearRenderer.apply(liveResults,plan,0);renderLiveHome=null;rebindRetainedViews();
+        }
+    }
+
+    private void addHomePageControls(String q){
+        if(restaurantHasMore || !foodLoadError.isEmpty()) {
+            TextView more=text(restaurantsLoading?"Memuat merchant…":!foodLoadError.isEmpty()?"↻ Coba lagi memuat merchant":"Lihat merchant berikutnya",13,"#087BFF",true);
+            more.setPadding(dp(12),dp(14),dp(12),dp(14));more.setGravity(Gravity.CENTER);
+            more.setOnClickListener(v->loadRestaurantPage(restaurantRequestContext().equals(acceptedRestaurantContext)?restaurantOffset:0));more.setEnabled(!restaurantsLoading);
+            homeResultsBox.addView(more);
+        }
+        if((!q.isEmpty()||"favorites".equals(homeMode))&&menuSearchHasMore){
+            TextView more=text(menuIndexLoading?"Memuat menu…":"Lihat menu berikutnya",13,"#087BFF",true);
+            more.setPadding(dp(12),dp(14),dp(12),dp(14));more.setOnClickListener(v->loadMenuSearchPage(homeSearchQuery,menuSearchOffset));more.setEnabled(!menuIndexLoading);
+            homeResultsBox.addView(more);
         }
     }
 
@@ -460,6 +485,11 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
 
     protected void addRestaurantGrid(LinearLayout parent, List<JSONObject> data) {
         for (int i = 0; i < data.size(); i += 2) {
+            String rowKey="merchant-row:"+data.get(i).optInt("id");
+            String rowValue=data.get(i).toString()+(i+1<data.size()?data.get(i+1).toString():"");
+            if(IncrementalLinearRenderer.unchanged(renderLiveHome,rowKey,rowValue)){
+                View placeholder=new View(this);IncrementalLinearRenderer.mark(placeholder,rowKey,rowValue);parent.addView(placeholder,new LinearLayout.LayoutParams(-1,-2));continue;
+            }
             LinearLayout row = new LinearLayout(this);
             row.setOrientation(LinearLayout.HORIZONTAL);
             row.setGravity(Gravity.TOP);
@@ -481,11 +511,16 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
                 row.addView(empty, emptyLp);
             }
 
+            IncrementalLinearRenderer.mark(row,rowKey,rowValue);
             parent.addView(row, new LinearLayout.LayoutParams(-1, -2));
         }
     }
 
     protected void addMenuSearchCard(LinearLayout parent, MenuSearchItem item) {
+        String key="search:"+item.menuId,fingerprint=item.menuName+item.price+item.image+item.restaurant.toString()+item.discountPercent;
+        if(IncrementalLinearRenderer.unchanged(renderLiveHome,key,fingerprint)){
+            View placeholder=new View(this);IncrementalLinearRenderer.mark(placeholder,key,fingerprint);addWithMarginTo(parent,placeholder,0,0,0,dp(10));return;
+        }
         LinearLayout card = card();
         card.setOrientation(LinearLayout.HORIZONTAL);
         card.setPadding(dp(10), dp(10), dp(10), dp(10));
@@ -521,6 +556,7 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
         open.setPadding(0, dp(5), 0, 0);
         body.addView(open);
 
+        IncrementalLinearRenderer.mark(card,"search:"+item.menuId,item.menuName+item.price+item.image+item.restaurant.toString()+item.discountPercent);
         addWithMarginTo(parent, card, 0, 0, 0, dp(10));
     }
 
@@ -650,7 +686,13 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
         return card;
     }
 
+    private LinearLayout renderLiveRoot,renderLiveHome;
+    private int renderedMenuRid;
     protected void showMenuPage() {
+        int rid=activeRestaurant==null?0:activeRestaurant.optInt("id");
+        if(currentScreen==1&&renderedMenuRid==rid&&root.getChildCount()>0){renderMenus();return;}
+        if(renderedMenuRid!=rid){menus.clear();menusLoadFinished=false;}
+        renderedMenuRid=rid;
         currentScreen = 1;
         clearStickyCartBar();
         root.removeAllViews();
@@ -660,8 +702,12 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
     }
 
     protected void renderMenus() {
-        root.removeViews(1, Math.max(0, root.getChildCount() - 1));
-
+        LinearLayout liveRoot=root;renderLiveRoot=liveRoot;
+        root=new LinearLayout(this);root.setOrientation(LinearLayout.VERTICAL);
+        try {
+        if(IncrementalLinearRenderer.unchanged(renderLiveRoot,"merchant-header",activeRestaurant.toString())){
+            View placeholder=new View(this);IncrementalLinearRenderer.mark(placeholder,"merchant-header",activeRestaurant.toString());addWithMargin(placeholder,0,0,0,dp(12));
+        }else{
         LinearLayout resto = card();
         resto.setPadding(dp(16), dp(14), dp(16), dp(14));
 
@@ -715,7 +761,9 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
             hours.setPadding(0, dp(8), 0, 0);
             resto.addView(hours);
         }
+        IncrementalLinearRenderer.mark(resto,"merchant-header",activeRestaurant.toString());
         addWithMargin(resto, 0, 0, 0, dp(12));
+        }
         addWithMargin(text("Menu pilihan", 17, "#123B6B", true), 0, 0, 0, dp(6));
         if (menuSearchQuery != null && !menuSearchQuery.trim().isEmpty()) {
             TextView fromSearch=text("Hasil untuk “"+menuSearchQuery+"”",12,"#64748B",false);
@@ -733,12 +781,34 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
             }
         }
 
-        if (shown == 0) addStatus("Menu tidak ditemukan untuk: " + menuSearchQuery);
+        if (shown == 0) addStatus(!menusLoadFinished?"Memuat menu…":menuSearchQuery.isEmpty()?"Belum ada menu makanan yang tersedia dari merchant ini.":"Menu tidak ditemukan untuk: " + menuSearchQuery);
 
+        } finally {
+            LinearLayout plan=root;root=liveRoot;
+            IncrementalLinearRenderer.apply(liveRoot,plan,Math.min(1,liveRoot.getChildCount()));renderLiveRoot=null;rebindRetainedViews();
+        }
         buildCartBar();
     }
 
+    private void rebindRetainedViews(){
+        menuQuantityViews.clear();merchantAvatars.clear();collectRetainedViews(root);updateMerchantAvatars();
+    }
+    private void collectRetainedViews(View view){
+        Object tag=view.getTag();
+        if(tag instanceof String&&((String)tag).startsWith("qty:"))menuQuantityViews.put(Integer.parseInt(((String)tag).substring(4)),(TextView)view);
+        if(tag instanceof String&&((String)tag).startsWith("avatar:")){
+            int rid=Integer.parseInt(((String)tag).substring(7));
+            java.util.List<KabarMitraUi.Avatar> list=merchantAvatars.get(rid);
+            if(list==null){list=new ArrayList<>();merchantAvatars.put(rid,list);}list.add((KabarMitraUi.Avatar)view);
+        }
+        if(view instanceof android.view.ViewGroup){android.view.ViewGroup group=(android.view.ViewGroup)view;for(int i=0;i<group.getChildCount();i++)collectRetainedViews(group.getChildAt(i));}
+    }
+
     protected void addMenuCard(JSONObject m) {
+        String key="menu:"+m.optInt("id"),fingerprint=m.toString()+":"+getQty(m.optInt("id"));
+        if(IncrementalLinearRenderer.unchanged(renderLiveRoot,key,fingerprint)){
+            View placeholder=new View(this);IncrementalLinearRenderer.mark(placeholder,key,fingerprint);addWithMargin(placeholder,0,0,0,dp(12));return;
+        }
         boolean active = m.optInt("is_active", 1) == 1;
         boolean trackStock = m.optInt("track_stock", 0) == 1;
         int stock = m.optInt("stock", -1);
@@ -835,6 +905,7 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
             Button minus = tinyButton("−");
             Button plus = tinyButton("+");
             TextView value = text(String.valueOf(getQty(m.optInt("id", 0))), 15, "#0F172A", true);
+            value.setTag("qty:"+m.optInt("id"));
             menuQuantityViews.put(m.optInt("id", 0), value);
             value.setGravity(Gravity.CENTER);
             value.setIncludeFontPadding(false);
@@ -860,6 +931,7 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
                 }
             });
         }
+        IncrementalLinearRenderer.mark(card,"menu:"+m.optInt("id"),m.toString()+":"+getQty(m.optInt("id")));
         addWithMargin(card, 0, 0, 0, dp(12));
     }
 
@@ -1242,54 +1314,73 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
     private boolean menuIndexLoading = false;
     private String menuIndexSignature = "";
     private long lastMenuIndexAt = 0L;
+    private String acceptedRestaurantContext="",inFlightRestaurantContext="";
+    private String restaurantRequestContext(){return homeMode+":"+homeSearchQuery.trim();}
+    private long catalogRefreshEpoch;
+    private int restaurantOffset,restaurantGeneration;
+    private boolean restaurantHasMore;
     protected void loadRestaurants() { loadRestaurants(true); }
     protected void loadRestaurants(boolean showLoading) {
-        if (restaurantsLoading) return;
-        restaurantsLoading = true;
-        if (showLoading) { restaurantsLoadFinished = false; foodLoadError = ""; renderHomeResults(); }
-        featureRuntime.execute(() -> {
-            try {
-                JSONObject res = getJson(BASE_URL + "server/get_food_restaurants.php?user_id=" + Uri.encode(String.valueOf(userId)) + "&v=" + System.currentTimeMillis());
-                JSONArray arr = res.optJSONArray("restaurants");
-                if (res.optBoolean("success", false) && arr != null) {
-                    final String signature = arr.toString();
-                    final List<JSONObject> incoming = new ArrayList<>();
-                    for (int i = 0; i < arr.length(); i++) incoming.add(arr.getJSONObject(i));
-                    featureRuntime.post(mainHandler, () -> {
-                        restaurantsLoading = false;
-                        restaurantsLoadFinished = true;
-                        foodLoadError = "";
-                        if (!signature.equals(restaurantPayloadSignature)) {
-                            restaurantPayloadSignature = signature;
-                            restaurants.clear();
-                            restaurants.addAll(incoming);
-                            if (currentScreen == 0 && activeRestaurant == null) {
-                                if (showLoading) showRestaurantList(); else renderHomeResults();
-                            }
-                            loadAllMenuIndex();
-                        } else if (showLoading && currentScreen == 0 && activeRestaurant == null) {
-                            renderHomeResults();
-                        }
-                    });
-                } else throw new Exception(firstNonEmpty(res.optString("message"), "Gagal memuat merchant"));
-            } catch (Exception e) {
-                restaurantsLoadFinished = true;
-                featureRuntime.post(mainHandler, () -> { restaurantsLoading = false; foodLoadError = "network"; if (currentScreen == 0 && activeRestaurant == null) renderHomeResults(); });
-            }
-        });
+        if(restaurantsLoading){
+            if(inFlightRestaurantContext.equals(restaurantRequestContext()))return;
+            ++restaurantGeneration;featureRuntime.cancel("food-merchants");restaurantsLoading=false;
+        }
+        // Refresh the loaded prefix; unchanged cards and later loaded pages stay visible.
+        loadRestaurantPage(0);
+    }
+    private void loadRestaurantPage(int offset) {
+        if(restaurantsLoading)return;
+        restaurantsLoading=true;foodLoadError="";
+        final int generation=++restaurantGeneration;
+        final String context=restaurantRequestContext();inFlightRestaurantContext=context;
+        final boolean replace=!context.equals(acceptedRestaurantContext);
+        final int requestedLimit=offset==0&&!replace?Math.max(20,Math.min(50,restaurantOffset)):20;
+        final String query=homeSearchQuery.trim(),sort=homeMode;final long refresh=catalogRefreshEpoch;
+        if(currentScreen==0)renderHomeResults();
+        featureRuntime.executeLatest("food-merchants",CustomerLoadingCoordinator.CONTENT,()->{
+            try{
+                JSONObject response=getJson(BASE_URL+"server/get_food_restaurants.php?user_id="+userId+"&limit="+requestedLimit+"&offset="+offset+"&q="+Uri.encode(query)+"&sort="+Uri.encode(sort)+"&refresh="+refresh);
+                JSONArray rows=response.optJSONArray("restaurants");
+                if(!response.optBoolean("success")||rows==null)throw new Exception("Gagal memuat merchant");
+                featureRuntime.post(mainHandler,()->{
+                    if(generation!=restaurantGeneration||!context.equals(restaurantRequestContext()))return;
+                    restaurantsLoading=false;restaurantsLoadFinished=true;foodLoadError="";
+                    // Merge by id; a refresh of the prefix never discards already loaded later pages.
+                    java.util.LinkedHashMap<Integer,JSONObject> merged=new java.util.LinkedHashMap<>();
+                    if(offset==0)for(int i=0;i<rows.length();i++){JSONObject row=rows.optJSONObject(i);if(row!=null)merged.put(row.optInt("id"),row);}
+                    if(offset>0)for(JSONObject row:restaurants)merged.put(row.optInt("id"),row);
+                    else if(!replace&&response.optBoolean("has_more"))for(int i=Math.min(requestedLimit,restaurants.size());i<restaurants.size();i++){JSONObject row=restaurants.get(i);if(!merged.containsKey(row.optInt("id")))merged.put(row.optInt("id"),row);}
+                    if(offset>0)for(int i=0;i<rows.length();i++){JSONObject row=rows.optJSONObject(i);if(row!=null)merged.put(row.optInt("id"),row);}
+                    acceptedRestaurantContext=context;restaurants.clear();restaurants.addAll(merged.values());
+                    if(replace||offset>0||restaurantOffset<=requestedLimit||!response.optBoolean("has_more")){restaurantOffset=response.optInt("next_offset",offset+rows.length());restaurantHasMore=response.optBoolean("has_more");}
+                    if(currentScreen==0&&activeRestaurant==null)renderHomeResults();
+                    if(lastMenuIndexAt==0&&!menuIndexLoading)loadAllMenuIndex();
+                    refreshMerchantStories();
+                });
+            }catch(Exception error){featureRuntime.post(mainHandler,()->{
+                if(generation!=restaurantGeneration||!context.equals(restaurantRequestContext()))return;
+                restaurantsLoading=false;restaurantsLoadFinished=true;foodLoadError="network";
+                if(currentScreen==0&&activeRestaurant==null)renderHomeResults();
+            });}
+        },()->featureRuntime.post(mainHandler,()->{restaurantsLoading=false;foodLoadError="busy";restaurantsLoadFinished=true;if(currentScreen==0)renderHomeResults();}));
     }
 
     private int menuSearchGeneration = 0;
-    private String lastMenuQuery = "";
-    protected void loadAllMenuIndex() { loadMenuSearch(""); }
-    private void loadMenuSearch(String query) {
+    private String lastMenuQuery = "",lastMenuMode="";
+    private int menuSearchOffset;
+    private boolean menuSearchHasMore;
+    protected void loadAllMenuIndex() { loadMenuSearch(homeSearchQuery); }
+    private void loadMenuSearch(String query) { loadMenuSearchPage(query,0); }
+    private void loadMenuSearchPage(String query,int offset) {
         final String requested = query == null ? "" : query.trim();
-        final int generation = ++menuSearchGeneration;
-        if (requested.equals(lastMenuQuery) && android.os.SystemClock.elapsedRealtime()-lastMenuIndexAt < 30000L) return;
-        menuIndexLoading = true;
-        featureRuntime.execute(() -> {
+        final String mode=homeMode;
+        if(offset>0&&menuIndexLoading)return;
+        if (offset==0 && requested.equals(lastMenuQuery) && mode.equals(lastMenuMode) && android.os.SystemClock.elapsedRealtime()-lastMenuIndexAt < 30000L) return;
+        final int generation=++menuSearchGeneration;
+        menuIndexLoading = true;menuSearchOffset=offset;if(currentScreen==0)renderHomeResults();
+        featureRuntime.executeLatest("food-search",CustomerLoadingCoordinator.SEARCH,() -> {
             try {
-                JSONObject response = getJson(BASE_URL + "server/search_food_menus.php?user_id=" + userId + "&q=" + Uri.encode(requested) + "&limit=40");
+                JSONObject response = getJson(BASE_URL + "server/search_food_menus.php?user_id=" + userId + "&q=" + Uri.encode(requested) + "&limit=30&offset="+offset+"&favorites="+("favorites".equals(mode)?1:0));
                 if (!response.optBoolean("success", false)) throw new Exception("Search unavailable");
                 JSONArray rows = response.optJSONArray("menus");
                 List<MenuSearchItem> fresh = new ArrayList<>();
@@ -1304,38 +1395,37 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
                     item.discountPercent=m.optDouble("discount_percent");item.discountActive=m.optInt("discount_active")==1;
                     item.restaurantRating=m.optDouble("restaurant_rating");item.restaurantDistanceKm=15d;
                     item.active=true;item.stock=-1;
-                    for(JSONObject r:restaurants)if(r.optInt("id")==item.restaurantId){item.restaurant=r;item.restaurantDistanceKm=r.optDouble("distance_km",15d);break;}
+
                     if(item.restaurant==null){item.restaurant=new JSONObject();item.restaurant.put("id",item.restaurantId);item.restaurant.put("name",item.restaurantName);}
                     fresh.add(item);
                 }
                 featureRuntime.post(mainHandler,()->{
-                    if(generation!=menuSearchGeneration)return;
-                    menuIndexLoading=false;lastMenuQuery=requested;lastMenuIndexAt=android.os.SystemClock.elapsedRealtime();
-                    String signature=response.optString("signature",fresh.toString());
+                    if(generation!=menuSearchGeneration||!requested.equals(homeSearchQuery.trim())||!mode.equals(homeMode))return;
+                    menuIndexLoading=false;lastMenuMode=mode;lastMenuQuery=requested;lastMenuIndexAt=android.os.SystemClock.elapsedRealtime();
+                    for(MenuSearchItem item:fresh){JSONObject store=findRestaurantById(item.restaurantId);if(store!=null){item.restaurant=store;item.restaurantDistanceKm=store.optDouble("distance_km",15d);}}
+                    menuSearchOffset=response.optInt("next_offset",offset+fresh.size());menuSearchHasMore=response.optBoolean("has_more");
+                    String signature=mode+":"+requested+":"+offset+":"+response.optString("signature",rows==null?"":rows.toString());
                     if(!signature.equals(menuIndexSignature)){
-                        menuIndexSignature=signature;allMenuSearchItems.clear();allMenuSearchItems.addAll(fresh);
+                        menuIndexSignature=signature;if(offset==0)allMenuSearchItems.clear();
+                        java.util.Set<Integer> ids=new java.util.HashSet<>();for(MenuSearchItem item:allMenuSearchItems)ids.add(item.menuId);
+                        for(MenuSearchItem item:fresh)if(ids.add(item.menuId))allMenuSearchItems.add(item);
                         if(currentScreen==0&&activeRestaurant==null)renderHomeResults();
                     }
                 });
-            }catch(Exception ignored){featureRuntime.post(mainHandler,()->{if(generation==menuSearchGeneration)menuIndexLoading=false;});}
-        });
+            }catch(Exception ignored){featureRuntime.post(mainHandler,()->{if(generation==menuSearchGeneration){menuIndexLoading=false;lastMenuIndexAt=0;menuSearchHasMore=true;if(currentScreen==0)renderHomeResults();}});}
+        },()->featureRuntime.post(mainHandler,()->{if(generation==menuSearchGeneration){menuIndexLoading=false;lastMenuIndexAt=0;menuSearchHasMore=true;if(currentScreen==0)renderHomeResults();}}));
     }
 
     protected void loadMenus(int restaurantId) { loadMenus(restaurantId, true); }
     protected void loadMenus(int restaurantId, boolean showLoading) {
         final int generation = ++menuLoadGeneration;
         if (showLoading) { setLoading(true); menusLoadFinished = false; }
-        refreshMerchantStories();
-        refreshProfileStories(restaurantId);
-        featureRuntime.execute(() -> {
+        featureRuntime.executeLatest("food-menus",CustomerLoadingCoordinator.CONTENT,() -> {
             try {
-                JSONObject response = getJson(BASE_URL + "server/get_food_menus.php?restaurant_id=" + restaurantId + "&v=" + System.currentTimeMillis());
+                JSONObject response = getJson(BASE_URL + "server/get_food_menus.php?restaurant_id=" + restaurantId);
                 JSONArray rows = response.optJSONArray("menus");
                 if (!response.optBoolean("success") || rows == null)
                     throw new Exception(firstNonEmpty(response.optString("message"), "Gagal memuat menu"));
-                JSONObject social = null;
-                try { social = getJson(BASE_URL + "server/customer_food_social.php?restaurant_id=" + restaurantId); } catch (Exception ignored) {}
-                final JSONObject socialResult = social;
                 featureRuntime.post(mainHandler, () -> {
                     if (generation != menuLoadGeneration || activeRestaurant == null
                             || activeRestaurant.optInt("id") != restaurantId || currentScreen != 1) {
@@ -1354,7 +1444,6 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
                     }
                     menus.clear();
                     for (int i = 0; i < rows.length(); i++) { JSONObject row = rows.optJSONObject(i); if (row != null) menus.add(row); }
-                    if (socialResult != null) mergeFoodSocial(socialResult);
                     menusLoadFinished = true;
                     if (showLoading) { setLoading(false); showMenuPage(); }
                     else if (!before.equals(menuSnapshot())) {
@@ -1362,6 +1451,7 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
                         renderMenus();
                         if (foodScroll != null) foodScroll.post(() -> foodScroll.scrollTo(0, scrollY));
                     }
+                    loadMenuSocial(restaurantId,generation);refreshMerchantStories();refreshProfileStories(restaurantId);
                 });
             } catch (Exception error) {
                 featureRuntime.post(mainHandler, () -> {
@@ -1370,7 +1460,19 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
                     if (showLoading) { setLoading(false); showMenuPage(); addStatus("Gagal memuat menu"); showInfo("Gagal", error.getMessage()); }
                 });
             }
-        });
+        },()->featureRuntime.post(mainHandler,()->{if(generation==menuLoadGeneration){setLoading(false);menusLoadFinished=true;}}));
+    }
+
+    private void loadMenuSocial(int rid,int generation){
+        featureRuntime.executeLatest("food-social",CustomerLoadingCoordinator.OPTIONAL,()->{
+            try{
+                JSONObject social=getJson(BASE_URL+"server/customer_food_social.php?restaurant_id="+rid);
+                featureRuntime.post(mainHandler,()->{
+                    if(generation!=menuLoadGeneration||currentScreen!=1||activeRestaurant==null||activeRestaurant.optInt("id")!=rid)return;
+                    String before=menuSnapshot();mergeFoodSocial(social);if(!before.equals(menuSnapshot()))renderMenus();
+                });
+            }catch(Exception ignored){}
+        },null);
     }
 
     private String menuSnapshot() {
@@ -1397,7 +1499,7 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
                 kabarFeed != null && KabarMitraUi.hasStory(kabarFeed.optJSONArray("stories"), rid, storyNow()));
         java.util.List<KabarMitraUi.Avatar> list = merchantAvatars.get(rid);
         if (list == null) { list = new ArrayList<>(); merchantAvatars.put(rid, list); }
-        list.add(avatar); updateMerchantAvatars(); return avatar;
+        avatar.setTag("avatar:"+rid);list.add(avatar); updateMerchantAvatars(); return avatar;
     }
     private void updateMerchantAvatars() {
         JSONArray feedStories = kabarFeed == null ? null : kabarFeed.optJSONArray("stories");
@@ -1425,32 +1527,52 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
         }
     }
     private void refreshProfileStories(int rid) {
-        if (storyLookups.contains(rid) || (rid == detailStoryRid && detailStoryResponse != null && android.os.SystemClock.elapsedRealtime()-detailStoryAnchor < 30000)) return;
-        storyLookups.add(rid);
-        java.util.concurrent.Future<?> task = featureRuntime.execute(() -> {
-            try {
-                JSONObject response = getJson(BASE_URL + "server/customer_kabar_mitra.php?restaurant_id=" + rid);
-                featureRuntime.post(mainHandler, () -> {
-                    storyLookups.remove(rid);
-                    if (activeRestaurant != null && activeRestaurant.optInt("id")==rid && response.optBoolean("success") && response.has("stories")) {
+        if(pendingProfileRid==rid||(rid==detailStoryRid&&detailStoryResponse!=null&&android.os.SystemClock.elapsedRealtime()-detailStoryAnchor<30000))return;
+        pendingProfileRid=rid;final int generation=++profileStoryGeneration;
+        Runnable failed=()->featureRuntime.post(mainHandler,()->{if(generation==profileStoryGeneration)pendingProfileRid=0;});
+        featureRuntime.executeLatest("food-profile-story",CustomerLoadingCoordinator.OPTIONAL,()->{
+            try{
+                JSONObject response=getJson(BASE_URL+"server/customer_kabar_mitra.php?restaurant_id="+rid);
+                featureRuntime.post(mainHandler,()->{
+                    if(generation!=profileStoryGeneration)return;pendingProfileRid=0;
+                    if(activeRestaurant!=null&&activeRestaurant.optInt("id")==rid&&response.optBoolean("success")&&response.has("stories")){
                         detailStoryRid=rid;detailStoryResponse=response;detailStoryAnchor=android.os.SystemClock.elapsedRealtime();updateMerchantAvatars();
                     }
                 });
-            } catch (Exception ignored) { featureRuntime.post(mainHandler, () -> storyLookups.remove(rid)); }
-        });
-        if (task == null) storyLookups.remove(rid);
+            }catch(Exception error){failed.run();}
+        },failed);
     }
+    private int storyOffset;
+    private boolean storyHasMore;
     private void refreshMerchantStories() { refreshMerchantStories(null); }
     private void refreshMerchantStories(Runnable complete) {
-        if (kabarFetching || android.os.SystemClock.elapsedRealtime() < kabarNextFetch) { if(complete!=null)complete.run();return; }
-        kabarFetching = true;
-        java.util.concurrent.Future<?> task = featureRuntime.execute(() -> {
-            try {
-                JSONObject response = getJson(BASE_URL + "server/customer_kabar_mitra.php");
-                featureRuntime.post(mainHandler, () -> { kabarFetching = false; kabarNextFetch = android.os.SystemClock.elapsedRealtime() + 30000; if(response.optBoolean("success")) acceptKabarFeed(response); if(complete!=null)complete.run(); });
-            } catch (Exception ignored) { featureRuntime.post(mainHandler, () -> { kabarFetching = false; kabarNextFetch = android.os.SystemClock.elapsedRealtime() + 30000; if(complete!=null)complete.run(); }); }
-        });
-        if (task == null) {kabarFetching = false;if(complete!=null)complete.run();}
+        if(kabarFetching || android.os.SystemClock.elapsedRealtime()<kabarNextFetch){if(complete!=null)complete.run();return;}
+        loadStoryPage(0,complete);
+    }
+    void openCompleteStory(int rid,View source){new KabarMitraUi(this).openStories(featureRuntime,mainHandler,rid,null,storyNow(),source);}
+    private void loadMoreStories(){if(storyHasMore&&!kabarFetching)loadStoryPage(storyOffset,null);}
+    private void loadStoryPage(int offset,Runnable complete){
+        kabarFetching=true;updateFoodStoryRail();
+        Runnable failed=()->featureRuntime.post(mainHandler,()->{kabarFetching=false;kabarNextFetch=android.os.SystemClock.elapsedRealtime()+5000;updateFoodStoryRail();if(complete!=null)complete.run();});
+        java.util.concurrent.Future<?> task=featureRuntime.executeLatest("food-story-feed",CustomerLoadingCoordinator.OPTIONAL,()->{
+            try{
+                JSONObject response=getJson(BASE_URL+"server/customer_kabar_mitra.php?limit=20&offset="+offset);
+                if(!response.optBoolean("success"))throw new Exception("Stories unavailable");
+                featureRuntime.post(mainHandler,()->{
+                    kabarFetching=false;
+                    if(offset>0&&kabarFeed!=null){
+                        for(String section:new String[]{"stories","followed","discover"}){
+                            JSONArray combined=new JSONArray();java.util.Set<Integer> ids=new java.util.HashSet<>();
+                            for(JSONArray rows:new JSONArray[]{kabarFeed.optJSONArray(section),response.optJSONArray(section)})if(rows!=null)for(int i=0;i<rows.length();i++){JSONObject row=rows.optJSONObject(i);if(row!=null&&ids.add(row.optInt("id")))combined.put(row);}
+                            try{response.put(section,combined);}catch(Exception ignored){}
+                        }
+                    }
+                    storyOffset=response.optInt("next_offset",offset+20);storyHasMore=response.optBoolean("has_more");
+                    acceptKabarFeed(response);if(complete!=null)complete.run();
+                });
+            }catch(Exception error){failed.run();}
+        },failed);
+        if(task==null){kabarFetching=false;if(complete!=null)complete.run();}
     }
 
     protected void calculateOngkirThenRender() {
@@ -1914,17 +2036,24 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
         if(currentScreen==3){mainHandler.removeCallbacks(dashboardAfterFood);mainHandler.postDelayed(dashboardAfterFood,Math.max(0,successDashboardAt-android.os.SystemClock.elapsedRealtime()));return;}
         mainHandler.removeCallbacks(storyExpiryTick);
         mainHandler.post(storyExpiryTick);
-        refreshMerchantStories();
+        if(restaurantsLoadFinished||activeRestaurant!=null)refreshMerchantStories();
         if (!DeliveryAddressGate.valid(this)) { return; }
         if(root==null){recreate();return;}
         if(editingCheckoutAddress){editingCheckoutAddress=false;if(currentScreen==2){clearStickyCartBar();root.removeViews(1,Math.max(0,root.getChildCount()-1));addStatus("Memperbarui alamat dan ongkir…");calculateOngkirThenRender();}}
-        if (currentScreen == 0 && root != null) showRestaurantList();
+        catalogRefreshEpoch=System.currentTimeMillis();
+        if(currentScreen==0&&root!=null){showRestaurantList();loadRestaurants(false);loadMenuSearch(homeSearchQuery);}
+        else if(currentScreen==1&&activeRestaurant!=null)loadMenus(activeRestaurant.optInt("id"),menus.isEmpty());
         mainHandler.removeCallbacks(realtimeFoodRefresh);
         mainHandler.postDelayed(realtimeFoodRefresh, CustomerPerformanceManager.pollingBackground(this, 30000L));
     }
 
     @Override
     protected void onPause() {
+        if(homeSearchRunnable!=null)mainHandler.removeCallbacks(homeSearchRunnable);
+        for(String key:new String[]{"food-merchants","food-search","food-menus","food-social","food-profile-story","food-story-feed"})featureRuntime.cancel(key);
+        ++restaurantGeneration;++menuSearchGeneration;++menuLoadGeneration;++profileStoryGeneration;
+        restaurantsLoading=false;menuIndexLoading=false;kabarFetching=false;pendingProfileRid=0;kabarNextFetch=0;
+        setLoading(false);
         mainHandler.removeCallbacks(dashboardAfterFood);
         mainHandler.removeCallbacks(realtimeFoodRefresh);
         mainHandler.removeCallbacks(storyExpiryTick);

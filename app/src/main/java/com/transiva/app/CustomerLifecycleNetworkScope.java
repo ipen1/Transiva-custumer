@@ -12,6 +12,9 @@ import android.os.Handler;
  * This does not alter business state or database order statuses.
  */
 public final class CustomerLifecycleNetworkScope {
+    private final CustomerTransportSession session = captureSession();
+    private static CustomerTransportSession captureSession(){android.app.Application app=TransivaCustomerApplication.appContext();return app==null?null:CustomerTransportSession.capture(app);}
+    private boolean acceptsSession(){android.app.Application app=TransivaCustomerApplication.appContext();return session==null||app==null||session.matches(app);}
     private final AtomicBoolean destroyed = new AtomicBoolean(false);
     private final Set<Future<?>> futures = java.util.Collections.newSetFromMap(new ConcurrentHashMap<>());
     private final Set<Thread> threads = java.util.Collections.newSetFromMap(new ConcurrentHashMap<>());
@@ -23,8 +26,10 @@ public final class CustomerLifecycleNetworkScope {
         Future<?> future = TransivaNetworkExecutor.execute(() -> {
             if (destroyed.get() || Thread.currentThread().isInterrupted()) return;
             try {
+                threads.add(Thread.currentThread());
                 task.run();
             } finally {
+                threads.remove(Thread.currentThread());
                 Future<?> f = holder[0];
                 if (f != null) futures.remove(f);
             }
@@ -58,7 +63,7 @@ public final class CustomerLifecycleNetworkScope {
     public boolean post(Handler handler, Runnable task) {
         if (handler == null || task == null || destroyed.get()) return false;
         return handler.post(() -> {
-            if (!destroyed.get()) task.run();
+            if (!destroyed.get() && acceptsSession()) task.run();
         });
     }
 
@@ -71,7 +76,7 @@ public final class CustomerLifecycleNetworkScope {
         }
         futures.clear();
         for (Thread t : threads) {
-            try { t.interrupt(); } catch (Exception ignored) {}
+            try { t.interrupt(); CustomerRequestCancellation.cancel(t); } catch (Exception ignored) {}
         }
         threads.clear();
     }

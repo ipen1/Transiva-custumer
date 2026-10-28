@@ -9,6 +9,7 @@ import java.util.concurrent.Future;
  */
 public final class CustomerFeatureRuntimeController {
     private final CustomerRealtimeCoordinator.Role role;
+    private final CustomerLoadingCoordinator loading = new CustomerLoadingCoordinator();
     private final CustomerLifecycleNetworkScope networkScope = new CustomerLifecycleNetworkScope();
 
     public CustomerFeatureRuntimeController(CustomerRealtimeCoordinator.Role role) {
@@ -17,18 +18,22 @@ public final class CustomerFeatureRuntimeController {
 
     public void onResume() { CustomerRealtimeCoordinator.enter(role); }
     public void onPause() { CustomerRealtimeCoordinator.leave(role); }
-    public Future<?> execute(Runnable task) { return networkScope.execute(task); }
-    public Future<?> execute(Runnable task,Runnable rejected) { return networkScope.execute(task,rejected); }
+    public Future<?> execute(Runnable task) { return loading.execute(null, CustomerLoadingCoordinator.CONTENT, task, null); }
+    public Future<?> execute(Runnable task,Runnable rejected) { return loading.execute(null, CustomerLoadingCoordinator.CONTENT, task, rejected); }
+    public Future<?> executeLatest(String key,int priority,Runnable task,Runnable rejected) { return loading.execute(key,priority,task,rejected); }
+    public void cancel(String key) { loading.cancel(key); }
     public Thread newThread(Runnable task) { return networkScope.newThread(task); }
     public Thread newThread(Runnable task, String name) { return networkScope.newThread(task, name); }
-    public boolean post(Handler handler, Runnable task) { return networkScope.post(handler, task); }
+    public boolean post(Handler handler, Runnable task) { return networkScope.post(handler, CustomerLoadingCoordinator.guardCurrent(task)); }
     public boolean postDelayed(Handler handler, Runnable task, long delayMs) {
         if (handler == null || task == null || networkScope.isDestroyed()) return false;
-        return handler.postDelayed(() -> { if (!networkScope.isDestroyed()) task.run(); }, Math.max(0L, delayMs));
+        Runnable guarded=CustomerLoadingCoordinator.guardCurrent(task);
+        return handler.postDelayed(() -> { if (!networkScope.isDestroyed()) guarded.run(); }, Math.max(0L, delayMs));
     }
     public boolean isDestroyed() { return networkScope.isDestroyed(); }
     public void destroy() {
         CustomerRealtimeCoordinator.leave(role);
+        loading.destroy();
         networkScope.destroy();
     }
 }

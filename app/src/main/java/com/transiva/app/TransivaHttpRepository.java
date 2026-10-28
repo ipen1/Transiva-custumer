@@ -30,7 +30,16 @@ public final class TransivaHttpRepository {
     }
     private static JSONObject measuredRead(Context context, String url, int timeoutMs, int retries) throws Exception {
         long started = SystemClock.elapsedRealtime(); boolean success = false;
-        try { JSONObject result = request(context, "GET", url, null, timeoutMs, retries, null); success = true; return result; }
+        try {
+            CustomerTransportSession session=CustomerTransportSession.capture(context);
+            long ttl=CustomerReadCachePolicy.ttl(url);
+            String cacheKey=ttl>0?OfflineJsonCache.scoped(context,"read:"+url):null;
+            if(ttl>0){JSONObject cached=OfflineJsonCache.getScoped(context,cacheKey,ttl,false);if(cached!=null){session.check(context);success=true;return cached;}}
+            JSONObject result=request(context,"GET",url,null,timeoutMs,retries,null,session);
+            session.check(context);
+            if(ttl>0&&result.optBoolean("success",false))OfflineJsonCache.putScoped(context,cacheKey,result);
+            success=true;return result;
+        }
         finally { try { CustomerPerformanceMetrics.load(context, CustomerPerformanceMetrics.readCategory(url), started, success); } catch (Throwable ignored) { } }
     }
     public static JSONObject postJson(Context context, String url, JSONObject body, int timeoutMs) throws Exception {
@@ -64,6 +73,8 @@ public final class TransivaHttpRepository {
             try {
                 c = CustomerApiClient.open(context, url);
                 owner.pin(context,c);
+                CustomerLoadingCoordinator.attach(c);
+                CustomerRequestCancellation.attach(c);
                 c.setRequestMethod(method);
                 c.setConnectTimeout(remaining(deadline, socketTimeout));
                 c.setReadTimeout(remaining(deadline, socketTimeout));
@@ -102,7 +113,7 @@ public final class TransivaHttpRepository {
                 TransivaCrashReporter.recordNetworkFailure(error, method, url);
                 if (Thread.currentThread().isInterrupted() || error instanceof javax.net.ssl.SSLException
                         || attempt >= retries) throw error;
-            } finally { if (c != null) c.disconnect(); }
+            } finally { if (c != null) { CustomerLoadingCoordinator.detach(c); CustomerRequestCancellation.detach(c); c.disconnect(); } }
             checkCancelled(deadline);
             long delay = 220L + ThreadLocalRandom.current().nextLong(60L, 181L);
             if (SystemClock.elapsedRealtime() + delay >= deadline) throw new java.net.SocketTimeoutException("Waktu permintaan habis");

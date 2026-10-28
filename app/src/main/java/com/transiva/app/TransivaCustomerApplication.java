@@ -52,6 +52,11 @@ public class TransivaCustomerApplication extends Application implements Applicat
             try { CustomerChatNotificationPoller.start(this, Integer.parseInt(chatSession.getUserId())); }
             catch (NumberFormatException ignored) { }
         }
+        if(activity instanceof CustomerDashboardActivity && chatSession.isLoggedIn()
+                && "customer".equalsIgnoreCase(chatSession.getRole()) && CustomerReferralLinkStore.needsRoute(this)) {
+            CustomerReferralLinkStore.markRouted(this);
+            activity.startActivity(new android.content.Intent(activity,CustomerReferralActivity.class));
+        }
         CustomerProfileCache.warm(this);
         main.postDelayed(() -> {
             if (!activity.isFinishing()) {

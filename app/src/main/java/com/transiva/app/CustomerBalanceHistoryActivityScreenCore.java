@@ -1510,151 +1510,11 @@ class CustomerBalanceHistoryActivityScreenCore extends CustomerAdaptiveActivity 
 
     protected void showWithdrawDialog() { inspectWalletPending(this::showWithdrawForm); }
 
+    private CustomerWithdrawAccountController withdrawAccounts;
     private void showWithdrawForm() {
-        LinearLayout form =
-                dialogForm();
-
-        EditText amount =
-                input(
-                        "Nominal withdraw",
-                        InputType.TYPE_CLASS_NUMBER
-                );
-
-        EditText bank =
-                input(
-                        "Bank / e-wallet",
-                        InputType.TYPE_CLASS_TEXT
-                );
-
-        EditText accountName =
-                input(
-                        "Nama pemilik rekening",
-                        InputType.TYPE_CLASS_TEXT
-                );
-
-        EditText accountNumber =
-                input(
-                        "Nomor rekening / e-wallet",
-                        InputType.TYPE_CLASS_TEXT
-                );
-
-        EditText note =
-                input(
-                        "Catatan (opsional)",
-                        InputType.TYPE_CLASS_TEXT
-                );
-
-        form.addView(amount);
-        form.addView(spacer());
-        form.addView(bank);
-        form.addView(spacer());
-        form.addView(accountName);
-        form.addView(spacer());
-        form.addView(accountNumber);
-        form.addView(spacer());
-        form.addView(note);
-
-        AlertDialog dialog =
-                new TransivaAlertDialogBuilder(this)
-                        .setTitle("Withdraw Dana")
-                        .setMessage(
-                                "Saldo akan ditahan sampai admin menyetujui pencairan."
-                        )
-                        .setView(form)
-                        .setNegativeButton(
-                                "Batal",
-                                null
-                        )
-                        .setPositiveButton(
-                                "Ajukan",
-                                null
-                        )
-                        .create();
-
-        dialog.setOnShowListener(
-                ignored -> dialog
-                        .getButton(
-                                AlertDialog.BUTTON_POSITIVE
-                        )
-                        .setOnClickListener(
-                                view -> {
-                                    int value =
-                                            parseInt(
-                                                    amount
-                                                            .getText()
-                                                            .toString()
-                                            );
-
-                                    if (value < 10000) {
-                                        amount.setError(
-                                                "Minimal withdraw Rp10.000"
-                                        );
-                                        return;
-                                    }
-
-                                    if (
-                                            bank.getText()
-                                                    .toString()
-                                                    .trim()
-                                                    .isEmpty()
-                                    ) {
-                                        bank.setError(
-                                                "Bank/e-wallet wajib diisi"
-                                        );
-                                        return;
-                                    }
-
-                                    if (
-                                            accountName.getText()
-                                                    .toString()
-                                                    .trim()
-                                                    .isEmpty()
-                                    ) {
-                                        accountName.setError(
-                                                "Nama pemilik wajib diisi"
-                                        );
-                                        return;
-                                    }
-
-                                    if (
-                                            accountNumber.getText()
-                                                    .toString()
-                                                    .trim()
-                                                    .isEmpty()
-                                    ) {
-                                        accountNumber.setError(
-                                                "Nomor rekening wajib diisi"
-                                        );
-                                        return;
-                                    }
-
-                                    dialog.dismiss();
-
-                                    submitWithdraw(
-                                            value,
-                                            bank.getText()
-                                                    .toString()
-                                                    .trim(),
-                                            accountName
-                                                    .getText()
-                                                    .toString()
-                                                    .trim(),
-                                            accountNumber
-                                                    .getText()
-                                                    .toString()
-                                                    .trim(),
-                                            note.getText()
-                                                    .toString()
-                                                    .trim()
-                                    );
-                                }
-                        )
-        );
-
-        dialog.show();
+        if(withdrawAccounts==null)withdrawAccounts=new CustomerWithdrawAccountController(this);
+        withdrawAccounts.show(this::submitWithdraw);
     }
-
-
 
     protected void submitWithdraw(int amount, String bank, String accountName, String accountNumber, String note) {
         if(operationBusy)return;
@@ -2057,6 +1917,7 @@ class CustomerBalanceHistoryActivityScreenCore extends CustomerAdaptiveActivity 
     @Override
     protected void onDestroy() {
         cancelWalletRead();
+        if(withdrawAccounts!=null)withdrawAccounts.destroy();
         featureRuntime.destroy();
         mainHandler.removeCallbacksAndMessages(null);
         super.onDestroy();

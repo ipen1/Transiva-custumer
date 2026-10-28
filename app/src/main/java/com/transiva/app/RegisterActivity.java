@@ -24,7 +24,7 @@ public class RegisterActivity extends CustomerAdaptiveActivity {
     private final Handler handler=new Handler(Looper.getMainLooper());
     private final CustomerLifecycleNetworkScope scope=new CustomerLifecycleNetworkScope();
     private volatile HttpURLConnection activeConnection;
-    private EditText username,email,phone,password,confirm;
+    private EditText username,email,phone,password,confirm,referral;
     private final LinearLayout[] steps=new LinearLayout[3];
     private TextView heading,description,position,message,usernameStatus,emailStatus,phoneStatus;
     private TextView back,google,login;
@@ -37,9 +37,9 @@ public class RegisterActivity extends CustomerAdaptiveActivity {
     @Override protected void onCreate(Bundle saved){
         super.onCreate(saved);
         CustomerWindowPolicy.status(getWindow(), Color.rgb(5,23,50));CustomerWindowPolicy.navigation(getWindow(), Color.rgb(14,66,139));CustomerWindowPolicy.appearance(getWindow(), 0);
-        build();CustomerResponsiveUi.apply(this);
+        build();referral.setText(CustomerReferralLinkStore.pending(this));CustomerResponsiveUi.apply(this);
         restoring=true;
-        if(saved!=null){username.setText(saved.getString("username",""));email.setText(saved.getString("email",""));phone.setText(saved.getString("phone",""));step=Math.max(0,Math.min(1,saved.getInt("step",0)));}
+        if(saved!=null){username.setText(saved.getString("username",""));email.setText(saved.getString("email",""));phone.setText(saved.getString("phone",""));referral.setText(saved.getString("referral",CustomerReferralLinkStore.pending(this)));step=Math.max(0,Math.min(1,saved.getInt("step",0)));}
         restoring=false;showStep();scheduleCheck();
     }
     private void build(){
@@ -63,9 +63,12 @@ public class RegisterActivity extends CustomerAdaptiveActivity {
         CheckBox visible=new CheckBox(this);visible.setText("Tampilkan kata sandi");visible.setTextSize(13);visible.setButtonTintList(android.content.res.ColorStateList.valueOf(Color.rgb(28,117,233)));steps[2].addView(visible);
         visible.setOnCheckedChangeListener((v,on)->{int type=InputType.TYPE_CLASS_TEXT|(on?InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD:InputType.TYPE_TEXT_VARIATION_PASSWORD);password.setInputType(type);confirm.setInputType(type);password.setSelection(password.length());confirm.setSelection(confirm.length());});
         TextView note=text("Verifikasi email dilakukan di menu Akun setelah masuk.",12,false);note.setTextColor(Color.rgb(100,116,139));note.setPadding(0,dp(5),0,dp(4));steps[2].addView(note);
+        referral=field(card,"Kode referral (opsional)","Kode pengundang",InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_FLAG_CAP_CHARACTERS);
+        referral.setFilters(new android.text.InputFilter[]{new android.text.InputFilter.AllCaps(),new android.text.InputFilter.LengthFilter(40)});
+        TextView referralNote=text("Kode akan tersimpan permanen setelah pendaftaran berhasil.",12,false);card.addView(referralNote);
         next=new Button(this);next.setAllCaps(false);next.setTextSize(15);next.setTypeface(Typeface.DEFAULT_BOLD);next.setTextColor(Color.WHITE);next.setMinHeight(dp(48));next.setPadding(dp(12),dp(10),dp(12),dp(10));next.setStateListAnimator(null);next.setBackground(CustomerAuthDesign.primary(this));next.setBackgroundTintList(null);LinearLayout.LayoutParams nl=new LinearLayout.LayoutParams(-1,-2);nl.topMargin=dp(14);card.addView(next,nl);next.setOnClickListener(v->advance());
         back=link("← Sebelumnya");card.addView(back);back.setOnClickListener(v->{if(!busy&&step>0){cancelCheck();step--;showStep();scheduleCheck();}});
-        google=link("Lanjutkan dengan Google");google.setBackground(CustomerAuthDesign.field(this));card.addView(google);google.setOnClickListener(v->{if(busy)return;cancelCheck();Intent in=new Intent(this,LoginActivity.class);in.putExtra("start_google",true);startActivity(in);});
+        google=link("Lanjutkan dengan Google");google.setBackground(CustomerAuthDesign.field(this));card.addView(google);google.setOnClickListener(v->{if(busy)return;cancelCheck();rememberReferral();Intent in=new Intent(this,LoginActivity.class);in.putExtra("start_google",true);startActivity(in);});
         login=link("Sudah punya akun? Masuk");card.addView(login);login.setOnClickListener(v->{if(!busy){cancelCheck();openLogin();}});
         TextView legal=link("Syarat & Ketentuan  •  Kebijakan Privasi");legal.setTextSize(11);legal.setTextColor(Color.rgb(231,240,255));legal.setMaxLines(2);outer.addView(legal);legal.setOnClickListener(v->new TransivaAlertDialogBuilder(this).setItems(new String[]{"Syarat & Ketentuan","Kebijakan Privasi"},(d,w)->startActivity(new Intent(Intent.ACTION_VIEW,android.net.Uri.parse("https://transiva.my.id/"+(w==0?"terms.html":"customer_privacy.html"))))).show());
         for(EditText f:new EditText[]{username,email,phone})f.addTextChangedListener(new TextWatcher(){public void beforeTextChanged(CharSequence s,int a,int c,int n){}public void onTextChanged(CharSequence s,int a,int b,int c){}public void afterTextChanged(Editable e){if(restoring)return;cancelCheck();clearMessage();usernameStatus.setText("");emailStatus.setText("");phoneStatus.setText("");scheduleCheck();}});
@@ -115,11 +118,14 @@ public class RegisterActivity extends CustomerAdaptiveActivity {
         String pass=password.getText().toString();
         if(pass.codePointCount(0,pass.length())<8||pass.getBytes(StandardCharsets.UTF_8).length>72){password.setError("Gunakan minimal 8 karakter. Jika terlalu panjang, kurangi huruf atau simbolnya.");return;}
         if(!pass.equals(confirm.getText().toString())){confirm.setError("Konfirmasi kata sandi belum sama.");return;}
-        cancelCheck();clearMessage();setBusy(true);
+        final String referralCode=ReferralCodeRules.normalize(referral.getText().toString());
+        if(!referralCode.isEmpty()&&!ReferralCodeRules.valid(referralCode)){referral.setError("Periksa kode referral.");return;}
+        rememberReferral();cancelCheck();clearMessage();setBusy(true);
         scope.execute(()->{
             JSONObject response;
             try{
                 JSONObject payload=new JSONObject();payload.put("username",u);payload.put("email",e);payload.put("phone",p);
+                if(!referralCode.isEmpty())payload.put("referral_code",referralCode);
                 String operation=SignupOperationStore.operation(getApplicationContext(),payload.toString());
                 payload.put("password",pass);payload.put("operation_id",operation);
                 response=AuthRequestJson.post(this,"register.php",payload,null,c->activeConnection=c);
@@ -135,14 +141,15 @@ public class RegisterActivity extends CustomerAdaptiveActivity {
     }
     private void cancelCheck(){revision++;if(debounce!=null)handler.removeCallbacks(debounce);if(lookup!=null)lookup.cancel();lookup=null;checking=false;if(next!=null)updateButton();}
     private void updateButton(){next.setEnabled(!busy&&!checking);next.setText(busy?"Membuat akun…":checking?"Memeriksa…":step==2?"Buat akun →":"Lanjut →");}
-    private void setBusy(boolean value){busy=value;for(EditText f:new EditText[]{username,email,phone,password,confirm})f.setEnabled(!value);back.setEnabled(!value);google.setEnabled(!value);login.setEnabled(!value);updateButton();}
+    private void setBusy(boolean value){busy=value;for(EditText f:new EditText[]{username,email,phone,password,confirm,referral})f.setEnabled(!value);back.setEnabled(!value);google.setEnabled(!value);login.setEnabled(!value);updateButton();}
     private void setStatus(String field,String value,boolean available,boolean conflict){TextView v="username".equals(field)?usernameStatus:"email".equals(field)?emailStatus:phoneStatus;v.setText(CustomerErrorMessages.humanize(value,"Belum bisa diperiksa. Coba lagi sebentar."));v.setTextColor(Color.parseColor(available?"#178354":conflict?"#B42335":"#64748B"));}
     private void error(String msg){message.setText(CustomerErrorMessages.humanize(msg,"Pendaftaran belum berhasil. Silakan coba lagi."));message.setVisibility(View.VISIBLE);}
     private void clearMessage(){message.setVisibility(View.GONE);}
     private static String normalizePhone(String value){String p=value.replaceAll("\\D","");if(p.startsWith("0062"))p=p.substring(2);if(p.startsWith("0"))p=p.substring(1);return p.isEmpty()?"":p.startsWith("62")?p:"62"+p;}
+    private void rememberReferral(){String code=ReferralCodeRules.normalize(referral.getText().toString());if(code.isEmpty())CustomerReferralLinkStore.clear(this);else if(ReferralCodeRules.valid(code))CustomerReferralLinkStore.remember(this,code);}
     private void openLogin(){Intent in=new Intent(this,LoginActivity.class);in.setFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP|Intent.FLAG_ACTIVITY_SINGLE_TOP);startActivity(in);finish();}
     @Override public void onBackPressed(){if(busy){Toast.makeText(this,"Pendaftaran sedang diproses…",Toast.LENGTH_SHORT).show();return;}cancelCheck();if(step>0){step--;showStep();scheduleCheck();}else super.onBackPressed();}
-    @Override protected void onSaveInstanceState(Bundle b){b.putInt("step",step);b.putString("username",username.getText().toString());b.putString("email",email.getText().toString());b.putString("phone",phone.getText().toString());super.onSaveInstanceState(b);}
+    @Override protected void onSaveInstanceState(Bundle b){b.putInt("step",step);b.putString("username",username.getText().toString());b.putString("email",email.getText().toString());b.putString("phone",phone.getText().toString());b.putString("referral",referral.getText().toString());super.onSaveInstanceState(b);}
     @Override protected void onDestroy(){cancelCheck();scope.destroy();handler.removeCallbacksAndMessages(null);HttpURLConnection c=activeConnection;if(c!=null)c.disconnect();super.onDestroy();}
     private EditText field(LinearLayout box,String name,String hint,int type){TextView label=text(name,13,true);label.setPadding(0,dp(10),0,dp(6));box.addView(label);EditText f=new EditText(this);f.setTextSize(15);f.setSingleLine(true);f.setHint(hint);f.setInputType(type);f.setTextColor(Color.rgb(18,47,78));f.setHintTextColor(Color.rgb(145,155,175));f.setPadding(dp(13),dp(11),dp(13),dp(11));f.setBackground(CustomerAuthDesign.field(this));f.setImeOptions(EditorInfo.IME_ACTION_NEXT);f.setSaveEnabled(false);f.setSelectAllOnFocus(false);f.setMinimumHeight(dp(48));box.addView(f,new LinearLayout.LayoutParams(-1,-2));return f;}
     private TextView status(LinearLayout box){TextView v=text("",11,false);v.setMinHeight(dp(20));v.setPadding(dp(2),dp(3),0,0);box.addView(v);return v;}

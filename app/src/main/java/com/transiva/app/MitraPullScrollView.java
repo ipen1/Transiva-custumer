@@ -20,6 +20,15 @@ final class MitraPullScrollView extends ScrollView {
         slop = ViewConfiguration.get(context).getScaledTouchSlop();
         threshold = 72 * context.getResources().getDisplayMetrics().density;
     }
+    @Override protected void measureChildWithMargins(android.view.View child,int widthSpec,int widthUsed,int heightSpec,int heightUsed){
+        if(child instanceof FoodVirtualList && android.view.View.MeasureSpec.getMode(heightSpec)!=android.view.View.MeasureSpec.UNSPECIFIED){
+            android.view.ViewGroup.MarginLayoutParams p=(android.view.ViewGroup.MarginLayoutParams)child.getLayoutParams();
+            int height=Math.max(1,android.view.View.MeasureSpec.getSize(heightSpec)-getPaddingTop()-getPaddingBottom()-p.topMargin-p.bottomMargin-heightUsed);
+            int width=getChildMeasureSpec(widthSpec,getPaddingLeft()+getPaddingRight()+p.leftMargin+p.rightMargin+widthUsed,p.width);
+            child.measure(width,android.view.View.MeasureSpec.makeMeasureSpec(height,android.view.View.MeasureSpec.EXACTLY));return;
+        }
+        super.measureChildWithMargins(child,widthSpec,widthUsed,heightSpec,heightUsed);
+    }
     @Override public boolean onInterceptTouchEvent(MotionEvent e) {
         if (e.getActionMasked() == MotionEvent.ACTION_DOWN) {
             downX=e.getX(); downY=e.getY(); dragging=false;

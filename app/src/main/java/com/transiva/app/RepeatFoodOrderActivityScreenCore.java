@@ -336,14 +336,16 @@ class RepeatFoodOrderActivityScreenCore extends CustomerAdaptiveFragmentActivity
 
         networkScope.newThread(() -> {
             try {
-                JSONObject response =
-                        RepeatOrderApi.get(
-                                BASE_URL
-                                        + "server/get_food_menus.php?restaurant_id="
-                                        + data.restaurantId
-                                        + "&_="
-                                        + System.currentTimeMillis()
-                        );
+                java.util.List<Integer> wanted=new java.util.ArrayList<>();
+                for(int i=0;i<data.foodItems.length();i++){JSONObject item=data.foodItems.optJSONObject(i);if(item!=null){int id=item.optInt("menu_id",item.optInt("id",0));if(id>0&&!wanted.contains(id))wanted.add(id);}}
+                JSONObject response=null;JSONArray combined=new JSONArray();
+                for(int from=0;from<Math.max(1,wanted.size());from+=50){
+                    StringBuilder ids=new StringBuilder();for(int i=from;i<Math.min(from+50,wanted.size());i++){if(ids.length()>0)ids.append(',');ids.append(wanted.get(i));}
+                    JSONObject page=RepeatOrderApi.get(BASE_URL+"server/get_food_menus.php?restaurant_id="+data.restaurantId+"&limit=50"+(ids.length()>0?"&menu_ids="+ids:""));
+                    if(!page.optBoolean("success"))throw new IllegalStateException(page.optString("message","Menu belum dapat dimuat."));
+                    if(response==null)response=page;JSONArray rows=page.optJSONArray("menus");if(rows!=null)for(int i=0;i<rows.length();i++)combined.put(rows.opt(i));
+                }
+                if(response==null)throw new IllegalStateException("Data menu tidak tersedia.");response.put("menus",combined);
 
                 if (
                         !response.optBoolean(

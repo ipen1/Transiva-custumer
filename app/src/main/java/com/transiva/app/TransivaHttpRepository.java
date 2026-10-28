@@ -23,24 +23,33 @@ public final class TransivaHttpRepository {
     }
     private TransivaHttpRepository() { }
     public static JSONObject getJson(Context context, String url, int timeoutMs) throws Exception {
-        return measuredRead(context, url, timeoutMs, 1);
+        return measuredRead(context, url, timeoutMs, 1, false);
     }
     public static JSONObject getJsonOnce(Context context, String url, int timeoutMs) throws Exception {
-        return measuredRead(context, url, timeoutMs, 0);
+        return measuredRead(context, url, timeoutMs, 0, false);
     }
-    private static JSONObject measuredRead(Context context, String url, int timeoutMs, int retries) throws Exception {
+    public static JSONObject getJsonFresh(Context c,String url,int timeout)throws Exception{return measuredRead(c,url,timeout,1,true);}
+    public static String catalogCacheUrl(String url){
+        String value=url.replaceAll("([?&])refresh=[^&]*&?","$1");
+        return value.endsWith("?")||value.endsWith("&")?value.substring(0,value.length()-1):value;
+    }
+    public static JSONObject cachedCatalog(Context c,String url){
+        if(CustomerReadCachePolicy.ttl(url)<=0)return null;
+        return OfflineJsonCache.get(c,"read:"+catalogCacheUrl(url),300000L,false);
+    }
+    private static JSONObject measuredRead(Context context, String url, int timeoutMs, int retries,boolean fresh) throws Exception {
         long started = SystemClock.elapsedRealtime(); boolean success = false;
         try {
             CustomerTransportSession session=CustomerTransportSession.capture(context);
             long ttl=CustomerReadCachePolicy.ttl(url);
-            String cacheKey=ttl>0?OfflineJsonCache.scoped(context,"read:"+url):null;
-            if(ttl>0){JSONObject cached=OfflineJsonCache.getScoped(context,cacheKey,ttl,false);if(cached!=null){session.check(context);success=true;return cached;}}
+            String cacheKey=ttl>0?OfflineJsonCache.scoped(context,"read:"+catalogCacheUrl(url)):null;
+            if(ttl>0&&!fresh){JSONObject cached=OfflineJsonCache.getScoped(context,cacheKey,ttl,false);if(cached!=null){session.check(context);success=true;return cached;}}
             JSONObject result=request(context,"GET",url,null,timeoutMs,retries,null,session);
             session.check(context);
             if(ttl>0&&result.optBoolean("success",false))OfflineJsonCache.putScoped(context,cacheKey,result);
-            success=true;return result;
+            success=result.optBoolean("success",true);return result;
         }
-        finally { try { CustomerPerformanceMetrics.load(context, CustomerPerformanceMetrics.readCategory(url), started, success); } catch (Throwable ignored) { } }
+        finally { if(!success&&!Thread.currentThread().isInterrupted())CustomerLoadingCoordinator.reportFailure();try { CustomerPerformanceMetrics.load(context, CustomerPerformanceMetrics.readCategory(url), started, success); } catch (Throwable ignored) { } }
     }
     public static JSONObject postJson(Context context, String url, JSONObject body, int timeoutMs) throws Exception {
         return request(context, "POST", url, body, timeoutMs, 0, null);
@@ -67,7 +76,7 @@ public final class TransivaHttpRepository {
         for (int attempt = 0; ; attempt++) {
             checkCancelled(deadline);
             owner.check(context);
-            if (!TransivaNetworkMonitor.isOnline()) throw new java.net.UnknownHostException("Perangkat sedang offline");
+            if (!TransivaNetworkMonitor.isOnline()) {CustomerLoadingCoordinator.reportFailure();throw new java.net.UnknownHostException("Perangkat sedang offline");}
             HttpURLConnection c = null;
             long started = SystemClock.elapsedRealtime();
             try {
@@ -101,18 +110,18 @@ public final class TransivaHttpRepository {
                     });
                 }
                 owner.check(context);
-                if (code >= 200 && code < 300) return new JSONObject(raw.isEmpty() ? "{}" : raw);
+                if (code >= 200 && code < 300) {JSONObject response=new JSONObject(raw.isEmpty()?"{}":raw);if(!response.optBoolean("success",true))CustomerLoadingCoordinator.reportFailure();return response;}
                 String message = "Server belum dapat memproses permintaan (" + code + ").";
                 JSONObject errorBody = null;
                 try { errorBody = new JSONObject(raw); message = errorBody.optString("message", message); } catch (Exception ignored) { }
                 throw new ServerResponseException(message, code, errorBody);
             } catch (ServerResponseException error) {
                 // Do not let a generic catch accidentally retry 401/403/404/429.
-                if (attempt >= retries || !NetworkSafetyRules.retryableStatus(error.status)) throw error;
+                if (attempt >= retries || !NetworkSafetyRules.retryableStatus(error.status)) {CustomerLoadingCoordinator.reportFailure();throw error;}
             } catch (IOException error) {
                 TransivaCrashReporter.recordNetworkFailure(error, method, url);
                 if (Thread.currentThread().isInterrupted() || error instanceof javax.net.ssl.SSLException
-                        || attempt >= retries) throw error;
+                        || attempt >= retries) {if(!Thread.currentThread().isInterrupted())CustomerLoadingCoordinator.reportFailure();throw error;}
             } finally { if (c != null) { CustomerLoadingCoordinator.detach(c); CustomerRequestCancellation.detach(c); c.disconnect(); } }
             checkCancelled(deadline);
             long delay = 220L + ThreadLocalRandom.current().nextLong(60L, 181L);

@@ -1705,7 +1705,7 @@ class CustomerHistoryActivityScreenCore extends CustomerAdaptiveActivity {
         if (loading) return;
         loading = true;
         progressBar.setVisibility(View.VISIBLE);
-        featureRuntime.newThread(() -> {
+        featureRuntime.execute(() -> {
             try {
                 String endpoint = FOOD_ORDER_REVIEW_URL
                         + "?id=" + order.optInt("id", 0)
@@ -1732,7 +1732,13 @@ class CustomerHistoryActivityScreenCore extends CustomerAdaptiveActivity {
                     toast("Gagal memuat penilaian pesanan.");
                 });
             }
-        }, "food-order-review-load").start();
+        }, () -> { Exception e = new java.util.concurrent.RejectedExecutionException("Antrean penuh atau waktu tunggu habis"); 
+                featureRuntime.post(mainHandler, () -> {
+                    loading = false;
+                    progressBar.setVisibility(View.GONE);
+                    toast("Gagal memuat penilaian pesanan.");
+                });
+             });
     }
 
     protected static class FoodReviewInput {
@@ -1898,7 +1904,7 @@ class CustomerHistoryActivityScreenCore extends CustomerAdaptiveActivity {
 
         loading = true;
         progressBar.setVisibility(View.VISIBLE);
-        featureRuntime.newThread(() -> {
+        featureRuntime.execute(() -> {
             try {
                 JSONObject response = postJson(FOOD_ORDER_REVIEW_URL, payload);
                 boolean success = response.optBoolean("success", false);
@@ -1920,7 +1926,13 @@ class CustomerHistoryActivityScreenCore extends CustomerAdaptiveActivity {
                     toast("Koneksi gagal menyimpan penilaian.");
                 });
             }
-        }, "food-order-review-save").start();
+        }, () -> { Exception e = new java.util.concurrent.RejectedExecutionException("Antrean penuh atau waktu tunggu habis"); 
+                featureRuntime.post(mainHandler, () -> {
+                    loading = false;
+                    progressBar.setVisibility(View.GONE);
+                    toast("Koneksi gagal menyimpan penilaian.");
+                });
+             });
     }
 
     protected void submitActivityReview(JSONObject order, int rating, String review, AlertDialog dialog) {
@@ -1928,7 +1940,7 @@ class CustomerHistoryActivityScreenCore extends CustomerAdaptiveActivity {
         loading = true;
         progressBar.setVisibility(View.VISIBLE);
 
-        featureRuntime.newThread(() -> {
+        featureRuntime.execute(() -> {
             try {
                 boolean food = isFoodOrder(order);
                 JSONObject payload = new JSONObject();
@@ -1973,7 +1985,17 @@ class CustomerHistoryActivityScreenCore extends CustomerAdaptiveActivity {
                             .show();
                 });
             }
-        }, "activity-save-review").start();
+        }, () -> { Exception error = new java.util.concurrent.RejectedExecutionException("Antrean penuh atau waktu tunggu habis"); 
+                featureRuntime.post(mainHandler, () -> {
+                    loading = false;
+                    progressBar.setVisibility(View.GONE);
+                    new TransivaAlertDialogBuilder(this)
+                            .setTitle("Gagal")
+                            .setMessage("Koneksi server bermasalah. Rating belum dikirim, silakan coba kembali.")
+                            .setPositiveButton("OK", null)
+                            .show();
+                });
+             });
     }
 
     protected void sendProposalDecision(JSONObject order,String action) {
@@ -1986,7 +2008,7 @@ class CustomerHistoryActivityScreenCore extends CustomerAdaptiveActivity {
             CustomerOrderChangeState.payload(order,payload,action);
         } catch(Exception error) { return; }
         loading=true; progressBar.setVisibility(View.VISIBLE);
-        featureRuntime.newThread(() -> {
+        featureRuntime.execute(() -> {
             try {
                 JSONObject response=postJson(ACTION_URL,payload);
                 boolean ok=response.optBoolean("success");
@@ -2003,7 +2025,9 @@ class CustomerHistoryActivityScreenCore extends CustomerAdaptiveActivity {
             } catch(Exception error) {
                 featureRuntime.post(mainHandler,() -> { loading=false; progressBar.setVisibility(View.GONE); toast(CustomerOrderChangeState.error(error)); loadHistory(true); });
             }
-        },"activity-proposal-decision").start();
+        }, () -> { Exception error = new java.util.concurrent.RejectedExecutionException("Antrean penuh atau waktu tunggu habis"); 
+                featureRuntime.post(mainHandler,() -> { loading=false; progressBar.setVisibility(View.GONE); toast(CustomerOrderChangeState.error(error)); loadHistory(true); });
+             });
     }
 
     protected void confirmReceivedFromActivity(JSONObject order) {
@@ -2023,7 +2047,7 @@ class CustomerHistoryActivityScreenCore extends CustomerAdaptiveActivity {
         loading = true;
         progressBar.setVisibility(View.VISIBLE);
 
-        featureRuntime.newThread(() -> {
+        featureRuntime.execute(() -> {
             try {
                 JSONObject payload = new JSONObject();
                 payload.put(
@@ -2078,7 +2102,19 @@ class CustomerHistoryActivityScreenCore extends CustomerAdaptiveActivity {
                             .show();
                 });
             }
-        }, "activity-confirm-received").start();
+        }, () -> { Exception error = new java.util.concurrent.RejectedExecutionException("Antrean penuh atau waktu tunggu habis"); 
+                featureRuntime.post(mainHandler, () -> {
+                    loading = false;
+                    progressBar.setVisibility(View.GONE);
+
+                    loadHistory(true);
+                    new TransivaAlertDialogBuilder(this)
+                            .setTitle("Gagal")
+                            .setMessage(CustomerOrderChangeState.error(error))
+                            .setPositiveButton("OK", null)
+                            .show();
+                });
+             });
     }
 
     protected JSONObject postJson(String endpoint, JSONObject payload) throws Exception {

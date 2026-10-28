@@ -401,7 +401,7 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
                 if (!validCoord(lat, lng)) return;
                 final boolean resolvingPickup = "pickup".equals(mode);
                 final long generation = ++destinationResolveGeneration;
-                featureRuntime.newThread(() -> {
+                featureRuntime.execute(() -> {
                     final String road = reverseAddress(lat, lng);
                     final String admin = buildAdministrativeFallback(lat, lng);
                     featureRuntime.post(mainHandler, () -> resolveNearestGooglePlace(lat, lng, googleName -> {
@@ -423,7 +423,7 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
                         pendingDeliverySubtitle = subtitle;
                         if (deliveryBtn != null) deliveryBtn.setText("●  Mau ke mana?\nKe " + title + "?");
                     }));
-                }).start();
+                }, () -> featureRuntime.post(mainHandler, () -> { setLoading(false);toastDialog("Sistem sedang sibuk. Coba lagi."); }));
             }
         });
 
@@ -783,7 +783,7 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
         requestVisibleOsrmRoute();
 
         final double stopLat = lat, stopLng = lng;
-        featureRuntime.newThread(() -> {
+        featureRuntime.execute(() -> {
             String address = buildSmartAddress(stopLat, stopLng);
             featureRuntime.post(mainHandler, () -> {
                 if (destroyed) return;
@@ -795,7 +795,7 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
                 updateWaypointButton();
                 requestPaymentQuote();
             });
-        }, "transiva-waypoint-geocode").start();
+        }, () -> featureRuntime.post(mainHandler, () -> { setLoading(false);toastDialog("Sistem sedang sibuk. Coba lagi."); }));
 
         updateModeUI();
         showWaypointNotePopup(sequence);
@@ -949,7 +949,7 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
         if (!ensureAuthTokenForOrder()) return;
         hematBtn.setEnabled(false);
         TierBadgeUi.showSpinner(hematBtn, dp(20));
-        featureRuntime.newThread(() -> {
+        featureRuntime.execute(() -> {
             try {
                 JSONObject res = postJson(HEMAT_STATUS_URL, new JSONObject());
                 featureRuntime.post(mainHandler, () -> {
@@ -987,7 +987,9 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
             } catch (Exception e) {
                 featureRuntime.post(mainHandler, () -> { hematBtn.setEnabled(true); TierBadgeUi.restoreHematButton(hematBtn, TierBadgeUi.getCachedActiveTier(this), dp(20), dp(2)); toastDialog(TransivaUserMessage.network()); });
             }
-        }).start();
+        }, () -> { Exception e = new java.util.concurrent.RejectedExecutionException("Antrean penuh atau waktu tunggu habis"); 
+                featureRuntime.post(mainHandler, () -> { hematBtn.setEnabled(true); TierBadgeUi.restoreHematButton(hematBtn, TierBadgeUi.getCachedActiveTier(this), dp(20), dp(2)); toastDialog(TransivaUserMessage.network()); });
+             });
     }
 
     protected void showPaymentDialog() {
@@ -1608,7 +1610,7 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
         final String rawLocation = shared.trim();
         setLoading(true);
 
-        featureRuntime.newThread(() -> {
+        featureRuntime.execute(() -> {
             String resolved = rawLocation;
             try {
                 if (resolved.startsWith("geo:")) {
@@ -1667,7 +1669,12 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
                     toastDialog("Gagal membuka lokasi yang dibagikan.");
                 });
             }
-        }, "shared-location-resolver").start();
+        }, () -> { Exception ignored = new java.util.concurrent.RejectedExecutionException("Antrean penuh atau waktu tunggu habis"); 
+                featureRuntime.post(mainHandler, () -> {
+                    setLoading(false);
+                    toastDialog("Gagal membuka lokasi yang dibagikan.");
+                });
+             });
     }
 
     protected void useGoogleMapLink() {
@@ -1680,7 +1687,7 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
         hideKeyboard();
         setLoading(true);
 
-        featureRuntime.newThread(() -> {
+        featureRuntime.execute(() -> {
             String finalLink = link;
 
             try {
@@ -1721,7 +1728,12 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
                     toastDialog("Gagal membaca link Google Maps.");
                 });
             }
-        }).start();
+        }, () -> { Exception e = new java.util.concurrent.RejectedExecutionException("Antrean penuh atau waktu tunggu habis"); 
+                featureRuntime.post(mainHandler, () -> {
+                    setLoading(false);
+                    toastDialog("Gagal membaca link Google Maps.");
+                });
+             });
     }
 
 
@@ -1751,7 +1763,7 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
         final long requestId = isPickup ? ++pickupAddressRequest : ++deliveryAddressRequest;
         if(isPickup) { pickupAddressResolving=true; resolvingPickupLat=lat; resolvingPickupLng=lng; }
         locationQuoteReady=false; ++quoteVersion; updateWizardState();
-        featureRuntime.newThread(() -> {
+        featureRuntime.execute(() -> {
             String road = reverseAddress(lat, lng);
             String localMerchant = findNearestPlaceName(lat, lng);
             featureRuntime.post(mainHandler, () -> resolveNearestGooglePlace(lat, lng, (googleName) -> {
@@ -1767,7 +1779,7 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
                 else address = String.format(Locale.US, "%.6f, %.6f", lat, lng);
                 applyResolvedAddress(isPickup, address);
             }));
-        }).start();
+        }, () -> featureRuntime.post(mainHandler, () -> { setLoading(false);toastDialog("Sistem sedang sibuk. Coba lagi."); }));
     }
 
     protected interface NearbyPlaceCallback { void onResult(String name); }
@@ -1950,7 +1962,7 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
     }
 
     protected void loadMapPlaces() {
-        featureRuntime.newThread(() -> {
+        featureRuntime.execute(() -> {
             try {
                 JSONObject food = getJson(GET_BUSINESSES_URL + "?v=" + System.currentTimeMillis());
                 JSONObject laundry = getJson(GET_LAUNDRIES_URL + "?v=" + System.currentTimeMillis());
@@ -1963,7 +1975,7 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
                     drawPlaces(laundry.optJSONArray("laundries"), "TransLaundry");
                 });
             } catch (Exception ignored) {}
-        }).start();
+        }, () -> { Exception ignored = new java.util.concurrent.RejectedExecutionException("Antrean penuh atau waktu tunggu habis");  });
     }
 
     protected void drawPlaces(JSONArray arr, String type) {
@@ -1997,7 +2009,7 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
     protected void loadOnlineDrivers() {
         if (destroyed) return;
 
-        featureRuntime.newThread(() -> {
+        featureRuntime.execute(() -> {
             try {
                 JSONObject res = getJson(GET_ONLINE_DRIVERS_URL + "?type=" + driverType() + "&v=" + System.currentTimeMillis());
                 JSONArray arr = res.optJSONArray("drivers");
@@ -2051,7 +2063,7 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
                     }
                 });
             } catch (Exception ignored) {}
-        }).start();
+        }, () -> { Exception ignored = new java.util.concurrent.RejectedExecutionException("Antrean penuh atau waktu tunggu habis");  });
 
         mainHandler.postDelayed(() -> {
             if (!destroyed && mapReady && !isFinishing()) {
@@ -2143,7 +2155,7 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
         orderBtn.setEnabled(false);
         orderBtn.setText("Mencari driver...");
 
-        featureRuntime.newThread(() -> {
+        featureRuntime.execute(() -> {
             try {
                 String orderId = "ORD-" + System.currentTimeMillis();
 
@@ -2200,7 +2212,12 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
                     toastDialog(ReliableOrderClient.failureMessage(e));
                 });
             }
-        }).start();
+        }, () -> { Exception e = new java.util.concurrent.RejectedExecutionException("Antrean penuh atau waktu tunggu habis"); 
+                featureRuntime.post(mainHandler, () -> {
+                    resetOrderButton();
+                    toastDialog(ReliableOrderClient.failureMessage(e));
+                });
+             });
     }
 
     protected void handleOrderResult(JSONObject res) {
@@ -2270,7 +2287,7 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
     protected void syncEcosystemOrder(String orderId){
         if(orderId==null||orderId.trim().isEmpty())return;
         JSONObject b=new JSONObject(); try{b.put("action","sync");b.put("order_id",orderId);b.put("ecosystem",ecosystemFeatures.toJson());}catch(Exception ignored){}
-        featureRuntime.newThread(()->{try{RideSafetyApi.post(this,"ride_ecosystem_order.php",b);}catch(Exception ignored){}}).start();
+        featureRuntime.execute(()->{try{RideSafetyApi.post(this,"ride_ecosystem_order.php",b);}catch(Exception ignored){}}, () -> { Exception ignored = new java.util.concurrent.RejectedExecutionException("Antrean penuh atau waktu tunggu habis");  });
     }
 
 
@@ -2343,7 +2360,7 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
         finalPriceText.setTextColor(Color.parseColor("#64748B"));
         paymentSummaryText.setText("Mengambil tarif dari database...");
 
-        featureRuntime.newThread(() -> {
+        featureRuntime.execute(() -> {
             try {
                 JSONObject payload = new JSONObject();
 
@@ -2493,7 +2510,15 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
                     finalPriceText.setTextColor(Color.parseColor("#0B3A78"));
                 });
             }
-        }).start();
+        }, () -> { Exception e = new java.util.concurrent.RejectedExecutionException("Antrean penuh atau waktu tunggu habis"); 
+                featureRuntime.post(mainHandler, () -> {
+                    if (destroyed || quoteRequest != quoteVersion) return;
+                    quoteLoading=false;
+                    paymentSummaryText.setText("Gagal terhubung ke server tarif");
+                    showQuoteRetry();
+                    finalPriceText.setTextColor(Color.parseColor("#0B3A78"));
+                });
+             });
     }
 
     private void showQuoteRetry() {
@@ -2582,7 +2607,7 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
         } catch (Exception ignored) {}
 
         if (routeStops.length() < 2) return;
-        featureRuntime.newThread(() -> {
+        featureRuntime.execute(() -> {
             try {
                 JSONArray merged = new JSONArray();
                 for (int i = 0; i < routeStops.length() - 1; i++) {
@@ -2605,7 +2630,7 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
                     }
                 });
             } catch (Exception ignored) {}
-        }, "transiva-google-osrm-multistop-preview").start();
+        }, () -> { Exception ignored = new java.util.concurrent.RejectedExecutionException("Antrean penuh atau waktu tunggu habis");  });
     }
     private boolean validCoord(double lat, double lng) {
         return CustomerGeoMath.valid(lat, lng);

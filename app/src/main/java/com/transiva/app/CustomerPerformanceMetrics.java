@@ -55,6 +55,7 @@ public final class CustomerPerformanceMetrics {
                 if(battery!=null){int percent=battery.getIntProperty(android.os.BatteryManager.BATTERY_PROPERTY_CAPACITY);if(percent>=0&&percent<=100)sample.putLong("device_battery_percent",percent);}
                 sample.putLong("network_queue",TransivaNetworkExecutor.queuedTasks());
                 sample.putLong("network_rejected",TransivaNetworkExecutor.rejectedTasks());
+                for(java.util.Map.Entry<String,Long> entry:CustomerLoadingCoordinator.metrics().entrySet())sample.putLong("loading_"+entry.getKey(),entry.getValue());
                 if(android.os.Build.VERSION.SDK_INT>=30){
                     android.app.ActivityManager manager=(android.app.ActivityManager)context.getSystemService(Context.ACTIVITY_SERVICE);
                     int crashes=0,anrs=0;

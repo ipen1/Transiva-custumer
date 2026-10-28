@@ -5,12 +5,15 @@ import java.net.HttpURLConnection;
 
 /** Immutable request identity, also permitting stable anonymous/public requests. Never persisted. */
 final class CustomerTransportSession {
+    private static final ThreadLocal<CustomerTransportSession> OWNER=new ThreadLocal<>();
     private final String user, token;
     private final boolean loggedIn;
     private CustomerTransportSession(SessionManager session) {
         user=clean(session.getUserId());token=clean(session.getToken());loggedIn=session.isLoggedIn();
     }
-    static CustomerTransportSession capture(Context context){return new CustomerTransportSession(new SessionManager(context));}
+    static CustomerTransportSession capture(Context context){CustomerTransportSession owner=OWNER.get();return owner==null?new CustomerTransportSession(new SessionManager(context)):owner;}
+    static void bind(CustomerTransportSession owner){if(owner==null)OWNER.remove();else OWNER.set(owner);}
+    static void clearOwner(){OWNER.remove();}
     boolean matches(Context context){
         SessionManager live=new SessionManager(context);
         return loggedIn==live.isLoggedIn() && user.equals(clean(live.getUserId())) && token.equals(clean(live.getToken()));

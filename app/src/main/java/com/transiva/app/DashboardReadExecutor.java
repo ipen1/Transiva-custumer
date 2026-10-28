@@ -18,5 +18,9 @@ public final class DashboardReadExecutor {
             }, new ThreadPoolExecutor.AbortPolicy());
     static { POOL.allowCoreThreadTimeOut(true); }
     private DashboardReadExecutor() { }
-    public static <T> Future<T> submit(Callable<T> task) { return POOL.submit(task); }
+    public static <T> Future<T> submit(Callable<T> task) {
+        android.app.Application app=TransivaCustomerApplication.appContext();
+        final CustomerTransportSession owner=app==null?null:CustomerTransportSession.capture(app);
+        return POOL.submit(()->{try{if(owner!=null){owner.check(app);CustomerTransportSession.bind(owner);}return task.call();}finally{CustomerTransportSession.clearOwner();}});
+    }
 }

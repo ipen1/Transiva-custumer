@@ -18,9 +18,18 @@ public final class CustomerFeatureRuntimeController {
 
     public void onResume() { CustomerRealtimeCoordinator.enter(role); }
     public void onPause() { CustomerRealtimeCoordinator.leave(role); }
-    public Future<?> execute(Runnable task) { return loading.execute(null, CustomerLoadingCoordinator.CONTENT, task, null); }
-    public Future<?> execute(Runnable task,Runnable rejected) { return loading.execute(null, CustomerLoadingCoordinator.CONTENT, task, rejected); }
-    public Future<?> executeLatest(String key,int priority,Runnable task,Runnable rejected) { return loading.execute(key,priority,task,rejected); }
+    public Future<?> execute(Runnable task) { return execute(task,null); }
+    public Future<?> execute(Runnable task,Runnable rejected) { return loading.execute(null, CustomerLoadingCoordinator.CONTENT, owned(task), rejected); }
+    public Future<?> executeLatest(String key,int priority,Runnable task,Runnable rejected) { return loading.execute(key,priority,owned(task),rejected); }
+    private Runnable owned(Runnable task){
+        if(task==null)return null;
+        android.app.Application app=TransivaCustomerApplication.appContext();
+        final CustomerTransportSession owner=app==null?null:CustomerTransportSession.capture(app);
+        return ()->{try{if(owner!=null){owner.check(app);CustomerTransportSession.bind(owner);}task.run();}
+            catch(InterruptedException changed){Thread.currentThread().interrupt();}
+            finally{CustomerTransportSession.clearOwner();}};
+    }
+    public CustomerLoadingCoordinator.State state(String key){return loading.state(key);}
     public void cancel(String key) { loading.cancel(key); }
     public Thread newThread(Runnable task) { return networkScope.newThread(task); }
     public Thread newThread(Runnable task, String name) { return networkScope.newThread(task, name); }
@@ -28,7 +37,7 @@ public final class CustomerFeatureRuntimeController {
     public boolean postDelayed(Handler handler, Runnable task, long delayMs) {
         if (handler == null || task == null || networkScope.isDestroyed()) return false;
         Runnable guarded=CustomerLoadingCoordinator.guardCurrent(task);
-        return handler.postDelayed(() -> { if (!networkScope.isDestroyed()) guarded.run(); }, Math.max(0L, delayMs));
+        return handler.postDelayed(() -> networkScope.post(handler,guarded), Math.max(0L, delayMs));
     }
     public boolean isDestroyed() { return networkScope.isDestroyed(); }
     public void destroy() {

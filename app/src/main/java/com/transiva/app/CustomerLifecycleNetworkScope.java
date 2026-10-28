@@ -24,12 +24,12 @@ public final class CustomerLifecycleNetworkScope {
         if (task == null || destroyed.get()) return null;
         final Future<?>[] holder = new Future<?>[1];
         Future<?> future = TransivaNetworkExecutor.execute(() -> {
-            if (destroyed.get() || Thread.currentThread().isInterrupted()) return;
             try {
+                if (destroyed.get() || Thread.currentThread().isInterrupted() || !acceptsSession()) return;
                 threads.add(Thread.currentThread());
-                task.run();
+                if(session!=null)CustomerTransportSession.bind(session);task.run();
             } finally {
-                threads.remove(Thread.currentThread());
+                CustomerTransportSession.clearOwner();threads.remove(Thread.currentThread());
                 Future<?> f = holder[0];
                 if (f != null) futures.remove(f);
             }
@@ -50,8 +50,9 @@ public final class CustomerLifecycleNetworkScope {
 
     public Thread newThread(Runnable task, String name) {
         Runnable wrapped = () -> {
-            if (destroyed.get() || Thread.currentThread().isInterrupted()) return;
-            try { task.run(); } finally { threads.remove(Thread.currentThread()); }
+            try { if (destroyed.get() || Thread.currentThread().isInterrupted() || !acceptsSession()) return;
+                if(session!=null)CustomerTransportSession.bind(session);task.run();
+            } finally { CustomerTransportSession.clearOwner();threads.remove(Thread.currentThread()); }
         };
         Thread t = name == null ? new Thread(wrapped) : new Thread(wrapped, name);
         if (destroyed.get()) { t.interrupt(); return t; }

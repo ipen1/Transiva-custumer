@@ -637,7 +637,7 @@ class TransShopActivityScreenCore extends CustomerAdaptiveActivity {
         final String rawLocation = shared.trim();
         setLoading(true);
 
-        featureRuntime.newThread(() -> {
+        featureRuntime.execute(() -> {
             String resolved = rawLocation;
             try {
                 if (resolved.startsWith("geo:")) {
@@ -656,7 +656,7 @@ class TransShopActivityScreenCore extends CustomerAdaptiveActivity {
                 }
 
                 final double[] coordinate = extractLatLng(resolved);
-                mainHandler.post(() -> {
+                featureRuntime.post(mainHandler, () -> {
                     setLoading(false);
                     if (coordinate == null || !validCoord(coordinate[0], coordinate[1])) {
                         toastDialog("Lokasi dari WhatsApp/Google Maps tidak bisa dibaca.");
@@ -691,12 +691,17 @@ class TransShopActivityScreenCore extends CustomerAdaptiveActivity {
                     updateModeUI();
                 });
             } catch (Exception ignored) {
-                mainHandler.post(() -> {
+                featureRuntime.post(mainHandler, () -> {
                     setLoading(false);
                     toastDialog("Gagal membuka lokasi yang dibagikan.");
                 });
             }
-        }, "shared-location-resolver").start();
+        }, () -> { Exception ignored = new java.util.concurrent.RejectedExecutionException("Antrean penuh atau waktu tunggu habis"); 
+                featureRuntime.post(mainHandler, () -> {
+                    setLoading(false);
+                    toastDialog("Gagal membuka lokasi yang dibagikan.");
+                });
+             });
     }
 
     protected void useGoogleMapLink() {
@@ -707,7 +712,7 @@ class TransShopActivityScreenCore extends CustomerAdaptiveActivity {
         }
         hideKeyboard();
         setLoading(true);
-        featureRuntime.newThread(() -> {
+        featureRuntime.execute(() -> {
             String finalLink = link;
             try {
                 if (link.contains("maps.app.goo.gl") || link.contains("goo.gl/maps")) {
@@ -715,7 +720,7 @@ class TransShopActivityScreenCore extends CustomerAdaptiveActivity {
                     if (res.optBoolean("success", false) && res.optString("url", "").length() > 0) finalLink = res.optString("url");
                 }
                 double[] c = extractLatLng(finalLink);
-                mainHandler.post(() -> {
+                featureRuntime.post(mainHandler, () -> {
                     setLoading(false);
                     if (c == null || !validCoord(c[0], c[1])) { toastDialog("Link Google Maps tidak bisa dibaca."); return; }
                     pickupLat = c[0]; pickupLng = c[1]; pickupAddress = "Mencari alamat lokasi belanja...";
@@ -728,9 +733,11 @@ class TransShopActivityScreenCore extends CustomerAdaptiveActivity {
                     updateModeUI();
                 });
             } catch (Exception e) {
-                mainHandler.post(() -> { setLoading(false); toastDialog("Gagal membaca link Google Maps."); });
+                featureRuntime.post(mainHandler, () -> { setLoading(false); toastDialog("Gagal membaca link Google Maps."); });
             }
-        }, "transshop-map-link").start();
+        }, () -> { Exception e = new java.util.concurrent.RejectedExecutionException("Antrean penuh atau waktu tunggu habis"); 
+                featureRuntime.post(mainHandler, () -> { setLoading(false); toastDialog("Gagal membaca link Google Maps."); });
+             });
     }
 
     protected double[] extractLatLng(String link) {
@@ -752,10 +759,10 @@ class TransShopActivityScreenCore extends CustomerAdaptiveActivity {
 
 
     protected void resolveAddressAsync(boolean isPickup, double lat, double lng) {
-        featureRuntime.newThread(() -> {
+        featureRuntime.execute(() -> {
             String address = buildSmartAddress(lat, lng);
 
-            mainHandler.post(() -> {
+            featureRuntime.post(mainHandler, () -> {
                 if (destroyed) return;
 
                 if (isPickup) {
@@ -776,7 +783,7 @@ class TransShopActivityScreenCore extends CustomerAdaptiveActivity {
                     requestPaymentQuote();
                 }
             });
-        }).start();
+        }, () -> featureRuntime.post(mainHandler, () -> { setLoading(false);toastDialog("Sistem sedang sibuk. Coba lagi."); }));
     }
 
     protected String buildSmartAddress(double lat, double lng) {
@@ -923,12 +930,12 @@ class TransShopActivityScreenCore extends CustomerAdaptiveActivity {
     }
 
     protected void loadMapPlaces() {
-        featureRuntime.newThread(() -> {
+        featureRuntime.execute(() -> {
             try {
                 JSONObject food = getJson(GET_BUSINESSES_URL + "?v=" + System.currentTimeMillis());
                 JSONObject laundry = getJson(GET_LAUNDRIES_URL + "?v=" + System.currentTimeMillis());
 
-                mainHandler.post(() -> {
+                featureRuntime.post(mainHandler, () -> {
                     if (destroyed || !mapReady) return;
 
                     if (mapView != null) mapView.clearPlaces();
@@ -936,7 +943,7 @@ class TransShopActivityScreenCore extends CustomerAdaptiveActivity {
                     drawPlaces(laundry.optJSONArray("laundries"), "TransLaundry");
                 });
             } catch (Exception ignored) {}
-        }).start();
+        }, () -> { Exception ignored = new java.util.concurrent.RejectedExecutionException("Antrean penuh atau waktu tunggu habis");  });
     }
 
     protected void drawPlaces(JSONArray arr, String type) {
@@ -972,12 +979,12 @@ class TransShopActivityScreenCore extends CustomerAdaptiveActivity {
     protected void loadOnlineDrivers() {
         if (destroyed) return;
 
-        featureRuntime.newThread(() -> {
+        featureRuntime.execute(() -> {
             try {
                 JSONObject res = getJson(GET_ONLINE_DRIVERS_URL + "?type=bike&v=" + System.currentTimeMillis());
                 JSONArray arr = res.optJSONArray("drivers");
 
-                mainHandler.post(() -> {
+                featureRuntime.post(mainHandler, () -> {
                     if (destroyed || !mapReady) return;
 
                     if (mapView != null) mapView.clearOnlineDrivers();
@@ -1026,7 +1033,7 @@ class TransShopActivityScreenCore extends CustomerAdaptiveActivity {
                     }
                 });
             } catch (Exception ignored) {}
-        }).start();
+        }, () -> { Exception ignored = new java.util.concurrent.RejectedExecutionException("Antrean penuh atau waktu tunggu habis");  });
 
         mainHandler.postDelayed(() -> {
             if (!destroyed && mapReady && !isFinishing()) {
@@ -1096,7 +1103,7 @@ class TransShopActivityScreenCore extends CustomerAdaptiveActivity {
         orderBtn.setEnabled(false);
         orderBtn.setText("Proses...");
 
-        featureRuntime.newThread(() -> {
+        featureRuntime.execute(() -> {
             try {
                 String orderId = "ORD-" + System.currentTimeMillis();
 
@@ -1134,14 +1141,19 @@ class TransShopActivityScreenCore extends CustomerAdaptiveActivity {
                 payload.put("voucher_code", voucherInput == null ? "" : voucherInput.getText().toString().trim().toUpperCase(Locale.US));
 
                 JSONObject res = ReliableOrderClient.create(this, CREATE_ORDER_URL, payload, TIMEOUT_MS);
-                mainHandler.post(() -> handleOrderResult(res));
+                featureRuntime.post(mainHandler, () -> handleOrderResult(res));
             } catch (Exception e) {
-                mainHandler.post(() -> {
+                featureRuntime.post(mainHandler, () -> {
                     resetOrderButton();
                     toastDialog(ReliableOrderClient.failureMessage(e));
                 });
             }
-        }).start();
+        }, () -> { Exception e = new java.util.concurrent.RejectedExecutionException("Antrean penuh atau waktu tunggu habis"); 
+                featureRuntime.post(mainHandler, () -> {
+                    resetOrderButton();
+                    toastDialog(ReliableOrderClient.failureMessage(e));
+                });
+             });
     }
 
     protected void handleOrderResult(JSONObject res) {
@@ -1242,7 +1254,7 @@ class TransShopActivityScreenCore extends CustomerAdaptiveActivity {
         finalPriceText.setTextColor(Color.parseColor("#64748B"));
         paymentSummaryText.setText("Mengambil tarif dari database...");
 
-        featureRuntime.newThread(() -> {
+        featureRuntime.execute(() -> {
             try {
                 JSONObject payload = new JSONObject();
 
@@ -1275,7 +1287,7 @@ class TransShopActivityScreenCore extends CustomerAdaptiveActivity {
 
                 JSONObject res = postJson(PAYMENT_QUOTE_URL, payload);
 
-                mainHandler.post(() -> {
+                featureRuntime.post(mainHandler, () -> {
                     if (destroyed) return;
 
                     if (!res.optBoolean("success", false)) {
@@ -1376,14 +1388,21 @@ class TransShopActivityScreenCore extends CustomerAdaptiveActivity {
                     paymentSummaryText.setText(info);
                 });
             } catch (Exception e) {
-                mainHandler.post(() -> {
+                featureRuntime.post(mainHandler, () -> {
                     if (destroyed) return;
                     paymentSummaryText.setText("Gagal terhubung ke server tarif");
                     finalPriceText.setText("Rp -");
                     finalPriceText.setTextColor(Color.parseColor("#0B3A78"));
                 });
             }
-        }).start();
+        }, () -> { Exception e = new java.util.concurrent.RejectedExecutionException("Antrean penuh atau waktu tunggu habis"); 
+                featureRuntime.post(mainHandler, () -> {
+                    if (destroyed) return;
+                    paymentSummaryText.setText("Gagal terhubung ke server tarif");
+                    finalPriceText.setText("Rp -");
+                    finalPriceText.setTextColor(Color.parseColor("#0B3A78"));
+                });
+             });
     }
 
     protected int jsonInt(JSONObject json, String key, int fallback) {
@@ -1428,12 +1447,12 @@ class TransShopActivityScreenCore extends CustomerAdaptiveActivity {
     protected void requestVisibleOsrmRoute() {
         if (!mapReady || mapView == null || !validCoord(pickupLat, pickupLng) || !validCoord(deliveryLat, deliveryLng)) return;
         final double aLat = pickupLat, aLng = pickupLng, bLat = deliveryLat, bLng = deliveryLng;
-        featureRuntime.newThread(() -> {
+        featureRuntime.execute(() -> {
             try {
                 StableRouteEngine.Result route = StableRouteEngine.fetch(aLat, aLng, bLat, bLng);
-                mainHandler.post(() -> { if (!destroyed && mapView != null) mapView.drawRideRoute(route.latLngPoints); });
+                featureRuntime.post(mainHandler, () -> { if (!destroyed && mapView != null) mapView.drawRideRoute(route.latLngPoints); });
             } catch (Exception ignored) {}
-        }, "transiva-google-osrm-preview").start();
+        }, () -> { Exception ignored = new java.util.concurrent.RejectedExecutionException("Antrean penuh atau waktu tunggu habis");  });
     }
     protected boolean validCoord(double lat, double lng) {
         return CustomerGeoMath.valid(lat, lng);

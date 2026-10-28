@@ -1256,7 +1256,7 @@ class CustomerDashboardActivityScreenCore extends CustomerAdaptiveActivity
         a.setMargins(0, 0, dp(6), 0);
         row.addView(loyalty, a);
 
-        LinearLayout referral = miniGrowthCard("🎁", "Referral", "Ajak teman", "Dapat poin");
+        LinearLayout referral = miniGrowthCard("🎁", "Referral", "Ajak teman", "Promo Rp1.000");
         referralCodeText = (TextView) ((LinearLayout) referral.getChildAt(1)).getChildAt(1);
         referralStatText = (TextView) ((LinearLayout) referral.getChildAt(1)).getChildAt(2);
         referral.setOnClickListener(v -> startActivity(new Intent(this, CustomerReferralActivity.class)));

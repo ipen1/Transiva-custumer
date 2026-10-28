@@ -22,15 +22,15 @@ public final class CustomerLoadingCoordinator {
     private boolean destroyed;
     private final class Job extends FutureTask<Void> implements Comparable<Job> {
         final String key; final int priority; final long sequence=SEQUENCE.incrementAndGet();
-        volatile State state=State.QUEUED; volatile HttpURLConnection connection;
+        volatile CustomerLoadingCoordinator.State state=CustomerLoadingCoordinator.State.QUEUED; volatile HttpURLConnection connection;
         Job(String key,int priority,Runnable task){super(task,null);this.key=key;this.priority=priority;}
         boolean current(){synchronized(CustomerLoadingCoordinator.this){return !destroyed&&!isCancelled()&&latest.get(key)==this;}}
         public int compareTo(Job b){int p=Integer.compare(priority,b.priority);return p!=0?p:Long.compare(sequence,b.sequence);}
-        @Override public void run(){if(isCancelled())return;CURRENT.set(this);state=State.LOADING;try{super.run();}finally{CURRENT.remove();}}
+        @Override public void run(){if(isCancelled())return;CURRENT.set(this);state=CustomerLoadingCoordinator.State.LOADING;try{super.run();}finally{CURRENT.remove();}}
         @Override public boolean cancel(boolean interrupt){boolean result=super.cancel(interrupt);HttpURLConnection c=connection;if(c!=null)c.disconnect();POOL.remove(this);return result;}
         @Override protected void done(){
-            state=isCancelled()?State.CANCELLED:State.READY;
-            if(!isCancelled())try{get();}catch(Exception e){state=State.ERROR;}
+            state=isCancelled()?CustomerLoadingCoordinator.State.CANCELLED:CustomerLoadingCoordinator.State.READY;
+            if(!isCancelled())try{get();}catch(Exception e){state=CustomerLoadingCoordinator.State.ERROR;}
             synchronized(CustomerLoadingCoordinator.this){if(jobs.get(key)==this)jobs.remove(key);}
             CAPACITY.release();
         }

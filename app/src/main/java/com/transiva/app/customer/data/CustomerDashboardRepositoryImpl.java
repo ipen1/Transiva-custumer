@@ -72,6 +72,8 @@ public final class CustomerDashboardRepositoryImpl
             List<Promo> promos = safeGet(promoTask, new ArrayList<>(), deadline);
             JSONObject loyalty = safeGet(loyaltyTask, null, deadline);
             JSONObject referral = safeGet(referralTask, null, deadline);
+            // Referral GET may reconcile a deferred credit after the parallel balance read.
+            if(referral!=null&&referral.optBoolean("success",false)&&referral.has("wallet_balance"))balance=referral.optDouble("wallet_balance",balance);
             JSONObject bestOffer = safeGet(bestOfferTask, null, deadline);
             DashboardState state = new DashboardState(balance, formatActiveOrder(activeOrder),
                     activeOrder, loyalty, referral, bestOffer, promos);

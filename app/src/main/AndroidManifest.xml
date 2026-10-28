@@ -164,6 +164,20 @@
         <activity android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|uiMode" android:name=".LiveOrderCenterActivity" android:exported="false" android:theme="@style/AppTheme" />
         <activity android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|uiMode" android:name=".AllServicesActivity" android:exported="false" android:theme="@style/AppTheme" />
         <activity android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|uiMode" android:name=".CustomerLoyaltyActivity" android:exported="false" android:theme="@style/AppTheme" />
+        <activity android:name=".CustomerReferralLinkActivity" android:exported="true" android:launchMode="singleTop" android:theme="@style/AppTheme">
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="https" android:host="transiva.my.id" android:path="/referral.php" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="transiva" android:host="referral" />
+            </intent-filter>
+        </activity>
         <activity android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|uiMode" android:name=".CustomerReferralActivity" android:exported="false" android:theme="@style/AppTheme" />
 
         <activity android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|uiMode"

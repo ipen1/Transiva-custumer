@@ -80,7 +80,7 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
     private final java.util.Set<Integer> storyLookups = new java.util.HashSet<>();
     private int menuLoadGeneration;
     private final Runnable storyExpiryTick = new Runnable(){public void run(){
-        updateMerchantAvatars(); updateFoodStoryRail(); mainHandler.postDelayed(this, 1000);
+        updateMerchantAvatars(); mainHandler.postDelayed(this, 5000);
     }};
 
     private FoodStoryRail foodStoryRail;
@@ -220,6 +220,11 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
         homeResultsBox = new LinearLayout(this);
         homeResultsBox.setOrientation(LinearLayout.VERTICAL);
         root.addView(homeResultsBox, new LinearLayout.LayoutParams(-1, -2));
+        // Merchant content is placed ahead of stories: stories never block first content.
+        if (foodStoryRail != null) {
+            root.removeView(foodStoryRail);
+            root.addView(foodStoryRail, new LinearLayout.LayoutParams(-1, -2));
+        }
         renderHomeResults();
         if (foodScroll != null && savedHomeScroll > 0) foodScroll.post(() -> foodScroll.scrollTo(0, savedHomeScroll));
     }
@@ -1233,6 +1238,10 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
         return row;
     }
 
+    private String restaurantPayloadSignature = "";
+    private boolean menuIndexLoading = false;
+    private String menuIndexSignature = "";
+    private long lastMenuIndexAt = 0L;
     protected void loadRestaurants() { loadRestaurants(true); }
     protected void loadRestaurants(boolean showLoading) {
         if (restaurantsLoading) return;
@@ -1241,12 +1250,27 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
         featureRuntime.execute(() -> {
             try {
                 JSONObject res = getJson(BASE_URL + "server/get_food_restaurants.php?user_id=" + Uri.encode(String.valueOf(userId)) + "&v=" + System.currentTimeMillis());
-                restaurants.clear();
                 JSONArray arr = res.optJSONArray("restaurants");
                 if (res.optBoolean("success", false) && arr != null) {
-                    for (int i = 0; i < arr.length(); i++) restaurants.add(arr.getJSONObject(i));
-                    restaurantsLoadFinished = true;
-                    featureRuntime.post(mainHandler, () -> { restaurantsLoading = false; foodLoadError = ""; if (currentScreen == 0 && activeRestaurant == null) { if (showLoading) showRestaurantList(); else renderHomeResults(); } loadAllMenuIndex(); });
+                    final String signature = arr.toString();
+                    final List<JSONObject> incoming = new ArrayList<>();
+                    for (int i = 0; i < arr.length(); i++) incoming.add(arr.getJSONObject(i));
+                    featureRuntime.post(mainHandler, () -> {
+                        restaurantsLoading = false;
+                        restaurantsLoadFinished = true;
+                        foodLoadError = "";
+                        if (!signature.equals(restaurantPayloadSignature)) {
+                            restaurantPayloadSignature = signature;
+                            restaurants.clear();
+                            restaurants.addAll(incoming);
+                            if (currentScreen == 0 && activeRestaurant == null) {
+                                if (showLoading) showRestaurantList(); else renderHomeResults();
+                            }
+                            loadAllMenuIndex();
+                        } else if (showLoading && currentScreen == 0 && activeRestaurant == null) {
+                            renderHomeResults();
+                        }
+                    });
                 } else throw new Exception(firstNonEmpty(res.optString("message"), "Gagal memuat merchant"));
             } catch (Exception e) {
                 restaurantsLoadFinished = true;
@@ -1256,10 +1280,16 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
     }
 
     protected void loadAllMenuIndex() {
+        if (menuIndexLoading || android.os.SystemClock.elapsedRealtime() - lastMenuIndexAt < 120000L) return;
+        menuIndexLoading = true;
+        final List<JSONObject> indexMerchants = new ArrayList<>(restaurants);
         featureRuntime.execute(() -> {
             try {
                 List<MenuSearchItem> fresh = new ArrayList<>();
-                for (JSONObject r : restaurants) {
+                // Bound initial index requests; full catalog requires server-side search.
+                int indexedMerchants = 0;
+                for (JSONObject r : indexMerchants) {
+                    if (indexedMerchants++ >= 8) break;
                     int rid = r.optInt("id", 0);
                     if (rid <= 0) continue;
                     try {
@@ -1292,11 +1322,18 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
                     } catch (Exception ignored) {}
                 }
                 featureRuntime.post(mainHandler, () -> {
-                    allMenuSearchItems.clear();
-                    allMenuSearchItems.addAll(fresh);
-                    if (currentScreen == 0 && activeRestaurant == null) renderHomeResults();
+                    menuIndexLoading = false;
+                    lastMenuIndexAt = android.os.SystemClock.elapsedRealtime();
+                    StringBuilder fingerprint = new StringBuilder();
+                    for (MenuSearchItem item : fresh) fingerprint.append(item.restaurantId).append(':').append(item.menuId).append(':').append(item.price).append(':').append(item.stock).append(';');
+                    if (!fingerprint.toString().equals(menuIndexSignature)) {
+                        menuIndexSignature = fingerprint.toString();
+                        allMenuSearchItems.clear();
+                        allMenuSearchItems.addAll(fresh);
+                        if (currentScreen == 0 && activeRestaurant == null) renderHomeResults();
+                    }
                 });
-            } catch (Exception ignored) {}
+            } catch (Exception ignored) { featureRuntime.post(mainHandler, () -> menuIndexLoading = false); }
         });
     }
 

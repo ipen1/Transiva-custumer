@@ -28,5 +28,8 @@ public final class CustomerFinancialRules {
         return Math.max(0, Math.max(0, limit) - Math.max(0, used));
     }
 
+    /** A successful zero-pay quote is valid only against a real, positive gross fare. */
+    public static boolean validRideQuote(int original, int payable) { return original > 0 && payable >= 0 && payable <= original; }
+
     public static int safeCoinReward(int reward) { return Math.max(0, reward); }
 }

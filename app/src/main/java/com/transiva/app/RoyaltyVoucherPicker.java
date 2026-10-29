@@ -65,11 +65,21 @@ public final class RoyaltyVoucherPicker {
     public interface Preview { void result(int discount,String message); }
     public static void preview(Activity a,String code,int total,int fee,Preview callback){
         if(code==null||code.isEmpty()){callback.result(0,"");return;}
-        TransivaNetworkExecutor.execute(()->{try{JSONObject body=new JSONObject().put("order_total",total).put("delivery_fee",fee);JSONObject r=TransivaHttpRepository.postJson(a,"https://transiva.my.id/server/customer_royalty_vouchers.php",body,15000);
-            JSONArray rows=r.optJSONArray("vouchers");int discount=0;String message="Potongan kode promo diperiksa kembali saat memesan.";
-            if(!r.optBoolean("success"))message="Potongan voucher belum terkonfirmasi. Coba pilih voucher lagi.";
-            if(rows!=null)for(int i=0;i<rows.length();i++){JSONObject v=rows.optJSONObject(i);if(v!=null&&code.equalsIgnoreCase(v.optString("voucher_code"))){discount=v.optInt("discount");message=v.optBoolean("eligible")?"Voucher siap digunakan.":v.optString("reason");break;}}
-            final int value=discount;final String note=message;a.runOnUiThread(()->{if(!a.isFinishing()&&!a.isDestroyed())callback.result(value,note);});
-        }catch(Exception e){a.runOnUiThread(()->{if(!a.isFinishing()&&!a.isDestroyed())callback.result(0,"Potongan voucher belum terkonfirmasi. Coba pilih voucher lagi.");});}});
+        TransivaNetworkExecutor.execute(()->{
+            int amount=0;String message="Potongan voucher belum terkonfirmasi. Coba pilih voucher lagi.";
+            try{
+                JSONObject body=new JSONObject().put("order_total",Math.max(0,total)).put("delivery_fee",Math.max(0,fee))
+                    .put("voucher_code",code).put("service_type","TransFood");
+                JSONObject response=TransivaHttpRepository.postJson(a,"https://transiva.my.id/server/customer_royalty_vouchers.php",body,15000);
+                JSONObject validation=response.optJSONObject("code_validation");
+                if(response.optBoolean("success")&&validation!=null&&code.equalsIgnoreCase(validation.optString("code"))){
+                    if(validation.optBoolean("eligible"))amount=Math.max(0,validation.optInt("discount"));
+                    message=validation.optString("reason",message);
+                }
+            }catch(TransivaHttpRepository.ServerResponseException e){message=e.getMessage();}
+            catch(Exception e){/* A failed preview never authorizes a local discount. */}
+            final int discount=amount;final String note=message;
+            a.runOnUiThread(()->{if(!a.isFinishing()&&!a.isDestroyed())callback.result(discount,note);});
+        });
     }
 }

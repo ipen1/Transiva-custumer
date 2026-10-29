@@ -2437,7 +2437,7 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
                     distanceInfoText.setText(String.format(new Locale("id", "ID"), serviceName() + " • %.1f km", distanceKm));
                     durationInfoText.setText(String.format(new Locale("id", "ID"), "± %.0f menit • estimasi perjalanan", durationMinutes));
 
-                    if (total <= 0) {
+                    if (!CustomerFinancialRules.validRideQuote(original, total)) {
                         paymentSummaryText.setText("Biaya belum tersedia");
                         showQuoteRetry();
                         finalPriceText.setTextColor(Color.parseColor("#0B3A78"));
@@ -2687,7 +2687,7 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
             orderBtn.setEnabled(false);
             return;
         }
-        boolean ready = locationReady() && locationQuoteReady && lastQuotedFare > 0;
+        boolean ready = locationReady() && locationQuoteReady && lastQuotedFare >= 0;
         orderBtn.setVisibility(ready ? View.VISIBLE : View.GONE);
         orderBtn.setEnabled(ready);
         orderBtn.setAlpha(1f);

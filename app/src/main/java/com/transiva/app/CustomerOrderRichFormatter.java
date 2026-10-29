@@ -48,7 +48,9 @@ public final class CustomerOrderRichFormatter {
             out.add(split);
             if (merchantDiscount > 0) out.add("🏷 Hemat diskon merchant " + rupiah(merchantDiscount));
             int voucher = order.optInt("voucher_discount", 0);
-            if (voucher > 0) out.add("🎟 Promo Transiva " + rupiah(voucher));
+            if (voucher > 0) out.add("🎟 Voucher " + rupiah(voucher));
+            int points = order.optInt("point_discount", 0);
+            if (points > 0) out.add("✨ Poin Transiva " + rupiah(points));
             return trim(out, 3);
         }
 
@@ -71,7 +73,9 @@ public final class CustomerOrderRichFormatter {
 
         addDistance(out, order);
         int voucher = order.optInt("voucher_discount", 0);
-        if (voucher > 0) out.add("🎟 Hemat promo " + rupiah(voucher));
+        if (voucher > 0) out.add("🎟 Voucher " + rupiah(voucher));
+        int points = order.optInt("point_discount", 0);
+        if (points > 0) out.add("✨ Poin Transiva " + rupiah(points));
         int rain = order.optInt("rain_surcharge", 0);
         if (rain > 0) out.add("🌧 Penyesuaian cuaca " + rupiah(rain));
         String note = first(order.optString("plain_note"), extractNoteText(order));
@@ -114,6 +118,8 @@ public final class CustomerOrderRichFormatter {
                 String title = first(order.optString("voucher_title"), order.optString("voucher_code"), "Promo Transiva");
                 out.add(new Line(title, "- " + rupiah(voucher), "🎟️"));
             }
+            int points = order.optInt("point_discount", 0);
+            if (points > 0) out.add(new Line("Poin Transiva", "- " + rupiah(points), "✨"));
             String mode = first(order.optString("delivery_label"), order.optString("delivery_mode"), "");
             if (!mode.isEmpty()) out.add(new Line("Mode pengantaran", humanize(mode), "🚚"));
             return out;
@@ -140,6 +146,8 @@ public final class CustomerOrderRichFormatter {
             String voucherName = first(order.optString("voucher_title"), order.optString("voucher_code"), "Promo Transiva");
             out.add(new Line(voucherName, "- " + rupiah(voucher), "🎟️"));
         }
+        int points = order.optInt("point_discount", 0);
+        if (points > 0) out.add(new Line("Poin Transiva", "- " + rupiah(points), "✨"));
         int rain = order.optInt("rain_surcharge", 0);
         if (rain > 0) out.add(new Line("Penyesuaian cuaca", "+ " + rupiah(rain), "🌧️"));
         String note = first(order.optString("plain_note"), extractNoteText(order));

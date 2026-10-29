@@ -61,6 +61,7 @@ import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.Locale;
 class CustomerChatRoomActivityScreenCore extends CustomerAdaptiveActivity {
+    protected android.app.Dialog stickerDialog;
 
 
 
@@ -578,6 +579,13 @@ class CustomerChatRoomActivityScreenCore extends CustomerAdaptiveActivity {
                         -2
                 )
         );
+
+        root.addView(TraviSivaStickers.launcher(this, () -> {
+            if (readOnly || sending || uploading) return;
+            android.view.inputmethod.InputMethodManager keyboard = (android.view.inputmethod.InputMethodManager)getSystemService(INPUT_METHOD_SERVICE);
+            if (keyboard != null) keyboard.hideSoftInputFromWindow(input.getWindowToken(), 0);
+            stickerDialog = TraviSivaStickers.show(this, this::sendSticker);
+        }), new LinearLayout.LayoutParams(-1, dp(46)));
 
         inputCard = new LinearLayout(this);
         inputCard.setGravity(Gravity.CENTER_VERTICAL);
@@ -1384,7 +1392,8 @@ class CustomerChatRoomActivityScreenCore extends CustomerAdaptiveActivity {
     protected PendingText addPendingText(String content) {
         LinearLayout wrapper = new LinearLayout(this); wrapper.setOrientation(LinearLayout.VERTICAL); wrapper.setGravity(Gravity.RIGHT);
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, -2); lp.setMargins(0, dp(4), 0, dp(4)); messagesBox.addView(wrapper, lp);
-        TextView bubble = text(content, 13, "#FFFFFF", false); bubble.setPadding(dp(13), dp(9), dp(13), dp(9)); bubble.setBackground(gradient("#086BFF", "#2EA2FF", 17)); wrapper.addView(bubble, new LinearLayout.LayoutParams(-2, -2));
+        if (content.startsWith(TraviSivaStickers.PREFIX)) wrapper.addView(TraviSivaStickers.bubble(this, content));
+        else { TextView bubble = text(content, 13, "#FFFFFF", false); bubble.setPadding(dp(13), dp(9), dp(13), dp(9)); bubble.setBackground(gradient("#086BFF", "#2EA2FF", 17)); wrapper.addView(bubble, new LinearLayout.LayoutParams(-2, -2)); }
         TextView state = text("Pending…", 9, "#94A3B8", false); state.setPadding(dp(7), dp(2), dp(7), 0); wrapper.addView(state, new LinearLayout.LayoutParams(-2, -2));
         animateMessage(wrapper, true);
         scrollBottom();
@@ -1664,7 +1673,9 @@ class CustomerChatRoomActivityScreenCore extends CustomerAdaptiveActivity {
         wrapperLp.setMargins(0, dp(4), 0, dp(4));
         messagesBox.addView(wrapper, wrapperLp);
 
-        if (ChatVoiceNote.isVoice(content)) {
+        if (content.startsWith(TraviSivaStickers.PREFIX)) {
+            wrapper.addView(TraviSivaStickers.bubble(this, content));
+        } else if (ChatVoiceNote.isVoice(content)) {
             wrapper.addView(
                     ChatVoiceNote.createPlayerBubble(this, absoluteVoiceContent(content), mine),
                     new LinearLayout.LayoutParams(-2, -2)
@@ -2036,10 +2047,11 @@ class CustomerChatRoomActivityScreenCore extends CustomerAdaptiveActivity {
 
 
 
-    private void sendMessage() {
+    private void sendMessage() { sendChatContent(input.getText().toString().trim(), true); }
+    protected void sendSticker(String wire) { sendChatContent(wire, false); }
+    private void sendChatContent(String message, boolean clearDraft) {
         if (readOnly || sending || uploading || !chatRequests.current()) return;
 
-        String message = input.getText().toString().trim();
         if (message.isEmpty()) return;
 
         if (message.length() > 1000) {
@@ -2056,7 +2068,7 @@ class CustomerChatRoomActivityScreenCore extends CustomerAdaptiveActivity {
         sendButton.setText("...");
         final String originalMessage = message;
         final PendingText pending = addPendingText(originalMessage);
-        input.setText("");
+        if (clearDraft) input.setText("");
 
         chatRequests.execute("send",() -> {
             try {
@@ -2324,6 +2336,7 @@ class CustomerChatRoomActivityScreenCore extends CustomerAdaptiveActivity {
 
     @Override
     protected void onPause() {
+        if (stickerDialog != null) { stickerDialog.dismiss(); stickerDialog = null; }
         if (chatStability != null) chatStability.onPause();
         chatVisible = false;
         readVisibilityGeneration++;

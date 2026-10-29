@@ -32,6 +32,7 @@ public final class CustomerChatPreviewFormatter {
     /** Display-only preview. Chat storage keeps the original media payload for playback. */
     public static String notificationText(String raw) {
         String value=raw==null?"":raw.trim();
+        if(value.startsWith("[[STICKER]]")) return "🐻 Stiker Travi & Siva";
         if(value.startsWith(VOICE_PREFIX)) {
             int split=value.lastIndexOf('|');
             if(split>=VOICE_PREFIX.length())try {
@@ -105,6 +106,7 @@ public final class CustomerChatPreviewFormatter {
                         ""
                 ).trim();
 
+        if (message.startsWith("[[STICKER]]")) return "🐻 Stiker Travi & Siva";
         if (message.startsWith(VOICE_PREFIX)) {
             return isMine(item) ? "Anda mengirim voice note" : first(participant, "Mitra") + " mengirim voice note";
         }

@@ -6,15 +6,15 @@ import static org.junit.Assert.assertEquals;
 
 public class OrderStatusPresentationTest {
     @Test public void pendingRide_waitsForDriver() {
-        assertEquals("Sedang Mencari Driver", OrderStatusPresentation.label("pending", "transride"));
+        assertEquals("Mencari Driver Terdekat", OrderStatusPresentation.label("pending", "transride"));
     }
 
     @Test public void pendingCar_waitsForCarDriver() {
-        assertEquals("Sedang Mencari Driver", OrderStatusPresentation.label("pending", "transcar"));
+        assertEquals("Mencari Driver Terdekat", OrderStatusPresentation.label("pending", "transcar"));
     }
 
     @Test public void pendingFood_waitsForMerchant() {
-        assertEquals("Menunggu Konfirmasi Penjual", OrderStatusPresentation.label("pending", "transfood"));
+        assertEquals("Menunggu Konfirmasi Merchant", OrderStatusPresentation.label("pending", "transfood"));
     }
 
     @Test public void completedAliases_areRenderedAsFinished() {

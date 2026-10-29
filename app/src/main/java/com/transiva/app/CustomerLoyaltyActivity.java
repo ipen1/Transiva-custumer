@@ -42,12 +42,14 @@ public class CustomerLoyaltyActivity extends CustomerAdaptiveActivity{
    ProgressBar bar=new ProgressBar(this,null,android.R.attr.progressBarStyleHorizontal);bar.setMax(Math.max(1,target-floor));bar.setProgress(Math.max(0,current-floor));hero.addView(bar,new LinearLayout.LayoutParams(-1,dp(5)));}
   String benefit=pointCopy(data.optString("card_benefit","Poin dari pesanan yang memenuhi syarat."));
   hero.addView(tx(benefit,12,"#EAF4FF",false),margin(8));root.addView(hero,margin(14));
-  addMissions(data.optJSONArray("missions"));
   JSONArray owned=data.optJSONArray("owned_vouchers");
   if(owned!=null&&owned.length()>0){root.addView(tx("Voucher saya",17,"#0B3A78",true),margin(18));for(int i=0;i<owned.length();i++){JSONObject v=owned.optJSONObject(i);if(v==null)continue;
-   LinearLayout c=card("#ECFDF5",16);c.addView(tx(v.optString("title"),14,"#065F46",true));
-   c.addView(tx("Min. "+rupiah(v.optInt("min_order"))+" • "+expiry(v.optString("expires_at")),11,"#475569",false),margin(4));
-   Button use=action("Gunakan",true);use.setOnClickListener(view->useVoucher(v.optString("voucher_code")));c.addView(use,margin(8));root.addView(c,margin(8));}}
+   LinearLayout c=card("#ECFDF5",16);LinearLayout rowOwned=new LinearLayout(this);rowOwned.setGravity(Gravity.CENTER_VERTICAL);
+   LinearLayout info=new LinearLayout(this);info.setOrientation(LinearLayout.VERTICAL);info.addView(tx(v.optString("title"),14,"#065F46",true));
+   info.addView(tx("Min. "+rupiah(v.optInt("min_order")),11,"#475569",false),margin(4));info.addView(tx(expiry(v.optString("expires_at")),11,"#475569",false),margin(3));
+   rowOwned.addView(info,new LinearLayout.LayoutParams(0,-2,1));Button use=action("Gunakan",true);use.setOnClickListener(view->useVoucher(v.optString("voucher_code")));
+   LinearLayout.LayoutParams useLp=new LinearLayout.LayoutParams(-2,dp(44));useLp.setMargins(dp(8),0,0,0);rowOwned.addView(use,useLp);c.addView(rowOwned);root.addView(c,margin(8));}}
+  addMissions(data.optJSONArray("missions"));
   root.addView(tx("Tukar poin",17,"#0B3A78",true),margin(18));
   JSONArray rewards=data.optJSONArray("rewards");int available=0;
   if(rewards!=null)for(int i=0;i<rewards.length();i++){JSONObject r=rewards.optJSONObject(i);if(r!=null&&r.optBoolean("unlocked")){addReward(r,points);available++;}}

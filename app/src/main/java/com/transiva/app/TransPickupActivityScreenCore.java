@@ -87,6 +87,8 @@ class TransPickupActivityScreenCore extends CustomerAdaptiveFragmentActivity {
     protected boolean fragile = false;
     protected String paymentMethod = "cash";
     protected double deliveryFee = 0, distanceKm = 0;
+    private final CustomerFareQuoteGate pickupFareGate=new CustomerFareQuoteGate();
+    private boolean pickupScreenClosed;
     protected String otpCode = "";
     private boolean submittingOrder = false;
     protected LocationManager locationManager;
@@ -339,6 +341,7 @@ class TransPickupActivityScreenCore extends CustomerAdaptiveFragmentActivity {
             if (deliveryCoordText != null) deliveryCoordText.setText("📍 Geser peta lalu klik Antar ke lokasi ini");
         }
 
+        pickupFareGate.invalidate();setLoading(false);
         deliveryFee = 0d;
         distanceKm = 0d;
         if (priceText != null) priceText.setText("Ongkir: hitung dulu");
@@ -599,6 +602,7 @@ class TransPickupActivityScreenCore extends CustomerAdaptiveFragmentActivity {
     }
 
     private void updateChoices() {
+        pickupFareGate.invalidate();setLoading(false);
         setChoice(smallBtn, "small".equals(packageSize)); setChoice(mediumBtn, "medium".equals(packageSize));
         setChoice(bikeBtn, true);
         setChoice(fragileNoBtn, !fragile); setChoice(fragileYesBtn, fragile);
@@ -679,13 +683,11 @@ class TransPickupActivityScreenCore extends CustomerAdaptiveFragmentActivity {
                 if (list == null || list.isEmpty()) throw new Exception("Lokasi pengantaran tidak ditemukan.");
 
                 Address a = list.get(0);
-                deliveryLat = a.getLatitude();
-                deliveryLng = a.getLongitude();
-                mapCenterLat = deliveryLat;
-                mapCenterLng = deliveryLng;
-
-                String label = "📍 " + formatCoordinate(deliveryLat, deliveryLng);
-                mainHandler.post(() -> {
+                final double foundLat=a.getLatitude(),foundLng=a.getLongitude();
+                String label = "📍 " + formatCoordinate(foundLat, foundLng);
+                networkScope.post(mainHandler, () -> {
+                    if(pickupScreenClosed || submittingOrder)return;
+                    deliveryLat=foundLat;deliveryLng=foundLng;mapCenterLat=foundLat;mapCenterLng=foundLng;
                     setLoading(false);
                     deliveryCoordText.setText(label);
                     selectMapMode("delivery");
@@ -708,34 +710,59 @@ class TransPickupActivityScreenCore extends CustomerAdaptiveFragmentActivity {
         }, "transpickup-geocode").start();
     }
 
+    private String currentPickupQuoteKey() {
+        return CustomerFareQuoteGate.key(pickupLat,pickupLng,deliveryLat,deliveryLng,
+                vehicleType,packageSize,fragile?"1":"0",paymentMethod,String.valueOf(userId));
+    }
+    private boolean isPickupQuoteCurrent(long ticket,String key) {
+        return !pickupScreenClosed && !submittingOrder && pickupFareGate.isCurrent(ticket)
+                && key.equals(currentPickupQuoteKey());
+    }
     private void calculateOngkir() {
-        if (!validLocation()) return;
+        if(pickupScreenClosed || submittingOrder)return;
+        pickupFareGate.invalidate();setLoading(false);deliveryFee=0;distanceKm=0;
+        if(distanceText!=null)distanceText.setText("Jarak: -");
+        if(orderBtn!=null){orderBtn.setEnabled(false);orderBtn.setAlpha(0.55f);}
+        if(priceText!=null)priceText.setText("Ongkir: hitung dulu");
+        if(!validLocation())return;
+        final String quoteKey=currentPickupQuoteKey();
+        final long quoteTicket=pickupFareGate.begin(quoteKey);
+        final double pLat=pickupLat,pLng=pickupLng,dLat=deliveryLat,dLng=deliveryLng;
+        final String vehicle=vehicleType,size=packageSize;
+        final boolean delicate=fragile;
         setLoading(true);
-        networkScope.newThread(() -> {
+        if(priceText!=null)priceText.setText("Menghitung...");
+        networkScope.execute(() -> {
             try {
-                String url = BASE_URL + "server/calculatePickupOngkir.php" +
-                        "?pickup_lat=" + Uri.encode(String.valueOf(pickupLat)) +
-                        "&pickup_lng=" + Uri.encode(String.valueOf(pickupLng)) +
-                        "&delivery_lat=" + Uri.encode(String.valueOf(deliveryLat)) +
-                        "&delivery_lng=" + Uri.encode(String.valueOf(deliveryLng)) +
-                        "&vehicle_type=" + Uri.encode(vehicleType) +
-                        "&package_size=" + Uri.encode(packageSize) +
-                        "&fragile=" + (fragile ? "1" : "0") +
-                        "&_=" + System.currentTimeMillis();
-                JSONObject res = getJson(url);
-                if (!res.optBoolean("success", false)) throw new Exception(firstNonEmpty(res.optString("message"), "Gagal menghitung ongkir"));
-                deliveryFee = res.optDouble("price", 0);
-                distanceKm = res.optDouble("distance_km", 0);
-                mainHandler.post(() -> {
-                    setLoading(false);
-                    distanceText.setText("Jarak: " + String.format(Locale.US, "%.2f", distanceKm) + " km");
-                    priceText.setText("Ongkir: " + rupiah(deliveryFee));
-                    orderBtn.setEnabled(true); orderBtn.setAlpha(1f);
+                String url=BASE_URL+"server/calculatePickupOngkir.php"+
+                        "?pickup_lat="+Uri.encode(String.valueOf(pLat))+"&pickup_lng="+Uri.encode(String.valueOf(pLng))+
+                        "&delivery_lat="+Uri.encode(String.valueOf(dLat))+"&delivery_lng="+Uri.encode(String.valueOf(dLng))+
+                        "&vehicle_type="+Uri.encode(vehicle)+"&package_size="+Uri.encode(size)+
+                        "&fragile="+(delicate?"1":"0")+"&_="+System.currentTimeMillis();
+                JSONObject res=getJson(url);
+                if(!res.optBoolean("success",false))throw new Exception(firstNonEmpty(res.optString("message"),"Gagal menghitung ongkir"));
+                final double quotedFee=res.optDouble("price",0),quotedDistance=res.optDouble("distance_km",0);
+                if(Double.isNaN(quotedFee)||Double.isInfinite(quotedFee)||quotedFee<=0||Double.isNaN(quotedDistance)||Double.isInfinite(quotedDistance)||quotedDistance<0)
+                    throw new Exception("Tarif server belum valid. Hitung ongkir kembali.");
+                networkScope.post(mainHandler,()->{
+                    if(!isPickupQuoteCurrent(quoteTicket,quoteKey)||!pickupFareGate.accept(quoteTicket,quoteKey))return;
+                    deliveryFee=quotedFee;distanceKm=quotedDistance;setLoading(false);
+                    distanceText.setText("Jarak: "+String.format(Locale.US,"%.2f",distanceKm)+" km");
+                    priceText.setText("Ongkir: "+rupiah(deliveryFee));
+                    orderBtn.setEnabled(true);orderBtn.setAlpha(1f);
                 });
-            } catch (Exception e) {
-                mainHandler.post(() -> { setLoading(false); showInfo("Ongkir", e.getMessage()); });
-            }
-        }).start();
+            }catch(Exception e){networkScope.post(mainHandler,()->{
+                if(!isPickupQuoteCurrent(quoteTicket,quoteKey))return;
+                pickupFareGate.reject(quoteTicket);setLoading(false);
+                if(priceText!=null)priceText.setText("Ongkir: hitung dulu");
+                showInfo("Ongkir",e.getMessage());
+            });}
+        },()->networkScope.post(mainHandler,()->{
+            if(!isPickupQuoteCurrent(quoteTicket,quoteKey))return;
+            pickupFareGate.reject(quoteTicket);setLoading(false);
+            if(priceText!=null)priceText.setText("Ongkir: hitung dulu");
+            showInfo("Ongkir","Sistem sedang sibuk. Coba hitung ongkir lagi.");
+        }));
     }
 
     private void createPickupOrder() {
@@ -761,21 +788,28 @@ class TransPickupActivityScreenCore extends CustomerAdaptiveFragmentActivity {
         if (itemValueInput.getText().toString().trim().isEmpty() || parseMoney(itemValueInput.getText().toString()) < 0) {
             showInfo("Nilai barang", "Masukkan nilai barang yang valid."); return;
         }
-        if (deliveryFee <= 0) { calculateOngkir(); return; }
+        if (deliveryFee <= 0 || !pickupFareGate.hasQuote(currentPickupQuoteKey())) { if(!pickupFareGate.isPending(currentPickupQuoteKey()))calculateOngkir(); return; }
+        final double submittedPickupLat=pickupLat,submittedPickupLng=pickupLng,submittedDeliveryLat=deliveryLat,submittedDeliveryLng=deliveryLng;
+        final String submittedPickupAddress=pickupAddressInput.getText().toString().trim(),submittedDeliveryAddress=destinationInput.getText().toString().trim();
+        final String submittedSize=packageSize,submittedVehicle=vehicleType,submittedPayment=paymentMethod,submittedCategory=itemCategory;
+        final boolean submittedFragile=fragile;
+        final double submittedValue=parseMoney(itemValueInput.getText().toString());
+        final String submittedNote=noteInput.getText().toString().trim();
         submittingOrder = true;
+        pickupFareGate.invalidate();
         if (orderBtn != null) orderBtn.setEnabled(false);
         setLoading(true);
         networkScope.newThread(() -> {
             try {
                 JSONObject p = new JSONObject();
                 p.put("user_id", userId); p.put("username", username);
-                p.put("pickup_address", pickupAddressInput.getText().toString().trim());
-                p.put("delivery_address", destinationInput.getText().toString().trim());
-                p.put("pickup_lat", pickupLat); p.put("pickup_lng", pickupLng); p.put("delivery_lat", deliveryLat); p.put("delivery_lng", deliveryLng);
-                p.put("item_name", itemName); p.put("item_category", itemCategory); p.put("item_value", parseMoney(itemValueInput.getText().toString()));
-                p.put("package_size", packageSize); p.put("vehicle_type", vehicleType); p.put("fragile", fragile ? 1 : 0);
-                p.put("receiver_name", receiverName); p.put("receiver_phone", receiverPhone); p.put("note", noteInput.getText().toString().trim());
-                p.put("payment_method", paymentMethod); // price, distance, dan OTP dihitung/dibuat ulang oleh server
+                p.put("pickup_address", submittedPickupAddress);
+                p.put("delivery_address", submittedDeliveryAddress);
+                p.put("pickup_lat", submittedPickupLat); p.put("pickup_lng", submittedPickupLng); p.put("delivery_lat", submittedDeliveryLat); p.put("delivery_lng", submittedDeliveryLng);
+                p.put("item_name", itemName); p.put("item_category", submittedCategory); p.put("item_value", submittedValue);
+                p.put("package_size", submittedSize); p.put("vehicle_type", submittedVehicle); p.put("fragile", submittedFragile ? 1 : 0);
+                p.put("receiver_name", receiverName); p.put("receiver_phone", receiverPhone); p.put("note", submittedNote);
+                p.put("payment_method", submittedPayment); // price, distance, dan OTP dihitung/dibuat ulang oleh server
                 JSONObject res = ReliableOrderClient.create(this, BASE_URL + "server/create_pickup_order.php", p, TIMEOUT_MS);
                 boolean ok = res.optBoolean("success", false);
                 String msg = firstNonEmpty(res.optString("message"), ok ? "Order penjemputan berhasil dibuat" : "Gagal membuat order penjemputan");
@@ -860,6 +894,7 @@ class TransPickupActivityScreenCore extends CustomerAdaptiveFragmentActivity {
     }
 
     @Override protected void onDestroy() {
+        pickupScreenClosed=true;pickupFareGate.invalidate();
         networkScope.destroy();
         mainHandler.removeCallbacksAndMessages(null);
         if (mapView != null) {

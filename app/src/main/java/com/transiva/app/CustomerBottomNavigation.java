@@ -45,14 +45,31 @@ public final class CustomerBottomNavigation {
 
         add(nav, item(activity, "Beranda", "ic_nav2_home", CustomerDashboardActivity.class,
                 CustomerPageTransition.HOME, activeIndex, false, dark));
-        add(nav, item(activity, "Pesanan", "ic_nav2_activity", CustomerHistoryActivity.class,
+        add(nav, item(activity, "Aktivitas", "ic_nav2_activity", CustomerHistoryActivity.class,
                 CustomerPageTransition.ACTIVITY, activeIndex, false, dark));
-        add(nav, item(activity, "Chat", "ic_nav2_chat", CustomerChatActivity.class,
+        add(nav, item(activity, "Pesan", "ic_nav2_chat", CustomerChatActivity.class,
                 CustomerPageTransition.CHAT, activeIndex, false, dark));
-        add(nav, item(activity, "Saldo", "ic_nav2_wallet", CustomerBalanceHistoryActivity.class,
+        add(nav, item(activity, "Transaksi", "ic_nav2_wallet", CustomerBalanceHistoryActivity.class,
                 CustomerPageTransition.WALLET, activeIndex, false, dark));
         add(nav, item(activity, "Akun", "ic_nav2_profile", ProfileActivity.class,
                 CustomerPageTransition.PROFILE, activeIndex, false, dark));
+
+        // Dedicated connection slot keeps all five destinations unobstructed.
+        LinearLayout connectionSlot = new LinearLayout(activity);
+        connectionSlot.setOrientation(LinearLayout.VERTICAL);
+        connectionSlot.setGravity(Gravity.CENTER);
+        DashboardServerIndicator indicator = new DashboardServerIndicator(activity);
+        connectionSlot.addView(indicator, new LinearLayout.LayoutParams(dp(activity, 26), dp(activity, 26)));
+        TextView connectionLabel = new TextView(activity);
+        connectionLabel.setText("Server"); connectionLabel.setTextSize(8);
+        connectionLabel.setTextColor(Color.parseColor(dark ? "#BFD5EC" : "#52647C"));
+        connectionLabel.setGravity(Gravity.CENTER); connectionLabel.setSingleLine(true);
+        connectionSlot.addView(connectionLabel, new LinearLayout.LayoutParams(-1, -2));
+        connectionLabel.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+        connectionSlot.setOnClickListener(v -> indicator.performClick());
+        LinearLayout.LayoutParams statusLp = new LinearLayout.LayoutParams(dp(activity, 34), -1);
+        statusLp.setMargins(dp(activity, 2), 0, 0, 0);
+        nav.addView(connectionSlot, statusLp);
 
         nav.setAlpha(1f);
         nav.setTranslationY(0f);
@@ -136,11 +153,11 @@ public final class CustomerBottomNavigation {
 
         TextView title = new TextView(activity);
         title.setText(label);
-        title.setTextSize(12f);
+        title.setTextSize(center ? 9.5f : 9f);
         title.setTextColor(center ? Color.parseColor(active ? "#39A8FF" : (dark ? "#F4F9FF" : "#26384B"))
                 : Color.parseColor(active ? (dark ? "#78BAFF" : BLUE) : (dark ? "#D8E6F7" : "#52647C")));
         title.setGravity(Gravity.CENTER);
-        title.setSingleLine(false);title.setMaxLines(2);
+        title.setSingleLine(true);
         if (active || center) title.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
         LinearLayout.LayoutParams titleLp = new LinearLayout.LayoutParams(-1, -2);
         titleLp.setMargins(0, dp(activity, 1), 0, 0);

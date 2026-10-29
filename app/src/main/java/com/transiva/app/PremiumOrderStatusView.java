@@ -44,19 +44,19 @@ public final class PremiumOrderStatusView extends LinearLayout {
         LinearLayout headings = new LinearLayout(context); headings.setOrientation(VERTICAL);
         service = label("Status pesanan", 14, "#123B65", true);
         reference = label("Semua perjalanan dalam satu tempat", 11, "#64748B", false);
-        reference.setSingleLine(false);
+        reference.setSingleLine(true); reference.setEllipsize(android.text.TextUtils.TruncateAt.END);
         headings.addView(service); headings.addView(reference);
         LayoutParams hlp = new LayoutParams(0, -2, 1); hlp.setMargins(dp(10), 0, 0, 0);
         header.addView(headings, hlp);
-        action = label(compact ? "›" : "", compact ? 24 : 14, "#1268D5", true);
+        action = label(compact ? "›" : "", compact ? 24 : 12, "#1268D5", true);
         action.setGravity(Gravity.CENTER); action.setMinHeight(dp(48));
         action.setPadding(dp(6), dp(4), dp(6), dp(4));
         if (compact) header.addView(action, new LayoutParams(dp(48), -2));
         addView(header);
-        status = label("Belum ada pesanan aktif", 16, "#1268D5", true);
+        status = label("Belum ada pesanan aktif", 13, "#1268D5", true);
         status.setPadding(dp(9), dp(7), dp(9), dp(7));
         addView(status, spaced(6));
-        description = label("", 14, "#536B83", false); addView(description, spaced(5));
+        description = label("", 12, "#536B83", false); addView(description, spaced(5));
         segments = new LinearLayout(context); segments.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
         addView(segments, spaced(7));
         stage = label("", 11, "#64748B", false); addView(stage, spaced(0)); stage.setVisibility(GONE);
@@ -78,7 +78,7 @@ public final class PremiumOrderStatusView extends LinearLayout {
         if (next.equals(fingerprint)) return; fingerprint = next;
         boolean empty = order == null;
         String raw = empty ? "" : order.optString("status");
-        String type = empty ? "" : OrderStatusPresentation.serviceType(order);
+        String type = empty ? "" : first(order.optString("order_type"), order.optString("service_type"), order.optString("service_name"));
         String name = empty ? "Status pesanan" : new UnifiedLiveOrderCenter.Order(order).title();
         service.setText(empty && compact ? first(fallback, "Belum ada pesanan aktif") : name);
         String iconType = (type + " " + name).toLowerCase(java.util.Locale.ROOT);
@@ -99,7 +99,7 @@ public final class PremiumOrderStatusView extends LinearLayout {
         status.setBackground(surface(empty ? "#F1F6FC" : OrderStatusPresentation.backgroundColor(raw), "", 14));
         description.setText(empty ? "Pesan layanan favorit Anda, lalu pantau perkembangannya di sini."
                 : OrderStatusPresentation.description(order));
-        description.setVisibility(empty ? GONE : VISIBLE);
+        description.setVisibility(GONE);
         bindProgress(raw);
         segments.setVisibility(empty ? GONE : segments.getVisibility()); stage.setVisibility(GONE);
         route.removeAllViews(); route.setVisibility(empty || compact ? GONE : VISIBLE);
@@ -109,7 +109,7 @@ public final class PremiumOrderStatusView extends LinearLayout {
         }
         action.setText(compact ? "›" : actionText);
         action.setContentDescription(actionText);
-        if (compact) setContentDescription(service.getText() + ". " + (empty ? "" : status.getText()) + ". " + (empty ? "" : description.getText()) + ". " + actionText);
+        if (compact) setContentDescription(service.getText() + ". " + (empty ? "" : status.getText()) + ". " + actionText);
         status.setContentDescription("Status pesanan: " + status.getText());
         CustomerAppSettings.applyToView(getContext(), this);
     }
@@ -155,8 +155,8 @@ public final class PremiumOrderStatusView extends LinearLayout {
         LinearLayout row = new LinearLayout(getContext()); row.setGravity(Gravity.TOP);
         TextView dot = label("●", 12, color, true); row.addView(dot, new LayoutParams(dp(20), -2));
         LinearLayout copy = new LinearLayout(getContext()); copy.setOrientation(VERTICAL);
-        copy.addView(label(title, 12, "#6C8198", true));
-        TextView addressView = label(address, 14, "#294661", false);
+        copy.addView(label(title, 9, "#6C8198", true));
+        TextView addressView = label(address, 11, "#294661", false);
         addressView.setMaxLines(2); addressView.setEllipsize(android.text.TextUtils.TruncateAt.END);
         addressView.setContentDescription(title + ": " + address + ". Ketuk untuk memperluas alamat");
         addressView.setOnClickListener(v -> {

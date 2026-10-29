@@ -80,7 +80,7 @@ public class TransAssistantTourActivity extends CustomerAdaptiveActivity {
         skip.setGravity(Gravity.END);
         skip.setPadding(dp(8), dp(6), dp(4), dp(8));
         skip.setOnClickListener(v -> finishOnboarding());
-        root.addView(skip, lp(-1, dp(48)));
+        root.addView(skip, lp(-1, dp(42)));
 
         ScrollView scroll = new ScrollView(this);
         scroll.setFillViewport(true);
@@ -109,7 +109,7 @@ public class TransAssistantTourActivity extends CustomerAdaptiveActivity {
         secondary.setGravity(Gravity.CENTER);
         secondary.setPadding(0, dp(10), 0, 0);
         secondary.setOnClickListener(v -> next());
-        root.addView(secondary, lp(-1, dp(48)));
+        root.addView(secondary, lp(-1, dp(42)));
         setContentView(root);
     }
 
@@ -142,8 +142,7 @@ public class TransAssistantTourActivity extends CustomerAdaptiveActivity {
         addTitle("Pilih Layanan Sesuai Kebutuhanmu");
         addBody("Semua layanan utama Transiva dapat kamu temukan dari Beranda.");
         addSpacer(12);
-        addService("ic_service_ride_premium", "TransRide", "Naik motor ke tujuan Anda");
-        addService("ic_service_car_premium", "TransCar", "Naik mobil ke tujuan Anda");
+        addService("ic_service_ride_premium", "TransRide", "Pesan motor atau mobil dengan mudah");
         addService("ic_service_food_premium", "TransFood", "Pesan makanan favorit di sekitarmu");
         addService("ic_service_shop_premium", "TransShop", "Belanja kebutuhan dari toko terdekat");
         addService("ic_service_send_premium", "TransSend", "Kirim dan ambil barang dengan praktis");

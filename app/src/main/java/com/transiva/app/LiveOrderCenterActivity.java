@@ -67,7 +67,7 @@ public class LiveOrderCenterActivity extends CustomerAdaptiveActivity implements
         UnifiedLiveOrderCenter.refresh(this, (orders, cached, error) -> {
             if (closed()) return;
             refreshing = false; loaded = true; loading.setVisibility(View.GONE); refreshButton.setEnabled(true);
-            info.setText(error != null ? "Belum terhubung. Status tersimpan ditampilkan; ketuk Perbarui untuk mencoba lagi." : "Status pesanan sudah diperbarui");
+            info.setText(error != null ? "Belum terhubung • data tersimpan maksimal 10 menit" : "Status pesanan terbaru");
             render(orders);
         });
     }

@@ -59,7 +59,7 @@ public final class UnifiedLiveOrderCenter {
         }
         public boolean hasDriver() { return CustomerOrderState.hasDriver(status); }
         public String title() { return first(serviceName, readableService(type), "Pesanan Transiva"); }
-        public String statusLabel() { return OrderStatusPresentation.label(status, OrderStatusPresentation.serviceType(raw)); }
+        public String statusLabel() { return OrderStatusPresentation.label(status, type); }
     }
 
     public static void addListener(Listener l) { if (l != null) { LISTENERS.add(l); l.onOrdersChanged(snapshot()); } }

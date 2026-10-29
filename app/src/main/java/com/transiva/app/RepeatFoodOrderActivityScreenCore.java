@@ -194,7 +194,7 @@ class RepeatFoodOrderActivityScreenCore extends CustomerAdaptiveFragmentActivity
         restaurantCard.addView(
                 RepeatOrderUi.text(
                         this,
-                        "Harga dan ketersediaan menu diperiksa ulang dari database.",
+                        "Harga dan ketersediaan menu diperiksa kembali.",
                         10,
                         "#EAF5FF",
                         false
@@ -726,7 +726,7 @@ class RepeatFoodOrderActivityScreenCore extends CustomerAdaptiveFragmentActivity
         totalText.setText(
                 "Total makanan: "
                         + rupiah(total)
-                        + "\nOngkir dihitung ulang server"
+                        + "\nOngkir dihitung kembali"
         );
     }
 
@@ -741,7 +741,7 @@ class RepeatFoodOrderActivityScreenCore extends CustomerAdaptiveFragmentActivity
         new TransivaAlertDialogBuilder(this)
                 .setTitle("Konfirmasi Pesan Lagi")
                 .setMessage(
-                        "Harga menu dan ongkir akan dihitung ulang dari database."
+                        "Harga makanan dan ongkir akan dihitung kembali."
                 )
                 .setNegativeButton("Batal", null)
                 .setPositiveButton(

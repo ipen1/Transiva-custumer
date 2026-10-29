@@ -13,7 +13,7 @@ import java.util.List;
 
 /** Small render cache for dashboard reads only. Never stores or replays mutations. */
 public final class DashboardStateCache {
-    private static final String PREF = "transiva_dashboard_render_v1";
+    private static final String PREF = "transiva_dashboard_render_poin_v2";
     private static final String KEY = "state";
     private static final long MAX_AGE_MS = 5L * 60L * 1000L;
     private static String owner(Context context) {

@@ -91,7 +91,7 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
     protected static final String BASE_URL = "https://transiva.my.id/";
     protected static final String CREATE_ORDER_URL = BASE_URL + "server/createOrder.php";
     protected static final String PAYMENT_QUOTE_URL = BASE_URL + "server/ride_payment_quote.php";
-    protected static final String HEMAT_STATUS_URL = BASE_URL + "server/customer_coin_status.php";
+    protected static final String HEMAT_STATUS_URL = BASE_URL + "server/customer_point_status.php";
     protected static final String RESOLVE_MAPS_URL = BASE_URL + "server/resolve_google_maps.php";
     protected static final String GET_BUSINESSES_URL = BASE_URL + "server/getBusinesses.php";
     protected static final String GET_LAUNDRIES_URL = BASE_URL + "server/admin_get_laundries.php";
@@ -520,7 +520,7 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
         scheduleRow.addView(optionsBtn, optionsLp);
 
         noteChoiceBtn = smallButton(driverNoteDraft.isEmpty()?"📝 Catatan":"📝 Catatan tersimpan", "#FFFFFF", "#0B3A78", "#C8D9EC");
-        Button hematBtn = smallButton("Hemat", "#EAF4FF", "#0B7CFF", "#9DCAFF");
+        Button hematBtn = smallButton("Pakai poin", "#EAF4FF", "#0B7CFF", "#9DCAFF");
         hematBtn.setTextSize(11);
         hematBtn.setMinWidth(0); hematBtn.setMinimumWidth(0);
         TierBadgeUi.applyToButton(hematBtn, TierBadgeUi.getCachedActiveTier(this), dp(18), dp(2));
@@ -942,10 +942,11 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
                     hematBtn.setEnabled(true);
                     if (!res.optBoolean("success", false)) {
                         TierBadgeUi.restoreHematButton(hematBtn, TierBadgeUi.getCachedActiveTier(this), dp(20), dp(2));
-                        toastDialog(firstNonEmpty(res.optString("message", ""), "Status Transiva Coin belum dapat diperiksa."));
+                        toastDialog(firstNonEmpty(res.optString("message", ""), "Status Poin Transiva belum dapat diperiksa."));
                         return;
                     }
-                    JSONObject coin = res.optJSONObject("coin");
+                    JSONObject coin = res.optJSONObject("points");
+                    if(coin==null)coin=res.optJSONObject("coin");
                     if (coin == null) coin = res.optJSONObject("ride");
                     int balanceCoin = coin == null ? 0 : coin.optInt("balance", coin.optInt("remaining", 0));
                     int minRedeem = coin == null ? 1000 : coin.optInt("min_redeem_coins", coin.optInt("limit", 1000));
@@ -957,16 +958,16 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
                     if (!canRedeem) {
                         priceMode = "standard";
                         new TransivaAlertDialogBuilder(this)
-                                .setTitle("Koin belum cukup")
-                                .setMessage("Saldo kamu " + balanceCoin + " koin. Minimal " + minRedeem + " koin untuk memakai Hemat.")
+                                .setTitle("Poin belum cukup")
+                                .setMessage("Saldo kamu " + balanceCoin + " poin. Minimal " + minRedeem + " poin untuk potongan pembayaran.")
                                 .setPositiveButton("Mengerti", null).show();
                         return;
                     }
                     priceMode = "hemat";
                     new TransivaAlertDialogBuilder(this)
-                            .setTitle("Hemat dengan Transiva Coin")
-                            .setMessage("Saldo " + balanceCoin + " koin • 1 koin = Rp" + value + ". Sistem akan memakai koin otomatis sesuai batas aman yang diatur admin.")
-                            .setPositiveButton("Gunakan Koin", (d, w) -> requestPaymentQuote())
+                            .setTitle("Hemat dengan Poin Transiva")
+                            .setMessage("Saldo " + balanceCoin + " poin • 1 poin = Rp" + value + ". Sistem akan memakai poin otomatis sesuai batas aman yang diatur admin.")
+                            .setPositiveButton("Pakai poin", (d, w) -> requestPaymentQuote())
                             .setNegativeButton("Batal", (d, w) -> { priceMode = "standard"; TierBadgeUi.restoreHematButton(hematBtn, tier, dp(20), dp(2)); })
                             .show();
                 });

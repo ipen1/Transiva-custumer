@@ -499,7 +499,7 @@ class CustomerDashboardActivityScreenCore extends CustomerAdaptiveActivity
         financeRow.addView(balanceMini, balanceMiniLp);
 
         View loyaltyMini = buildHeaderLoyaltyCard();
-        LinearLayout.LayoutParams loyaltyMiniLp = new LinearLayout.LayoutParams(0, -2, 0.88f);
+        LinearLayout.LayoutParams loyaltyMiniLp = new LinearLayout.LayoutParams(0, dp(52), 0.88f);
         loyaltyMiniLp.setMargins(dp(5), 0, 0, 0);
         financeRow.addView(loyaltyMini, loyaltyMiniLp);
 
@@ -604,14 +604,13 @@ class CustomerDashboardActivityScreenCore extends CustomerAdaptiveActivity
     }
 
     protected View buildHeaderLoyaltyCard() {
-        LinearLayout card=new LinearLayout(this);card.setOrientation(LinearLayout.VERTICAL);card.setPadding(dp(9),dp(8),dp(9),dp(8));
+        LinearLayout card=new LinearLayout(this);card.setOrientation(LinearLayout.HORIZONTAL);card.setGravity(Gravity.CENTER_VERTICAL);card.setPadding(dp(9),dp(6),dp(9),dp(6));
         card.setBackground(Shape.roundStroke("#18FFFFFF","#4FFFFFFF",dp(17),1));card.setClickable(true);card.setFocusable(true);
-        LinearLayout label=new LinearLayout(this);label.setGravity(Gravity.CENTER_VERTICAL);
-        loyaltyTierBadge=TierBadgeUi.image(this,TierBadgeUi.getCachedActiveTier(this),0);label.addView(loyaltyTierBadge,new LinearLayout.LayoutParams(dp(19),dp(19)));
-        TextView caption=text("Royalti",9,"#D9EDFF",true);caption.setPadding(dp(5),0,0,0);label.addView(caption);card.addView(label);
-        loyaltyTierText=text("Bronze • 0/500 poin",10,"#FFFFFF",true);card.addView(loyaltyTierText);
-        loyaltyPointsText=text("Selesaikan misi untuk naik level",9,"#EAF4FF",false);loyaltyPointsText.setLineSpacing(dp(1),1.05f);card.addView(loyaltyPointsText);
-        card.setOnClickListener(v->startActivity(new Intent(this,CustomerLoyaltyActivity.class)));return card;
+        loyaltyTierBadge=PoinTransivaUi.icon(this,36);card.addView(loyaltyTierBadge,new LinearLayout.LayoutParams(dp(36),dp(36)));
+        loyaltyTierText=text("…",19,"#FFFFFF",true);loyaltyTierText.setSingleLine(true);loyaltyTierText.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        if(android.os.Build.VERSION.SDK_INT>=26)loyaltyTierText.setAutoSizeTextTypeUniformWithConfiguration(12,19,1,android.util.TypedValue.COMPLEX_UNIT_SP);
+        LinearLayout.LayoutParams amount=new LinearLayout.LayoutParams(0,-2,1);amount.leftMargin=dp(7);card.addView(loyaltyTierText,amount);loyaltyPointsText=null;
+        card.setContentDescription("Lihat Poin Transiva");card.setOnClickListener(v->startActivity(new Intent(this,CustomerLoyaltyActivity.class)));return card;
     }
 
     protected View headerAction(String symbol, String description, Runnable action) {
@@ -1224,15 +1223,7 @@ class CustomerDashboardActivityScreenCore extends CustomerAdaptiveActivity
         LinearLayout row = new LinearLayout(this);
         row.setOrientation(LinearLayout.HORIZONTAL);
 
-        LinearLayout loyalty = miniGrowthCard("★", "Royalti", "Bronze", "0 poin");
-        // Premium loyalty badge: use the active season tier PNG instead of a generic star.
-        loyalty.removeViewAt(0);
-        loyaltyTierBadge = TierBadgeUi.image(this, TierBadgeUi.getCachedActiveTier(this), 0);
-        LinearLayout.LayoutParams badgeLp = new LinearLayout.LayoutParams(dp(38), dp(38));
-        badgeLp.setMargins(0, 0, dp(8), 0);
-        loyalty.addView(loyaltyTierBadge, 0, badgeLp);
-        loyaltyTierText = (TextView) ((LinearLayout) loyalty.getChildAt(1)).getChildAt(1);
-        loyaltyPointsText = (TextView) ((LinearLayout) loyalty.getChildAt(1)).getChildAt(2);
+        LinearLayout loyalty = (LinearLayout)buildHeaderLoyaltyCard();
         loyalty.setOnClickListener(v -> startActivity(new Intent(this, CustomerLoyaltyActivity.class)));
         LinearLayout.LayoutParams a = new LinearLayout.LayoutParams(0, -2, 1);
         a.setMargins(0, 0, dp(6), 0);
@@ -1972,7 +1963,7 @@ class CustomerDashboardActivityScreenCore extends CustomerAdaptiveActivity
                 "TransCar — Pesan mobil",
                 "Split Pay — Patungan pembayaran",
                 "Family — Kelola keluarga",
-                "Royalti — Poin & hadiah",
+                "Poin Transiva — Misi & hadiah",
                 "Referral — Ajak teman",
                 "Tempat Favorit",
                 "Pusat Keamanan",
@@ -2660,10 +2651,8 @@ class CustomerDashboardActivityScreenCore extends CustomerAdaptiveActivity
             if (d != null) {
                 String activeTier = first(d.optString("season_tier"), d.optString("tier"), "BRONZE");
                 TierBadgeUi.saveActiveTier(this, activeTier);
-                if (loyaltyTierBadge != null) TierBadgeUi.applyToImage(loyaltyTierBadge, activeTier);
-                if (loyaltyTierText != null) {loyaltyTierText.setText(d.optString("card_title",TierBadgeUi.normalize(activeTier)));loyaltyTierText.setTextSize(10);}
-                int coinBalance = d.optInt("coin_balance", 0);
-                if (loyaltyPointsText != null) {loyaltyPointsText.setText(d.optString("card_progress")+"\n"+d.optString("card_benefit"));loyaltyPointsText.setTextSize(9);}
+                long points=d.optLong("points_balance",d.optLong("points",0));
+                if(loyaltyTierText!=null){loyaltyTierText.setText(java.text.NumberFormat.getIntegerInstance(new Locale("id","ID")).format(points));loyaltyTierText.setContentDescription(points+" Poin Transiva");}
                 if (loyaltyNextText != null) loyaltyNextText.setText(first(d.optString("card_progress"), d.optString("next_tier_text"), ""));
             }
         }

@@ -1232,12 +1232,12 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
         boolean coinReady=hematRemaining>=hematLimit;
         LinearLayout choices=new LinearLayout(this);choices.setPadding(0,dp(8),0,0);
         Button standard=checkoutChoice("Standar\n"+rupiah(standardFee),"standard".equals(deliveryMode));
-        Button hemat=checkoutChoice("Hemat · Coin\n"+hematRemaining+" koin","hemat".equals(deliveryMode));
+        Button hemat=checkoutChoice("Pakai poin\n"+hematRemaining+" poin","hemat".equals(deliveryMode));
         hemat.setEnabled(coinReady);hemat.setAlpha(coinReady?1f:.65f);
         standard.setOnClickListener(v->{deliveryMode="standard";deliveryFee=standardFee;renderCheckout();});
         hemat.setOnClickListener(v->{deliveryMode="hemat";deliveryFee=standardFee;renderCheckout();});
         addCheckoutPair(choices,standard,hemat,56);delivery.addView(choices);
-        if(!coinReady){TextView why=text("Saldo "+hematRemaining+" koin · perlu minimal "+hematLimit+" koin untuk Hemat.",11,"#64748B",false);why.setPadding(0,dp(6),0,0);delivery.addView(why);}
+        if(!coinReady){TextView why=text("Saldo "+hematRemaining+" poin · perlu minimal "+hematLimit+" poin untuk Hemat.",11,"#64748B",false);why.setPadding(0,dp(6),0,0);delivery.addView(why);}
         addWithMargin(delivery,0,0,0,dp(10));
 
         LinearLayout voucher=checkoutCard();
@@ -1276,7 +1276,7 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
         if("hemat".equals(deliveryMode)&&hematRemaining>=hematLimit)coinDiscount=CustomerFinancialRules.foodCoinDiscount(hematRemaining,coinValueRupiah,afterVoucher,coinMinOrderAfterDiscount,coinMaxRedeemPercent,hematLimit);
         total.addView(summaryLine("Subtotal makanan",foodTotal()));total.addView(summaryLine("Ongkir",standardFee));
         if(royaltyVoucherDiscount>0)total.addView(summaryLine("Potongan voucher",-royaltyVoucherDiscount));
-        if(coinDiscount>0)total.addView(summaryLine("Potongan Transiva Coin",-coinDiscount));
+        if(coinDiscount>0)total.addView(summaryLine("Potongan Poin Transiva",-coinDiscount));
         double amount=Math.max(0,afterVoucher-coinDiscount);lastFoodQuote=(int)Math.round(amount);
         if(!checkoutQuoteReady)total.addView(text("Ongkir belum terkonfirmasi. Coba hitung kembali sebelum memesan.",12,"#EF4444",false));
         total.addView(summaryLine("Total bayar",amount));addWithMargin(total,0,0,0,dp(12));

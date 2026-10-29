@@ -2305,6 +2305,8 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
         updateWizardState();
         if(!locationReady()) return;
         quoteLoading=true;
+        if (originalPriceText != null) originalPriceText.setVisibility(View.GONE);
+        if (discountInfoText != null) discountInfoText.setVisibility(View.GONE);
         requestVisibleOsrmRoute();
         if (!validCoordinate(pickupLat, pickupLng)
                 || !validCoordinate(deliveryLat, deliveryLng)) {
@@ -2405,6 +2407,9 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
                     );
                     royaltyOriginalFare=original;
                     int discount = jsonInt(res, "discount", 0);
+                    int voucherDiscount = jsonInt(res, "voucher_discount", Math.max(0,discount-jsonInt(res,"hemat_discount",0)));
+                    String appliedVoucher=res.optString("voucher_code", "");
+                    if(voucherChoiceBtn!=null)voucherChoiceBtn.setText(appliedVoucher.isEmpty()?"🏷 Voucher":"🏷 Hemat Rp"+formatMoney(voucherDiscount));
                     int total = jsonInt(
                             res,
                             "price",
@@ -2493,7 +2498,9 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
                 featureRuntime.post(mainHandler, () -> {
                     if (destroyed || quoteRequest != quoteVersion) return;
                     quoteLoading=false;
-                    paymentSummaryText.setText("Biaya belum bisa dimuat. Coba lagi.");
+                    String quoteError=e instanceof TransivaHttpRepository.ServerResponseException
+                            ? e.getMessage() : "Biaya belum bisa dimuat. Coba lagi.";
+                    paymentSummaryText.setText(TransivaUserMessage.fromServer(quoteError));
                     showQuoteRetry();
                     finalPriceText.setTextColor(Color.parseColor("#0B3A78"));
                 });

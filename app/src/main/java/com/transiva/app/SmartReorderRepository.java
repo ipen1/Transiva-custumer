@@ -1,12 +1,21 @@
 package com.transiva.app;
-
 import android.content.Context;
+import android.os.Handler;
+import android.os.Looper;
 import org.json.JSONObject;
-import java.io.BufferedReader;import java.io.InputStream;import java.io.InputStreamReader;import java.net.HttpURLConnection;import java.nio.charset.StandardCharsets;
 
-/** Network/data responsibility extracted from SmartReorderActivity. */
+/** Account-bound read owned by the reorder screen; never creates or replays an order. */
 public final class SmartReorderRepository {
-    private static final String URL="https://transiva.my.id/server/customer_smart_reorder.php";
+    private final CustomerLifecycleNetworkScope scope=new CustomerLifecycleNetworkScope();
+    private final Handler main=new Handler(Looper.getMainLooper());
     public interface Callback{void onResult(JSONObject data,Throwable error);}
-    public void load(Context context,Callback cb){NetworkResilienceManager.executeSafe(()->{try{HttpURLConnection c=CustomerApiClient.open(context,URL+"?_="+System.currentTimeMillis());c.setRequestMethod("GET");c.setConnectTimeout(12000);c.setReadTimeout(12000);int code=c.getResponseCode();InputStream in=code>=200&&code<400?c.getInputStream():c.getErrorStream();BufferedReader r=new BufferedReader(new InputStreamReader(in,StandardCharsets.UTF_8));StringBuilder b=new StringBuilder();String l;while((l=r.readLine())!=null)b.append(l);r.close();c.disconnect();JSONObject o=new JSONObject(b.toString());new android.os.Handler(android.os.Looper.getMainLooper()).post(()->cb.onResult(o,null));}catch(Throwable e){new android.os.Handler(android.os.Looper.getMainLooper()).post(()->cb.onResult(null,e));}});}
+    public void load(Context context,Callback cb){
+        final CustomerSessionGuard session=CustomerSessionGuard.capture(context);
+        scope.execute(()->{
+            try{JSONObject result=TransivaHttpRepository.getJsonOnce(context,ApiConfig.server("customer_smart_reorder.php"),12000);
+                scope.post(main,()->{if(session.matches(context))cb.onResult(result,null);});
+            }catch(Exception e){scope.post(main,()->{if(session.matches(context))cb.onResult(null,e);});}
+        },()->scope.post(main,()->{if(session.matches(context))cb.onResult(null,new IllegalStateException("Busy"));}));
+    }
+    public void close(){scope.destroy();main.removeCallbacksAndMessages(null);}
 }

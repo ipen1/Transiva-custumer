@@ -174,6 +174,9 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
     protected LinearLayout ecosystemRow;
     protected SplitBillManager splitBillManager;
     protected int lastQuotedFare = 0;
+    private TextView beginnerHint;
+    private boolean confirmationShowing;
+    private int quotedOriginal, quotedDiscount;
     protected boolean selectingWaypoint = false;
     protected String familyMemberName = "";
     protected boolean smartFavoriteIntent = false;
@@ -193,7 +196,7 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
         super.onCreate(savedInstanceState);
         geocodingRepository = new CustomerGeocodingRepository(this);
         initializePlacesAutocomplete();
-        splitBillManager = new SplitBillManager(this, (key,size,ready) -> { ecosystemFeatures.groupSize=size; ecosystemFeatures.splitFareMode=size>1?"custom":"none"; if(groupRideBtn!=null) groupRideBtn.setText(size>1 ? (ready?"✅ Split "+size:"⏳ Split "+size) : "💳 Split Pay"); });
+        splitBillManager = new SplitBillManager(this, (key,size,ready) -> { ecosystemFeatures.groupSize=size; ecosystemFeatures.splitFareMode=size>1?"custom":"none"; if(groupRideBtn!=null) groupRideBtn.setText(size>1 ? (ready?"✅ Split "+size:"⏳ Split "+size) : "💳 Patungan"); });
         try {
             CustomerWindowPolicy.status(getWindow(), Color.parseColor("#071426"));
             CustomerWindowPolicy.navigation(getWindow(), Color.parseColor("#071426"));
@@ -304,21 +307,21 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
 
         LinearLayout titleRow = new LinearLayout(this);
         titleRow.setGravity(Gravity.CENTER_VERTICAL);
-        topCard.addView(titleRow, new LinearLayout.LayoutParams(-1, dp(compactScreen ? 26 : 28)));
+        topCard.addView(titleRow, new LinearLayout.LayoutParams(-1, -2));
 
         TextView title = text(serviceTitle(), compactScreen ? 18 : 19, "#0B3A78", true);
-        titleRow.addView(title, new LinearLayout.LayoutParams(0, -1, 1));
+        titleRow.addView(title, new LinearLayout.LayoutParams(0, -2, 1));
 
-        wizardStepText = text("● Tujuan   ›   2 Harga   ›   3 Pesan", compactScreen ? 9 : 10, "#0B7CFF", true);
+        wizardStepText = text("● Tujuan   ›   2 Harga   ›   3 Pesan", 13, "#0B7CFF", true);
         wizardStepText.setPadding(0, dp(2), 0, dp(2));
         topCard.addView(wizardStepText, new LinearLayout.LayoutParams(-1, -2));
 
-        modeText = text("Pilih tujuan", compactScreen ? 9 : 10, "#64748B", false);
+        modeText = text("Pilih tujuan", 12, "#64748B", false);
         modeText.setGravity(Gravity.END | Gravity.CENTER_VERTICAL);
-        titleRow.addView(modeText, new LinearLayout.LayoutParams(0, -1, 1.25f));
+        titleRow.addView(modeText, new LinearLayout.LayoutParams(0, -2, 1.25f));
 
         Button close = smallButton("×", "#FEE2E2", "#DC2626", "#FECACA");
-        LinearLayout.LayoutParams closeLp = new LinearLayout.LayoutParams(dp(30), dp(30));
+        LinearLayout.LayoutParams closeLp = new LinearLayout.LayoutParams(dp(48), dp(48));
         closeLp.setMargins(dp(4), 0, 0, 0);
         titleRow.addView(close, closeLp);
         backBtn = close;
@@ -332,17 +335,24 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
 
         pickupBtn = compactPointButton("●  Jemput", "Lokasi Anda • ketuk untuk ubah   ›", "#16A34A");
         deliveryBtn = compactPointButton("●  Mau ke mana?", "Cari tujuan / tempel link Maps   ›", "#EF4444");
-        pointRow.addView(pickupBtn, new LinearLayout.LayoutParams(-1, dp(compactScreen ? 52 : 56)));
+        pointRow.addView(pickupBtn, new LinearLayout.LayoutParams(-1, -2));
         pickupGpsBadge = text("GPS • menunggu lokasi terbaru", 11, "#64748B", true);
         pickupGpsBadge.setPadding(dp(12), dp(2), dp(8), dp(3));
         pointRow.addView(pickupGpsBadge, new LinearLayout.LayoutParams(-1, -2));
-        LinearLayout.LayoutParams deliveryLp = new LinearLayout.LayoutParams(-1, dp(compactScreen ? 46 : 50));
+        LinearLayout.LayoutParams deliveryLp = new LinearLayout.LayoutParams(-1, -2);
         deliveryLp.setMargins(0, dp(4), 0, 0);
         waypointHeaderRows = new LinearLayout(this);
         waypointHeaderRows.setOrientation(LinearLayout.VERTICAL);
         pointRow.addView(waypointHeaderRows, new LinearLayout.LayoutParams(-1, -2));
         pointRow.addView(deliveryBtn, deliveryLp);
         refreshWaypointHeader();
+        beginnerHint = text("", 13, "#405B73", false);
+        beginnerHint.setPadding(dp(6), dp(8), dp(6), dp(8));
+        topCard.addView(beginnerHint, new LinearLayout.LayoutParams(-1, -2));
+        TextView guideLink = text("Cara memesan  ›", 14, "#0B3A78", true);
+        guideLink.setMinHeight(dp(48)); guideLink.setGravity(Gravity.CENTER_VERTICAL);
+        guideLink.setOnClickListener(v -> CustomerBeginnerGuide.show(this, this::updateWizardState));
+        topCard.addView(guideLink, new LinearLayout.LayoutParams(-1, -2));
 
         pickupText = text("Penjemputan: belum dipilih", 9, "#334155", false);
         deliveryText = text("Pengantaran: belum dipilih", 9, "#334155", false);
@@ -443,7 +453,7 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
 
         gpsBtn = smallButton("⌖", "#FFFFFF", "#0B7CFF", "#9DCAFF");
         gpsBtn.setTextSize(18);
-        FrameLayout.LayoutParams gpsMapLp = new FrameLayout.LayoutParams(dp(42), dp(42));
+        FrameLayout.LayoutParams gpsMapLp = new FrameLayout.LayoutParams(dp(48), dp(48));
         gpsMapLp.gravity = Gravity.BOTTOM | Gravity.END;
         gpsMapLp.setMargins(0, 0, dp(10), dp(10));
         mapBox.addView(gpsBtn, gpsMapLp);
@@ -479,39 +489,38 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
 
         // 2.3 FINAL ORDER UX: tampilkan hanya keputusan utama. Fitur lanjutan tetap tersedia
         // melalui panel Opsi perjalanan agar halaman final tidak terasa penuh.
-        bottomCard.addView(text("⏱ Smart Waiting: gratis 5 menit setiap titik; berikutnya Rp500 per menit tambahan yang dimulai.",10,"#0B477D",false));
-        TextView finalSectionTitle = text("Ringkasan & pembayaran", 12, "#0B3A78", true);
+        bottomCard.addView(text("Biaya tunggu: gratis 5 menit di setiap titik. Setelah itu Rp500 untuk setiap menit tambahan yang dimulai.",13,"#0B477D",false));
+        TextView finalSectionTitle = text("Ringkasan & pembayaran", 17, "#0B3A78", true);
         finalSectionTitle.setPadding(dp(2), 0, dp(2), dp(5));
         bottomCard.addView(finalSectionTitle, new LinearLayout.LayoutParams(-1, -2));
-        tripRouteSummaryText = text("Jemput → Tujuan", 9, "#64748B", false);
-        tripRouteSummaryText.setSingleLine(true);
-        tripRouteSummaryText.setEllipsize(android.text.TextUtils.TruncateAt.END);
-        bottomCard.addView(tripRouteSummaryText, new LinearLayout.LayoutParams(-1, dp(24)));
+        tripRouteSummaryText = text("Jemput → Tujuan", 14, "#64748B", false);
+        tripRouteSummaryText.setSingleLine(false);
+        bottomCard.addView(tripRouteSummaryText, new LinearLayout.LayoutParams(-1, -2));
 
         LinearLayout quickRow = new LinearLayout(this);
         quickRow.setOrientation(LinearLayout.HORIZONTAL);
         quickRow.setGravity(Gravity.CENTER_VERTICAL);
-        bottomCard.addView(quickRow, new LinearLayout.LayoutParams(-1, dp(42)));
+        bottomCard.addView(quickRow, new LinearLayout.LayoutParams(-1, -2));
 
         paymentChoiceBtn = smallButton("balance".equals(paymentMethod) ? "💳 Pembayaran: Transiva Pay" : "💵 Pembayaran: Tunai", "#FFFFFF", "#0B3A78", "#C8D9EC");
         voucherChoiceBtn = smallButton("🏷 Voucher", "#FFFFFF", "#0B3A78", "#C8D9EC");
-        paymentChoiceBtn.setTextSize(10);
-        voucherChoiceBtn.setTextSize(10);
-        quickRow.addView(paymentChoiceBtn, new LinearLayout.LayoutParams(0, -1, 1.2f));
-        LinearLayout.LayoutParams voucherLp = new LinearLayout.LayoutParams(0, -1, 0.8f);
+        paymentChoiceBtn.setTextSize(13);
+        voucherChoiceBtn.setTextSize(13);
+        quickRow.addView(paymentChoiceBtn, new LinearLayout.LayoutParams(0, -2, 1.2f));
+        LinearLayout.LayoutParams voucherLp = new LinearLayout.LayoutParams(0, -2, 0.8f);
         voucherLp.setMargins(dp(6), 0, 0, 0);
         quickRow.addView(voucherChoiceBtn, voucherLp);
 
         LinearLayout scheduleRow = new LinearLayout(this);
         scheduleRow.setOrientation(LinearLayout.HORIZONTAL);
         scheduleRow.setGravity(Gravity.CENTER_VERTICAL);
-        LinearLayout.LayoutParams scheduleRowLp = new LinearLayout.LayoutParams(-1, dp(40));
+        LinearLayout.LayoutParams scheduleRowLp = new LinearLayout.LayoutParams(-1, -2);
         scheduleRowLp.setMargins(0, dp(5), 0, 0);
         bottomCard.addView(scheduleRow, scheduleRowLp);
         Button scheduleBtn = smallButton("🕒 Jadwal: Sekarang", "#FFFFFF", "#0B3A78", "#C8D9EC");
         Button optionsBtn = smallButton("＋ Opsi perjalanan", "#F8FBFF", "#0B7CFF", "#BBD8F7");
-        scheduleRow.addView(scheduleBtn, new LinearLayout.LayoutParams(0,-1,1));
-        LinearLayout.LayoutParams optionsLp = new LinearLayout.LayoutParams(0,-1,1);
+        scheduleRow.addView(scheduleBtn, new LinearLayout.LayoutParams(0,-2,1));
+        LinearLayout.LayoutParams optionsLp = new LinearLayout.LayoutParams(0,-2,1);
         optionsLp.setMargins(dp(6),0,0,0);
         scheduleRow.addView(optionsBtn, optionsLp);
 
@@ -520,10 +529,10 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
         hematBtn.setTextSize(11);
         hematBtn.setMinWidth(0); hematBtn.setMinimumWidth(0);
         TierBadgeUi.applyToButton(hematBtn, TierBadgeUi.getCachedActiveTier(this), dp(18), dp(2));
-        familyBtn = smallButton(familyMemberId > 0 ? "👨‍👩‍👧 " + firstNonEmpty(familyMemberName,"Family") : "👨‍👩‍👧 Family", "#FFFFFF", "#0B3A78", "#C8D9EC");
+        familyBtn = smallButton(familyMemberId > 0 ? "👨‍👩‍👧 " + firstNonEmpty(familyMemberName,"Family") : "👨‍👩‍👧 Keluarga", "#FFFFFF", "#0B3A78", "#C8D9EC");
         waypointBtn = smallButton("＋ Tambahkan persinggahan (Opsional)", "#FFFFFF", "#0B3A78", "#C8D9EC");
-        groupRideBtn = smallButton("💳 Split Pay", "#FFFFFF", "#0B3A78", "#C8D9EC");
-        safetyRideBtn = smallButton("🛡 Guardian", "#EAF4FF", "#0B7CFF", "#9DCAFF");
+        groupRideBtn = smallButton("💳 Patungan", "#FFFFFF", "#0B3A78", "#C8D9EC");
+        safetyRideBtn = smallButton("🛡 Keamanan", "#EAF4FF", "#0B7CFF", "#9DCAFF");
 
         LinearLayout advancedBox = new LinearLayout(this);
         advancedBox.setOrientation(LinearLayout.VERTICAL);
@@ -532,25 +541,25 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
         bottomCard.addView(advancedBox, new LinearLayout.LayoutParams(-1, -2));
         // Persinggahan is a first-class option, visible for cash and wallet alike.
         Button waypointQuickBtn = smallButton("＋ Tambahkan persinggahan (Opsional)", "#F0F7FF", "#0B7CFF", "#BBD8F7");
-        LinearLayout.LayoutParams waypointQuickLp = new LinearLayout.LayoutParams(-1, dp(44));
+        LinearLayout.LayoutParams waypointQuickLp = new LinearLayout.LayoutParams(-1, -2);
         waypointQuickLp.setMargins(0, dp(6), 0, dp(2));
         bottomCard.addView(waypointQuickBtn, waypointQuickLp);
         waypointQuickBtn.setOnClickListener(v -> showWaypointDialog());
         waypointQuickButton = waypointQuickBtn;
 
 
-        LinearLayout advancedRow1 = new LinearLayout(this); advancedRow1.setOrientation(LinearLayout.HORIZONTAL);
-        advancedBox.addView(advancedRow1, new LinearLayout.LayoutParams(-1, dp(40)));
-        advancedRow1.addView(noteChoiceBtn,new LinearLayout.LayoutParams(0,-1,1));
-        LinearLayout.LayoutParams hLp=new LinearLayout.LayoutParams(0,-1,1); hLp.setMargins(dp(5),0,dp(5),0); advancedRow1.addView(hematBtn,hLp);
-        advancedRow1.addView(familyBtn,new LinearLayout.LayoutParams(0,-1,1));
+        LinearLayout advancedRow1 = new LinearLayout(this); advancedRow1.setOrientation(LinearLayout.VERTICAL);
+        advancedBox.addView(advancedRow1, new LinearLayout.LayoutParams(-1, -2));
+        advancedRow1.addView(noteChoiceBtn,new LinearLayout.LayoutParams(-1,-2));
+        LinearLayout.LayoutParams hLp=new LinearLayout.LayoutParams(-1,-2); hLp.setMargins(0,dp(6),0,dp(6)); advancedRow1.addView(hematBtn,hLp);
+        advancedRow1.addView(familyBtn,new LinearLayout.LayoutParams(-1,-2));
 
-        ecosystemRow = new LinearLayout(this); ecosystemRow.setOrientation(LinearLayout.HORIZONTAL);
-        LinearLayout.LayoutParams ecosystemLp = new LinearLayout.LayoutParams(-1, dp(40)); ecosystemLp.setMargins(0,dp(5),0,0);
+        ecosystemRow = new LinearLayout(this); ecosystemRow.setOrientation(LinearLayout.VERTICAL);
+        LinearLayout.LayoutParams ecosystemLp = new LinearLayout.LayoutParams(-1, -2); ecosystemLp.setMargins(0,dp(5),0,0);
         advancedBox.addView(ecosystemRow, ecosystemLp);
-        ecosystemRow.addView(waypointBtn,new LinearLayout.LayoutParams(0,-1,1));
-        LinearLayout.LayoutParams grpLp=new LinearLayout.LayoutParams(0,-1,1); grpLp.setMargins(dp(5),0,dp(5),0); ecosystemRow.addView(groupRideBtn,grpLp);
-        ecosystemRow.addView(safetyRideBtn,new LinearLayout.LayoutParams(0,-1,1));
+        ecosystemRow.addView(waypointBtn,new LinearLayout.LayoutParams(-1,-2));
+        LinearLayout.LayoutParams grpLp=new LinearLayout.LayoutParams(-1,-2); grpLp.setMargins(0,dp(6),0,dp(6)); ecosystemRow.addView(groupRideBtn,grpLp);
+        ecosystemRow.addView(safetyRideBtn,new LinearLayout.LayoutParams(-1,-2));
 
         optionsBtn.setOnClickListener(v -> {
             boolean open = advancedBox.getVisibility() != View.VISIBLE;
@@ -575,24 +584,24 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
         LinearLayout estimateRow = new LinearLayout(this);
         estimateRow.setOrientation(LinearLayout.HORIZONTAL);
         estimateRow.setGravity(Gravity.CENTER_VERTICAL);
-        LinearLayout.LayoutParams estimateLp = new LinearLayout.LayoutParams(-1, dp(62));
+        LinearLayout.LayoutParams estimateLp = new LinearLayout.LayoutParams(-1, -2);
         estimateLp.setMargins(dp(2), dp(6), dp(2), dp(5));
         bottomCard.addView(estimateRow, estimateLp);
 
         LinearLayout tripInfo = new LinearLayout(this);
         tripInfo.setOrientation(LinearLayout.VERTICAL);
         tripInfo.setGravity(Gravity.CENTER_VERTICAL);
-        estimateRow.addView(tripInfo, new LinearLayout.LayoutParams(0, -1, 1));
+        estimateRow.addView(tripInfo, new LinearLayout.LayoutParams(0, -2, 1));
 
-        distanceInfoText = text("TransRide • Jarak -", 11, "#0B3A78", true);
-        durationInfoText = text("Estimasi waktu -", 10, "#64748B", false);
-        tripInfo.addView(distanceInfoText, new LinearLayout.LayoutParams(-1, dp(28)));
-        tripInfo.addView(durationInfoText, new LinearLayout.LayoutParams(-1, dp(28)));
+        distanceInfoText = text("TransRide • Jarak -", 14, "#0B3A78", true);
+        durationInfoText = text("Estimasi waktu -", 13, "#64748B", false);
+        tripInfo.addView(distanceInfoText, new LinearLayout.LayoutParams(-1, -2));
+        tripInfo.addView(durationInfoText, new LinearLayout.LayoutParams(-1, -2));
 
         LinearLayout priceBox = new LinearLayout(this);
         priceBox.setOrientation(LinearLayout.VERTICAL);
         priceBox.setGravity(Gravity.END | Gravity.CENTER_VERTICAL);
-        estimateRow.addView(priceBox, new LinearLayout.LayoutParams(0, -1, 1));
+        estimateRow.addView(priceBox, new LinearLayout.LayoutParams(0, -2, 1));
 
         originalPriceText = text("", 10, "#94A3B8", false);
         originalPriceText.setGravity(Gravity.END);
@@ -604,24 +613,25 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
             if (!ordering && !locationQuoteReady && !quoteLoading && locationReady()) requestPaymentQuote();
         });
         finalPriceText.setGravity(Gravity.END | Gravity.CENTER_VERTICAL);
-        priceBox.addView(finalPriceText, new LinearLayout.LayoutParams(-1, dp(30)));
+        priceBox.addView(finalPriceText, new LinearLayout.LayoutParams(-1, -2));
 
-        discountInfoText = text("", 9, "#16A34A", true);
+        discountInfoText = text("", 13, "#16A34A", true);
         discountInfoText.setGravity(Gravity.END);
         discountInfoText.setVisibility(View.GONE);
-        priceBox.addView(discountInfoText, new LinearLayout.LayoutParams(-1, dp(16)));
+        priceBox.addView(discountInfoText, new LinearLayout.LayoutParams(-1, -2));
 
-        fareText = text("Tarif dihitung dari database", 8, "#64748B", false);
-        fareText.setVisibility(View.GONE);
-        paymentSummaryText = text("", 8, "#64748B", false);
-        paymentSummaryText.setVisibility(View.GONE);
+        fareText = text("Pilih tujuan untuk melihat biaya perjalanan.", 14, "#405B73", false);
+        fareText.setPadding(0,dp(6),0,dp(6));
+        bottomCard.addView(fareText, new LinearLayout.LayoutParams(-1,-2));
+        paymentSummaryText = text(CustomerBeginnerCopy.paymentHelp(paymentMethod), 14, "#405B73", false);
+        bottomCard.addView(paymentSummaryText, new LinearLayout.LayoutParams(-1,-2));
 
         // CTA wizard selalu berada di posisi yang sama pada bagian bawah kartu.
         orderBtn = smallButton("LANJUT — PILIH TUJUAN", "#0B7CFF", "#FFFFFF", "#0B7CFF");
         orderBtn.setTextSize(14);
         orderBtn.setVisibility(View.GONE);
         orderBtn.setEnabled(false);
-        LinearLayout.LayoutParams orderLp = new LinearLayout.LayoutParams(-1, dp(50));
+        LinearLayout.LayoutParams orderLp = new LinearLayout.LayoutParams(-1, -2);
         orderLp.setMargins(0, dp(7), 0, 0);
         bottomCard.addView(orderBtn, orderLp);
 
@@ -708,7 +718,7 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
             if(noteInput!=null) noteInput.setText(note);
             if(noteChoiceBtn!=null) noteChoiceBtn.setText(note.isEmpty()?"📝 Catatan":"📝 Catatan tersimpan");
             boolean resumeOrder=orderAfterNote; orderAfterNote=false; noteDialog.dismiss();
-            if(resumeOrder) createOrder();
+            if(resumeOrder) handleWizardPrimaryAction();
         });
     }
 
@@ -865,7 +875,7 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
         }
         if (count < 2 && !isRouteConfirmationLocked()) {
             Button add = smallButton("＋ Tambah persinggahan (Opsional)", "#F0F7FF", "#0B7CFF", "#BBD8F7");
-            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, dp(40));
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, dp(56));
             lp.topMargin = dp(4);
             waypointHeaderRows.addView(add, lp);
             add.setOnClickListener(v -> showWaypointDialog());
@@ -907,7 +917,7 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
         final String[] options={"Sendiri (tanpa split)","2 orang","3 orang","4 orang"};
         new TransivaAlertDialogBuilder(this).setTitle("Split Pay").setSingleChoiceItems(options, Math.max(0, Math.min(3, ecosystemFeatures.groupSize-1)), (d,which)->{
             d.dismiss();
-            if(which==0){ ecosystemFeatures.groupSize=1; ecosystemFeatures.splitFareMode="none"; if(splitBillManager!=null)splitBillManager.clear(); if(groupRideBtn!=null)groupRideBtn.setText("💳 Split Pay"); return; }
+            if(which==0){ ecosystemFeatures.groupSize=1; ecosystemFeatures.splitFareMode="none"; if(splitBillManager!=null)splitBillManager.clear(); if(groupRideBtn!=null)groupRideBtn.setText("💳 Patungan"); return; }
             int size=which+1; ecosystemFeatures.groupSize=size; ecosystemFeatures.splitFareMode="custom";
             if(splitBillManager!=null) splitBillManager.start(size,lastQuotedFare,"ride");
         }).setNegativeButton("Batal",null).show();
@@ -932,7 +942,7 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
         new TransivaAlertDialogBuilder(this).setTitle("Proteksi perjalanan").setView(box).setNegativeButton("Batal",null).setPositiveButton("Simpan",(d,w)->{
             ecosystemFeatures.tripMonitoring=guardian.isChecked(); ecosystemFeatures.audioProtect=audio.isChecked();
             if(audio.isChecked() && android.os.Build.VERSION.SDK_INT>=23 && checkSelfPermission(android.Manifest.permission.RECORD_AUDIO)!=PackageManager.PERMISSION_GRANTED) requestPermissions(new String[]{android.Manifest.permission.RECORD_AUDIO},91);
-            if(safetyRideBtn!=null)safetyRideBtn.setText(ecosystemFeatures.tripMonitoring?"🛡 Guardian":"🛡 Safety");
+            if(safetyRideBtn!=null)safetyRideBtn.setText(ecosystemFeatures.tripMonitoring?"🛡 Keamanan":"🛡 Safety");
         }).show();
     }
 
@@ -2238,8 +2248,9 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
             return;
         }
 
+        CustomerBeginnerGuide.hideTips(this);
         if ("scheduled".equalsIgnoreCase(res.optString("status", ""))) {
-            toastDialog("Schedule Ride tersimpan untuk " + res.optString("scheduled_at", scheduledAt) + ". Driver akan dicari sekitar 15 menit sebelum jadwal.");
+            toastDialog("Perjalanan terjadwal tersimpan untuk " + res.optString("scheduled_at", scheduledAt) + ". Driver akan dicari sekitar 15 menit sebelum jadwal.");
             finish();
             return;
         }
@@ -2318,6 +2329,8 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
         updateWizardState();
         if(!locationReady()) return;
         quoteLoading=true;
+        if(fareText!=null)fareText.setText("Menghitung ulang biaya perjalanan…");
+        if(paymentSummaryText!=null)paymentSummaryText.setText(CustomerBeginnerCopy.paymentHelp(paymentMethod));
         requestVisibleOsrmRoute();
         if (!validCoordinate(pickupLat, pickupLng)
                 || !validCoordinate(deliveryLat, deliveryLng)) {
@@ -2445,7 +2458,7 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
                     durationInfoText.setText(String.format(new Locale("id", "ID"), "± %.0f menit • estimasi perjalanan", durationMinutes));
 
                     if (total <= 0) {
-                        paymentSummaryText.setText("Tarif database tidak valid");
+                        paymentSummaryText.setText("Biaya belum tersedia. Silakan coba lagi.");
                         showQuoteRetry();
                         finalPriceText.setTextColor(Color.parseColor("#0B3A78"));
                         return;
@@ -2453,7 +2466,8 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
 
                     locationQuoteReady=true;
                     lastQuotedFare = total;
-                    finalPriceText.setContentDescription("Tarif Rp " + formatMoney(total));
+                    finalPriceText.setTextSize(22);
+                    finalPriceText.setContentDescription("Total biaya perjalanan Rp " + formatMoney(total));
                     finalPriceText.setText("Rp " + formatMoney(total));
                     updateWizardState();
 
@@ -2486,26 +2500,29 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
                             ? "💳 Pembayaran: Transiva Pay"
                             : "💵 Pembayaran: Tunai");
 
-                    String info = label;
+                    String info = CustomerBeginnerCopy.paymentHelp(paymentMethod);
                     if (paymentMethod.equals("balance")) {
                         info += " • Saldo Rp" + formatMoney(balance);
                     }
                     if (ecosystemFeatures.groupSize > 1) {
                         int share = (int)Math.ceil(total / (double)ecosystemFeatures.groupSize);
-                        info += " • Group " + ecosystemFeatures.groupSize + " ≈ Rp" + formatMoney(share) + "/orang";
+                        info += " • Patungan " + ecosystemFeatures.groupSize + " ≈ Rp" + formatMoney(share) + "/orang";
                     }
                     if (ecosystemFeatures.waypoints.length() > 0) {
-                        info += " • " + ecosystemFeatures.waypoints.length() + " stop";
+                        info += " • " + ecosystemFeatures.waypoints.length() + " persinggahan";
                     }
 
-                    fareText.setText("Tarif database: Rp" + formatMoney(total));
+                    quotedOriginal = original; quotedDiscount = discount;
+                    fareText.setText("Biaya sebelum potongan: Rp" + formatMoney(original)
+                            + "\nPotongan: Rp" + formatMoney(discount)
+                            + "\nTotal perjalanan: Rp" + formatMoney(total));
                     paymentSummaryText.setText(info);
                 });
             } catch (Exception e) {
                 featureRuntime.post(mainHandler, () -> {
                     if (destroyed || quoteRequest != quoteVersion) return;
                     quoteLoading=false;
-                    paymentSummaryText.setText("Gagal terhubung ke server tarif");
+                    paymentSummaryText.setText("Biaya belum dapat dimuat. Periksa koneksi dan ketuk Coba lagi.");
                     showQuoteRetry();
                     finalPriceText.setTextColor(Color.parseColor("#0B3A78"));
                 });
@@ -2514,7 +2531,7 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
                 featureRuntime.post(mainHandler, () -> {
                     if (destroyed || quoteRequest != quoteVersion) return;
                     quoteLoading=false;
-                    paymentSummaryText.setText("Gagal terhubung ke server tarif");
+                    paymentSummaryText.setText("Biaya belum dapat dimuat. Periksa koneksi dan ketuk Coba lagi.");
                     showQuoteRetry();
                     finalPriceText.setTextColor(Color.parseColor("#0B3A78"));
                 });
@@ -2671,7 +2688,47 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
             wizardStepText.setScaleX(.96f); wizardStepText.setScaleY(.96f);
             wizardStepText.animate().scaleX(1f).scaleY(1f).setDuration(180L).start();
         }
-        createOrder();
+        if (noteInput == null || noteInput.getText().toString().trim().isEmpty()) {
+            orderAfterNote = true; showNoteDialog(); return;
+        }
+        showBeginnerConfirmation();
+    }
+
+    private void showBeginnerConfirmation() {
+        if (ordering || confirmationShowing || !locationQuoteReady || lastQuotedFare <= 0) return;
+        final int generation=quoteVersion, fare=lastQuotedFare;
+        final String payment=paymentMethod, schedule=scheduledAt;
+        final CustomerSessionGuard session=CustomerSessionGuard.capture(this);
+        StringBuilder copy=new StringBuilder();
+        copy.append(CustomerBeginnerCopy.servicePurpose(serviceName())).append("\n\nJemput:\n").append(pickupAddress)
+                .append("\n\nTujuan:\n").append(deliveryAddress);
+        for(int i=0;i<ecosystemFeatures.waypoints.length();i++) {
+            JSONObject stop=ecosystemFeatures.waypoints.optJSONObject(i);
+            if(stop!=null) copy.append("\nPersinggahan ").append(i+1).append(": ").append(stop.optString("address"));
+        }
+        copy.append("\n\nBiaya sebelum potongan: Rp").append(formatMoney(quotedOriginal))
+                .append("\nPotongan: Rp").append(formatMoney(quotedDiscount))
+                .append("\nTotal perjalanan: Rp").append(formatMoney(fare))
+                .append("\n\n").append(CustomerBeginnerCopy.paymentHelp(payment));
+        if(ecosystemFeatures.groupSize>1) copy.append("\nPatungan ").append(ecosystemFeatures.groupSize).append(" orang. Periksa bagian pembayaran setiap peserta.");
+        if(!schedule.isEmpty())copy.append("\nJadwal: ").append(schedule);
+        copy.append("\n\nCatatan untuk driver: ").append(noteInput.getText().toString().trim())
+                .append("\n\nBiaya tunggu: gratis 5 menit per titik; setelah itu Rp500 setiap menit tambahan yang dimulai. Biaya tambahan yang berlaku mengikuti tagihan pesanan.");
+        ScrollView scroll=new ScrollView(this); TextView text=text(copy.toString(),15,"#294661",false);
+        text.setPadding(dp(20),dp(8),dp(20),dp(12)); scroll.addView(text);
+        confirmationShowing=true;
+        android.app.AlertDialog dialog=new TransivaAlertDialogBuilder(this).setTitle("Periksa pesanan Anda")
+                .setView(scroll).setNegativeButton("Periksa kembali",null)
+                .setPositiveButton(schedule.isEmpty()?"Konfirmasi & cari driver":"Konfirmasi jadwal",(d,w)->{
+                    if(destroyed || ordering || !session.matches(this))return;
+                    if(generation!=quoteVersion || !locationQuoteReady || fare!=lastQuotedFare
+                            || !payment.equals(paymentMethod) || !schedule.equals(scheduledAt)) {
+                        toastDialog("Rincian pesanan berubah. Periksa kembali biaya dan konfirmasi ulang.");return;
+                    }
+                    createOrder();
+                }).create();
+        dialog.setOnDismissListener(d->confirmationShowing=false); dialog.show();
+        CustomerAppSettings.applyToView(this,text);
     }
 
     private void setWizardProgress(int stage) {
@@ -2697,7 +2754,12 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
         orderBtn.setEnabled(ready);
         orderBtn.setAlpha(1f);
         if (wizardStepText != null) setWizardProgress(ready ? 2 : (locationReady() ? 1 : 0));
-        if (ready) orderBtn.setText("PESAN " + serviceName().toUpperCase(Locale.US));
+        if (beginnerHint != null) {
+            beginnerHint.setVisibility(CustomerBeginnerGuide.tipsEnabled(this) ? View.VISIBLE : View.GONE);
+            beginnerHint.setText(CustomerBeginnerCopy.tripHint(validCoord(pickupLat,pickupLng),
+                    validCoord(deliveryLat,deliveryLng),ready));
+        }
+        if (ready) orderBtn.setText((scheduledAt.isEmpty() ? "Periksa & pesan • Rp" : "Periksa jadwal • Rp") + formatMoney(lastQuotedFare));
     }
 
     private void resetOrderButton() { ordering = false; setLoading(false); orderBtn.setEnabled(true); updateWizardState(); }
@@ -2720,9 +2782,10 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
         Button b = new Button(this);
         b.setText(title + "\n" + sub);
         b.setAllCaps(false);
-        b.setTextSize(10.5f);
+        b.setTextSize(14f);
+        b.setMinHeight(dp(64));
         b.setGravity(Gravity.CENTER_VERTICAL);
-        b.setPadding(dp(10), dp(2), dp(8), dp(2));
+        b.setPadding(dp(10), dp(10), dp(8), dp(10));
         b.setTypeface(Typeface.DEFAULT_BOLD);
         b.setTextColor(Color.parseColor(color));
         b.setBackground(roundStroke("#FFFFFF", "#E2E8F0", dp(14), 1));
@@ -2761,7 +2824,7 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
 
 
     private Button rowButton(String value, String color) { Button b = smallButton(value, "#FFFFFF", color, "#E2E8F0"); b.setGravity(Gravity.CENTER_VERTICAL); b.setPadding(dp(12), 0, dp(12), 0); return b; }
-    private Button smallButton(String value, String bg, String fg, String stroke) { Button b = new Button(this); b.setText(value); b.setAllCaps(false); b.setTextSize(13); b.setTypeface(Typeface.DEFAULT_BOLD); b.setTextColor(Color.parseColor(fg)); b.setBackground(roundStroke(bg, stroke, dp(16), 1)); return b; }
+    private Button smallButton(String value, String bg, String fg, String stroke) { Button b = new Button(this); b.setMinHeight(dp(52)); b.setPadding(dp(8),dp(8),dp(8),dp(8)); b.setText(value); b.setAllCaps(false); b.setTextSize(13); b.setTypeface(Typeface.DEFAULT_BOLD); b.setTextColor(Color.parseColor(fg)); b.setBackground(roundStroke(bg, stroke, dp(16), 1)); return b; }
     private TextView text(String value, int sp, String color, boolean bold) { TextView tv = new TextView(this); tv.setText(value); tv.setTextSize(sp); tv.setTextColor(Color.parseColor(color)); if (bold) tv.setTypeface(Typeface.DEFAULT_BOLD); return tv; }
     private GradientDrawable round(String color, int radius) { GradientDrawable gd = new GradientDrawable(); gd.setColor(Color.parseColor(color)); gd.setCornerRadius(radius); return gd; }
     private GradientDrawable roundStroke(String color, String stroke, int radius, int width) { GradientDrawable gd = round(color, radius); gd.setStroke(dp(width), Color.parseColor(stroke)); return gd; }

@@ -373,9 +373,10 @@ class CustomerDashboardActivityScreenCore extends CustomerAdaptiveActivity
 
         // Dashboard 4.0: urutan dibuat seperti super-app modern dan lebih fokus pada aksi utama.
         // Header sudah memuat identitas, saldo dan royalti dalam satu card responsif.
+        buildOrderSection();
         buildSmartDestinationSection();
         buildServiceSection();
-        buildOrderSection();
+        content.addView(CustomerBeginnerGuide.dashboardCard(this), new LinearLayout.LayoutParams(-1, -2));
         // Fitur lanjutan dipindahkan ke "Lihat Semua" agar Dashboard tetap sederhana.
 
         if (!isKOnlineDashboardCardDismissed()) {
@@ -390,7 +391,7 @@ class CustomerDashboardActivityScreenCore extends CustomerAdaptiveActivity
 
         shell.addView(
                 buildBottomNavigation(),
-                new LinearLayout.LayoutParams(-1, dp(64))
+                new LinearLayout.LayoutParams(-1, dp(Math.max(72,Math.round(44+32*getResources().getConfiguration().fontScale))))
         );
 
         loading = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
@@ -1872,35 +1873,34 @@ class CustomerDashboardActivityScreenCore extends CustomerAdaptiveActivity
         pin.setImageResource(drawable("ic_smart_search"));
         pin.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
         pin.setPadding(dp(6), dp(6), dp(6), dp(6));
-        search.addView(pin, new LinearLayout.LayoutParams(dp(32), dp(40)));
+        search.addView(pin, new LinearLayout.LayoutParams(dp(32), dp(56)));
         LinearLayout copy = new LinearLayout(this);
         copy.setOrientation(LinearLayout.VERTICAL);
         copy.setGravity(Gravity.CENTER_VERTICAL);
-        copy.addView(text("Mau ke mana?", 14, "#0B3A78", true));
-        TextView sub = text("Cari tempat, alamat, atau tempel link Google Maps", 9, "#7B8DA3", false);
-        sub.setSingleLine(true);
+        copy.addView(text("Mau ke mana?", 17, "#0B3A78", true));
+        TextView sub = text("Cari alamat tujuan perjalanan", 13, "#405B73", false);
+        sub.setSingleLine(false);
         copy.addView(sub);
-        search.addView(copy, new LinearLayout.LayoutParams(0, dp(40), 1));
+        search.addView(copy, new LinearLayout.LayoutParams(0, -2, 1));
         TextView arrow = text("›", 23, "#0878F9", true);
         search.addView(arrow);
         search.setOnClickListener(v -> {
             recordServiceUsage("TransRide");
             startActivity(new Intent(this, TransRideActivity.class).putExtra("focus_destination_search", true));
         });
-        card.addView(search, new LinearLayout.LayoutParams(-1, dp(40)));
+        search.setMinimumHeight(dp(64));
+        card.addView(search, new LinearLayout.LayoutParams(-1, -2));
 
-        LinearLayout quick = new LinearLayout(this);
-        quick.setGravity(Gravity.CENTER_VERTICAL);
-        LinearLayout.LayoutParams qlp = new LinearLayout.LayoutParams(-1, dp(32));
-        qlp.setMargins(0, dp(6), 0, 0);
-        card.addView(quick, qlp);
-        quick.addView(smartQuickAction("ic_smart_my_location", "Lokasi", () -> loadLocation()), new LinearLayout.LayoutParams(0, dp(30), 1));
+        LinearLayout quick = new LinearLayout(this);quick.setGravity(Gravity.CENTER_VERTICAL);
+        LinearLayout.LayoutParams qlp=new LinearLayout.LayoutParams(-1,-2);qlp.topMargin=dp(6);card.addView(quick,qlp);
+        quick.addView(smartQuickAction("ic_smart_home", "Rumah", () -> startActivity(new Intent(this,FavoritePlacesActivity.class).putExtra("quick_destination_type","home"))),new LinearLayout.LayoutParams(0,-2,1));
         addQuickGap(quick);
-        quick.addView(smartQuickAction("ic_smart_home", "Rumah", () -> startActivity(new Intent(this, FavoritePlacesActivity.class))), new LinearLayout.LayoutParams(0, dp(30), 1));
-        addQuickGap(quick);
-        quick.addView(smartQuickAction("ic_smart_work", "Kantor", () -> startActivity(new Intent(this, FavoritePlacesActivity.class))), new LinearLayout.LayoutParams(0, dp(30), 1));
-        addQuickGap(quick);
-        quick.addView(smartQuickAction("ic_smart_map", "Peta", () -> startActivity(new Intent(this, TransRideActivity.class).putExtra("open_map_picker", true))), new LinearLayout.LayoutParams(0, dp(30), 1));
+        quick.addView(smartQuickAction("ic_smart_work", "Kantor", () -> startActivity(new Intent(this,FavoritePlacesActivity.class).putExtra("quick_destination_type","work"))),new LinearLayout.LayoutParams(0,-2,1));
+        LinearLayout tools=new LinearLayout(this);tools.setGravity(Gravity.CENTER_VERTICAL);
+        LinearLayout.LayoutParams tlp=new LinearLayout.LayoutParams(-1,-2);tlp.topMargin=dp(6);card.addView(tools,tlp);
+        tools.addView(smartQuickAction("ic_smart_my_location","Lokasi saya",()->loadLocation()),new LinearLayout.LayoutParams(0,-2,1));
+        addQuickGap(tools);
+        tools.addView(smartQuickAction("ic_smart_map","Pilih di peta",()->startActivity(new Intent(this,TransRideActivity.class).putExtra("open_map_picker",true))),new LinearLayout.LayoutParams(0,-2,1));
 
     }
 
@@ -1917,9 +1917,10 @@ class CustomerDashboardActivityScreenCore extends CustomerAdaptiveActivity
         icon.setImageResource(drawable(iconName));
         icon.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
         item.addView(icon, new LinearLayout.LayoutParams(dp(16), dp(16)));
-        TextView t = text(label, 9, "#0B6DD9", true);
-        LinearLayout.LayoutParams tlp = new LinearLayout.LayoutParams(-2, -2);
-        tlp.setMargins(dp(3), 0, 0, 0);
+        item.setMinimumHeight(dp(52));item.setPadding(dp(8),dp(10),dp(8),dp(10));
+        TextView t = text(label, 14, "#0B3A78", true);
+        LinearLayout.LayoutParams tlp = new LinearLayout.LayoutParams(0, -2, 1);
+        tlp.setMargins(dp(6), 0, 0, 0);
         item.addView(t, tlp);
         item.setOnClickListener(v -> action.run());
         return item;
@@ -1952,13 +1953,14 @@ class CustomerDashboardActivityScreenCore extends CustomerAdaptiveActivity
         titleBox.setOrientation(LinearLayout.VERTICAL);
         titleRow.addView(titleBox, new LinearLayout.LayoutParams(0, -2, 1f));
         titleBox.addView(text("Mau pakai layanan apa?", 16, "#0B3A78", true));
-        TextView hint = text("Pilih salah satu untuk mulai", 10, "#7B8DA3", false);
+        TextView hint = text("Pilih sesuai kebutuhan Anda", 13, "#405B73", false);
         LinearLayout.LayoutParams hintLp = new LinearLayout.LayoutParams(-1, -2);
         hintLp.setMargins(0, dp(2), 0, 0);
         titleBox.addView(hint, hintLp);
 
-        TextView seeAll = text("Lihat Semua  ›", 10, "#0878F9", true);
+        TextView seeAll = text("Lainnya  ›", 13, "#0878F9", true);
         seeAll.setGravity(Gravity.CENTER);
+        seeAll.setMinHeight(dp(48));
         seeAll.setPadding(dp(8), dp(6), dp(7), dp(6));
         seeAll.setBackground(Shape.round("#EEF6FF", dp(14)));
         seeAll.setOnClickListener(v -> startActivity(new Intent(this, AllServicesActivity.class)));
@@ -1970,12 +1972,13 @@ class CustomerDashboardActivityScreenCore extends CustomerAdaptiveActivity
         gridLp.setMargins(0, dp(6), 0, 0);
         section.addView(grid, gridLp);
 
-        // Smart Dashboard 5.1: lima layanan utama dalam satu baris agar status order
-        // langsung terlihat pada layar pertama tanpa membuang ruang vertikal.
+        // Larger labels in two rows; active orders are already above this section.
         grid.addView(serviceRow(
                 service("TransRide", "ic_service_ride_premium", TransRideActivity.class),
                 service("TransCar", "ic_service_car_premium", PassengerCarActivity.class),
-                service("TransFood", "ic_service_food_premium", TransFoodActivity.class),
+                service("TransFood", "ic_service_food_premium", TransFoodActivity.class)
+        ));
+        grid.addView(serviceRow(
                 service("TransShop", "ic_service_shop_premium", TransShopActivity.class),
                 service("TransSend", "ic_service_send_premium", TransPickupActivity.class)
         ));
@@ -2114,7 +2117,7 @@ class CustomerDashboardActivityScreenCore extends CustomerAdaptiveActivity
         // AT_MOST width from the weighted menu column bounds the complete square tile.
         card.addView(artwork, new LinearLayout.LayoutParams(-2, -2));
 
-        TextView label = text(title, 9, "#0B3A78", true);
+        TextView label = text(title, 14, "#0B3A78", true);
         label.setGravity(Gravity.CENTER);
         label.setMaxLines(2);
         label.setSingleLine(false);
@@ -2122,6 +2125,11 @@ class CustomerDashboardActivityScreenCore extends CustomerAdaptiveActivity
         LinearLayout.LayoutParams labelLp = new LinearLayout.LayoutParams(-1, -2);
         labelLp.setMargins(0, dp(3), 0, 0);
         card.addView(label, labelLp);
+        TextView purpose = text(CustomerBeginnerCopy.servicePurpose(title), 13, "#405B73", false);
+        purpose.setGravity(Gravity.CENTER);
+        purpose.setMinLines(2);
+        card.addView(purpose, new LinearLayout.LayoutParams(-1, -2));
+        card.setContentDescription(title + ". " + CustomerBeginnerCopy.servicePurpose(title));
 
         card.setOnClickListener(view -> {
             view.animate().scaleX(0.94f).scaleY(0.94f).setDuration(70L)
@@ -2208,7 +2216,7 @@ class CustomerDashboardActivityScreenCore extends CustomerAdaptiveActivity
         dashboardCancel = text("Batalkan pesanan", 11, "#B54147", true);
         dashboardCancel.setGravity(Gravity.CENTER);
         dashboardCancel.setPadding(dp(12), dp(6), dp(12), dp(6));
-        dashboardCancel.setMinHeight(dp(44));
+        dashboardCancel.setMinHeight(dp(48));
         dashboardCancel.setBackground(Shape.roundStroke("#FFF5F5", "#F1D5D8", dp(12), 1));
         dashboardCancel.setVisibility(View.GONE);
         LinearLayout.LayoutParams cancelLp = new LinearLayout.LayoutParams(-2, -2);

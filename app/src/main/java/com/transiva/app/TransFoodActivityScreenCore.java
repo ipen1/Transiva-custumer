@@ -91,6 +91,9 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
     private int checkoutQuoteGeneration;
     private boolean checkoutQuoteReady;
     private Button checkoutSubmitButton;
+    private JSONObject beginnerRepeatFood;
+    private String beginnerRepeatMessage="";
+    private boolean beginnerFoodConfirming;
     private String favoritesError="";
     private final java.util.Set<Integer> favoriteMerchantIds=new java.util.HashSet<>();
     private final java.util.Set<Integer> favoriteMenuIds=new java.util.HashSet<>();
@@ -149,6 +152,7 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
         }));
         int storyRid=getIntent()==null?0:getIntent().getIntExtra("story_restaurant_id",0);
         if(storyRid>0){
+            try{String repeat=getIntent().getStringExtra("beginner_repeat_food");if(repeat!=null)beginnerRepeatFood=new JSONObject(repeat);}catch(Exception ignored){}
             try{activeRestaurant=new JSONObject();activeRestaurant.put("id",storyRid);activeRestaurant.put("name",getIntent().getStringExtra("story_restaurant_name"));}catch(Exception ignored){}
             showMenuPage();loadMenus(storyRid);
         }else{showRestaurantList();loadRestaurants(true);}
@@ -688,6 +692,10 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
         LinearLayout liveRoot=root;renderLiveRoot=liveRoot;IncrementalLinearRenderer.begin(liveRoot);
         root=new LinearLayout(this);root.setOrientation(LinearLayout.VERTICAL);
         try {
+        if(!beginnerRepeatMessage.isEmpty()) {
+            LinearLayout reminder=card();reminder.addView(text("Pesan makanan lagi",17,"#0B3A78",true));
+            reminder.addView(text(beginnerRepeatMessage,14,"#405B73",false));addWithMargin(reminder,0,0,0,dp(12));
+        }
         if(IncrementalLinearRenderer.unchanged(renderLiveRoot,"merchant-header",activeRestaurant.toString())){
             View placeholder=new View(this);IncrementalLinearRenderer.mark(placeholder,"merchant-header",activeRestaurant.toString());addWithMargin(placeholder,0,0,0,dp(12));
         }else{
@@ -1166,7 +1174,7 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
         left.addView(cartQuantityLabel);
         left.addView(cartTotalLabel);
         bar.addView(left, new LinearLayout.LayoutParams(0, -2, 1));
-        Button checkout = primaryButton("Checkout");
+        Button checkout = primaryButton("Periksa pesanan");
         checkout.setOnClickListener(v -> showCheckout());
         bar.addView(checkout, new LinearLayout.LayoutParams(dp(130), dp(48)));
         FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(-1, -2);
@@ -1185,7 +1193,7 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
         voucherDraft=voucherCode;voucherExpanded=false;
         clearStickyCartBar();
         root.removeAllViews();
-        buildTopBar("Checkout", "Cek pesanan dan pilih pengantaran", true);
+        buildTopBar("Periksa pesanan", "Cek alamat, makanan, biaya, dan pembayaran", true);
         addStatus("Menghitung ongkir...");
         calculateOngkirThenRender();
     }
@@ -1258,6 +1266,7 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
             Button split=choiceButton(splitBillManager!=null&&splitBillManager.groupSize()>1?(splitBillManager.ready()?"✓ Split Bill ":"Menunggu Split Bill ")+splitBillManager.groupSize()+" orang":"Split Bill · Bayar bersama",false);
             split.setTextSize(12);split.setOnClickListener(v->showFoodSplitDialog());LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-1,dp(44));lp.topMargin=dp(6);pay.addView(split,lp);
         }else if(splitBillManager!=null&&splitBillManager.groupSize()>1)splitBillManager.clear();
+        pay.addView(text(CustomerBeginnerCopy.paymentHelp(paymentMethod),14,"#405B73",false));
         addWithMargin(pay,0,0,0,dp(10));
 
         LinearLayout total=checkoutCard();total.addView(text("Rincian pembayaran",14,"#0F172A",true));
@@ -1288,7 +1297,7 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
         LinearLayout words=new LinearLayout(this);words.setOrientation(LinearLayout.VERTICAL);words.addView(text("Total bayar",11,"#64748B",false));words.addView(text(rupiah(amount),20,"#0F172A",true));
         bar.addView(words,narrow?new LinearLayout.LayoutParams(-1,-2):new LinearLayout.LayoutParams(0,-2,1));
         boolean accepting=activeRestaurant.optInt("is_open",1)==1;
-        Button order=primaryButton(!checkoutQuoteReady?"Coba hitung ongkir":accepting?"Buat Pesanan":"Toko sedang tutup");checkoutSubmitButton=order;order.setTextSize(14);order.setEnabled(accepting&&!foodOrderSubmitting);order.setAlpha(accepting?1f:.55f);order.setOnClickListener(v->{if(checkoutQuoteReady)createFoodOrder();else calculateOngkirThenRender();});
+        Button order=primaryButton(!checkoutQuoteReady?"Coba hitung ongkir":accepting?"Periksa & pesan":"Toko sedang tutup");checkoutSubmitButton=order;order.setTextSize(14);order.setEnabled(accepting&&!foodOrderSubmitting);order.setAlpha(accepting?1f:.55f);order.setOnClickListener(v->{if(checkoutQuoteReady)confirmBeginnerFoodOrder();else calculateOngkirThenRender();});
         LinearLayout.LayoutParams olp=new LinearLayout.LayoutParams(narrow?-1:dp(150),dp(48));if(narrow)olp.topMargin=dp(8);else olp.leftMargin=dp(8);bar.addView(order,olp);
         FrameLayout.LayoutParams lp=new FrameLayout.LayoutParams(-1,-2,Gravity.BOTTOM);lp.setMargins(dp(12),0,dp(12),dp(10));page.addView(bar,lp);stickyCartBar=bar;
         bar.addOnLayoutChangeListener((v,l,t,r,b,ol,ot,or,ob)->{if(stickyCartBar==bar&&currentScreen==2)setFoodPadding(dp(16),dp(18),dp(16),bar.getHeight()+dp(28));});
@@ -1463,6 +1472,7 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
         if(offset==0&&!newContext&&response.optBoolean("has_more"))for(int i=Math.min(limit,menus.size());i<menus.size();i++){JSONObject row=menus.get(i);if(!merged.containsKey(row.optInt("id")))merged.put(row.optInt("id"),row);}
         menus.clear();menus.addAll(merged.values());
         if(newContext||offset>0||menusOffset<=limit||!response.optBoolean("has_more")){menusOffset=response.optInt("next_offset",offset+rows.length());menusHasMore=response.optBoolean("has_more");}
+        if(!cached && offset==0) restoreBeginnerFoodDraft(rid);
         acceptedMenuContext=rid+":"+menusRequestQuery;renderMenus();if(!cached){loadMenuSocial(rid,generation);refreshMerchantStories();refreshProfileStories(rid);}
     }
     private void menuPageFailed(int rid,int generation,String message){
@@ -1624,6 +1634,54 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
             });}
         },()->featureRuntime.post(mainHandler,()->{if(quoteGeneration==checkoutQuoteGeneration&&currentScreen==2){setLoading(false);renderCheckout();showInfo("Ongkir","Sistem sedang sibuk. Coba hitung ongkir lagi, ya.");}}));
         if(task==null){setLoading(false);renderCheckout();showInfo("Ongkir","Sistem sedang sibuk. Coba hitung ongkir lagi, ya.");}
+    }
+
+    private void restoreBeginnerFoodDraft(int restaurantId) {
+        if(beginnerRepeatFood==null || beginnerRepeatFood.optInt("restaurant_id")!=restaurantId)return;
+        JSONArray previous=beginnerRepeatFood.optJSONArray("food_items");
+        String summary=beginnerRepeatFood.optString("summary","");beginnerRepeatFood=null;
+        int restored=0,skipped=0;
+        if(previous!=null && cart.isEmpty())for(int i=0;i<previous.length();i++){
+            JSONObject old=previous.optJSONObject(i);if(old==null)continue;
+            int id=old.optInt("id",old.optInt("menu_id"));JSONObject current=null;
+            for(JSONObject menu:menus)if(menu.optInt("id")==id){current=menu;break;}
+            if(current==null||current.optInt("is_active",1)!=1||hasSelectableOptions(current.optJSONArray("options"))){skipped++;continue;}
+            int quantity=Math.max(1,Math.min(99,old.optInt("qty",1)));
+            if(current.optInt("track_stock")==1)quantity=Math.min(quantity,Math.max(0,current.optInt("stock",0)));
+            if(quantity<=0){skipped++;continue;}
+            for(int q=0;q<quantity;q++)addConfiguredItem(current,new JSONArray(),"",0);
+            restored++;
+        }
+        beginnerRepeatMessage="Pesanan sebelumnya: "+summary+"\n\n"+restored+" jenis menu diisi dari katalog terbaru. Periksa jumlah dan stok.";
+        if(skipped>0)beginnerRepeatMessage+=" "+skipped+" jenis menu perlu dipilih ulang karena memiliki pilihan tambahan atau belum tersedia di daftar yang dimuat.";
+        beginnerRepeatMessage+=" Alamat antar dan ongkir diperiksa kembali sebelum memesan.";
+    }
+    private String beginnerFoodFingerprint(){
+        StringBuilder key=new StringBuilder();key.append(paymentMethod).append('|').append(deliveryMode).append('|').append(voucherCode)
+                .append('|').append(DeliveryAddressGate.address(this));
+        for(CartItem c:cart)key.append('|').append(c.key).append(':').append(c.qty).append(':').append(c.price);
+        return key.toString();
+    }
+    private void confirmBeginnerFoodOrder(){
+        if(beginnerFoodConfirming||foodOrderSubmitting||!checkoutQuoteReady||cart.isEmpty())return;
+        final int generation=checkoutQuoteGeneration,amount=lastFoodQuote;
+        final String fingerprint=beginnerFoodFingerprint();final CustomerSessionGuard session=CustomerSessionGuard.capture(this);
+        StringBuilder copy=new StringBuilder();copy.append(firstNonEmpty(activeRestaurant.optString("name"),"Penjual"))
+            .append("\n\nAntar ke:\n").append(DeliveryAddressGate.address(this)).append("\n\nIsi pesanan:\n");
+        for(CartItem item:cart)copy.append(item.qty).append(" × ").append(item.name).append(item.optionText==null?"":" • "+item.optionText).append('\n');
+        copy.append("\nTotal yang ditampilkan: ").append(rupiah(amount)).append("\n\n").append(CustomerBeginnerCopy.paymentHelp(paymentMethod))
+            .append("\n\nPeriksa rincian potongan dan syarat voucher di halaman pembayaran. Tagihan mengikuti hasil pemeriksaan pesanan.");
+        ScrollView scroll=new ScrollView(this);TextView details=text(copy.toString(),15,"#294661",false);details.setPadding(dp(20),dp(8),dp(20),dp(12));scroll.addView(details);
+        beginnerFoodConfirming=true;
+        android.app.AlertDialog dialog=new TransivaAlertDialogBuilder(this).setTitle("Periksa pesanan makanan")
+            .setView(scroll).setNegativeButton("Periksa kembali",null).setPositiveButton("Konfirmasi pesanan",(d,w)->{
+                if(!session.matches(this)||isFinishing()||isDestroyed())return;
+                if(generation!=checkoutQuoteGeneration||!checkoutQuoteReady||amount!=lastFoodQuote||!fingerprint.equals(beginnerFoodFingerprint())){
+                    showInfo("Rincian berubah","Periksa kembali isi pesanan dan biaya, lalu konfirmasi ulang.");return;
+                }
+                createFoodOrder();
+            }).create();
+        dialog.setOnDismissListener(d->beginnerFoodConfirming=false);dialog.show();CustomerAppSettings.applyToView(this,details);
     }
 
     protected void createFoodOrder() {

@@ -29,25 +29,31 @@ public class AllServicesActivity extends CustomerAdaptiveActivity {
         LinearLayout root=new LinearLayout(this); root.setOrientation(LinearLayout.VERTICAL); root.setPadding(dp(18),dp(18),dp(18),dp(32)); scroll.addView(root);
         TextView back=tx("‹   Semua Layanan",24,"#0B3A78",true); back.setOnClickListener(v->finish()); root.addView(back);
         TextView sub=tx("Pilih fitur yang kamu butuhkan",13,"#64748B",false); LinearLayout.LayoutParams slp=lp(0,16); root.addView(sub,slp);
+        add(root,"🏍","TransRide","Naik motor ke tujuan Anda", TransRideActivity.class);
+        add(root,"🍲","TransFood","Pesan makanan dari penjual sekitar", TransFoodActivity.class);
+        add(root,"🛍","TransShop","Belanja kebutuhan dari toko", TransShopActivity.class);
         add(root,"🚘","TransCar","Pesan mobil untuk perjalanan", PassengerCarActivity.class);
         add(root,"📦","TransSend","Kirim paket dan barang dengan driver", TransPickupActivity.class);
-        add(root,"👥","Split Pay","Patungan pembayaran perjalanan", TransRideActivity.class);
-        add(root,"👨‍👩‍👧","Family","Kelola anggota keluarga", TransivaFamilyActivity.class);
-        add(root,"🎁","Royalti","Lihat poin dan hadiah", CustomerLoyaltyActivity.class);
+        add(root,"👥","Bayar patungan","Split Pay • gunakan saldo Transiva Pay", TransRideActivity.class);
+        add(root,"👨‍👩‍👧","Keluarga","Kelola anggota keluarga", TransivaFamilyActivity.class);
+        add(root,"🎁","Poin & voucher","Lihat hadiah yang bisa Anda gunakan", CustomerLoyaltyActivity.class);
         add(root,"🤝","Ajak Teman","Bagikan kode referral", CustomerReferralActivity.class);
         add(root,"📍","Tempat Favorit","Simpan rumah, kantor, dan lokasi penting", FavoritePlacesActivity.class);
         add(root,"🛡","Pusat Keamanan","Fitur keamanan perjalanan", SafetyCenterActivity.class);
         add(root,"💳","Transiva Pay","Isi saldo untuk pembayaran", CustomerTopUpActivity.class);
         add(root,"✨","Asisten Transiva","Bantuan pintar untuk aktivitasmu", TransAssistantActivity.class);
         add(root,"🛒","TransMart","Segera hadir", null);
+        TextView guide=tx("Cara memesan & bantuan  ›",16,"#0B3A78",true);
+        guide.setMinHeight(dp(56)); guide.setGravity(Gravity.CENTER_VERTICAL);
+        guide.setOnClickListener(v->CustomerBeginnerGuide.show(this)); root.addView(guide);
         return scroll;
     }
     private void add(LinearLayout root,String icon,String title,String sub,Class<?> cls){
         LinearLayout card=new LinearLayout(this); card.setOrientation(LinearLayout.HORIZONTAL); card.setGravity(Gravity.CENTER_VERTICAL); card.setPadding(dp(14),dp(13),dp(14),dp(13)); card.setBackground(bg("#FFFFFF","#DFEBF7",16));
         TextView i=tx(icon,25,"#0B3A78",false); card.addView(i,new LinearLayout.LayoutParams(dp(42),dp(42)));
-        LinearLayout copy=new LinearLayout(this); copy.setOrientation(LinearLayout.VERTICAL); copy.addView(tx(title,15,"#0B3A78",true)); copy.addView(tx(sub,11,"#64748B",false)); card.addView(copy,new LinearLayout.LayoutParams(0,-2,1));
+        LinearLayout copy=new LinearLayout(this); copy.setOrientation(LinearLayout.VERTICAL); copy.addView(tx(title,15,"#0B3A78",true)); copy.addView(tx(sub,13,"#64748B",false)); card.addView(copy,new LinearLayout.LayoutParams(0,-2,1));
         TextView arrow=tx("›",28,"#0878F9",false); card.addView(arrow);
-        card.setOnClickListener(v->{ if("Split Pay".equals(title)) { showSplitPayInfo(); return; } if(cls!=null) startActivity(new Intent(this,cls)); else Toast.makeText(this,"TransMart segera hadir.",Toast.LENGTH_SHORT).show(); });
+        card.setOnClickListener(v->{ if("Bayar patungan".equals(title)) { showSplitPayInfo(); return; } if(cls!=null) startActivity(new Intent(this,cls)); else Toast.makeText(this,"TransMart segera hadir.",Toast.LENGTH_SHORT).show(); });
         root.addView(card,lp(8,0));
     }
     private void showSplitPayInfo() {

@@ -247,6 +247,7 @@ class CustomerDashboardActivityScreenCore extends CustomerAdaptiveActivity
         uiHandler.post(accountStatusRefresh);
         orderStatusVisible=true;uiHandler.removeCallbacks(orderStatusRefresh);uiHandler.postDelayed(orderStatusRefresh,5000L);
         DeliveryAddressGate.prefetch(this);
+        RoyaltyRewardFeedback.check(this);
 
         // Terapkan ulang agar perubahan tema dari menu Pengaturan langsung
         // terlihat saat kembali ke Dashboard.
@@ -498,7 +499,7 @@ class CustomerDashboardActivityScreenCore extends CustomerAdaptiveActivity
         financeRow.addView(balanceMini, balanceMiniLp);
 
         View loyaltyMini = buildHeaderLoyaltyCard();
-        LinearLayout.LayoutParams loyaltyMiniLp = new LinearLayout.LayoutParams(0, dp(52), 0.88f);
+        LinearLayout.LayoutParams loyaltyMiniLp = new LinearLayout.LayoutParams(0, -2, 0.88f);
         loyaltyMiniLp.setMargins(dp(5), 0, 0, 0);
         financeRow.addView(loyaltyMini, loyaltyMiniLp);
 
@@ -603,33 +604,14 @@ class CustomerDashboardActivityScreenCore extends CustomerAdaptiveActivity
     }
 
     protected View buildHeaderLoyaltyCard() {
-        LinearLayout card = new LinearLayout(this);
-        card.setOrientation(LinearLayout.HORIZONTAL);
-        card.setGravity(Gravity.CENTER_VERTICAL);
-        card.setPadding(dp(9), dp(6), dp(9), dp(6));
-        card.setBackground(Shape.roundStroke("#18FFFFFF", "#4FFFFFFF", dp(17), 1));
-        card.setClickable(true);
-        card.setFocusable(true);
-
-        loyaltyTierBadge = TierBadgeUi.image(this, TierBadgeUi.getCachedActiveTier(this), 0);
-        LinearLayout.LayoutParams badgeLp = new LinearLayout.LayoutParams(dp(36), dp(36));
-        card.addView(loyaltyTierBadge, badgeLp);
-
-        LinearLayout body = new LinearLayout(this);
-        body.setOrientation(LinearLayout.VERTICAL);
-        body.setGravity(Gravity.CENTER_VERTICAL);
-        LinearLayout.LayoutParams bodyLp = new LinearLayout.LayoutParams(0, -2, 1f);
-        bodyLp.setMargins(dp(7), 0, 0, 0);
-        card.addView(body, bodyLp);
-
-        body.addView(text("Royalti", 9, "#D9EDFF", true));
-        loyaltyTierText = text("Bronze", 12, "#FFFFFF", true);
-        loyaltyPointsText = text("0 koin", 8, "#EAF4FF", false);
-        body.addView(loyaltyTierText);
-        body.addView(loyaltyPointsText);
-
-        card.setOnClickListener(v -> startActivity(new Intent(this, CustomerLoyaltyActivity.class)));
-        return card;
+        LinearLayout card=new LinearLayout(this);card.setOrientation(LinearLayout.VERTICAL);card.setPadding(dp(9),dp(8),dp(9),dp(8));
+        card.setBackground(Shape.roundStroke("#18FFFFFF","#4FFFFFFF",dp(17),1));card.setClickable(true);card.setFocusable(true);
+        LinearLayout label=new LinearLayout(this);label.setGravity(Gravity.CENTER_VERTICAL);
+        loyaltyTierBadge=TierBadgeUi.image(this,TierBadgeUi.getCachedActiveTier(this),0);label.addView(loyaltyTierBadge,new LinearLayout.LayoutParams(dp(19),dp(19)));
+        TextView caption=text("Royalti",9,"#D9EDFF",true);caption.setPadding(dp(5),0,0,0);label.addView(caption);card.addView(label);
+        loyaltyTierText=text("Bronze • 0/500 poin",10,"#FFFFFF",true);card.addView(loyaltyTierText);
+        loyaltyPointsText=text("Selesaikan misi untuk naik level",9,"#EAF4FF",false);loyaltyPointsText.setLineSpacing(dp(1),1.05f);card.addView(loyaltyPointsText);
+        card.setOnClickListener(v->startActivity(new Intent(this,CustomerLoyaltyActivity.class)));return card;
     }
 
     protected View headerAction(String symbol, String description, Runnable action) {
@@ -2679,10 +2661,10 @@ class CustomerDashboardActivityScreenCore extends CustomerAdaptiveActivity
                 String activeTier = first(d.optString("season_tier"), d.optString("tier"), "BRONZE");
                 TierBadgeUi.saveActiveTier(this, activeTier);
                 if (loyaltyTierBadge != null) TierBadgeUi.applyToImage(loyaltyTierBadge, activeTier);
-                if (loyaltyTierText != null) loyaltyTierText.setText(TierBadgeUi.normalize(activeTier));
+                if (loyaltyTierText != null) {loyaltyTierText.setText(d.optString("card_title",TierBadgeUi.normalize(activeTier)));loyaltyTierText.setTextSize(10);}
                 int coinBalance = d.optInt("coin_balance", 0);
-                if (loyaltyPointsText != null) loyaltyPointsText.setText(coinBalance + " koin");
-                if (loyaltyNextText != null) loyaltyNextText.setText(first(d.optString("next_tier_text"), ""));
+                if (loyaltyPointsText != null) {loyaltyPointsText.setText(d.optString("card_progress")+"\n"+d.optString("card_benefit"));loyaltyPointsText.setTextSize(9);}
+                if (loyaltyNextText != null) loyaltyNextText.setText(first(d.optString("card_progress"), d.optString("next_tier_text"), ""));
             }
         }
         if (state.referral != null) {

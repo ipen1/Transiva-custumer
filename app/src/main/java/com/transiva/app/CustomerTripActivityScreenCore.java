@@ -829,6 +829,7 @@ class CustomerTripActivityScreenCore extends CustomerAdaptiveActivity {
         LinearLayout box = new LinearLayout(this);
         box.setOrientation(LinearLayout.VERTICAL);
         box.setPadding(dp(20), dp(8), dp(20), 0);
+        RoyaltyRewardFeedback.attach(this,box,orderId,orderSource);
 
         String restaurant = firstNonEmpty(order.optString("restaurant_name"), order.optString("pickup_address"), "merchant");
         TextView prompt = new TextView(this);
@@ -890,6 +891,7 @@ class CustomerTripActivityScreenCore extends CustomerAdaptiveActivity {
         LinearLayout box = new LinearLayout(this);
         box.setOrientation(LinearLayout.VERTICAL);
         box.setPadding(dp(20), dp(8), dp(20), 0);
+        RoyaltyRewardFeedback.attach(this,box,orderId,orderSource);
         TextView prompt = new TextView(this);
         prompt.setText("Bagaimana pelayanan " + firstNonEmpty(order.optString("driver_name"), order.optString("driver"), "driver") + "?");
         prompt.setTextSize(16);

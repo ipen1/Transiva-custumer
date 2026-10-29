@@ -174,6 +174,7 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
     protected LinearLayout ecosystemRow;
     protected SplitBillManager splitBillManager;
     protected int lastQuotedFare = 0;
+    protected int royaltyOriginalFare = 0;
     protected boolean selectingWaypoint = false;
     protected String familyMemberName = "";
     protected boolean smartFavoriteIntent = false;
@@ -205,6 +206,9 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
         if (getIntent() != null && getIntent().getBooleanExtra("split_pay_entry", false)) paymentMethod = "balance";
         if(savedInstanceState!=null) driverNoteDraft=savedInstanceState.getString("driver_note_draft","");
         buildLayout();
+        String royaltyVoucher=getIntent()==null?"":getIntent().getStringExtra("royalty_voucher_code");
+        if(royaltyVoucher!=null&&!royaltyVoucher.isEmpty()&&voucherInput!=null){voucherInput.setText(royaltyVoucher);if(voucherChoiceBtn!=null)voucherChoiceBtn.setText("🏷 Voucher dipilih");}
+
         applySmartFavoriteIntent();
         CustomerBestOffer.load(this, offerService(), offer -> featureRuntime.post(mainHandler, () -> {
             if (offer != null && voucherInput != null && voucherInput.getText().toString().trim().isEmpty()) {
@@ -659,29 +663,11 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
     }
 
     protected void showVoucherDialog() {
-        final EditText input = new EditText(this);
-        input.setSingleLine(true);
-        input.setText(voucherInput == null ? "" : voucherInput.getText().toString());
-        input.setHint("Masukkan kode voucher");
-        input.setPadding(dp(14), dp(8), dp(14), dp(8));
-
-        new TransivaAlertDialogBuilder(this)
-                .setTitle("Voucher " + serviceName())
-                .setMessage("Masukkan kode voucher lalu tekan Gunakan.")
-                .setView(input)
-                .setNegativeButton("Hapus", (dialog, which) -> {
-                    if (voucherInput != null) voucherInput.setText("");
-                    voucherChoiceBtn.setText("🏷 Voucher");
-                    requestPaymentQuote();
-                })
-                .setNeutralButton("Batal", null)
-                .setPositiveButton("Gunakan", (dialog, which) -> {
-                    String code = input.getText().toString().trim().toUpperCase(Locale.US);
-                    if (voucherInput != null) voucherInput.setText(code);
-                    voucherChoiceBtn.setText(code.isEmpty() ? "🏷 Voucher" : "🏷 " + code);
-                    requestPaymentQuote();
-                })
-                .show();
+        RoyaltyVoucherPicker.show(this,royaltyOriginalFare,royaltyOriginalFare,voucherInput==null?"":voucherInput.getText().toString(),(code,discount)->{
+            if(voucherInput!=null)voucherInput.setText(code);
+            voucherChoiceBtn.setText(code.isEmpty()?"🏷 Voucher":"🏷 Voucher dipilih");
+            requestPaymentQuote();
+        });
     }
 
     protected void showNoteDialog() {
@@ -2416,6 +2402,7 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
                             "original_price",
                             jsonInt(res, "standard_price", 0)
                     );
+                    royaltyOriginalFare=original;
                     int discount = jsonInt(res, "discount", 0);
                     int total = jsonInt(
                             res,

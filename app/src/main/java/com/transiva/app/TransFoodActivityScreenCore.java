@@ -88,6 +88,8 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
     private boolean favoritesLoading, favoritesLoaded, foodOrderSubmitting;
     private boolean voucherExpanded, editingCheckoutAddress;
     private String voucherDraft="";
+    private int royaltyVoucherDiscount;
+    private String royaltyVoucherNote="",royaltyPreviewKey="";
     private int checkoutQuoteGeneration;
     private boolean checkoutQuoteReady;
     private Button checkoutSubmitButton;
@@ -110,6 +112,7 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
     protected int hematRemaining = 0; // saldo coin
     protected int hematLimit = 1000; // minimum redeem coin
     protected int coinValueRupiah = 1;
+    protected int coinMaxRedeemPercent = 100;
     protected int coinMinOrderAfterDiscount = 1000;
     protected String hematTier = "BRONZE";
     protected SplitBillManager splitBillManager;
@@ -135,6 +138,7 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
             }
         } catch (Exception ignored) {}
         loadSession();
+        if(getIntent()!=null)voucherCode=firstNonEmpty(getIntent().getStringExtra("royalty_voucher_code"),"");
         if (getIntent() != null) homeSearchQuery = firstNonEmpty(getIntent().getStringExtra("global_search_query"), "");
         buildBase();
         if(savedInstanceState!=null && !savedInstanceState.getString("food_success_order_id", "").isEmpty()) {
@@ -1247,7 +1251,9 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
         Button apply=choiceButton("Gunakan voucher",false);apply.setTextSize(13);form.addView(apply,new LinearLayout.LayoutParams(-1,dp(44)));
         apply.setOnClickListener(v->{voucherCode=voucherDraft.trim().toUpperCase(Locale.US);voucherDraft=voucherCode;voucherExpanded=false;hideFoodKeyboard(code);renderCheckout();});
         voucherToggle.setOnClickListener(v->{voucherExpanded=!voucherExpanded;form.setVisibility(voucherExpanded?View.VISIBLE:View.GONE);if(!voucherExpanded)hideFoodKeyboard(code);voucherToggle.setText(voucherExpanded?"Voucher ongkir  ⌃":voucherCode.isEmpty()?"Punya voucher? Gunakan  ›":"Voucher dipilih · "+voucherCode+"  ›");});
-        voucher.addView(form);addWithMargin(voucher,0,0,0,dp(10));
+        Button chooseRoyalty=choiceButton("Pilih voucher saya",false);chooseRoyalty.setTextSize(13);
+        chooseRoyalty.setOnClickListener(v->RoyaltyVoucherPicker.show(this,(int)Math.round(foodTotal()+standardFee),(int)Math.round(standardFee),voucherCode,(selected,discount)->{voucherCode=selected;voucherDraft=selected;royaltyVoucherDiscount=discount;royaltyPreviewKey="";voucherExpanded=false;renderCheckout();}));voucher.addView(chooseRoyalty,new LinearLayout.LayoutParams(-1,dp(44)));
+        voucher.addView(form);if(!royaltyVoucherNote.isEmpty())voucher.addView(text(royaltyVoucherNote,11,"#64748B",false));addWithMargin(voucher,0,0,0,dp(10));
 
         LinearLayout pay=checkoutCard();pay.addView(text("Pembayaran",14,"#0F172A",true));
         LinearLayout payments=new LinearLayout(this);payments.setPadding(0,dp(8),0,0);
@@ -1262,11 +1268,16 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
 
         LinearLayout total=checkoutCard();total.addView(text("Rincian pembayaran",14,"#0F172A",true));
         double grossTotal=foodTotal()+standardFee;
+        String previewKey=voucherCode+":"+Math.round(grossTotal)+":"+standardFee;
+        if(!previewKey.equals(royaltyPreviewKey)){royaltyPreviewKey=previewKey;royaltyVoucherDiscount=0;royaltyVoucherNote=voucherCode.isEmpty()?"":"Memeriksa potongan voucher…";final String expected=previewKey;
+            if(!voucherCode.isEmpty())RoyaltyVoucherPicker.preview(this,voucherCode,(int)Math.round(grossTotal),(int)Math.round(standardFee),(discount,note)->{if(!expected.equals(royaltyPreviewKey)||currentScreen!=2)return;royaltyVoucherDiscount=discount;royaltyVoucherNote=note;renderCheckout();});}
+        double afterVoucher=Math.max(0,grossTotal-royaltyVoucherDiscount);
         double coinDiscount=0;
-        if("hemat".equals(deliveryMode)&&hematRemaining>=hematLimit)coinDiscount=CustomerFinancialRules.foodCoinDiscount(hematRemaining,coinValueRupiah,grossTotal,coinMinOrderAfterDiscount);
+        if("hemat".equals(deliveryMode)&&hematRemaining>=hematLimit)coinDiscount=CustomerFinancialRules.foodCoinDiscount(hematRemaining,coinValueRupiah,afterVoucher,coinMinOrderAfterDiscount,coinMaxRedeemPercent,hematLimit);
         total.addView(summaryLine("Subtotal makanan",foodTotal()));total.addView(summaryLine("Ongkir",standardFee));
+        if(royaltyVoucherDiscount>0)total.addView(summaryLine("Potongan voucher",-royaltyVoucherDiscount));
         if(coinDiscount>0)total.addView(summaryLine("Potongan Transiva Coin",-coinDiscount));
-        double amount=Math.max(0,grossTotal-coinDiscount);lastFoodQuote=(int)Math.round(amount);
+        double amount=Math.max(0,afterVoucher-coinDiscount);lastFoodQuote=(int)Math.round(amount);
         if(!checkoutQuoteReady)total.addView(text("Ongkir belum terkonfirmasi. Coba hitung kembali sebelum memesan.",12,"#EF4444",false));
         total.addView(summaryLine("Total bayar",amount));addWithMargin(total,0,0,0,dp(12));
         buildCheckoutBar(amount);
@@ -1615,7 +1626,7 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
                     // Keep the existing server quote and Coin calculation; commit one response on the UI thread.
                     deliveryFee=hematFee=standardFee;distanceKm=res.optDouble("distance_km",0);
                     hematRemaining=res.optInt("hemat_remaining",0);hematLimit=res.optInt("hemat_limit",0);
-                    hematTier=firstNonEmpty(res.optString("hemat_tier"),"BRONZE");coinValueRupiah=res.optInt("coin_value_rupiah",1);coinMinOrderAfterDiscount=res.optInt("coin_min_order_after_discount",1000);
+                    hematTier=firstNonEmpty(res.optString("hemat_tier"),"BRONZE");coinValueRupiah=res.optInt("coin_value_rupiah",1);coinMinOrderAfterDiscount=res.optInt("coin_min_order_after_discount",1000);coinMaxRedeemPercent=res.optInt("coin_max_redeem_percent",100);
                     TierBadgeUi.saveActiveTier(this,hematTier);checkoutQuoteReady=true;setLoading(false);renderCheckout();
                 });
             }catch(Exception e){featureRuntime.post(mainHandler,()->{

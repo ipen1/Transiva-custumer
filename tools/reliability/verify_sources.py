@@ -12,3 +12,6 @@ print('PASS backend source fingerprints and both finish routes')
 for name,expected in json.loads((root/'reliability-sources.json').read_text()).items():
     assert hashlib.sha256((root/name).read_bytes()).hexdigest()==expected, 'Chat/wallet fixture source changed: '+name
 print('PASS chat and wallet source fingerprints')
+
+from verify_voucher_sources import verify as verify_vouchers
+print("PASS voucher snapshot fingerprints:", verify_vouchers())

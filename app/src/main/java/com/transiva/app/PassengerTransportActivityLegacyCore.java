@@ -381,7 +381,13 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
                 if (smartFavoriteIntent && validCoord(deliveryLat, deliveryLng) && mapView != null) {
                     mapView.setDelivery(deliveryLat, deliveryLng, deliveryAddress);
                 }
-                goToMyLocation();
+                if (validCoord(pickupLat, pickupLng)) {
+                    mapView.setPickup(pickupLat, pickupLng, pickupAddress);
+                }
+                if (liveGpsBest != null && followInitialGpsCamera) {
+                    mapView.centerOnInitialLocation(liveGpsBest.getLatitude(), liveGpsBest.getLongitude(), 17f);
+                }
+                startLiveGps();
                 loadMapPlaces();
                 loadOnlineDrivers();
                 refreshSmartAvailability();
@@ -392,6 +398,8 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
         });
         mapView.setGestureListener(new TransivaGoogleMapView.GestureListener() {
             @Override public void onGestureStart() {
+                followInitialGpsCamera = false;
+                if ("pickup".equals(mode)) { pickupGpsSelected = false; pickupGpsPinned = true; }
                 // Setelah tujuan dikonfirmasi, menggeser peta tidak boleh mengubah nama tujuan.
                 if (selectingWaypoint || (!"pickup".equals(mode) && deliverySelectionLocked)) return;
                 destinationResolveGeneration++;
@@ -1024,6 +1032,8 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
     }
 
     protected void openDestinationAutocomplete() {
+        followInitialGpsCamera = false;
+        if ("pickup".equals(mode)) { pickupGpsSelected = false; pickupGpsPinned = true; }
         showSmartDestinationSearch();
     }
 
@@ -1234,6 +1244,7 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
             Place p=r.getPlace(); LatLng pt=p.getLatLng(); if(pt==null){toastDialog("Lokasi tempat belum tersedia. Pilih tempat lain.");return;}
             String address=firstNonEmpty(p.getName(),p.getAddress(),ap.getPrimaryText(null).toString());
             if ("pickup".equals(mode)) {
+                pickupGpsSelected = false; pickupGpsPinned = true;
                 pickupLat=pt.latitude; pickupLng=pt.longitude; pickupAddress=address;
                 pickupText.setText("Penjemputan: "+address); pickupBtn.setText("●  Lokasi Jemput\n"+shortAddress(address));
                 if(mapView!=null){mapView.setPickup(pickupLat,pickupLng,pickupAddress);mapView.moveTo(pickupLat,pickupLng,16f);}
@@ -1382,6 +1393,8 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
 
     /** Tombol ringkasan di atas mengaktifkan pemilihan ulang titik terkait. */
     protected void handlePointButtonClick(String requestedMode) {
+        followInitialGpsCamera = false;
+        if ("pickup".equals(requestedMode)) { pickupGpsSelected = false; pickupGpsPinned = true; }
         mode = requestedMode;
         if ("pickup".equals(requestedMode)) {
             pickupLat = 0;
@@ -1455,16 +1468,16 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
 
     }
 
-    private android.location.LocationManager liveGpsManager;
-    private android.location.LocationListener liveGpsListener;
+    private PassengerLocationController passengerLocation;
     private Location liveGpsBest;
     private boolean pickupGpsSelected = true;
     private boolean pickupGpsPinned = false;
     private long pickupAddressRequest = 0;
     private android.widget.TextView pickupGpsBadge;
-    private boolean gpsRefreshActive = false;
+    private boolean followInitialGpsCamera = true;
+    private boolean screenLocationActive;
+    private boolean explicitGpsRequest;
     private long lastGpsAppliedAt = 0L;
-    private final android.os.Handler gpsHandler = new android.os.Handler(android.os.Looper.getMainLooper());
     private void updateGpsBadge(Location loc) {
         if (pickupGpsBadge == null) return;
         String quality = gpsQuality(loc);
@@ -1487,12 +1500,12 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
             .setMessage(gpsQuality(loc) + "\n\n" + (loc == null ? "Menunggu lokasi terkini." :
                 "Ketelitian adalah perkiraan radius GPS, bukan jaminan titik tepat."))
             .setPositiveButton("⌖ Tetapkan GPS terbaru", (d,w) -> goToMyLocation())
-            .setNegativeButton("Pilih manual", (d,w) -> { pickupGpsSelected=false; mode="pickup"; openDestinationAutocomplete(); })
+            .setNegativeButton("Pilih manual", (d,w) -> { pickupGpsSelected=false; pickupGpsPinned=true; followInitialGpsCamera=false; mode="pickup"; openDestinationAutocomplete(); })
             .setNeutralButton("Tutup", null).show();
     }
     private void applyGpsPickup(Location loc, boolean force) {
         if (loc == null || !loc.hasAccuracy() || loc.getAccuracy() > 100f) return;
-        if (Math.abs(System.currentTimeMillis()-loc.getTime()) > 15000L) return;
+        if (Math.max(0L, (android.os.SystemClock.elapsedRealtimeNanos() - loc.getElapsedRealtimeNanos()) / 1000000L) > 15000L) return;
         if (!force && (!pickupGpsSelected || pickupGpsPinned || isRouteConfirmationLocked())) return;
         if (!force && liveGpsBest != null && lastGpsAppliedAt > 0 &&
                 loc.getTime() < lastGpsAppliedAt) return;
@@ -1505,67 +1518,62 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
         if (mapView != null) { mapView.setPickup(pickupLat,pickupLng,pickupAddress); if (force) mapView.moveTo(pickupLat,pickupLng,17f); }
         resolveAddressAsync(true,pickupLat,pickupLng);
     }
+    private boolean hasLocationPermission() {
+        return checkSelfPermissionCompat(Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
+                || checkSelfPermissionCompat(Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED;
+    }
+
     private void startLiveGps() {
-        if (gpsRefreshActive || checkSelfPermissionCompat(Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) return;
-        try {
-            liveGpsManager=(android.location.LocationManager)getSystemService(LOCATION_SERVICE);
-            if (liveGpsManager == null) return;
-            liveGpsListener=new android.location.LocationListener() {
-                @Override public void onLocationChanged(Location loc) {
-                    if (loc == null || loc.isFromMockProvider()) return;
-                    long age=Math.abs(System.currentTimeMillis()-loc.getTime());
-                    if (age>15000L || !loc.hasAccuracy()) return;
-                    if (liveGpsBest==null || loc.getTime()>liveGpsBest.getTime() ||
-                       (loc.getTime()>=liveGpsBest.getTime()-3000 && loc.getAccuracy()<liveGpsBest.getAccuracy()))
-                        liveGpsBest=loc;
-                    updateGpsBadge(liveGpsBest);
-                    if (pickupGpsSelected && !pickupGpsPinned && !isRouteConfirmationLocked() &&
-                        (lastGpsAppliedAt==0 || (System.currentTimeMillis()-lastGpsAppliedAt>12000 && loc.getAccuracy()<=35f)))
-                        applyGpsPickup(loc,false);
+        if (!screenLocationActive || !hasLocationPermission()) return;
+        if (passengerLocation == null) passengerLocation = new PassengerLocationController(this,
+                new PassengerLocationController.Callback() {
+            @Override public void onLocation(Location loc, boolean current) {
+                if (!screenLocationActive || destroyed || isFinishing()) return;
+                liveGpsBest = loc;
+                updateGpsBadge(loc);
+                if (!pickupGpsSelected || pickupGpsPinned || isRouteConfirmationLocked()) return;
+                // A recent cache can position the map immediately, but only a fresh,
+                // accurate fix becomes the order's pickup coordinate.
+                if (followInitialGpsCamera && mapView != null) {
+                    mapView.centerOnInitialLocation(loc.getLatitude(), loc.getLongitude(), 17f);
                 }
-                @Override public void onStatusChanged(String p,int status,android.os.Bundle extras) {}
-                @Override public void onProviderEnabled(String p) {}
-                @Override public void onProviderDisabled(String p) {}
-            };
-            boolean registered=false;
-            for (String provider : new String[]{android.location.LocationManager.GPS_PROVIDER,android.location.LocationManager.NETWORK_PROVIDER}) {
-                if (liveGpsManager.isProviderEnabled(provider)) {
-                    liveGpsManager.requestLocationUpdates(provider,2000L,0f,liveGpsListener,android.os.Looper.getMainLooper());
-                    registered=true;
-                }
+                if (!current) return;
+                applyGpsPickup(loc, false);
+                if (lastGpsAppliedAt != loc.getTime()) return;
+                pickupGpsPinned = true;
+                explicitGpsRequest = false;
+                updateGpsBadge(loc);
+                mode = "delivery";
+                updateModeUI();
+                loadOnlineDrivers();
+                refreshSmartAvailability();
             }
-            gpsRefreshActive=registered;
-        } catch (SecurityException ignored) { stopLiveGps(); }
-          catch (Exception ignored) { stopLiveGps(); }
+            @Override public void onUnavailable(String message) {
+                if (!screenLocationActive || destroyed || isFinishing()) return;
+                if (pickupGpsBadge != null && !validCoord(pickupLat, pickupLng)) pickupGpsBadge.setText(message);
+                if (explicitGpsRequest) { explicitGpsRequest = false; toastDialog(message); }
+            }
+        });
+        passengerLocation.start();
     }
+
     private void stopLiveGps() {
-        gpsRefreshActive=false;
-        if (liveGpsManager!=null && liveGpsListener!=null) {
-            try {liveGpsManager.removeUpdates(liveGpsListener);} catch(Exception ignored) {}
-        }
-        liveGpsListener=null;
+        if (passengerLocation != null) passengerLocation.stop();
     }
+
     protected void goToMyLocation() {
         if (isRouteConfirmationLocked()) return;
-        if (checkSelfPermissionCompat(Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
-            requestPermissions(new String[]{Manifest.permission.ACCESS_FINE_LOCATION,Manifest.permission.ACCESS_COARSE_LOCATION},REQ_LOCATION);return;
+        if (!hasLocationPermission()) {
+            requestPermissions(new String[]{Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION}, REQ_LOCATION);
+            return;
         }
-        pickupGpsSelected=true;
-        pickupGpsPinned=false;
+        explicitGpsRequest = true;
+        pickupGpsSelected = true;
+        pickupGpsPinned = false;
+        followInitialGpsCamera = true;
+        lastGpsAppliedAt = 0L;
+        stopLiveGps();
         startLiveGps();
-        TransivaFreshLocation.request(this,new TransivaFreshLocation.Callback() {
-            @Override public void onLocation(Location loc,boolean fresh) {
-                if (!fresh || loc==null || !loc.hasAccuracy() || loc.getAccuracy()>100f) {
-                    toastDialog("Lokasi GPS belum cukup akurat. Tunggu sinyal membaik atau pilih titik manual.");return;
-                }
-                if (isFinishing() || destroyed || isRouteConfirmationLocked()) return;
-                liveGpsBest=loc; applyGpsPickup(loc,true);
-                pickupGpsPinned=true; updateGpsBadge(loc);
-                mode="delivery";updateModeUI();
-                if (mapView != null && !validCoord(deliveryLat, deliveryLng)) mapView.separateInitialDestinationPicker();
-            }
-            @Override public void onFailure(String msg) {toastDialog(msg);}
-        });
     }
 
     /** Smart Favorite: tujuan dari server favorit, jemput otomatis dari GPS saat ini. */
@@ -1594,6 +1602,8 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
         if (shared == null || shared.trim().isEmpty()) return;
 
         final boolean asPickup = "pickup".equalsIgnoreCase(role);
+        if (asPickup) { pickupGpsSelected = false; pickupGpsPinned = true; }
+        followInitialGpsCamera = false;
         final String rawLocation = shared.trim();
         setLoading(true);
 
@@ -2698,11 +2708,14 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
     private void resetOrderButton() { ordering = false; setLoading(false); orderBtn.setEnabled(true); updateWizardState(); }
     private void setLoading(boolean b) { if (progressBar != null) progressBar.setVisibility(b ? View.VISIBLE : View.GONE); }
     private int checkSelfPermissionCompat(String p) { return android.os.Build.VERSION.SDK_INT >= 23 ? checkSelfPermission(p) : PackageManager.PERMISSION_GRANTED; }
-    private void requestLocationIfNeeded() { if (checkSelfPermissionCompat(Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED && android.os.Build.VERSION.SDK_INT >= 23) requestPermissions(new String[]{Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION}, REQ_LOCATION); }
+    private void requestLocationIfNeeded() {
+        if (!hasLocationPermission() && android.os.Build.VERSION.SDK_INT >= 23)
+            requestPermissions(new String[]{Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION}, REQ_LOCATION);
+    }
 
     @Override public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
-        if (requestCode == REQ_LOCATION && grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) goToMyLocation();
+        if (requestCode == REQ_LOCATION && hasLocationPermission()) startLiveGps();
     }
 
     private void hideKeyboard() { try { ((InputMethodManager)getSystemService(Context.INPUT_METHOD_SERVICE)).hideSoftInputFromWindow(googleMapInput == null ? null : googleMapInput.getWindowToken(), 0); } catch (Exception ignored) {} }
@@ -2772,14 +2785,14 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
     @Override protected void onResume() {
         super.onResume();
         featureRuntime.onResume();
-        liveGpsBest=null;
-        lastGpsAppliedAt=0L;
-        updateGpsBadge(null);
+        screenLocationActive = true;
+        updateGpsBadge(liveGpsBest);
         startLiveGps();
         if (mapView != null) mapView.onResumeMap();
     }
 
     @Override protected void onPause() {
+        screenLocationActive = false;
         stopLiveGps();
         featureRuntime.onPause();
         if (mapView != null) mapView.onPauseMap();
@@ -2799,6 +2812,8 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
     @Override protected void onDestroy() {
         featureRuntime.destroy();
         destroyed = true;
+        screenLocationActive = false;
+        stopLiveGps();
         try {
             mainHandler.removeCallbacksAndMessages(null);
             if (mapView != null) {

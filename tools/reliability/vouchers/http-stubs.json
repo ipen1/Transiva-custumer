@@ -1,0 +1,15 @@
+{
+  "config.php": "require_once getenv('VOUCHER_CI_DB_HELPER');$conn=voucher_ci_db();$conn->query(\"SET SESSION sql_mode='NO_AUTO_VALUE_ON_ZERO'\");",
+  "native_auth.php": "function native_require_user($c){return $c->query(\"SELECT * FROM users WHERE id=1\")->fetch_assoc();}function native_input(){return json_decode(file_get_contents('php://input'),true)?:[];}",
+  "p0_security_helper.php": "function p0_require_customer($c){return $c->query(\"SELECT * FROM users WHERE id=1\")->fetch_assoc();}function p0_require_admin($c){return ['id'=>1,'role'=>'admin'];}function p0_rate_limit(...$args){}",
+  "loyalty_season_helper.php": "require_once __DIR__.'/transiva_point_helper.php';function ls_user_stats($c,$uid){return ['season_tier'=>'BRONZE'];}",
+  "customer_coin_helper.php": "function coin_status($c,$uid){return ['tier'=>'BRONZE','min_redeem_coins'=>100,'balance'=>500,'coin_value_rupiah'=>1,'earn_percent'=>1];}function coin_redeem(...$args){throw new Exception('Zero payable must not try to redeem points');}function coin_refund_order(...$args){return ['refunded'=>false,'coins'=>0];}",
+  "transiva_server_route.php": "function tsr_bootstrap($c){}function tsr_route($p){return ['routes'=>[['duration'=>120]],'transiva'=>['route_hash'=>'test']];}function tsr_distance(...$args){return 1.0;}function tsr_store(...$args){}",
+  "ride_ecosystem_helper.php": "function eco_extract($d){return ['waypoints'=>[],'group_size'=>1];}function eco_bootstrap($c){}function eco_persist(...$args){}",
+  "transiva_regional_pricing.php": "function trp_get_rule(...$args){return [];}function trp_calculate(...$args){return 8000;}",
+  "weather_pricing_helper.php": "function transiva_weather_rule(...$args){return ['active'=>false,'surcharge'=>0];}function transiva_apply_weather_price($c,$s,$p){return $p;}",
+  "driver_dispatch_helper.php": "function dd_dispatch_batch_for_order(...$args){return ['assigned'=>false,'offers'=>[]];}",
+  "order_push_dispatcher.php": "",
+  "send_fcm.php": "",
+  "split_bill_helper.php": ""
+}

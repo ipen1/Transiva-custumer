@@ -17,7 +17,7 @@ function order_require_transactional(mysqli $conn,array $tables): void {
         if(!$row || strcasecmp((string)$row['ENGINE'],'InnoDB')!==0) throw new RuntimeException('Migrasi database transaksi wajib diselesaikan sebelum layanan digunakan.');
     }
     // Optional financial/reward/index tables must also participate in rollback when present.
-    $optional=['split_bill_sessions','split_bill_payments','customer_coin_secure_balance','customer_point_secure_balance','customer_loyalty_point_ledger','customer_loyalty_redemptions','customer_promo_usages','ride_voucher_usages','ride_vouchers','customer_promos','driver_dispatch_offers','driver_dispatch_history','merchant_order_lookup','merchant_daily_stats','merchant_menu_meta'];
+    $optional=['voucher_usage_refunds','split_bill_sessions','split_bill_payments','customer_coin_secure_balance','customer_point_secure_balance','customer_loyalty_point_ledger','customer_loyalty_redemptions','customer_promo_usages','ride_voucher_usages','ride_vouchers','customer_promos','driver_dispatch_offers','driver_dispatch_history','merchant_order_lookup','merchant_daily_stats','merchant_menu_meta'];
     foreach(array_diff($optional,$tables) as $table){
         mysqli_stmt_bind_param($st,'s',$table);mysqli_stmt_execute($st);$r=mysqli_stmt_get_result($st);$row=$r?mysqli_fetch_assoc($r):null;
         if($row && strcasecmp((string)$row['ENGINE'],'InnoDB')!==0)throw new RuntimeException('Tabel transaksi tambahan memerlukan migrasi InnoDB.');

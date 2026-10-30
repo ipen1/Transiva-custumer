@@ -180,14 +180,22 @@ function tp_refund_held_order($conn, $order, $reason = "Refund pembatalan pesana
   $splitTable=mysqli_query($conn,"SHOW TABLES LIKE 'split_bill_payments'");
   if($splitTable && mysqli_num_rows($splitTable)>0 && $orderCode!==""){
     $safeOrder=tp_clean($conn,$orderCode);$sq=mysqli_query($conn,"SELECT id,user_id,amount,status FROM split_bill_payments WHERE order_id='$safeOrder' AND status='held' FOR UPDATE");
-    if($sq && mysqli_num_rows($sq)>0){$totalRefund=0;$balances=[];while($sp=mysqli_fetch_assoc($sq)){$sid=(int)$sp['id'];$suid=(int)$sp['user_id'];$samt=(int)$sp['amount'];if($suid<=0||$samt<=0)continue;$uq=mysqli_query($conn,"SELECT balance FROM users WHERE id='$suid' LIMIT 1 FOR UPDATE");$uu=$uq?mysqli_fetch_assoc($uq):null;if(!$uu)throw new Exception("Peserta Split Bill tidak ditemukan saat refund");$before=(int)$uu['balance'];$after=$before+$samt;if(!mysqli_query($conn,"UPDATE users SET balance=balance+$samt WHERE id='$suid' LIMIT 1"))throw new Exception("Gagal refund peserta Split Pay");if(!tp_add_wallet_log($conn,$suid,'refund',$samt,$before,$after,'REFUND-SPLIT-'.$orderCode.'-U'.$suid,'Refund Split Pay '.$orderCode))throw new Exception("Gagal mencatat refund Split Bill");mysqli_query($conn,"UPDATE split_bill_payments SET status='refunded' WHERE id='$sid' LIMIT 1");$totalRefund+=$samt;$balances[(string)$suid]=$after;}
+    if($sq && mysqli_num_rows($sq)>0){$totalRefund=0;$balances=[];while($sp=mysqli_fetch_assoc($sq)){$sid=(int)$sp['id'];$suid=(int)$sp['user_id'];$samt=(int)$sp['amount'];if($suid<=0||$samt<0)throw new Exception('Data refund Split Pay tidak valid');if($samt===0){mysqli_query($conn,"UPDATE split_bill_payments SET status='refunded' WHERE id='$sid' LIMIT 1");continue;}$uq=mysqli_query($conn,"SELECT balance FROM users WHERE id='$suid' LIMIT 1 FOR UPDATE");$uu=$uq?mysqli_fetch_assoc($uq):null;if(!$uu)throw new Exception("Peserta Split Bill tidak ditemukan saat refund");$before=(int)$uu['balance'];$after=$before+$samt;if(!mysqli_query($conn,"UPDATE users SET balance=balance+$samt WHERE id='$suid' LIMIT 1"))throw new Exception("Gagal refund peserta Split Pay");if(!tp_add_wallet_log($conn,$suid,'refund',$samt,$before,$after,'REFUND-SPLIT-'.$orderCode.'-U'.$suid,'Refund Split Pay '.$orderCode))throw new Exception("Gagal mencatat refund Split Bill");mysqli_query($conn,"UPDATE split_bill_payments SET status='refunded' WHERE id='$sid' LIMIT 1");$totalRefund+=$samt;$balances[(string)$suid]=$after;}
       $note=tp_note_array($order["note"]??"");$note["payment_status"]="refunded";$note["refunded_at"]=date("Y-m-d H:i:s");tp_save_note($conn,intval($order["id"]),$note);mysqli_query($conn,"UPDATE orders SET payment_status='refunded',refunded_at=NOW(),driver_settlement_status='refunded' WHERE id='".intval($order["id"])."' LIMIT 1");return ["refunded"=>true,"amount"=>$totalRefund,"balance"=>null,"split"=>true,"participant_balances"=>$balances];}
   }
 
-  if($userId <= 0 || $orderCode === "" || $amount <= 0){
+  if($userId <= 0 || $orderCode === "" || $amount < 0){
     throw new Exception("Data refund tidak valid");
   }
 
+  if($amount===0){
+    $note=tp_note_array($order['note']??'');$note['payment_status']='refunded';$note['refunded_at']=date('Y-m-d H:i:s');
+    if(!tp_save_note($conn,(int)$order['id'],$note))throw new Exception('Gagal menyimpan status pembayaran');
+    if(!mysqli_query($conn,"UPDATE orders SET payment_status='refunded',refunded_at=NOW(),driver_settlement_status='refunded' WHERE id='".(int)$order['id']."' LIMIT 1")) throw new Exception('Gagal menyimpan status refund');
+    // Zero shares also need a terminal state; there is no money to credit.
+    if($splitTable && mysqli_num_rows($splitTable)>0)mysqli_query($conn,"UPDATE split_bill_payments SET status='refunded' WHERE order_id='".tp_clean($conn,$orderCode)."' AND status='held' AND amount=0");
+    return ['refunded'=>true,'amount'=>0,'balance'=>null,'zero_payment'=>true];
+  }
   $reference = "REFUND-" . $orderCode;
 
   if(tp_wallet_table_exists($conn)){
@@ -273,10 +281,18 @@ function tp_release_held_order_to_driver($conn, $order, $releaseAmount = null){
   $orderCode = tp_clean($conn, $order["order_id"] ?? "");
   $amount = $releaseAmount === null ? tp_get_escrow_amount($order) : intval($releaseAmount);
 
-  if($driver === "" || $orderCode === "" || $amount <= 0){
+  if($driver === "" || $orderCode === "" || $amount < 0){
     throw new Exception("Data pencairan saldo tidak valid");
   }
 
+  if($amount===0){
+    $note=tp_note_array($order['note']??'');$note['payment_status']='released';$note['escrow_released_at']=date('Y-m-d H:i:s');
+    if(!tp_save_note($conn,(int)$order['id'],$note))throw new Exception('Gagal menyimpan status pembayaran');
+    if(!mysqli_query($conn,"UPDATE orders SET payment_status='released',escrow_released_at=NOW(),driver_settlement_status='paid_to_driver' WHERE id='".(int)$order['id']."' LIMIT 1")) throw new Exception('Gagal menyimpan pencairan pesanan');
+    $splitTable=mysqli_query($conn,"SHOW TABLES LIKE 'split_bill_payments'");
+    if($splitTable && mysqli_num_rows($splitTable)>0)mysqli_query($conn,"UPDATE split_bill_payments SET status='settled' WHERE order_id='".tp_clean($conn,$orderCode)."' AND status='held'");
+    return ['released'=>true,'amount'=>0,'balance'=>null,'zero_payment'=>true];
+  }
   $reference = "RELEASE-" . $orderCode;
 
   if(tp_wallet_table_exists($conn)){

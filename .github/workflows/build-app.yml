@@ -28,6 +28,16 @@ jobs:
         run: python3 tools/reliability/verify_sources.py
       - name: Install PHP database extension
         run: sudo apt-get update && sudo apt-get install -y php-cli php-mysql php-mbstring php-sqlite3 libandroid-json-java
+      - name: Gate voucher schedules, previews, zero payments and refunds
+        env:
+          TEST_DB_HOST: 127.0.0.1
+          TEST_DB_PORT: 3306
+          TEST_DB_USER: root
+          TEST_DB_PASSWORD: integration-only
+          TEST_DB_NAME: transiva_voucher_ci_test
+        run: |
+          set -euo pipefail
+          python3 tools/reliability/voucher_ci_regression.py 2>&1 | tee voucher-ci.log
       - name: Gate loading coordinator and referral cash v2
         env:
           JSON_JAR: /usr/share/java/com.android.json.jar
@@ -81,6 +91,9 @@ jobs:
           name: transaction-integration-report
           path: |
             auth-*.log
+            voucher-ci.log
+            voucher-ci-report.json
+            voucher-http.log
             transaction-integration.log
             settlement-helper.log
             wallet-final.log

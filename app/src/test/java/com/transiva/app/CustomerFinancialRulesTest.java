@@ -23,4 +23,14 @@ public class CustomerFinancialRulesTest {
         assertEquals(0, CustomerFinancialRules.safeCoinReward(-100));
         assertEquals(125, CustomerFinancialRules.safeCoinReward(125));
     }
+    @Test public void successfulZeroPayRideQuoteIsValid() {
+        assertTrue(CustomerFinancialRules.validRideQuote(8000,0));
+        assertTrue(CustomerFinancialRules.validRideQuote(8000,7000));
+        assertTrue(CustomerFinancialRules.validRideQuote(8000,8000));
+    }
+    @Test public void missingNegativeOrExcessQuoteIsInvalid() {
+        assertFalse(CustomerFinancialRules.validRideQuote(0,0));
+        assertFalse(CustomerFinancialRules.validRideQuote(8000,-1));
+        assertFalse(CustomerFinancialRules.validRideQuote(8000,9000));
+    }
 }

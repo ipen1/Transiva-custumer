@@ -1537,7 +1537,21 @@ class TransShopActivityScreenCore extends CustomerAdaptiveActivity {
     protected void requestVisibleOsrmRoute() {
         if (!mapReady || mapView == null || !validCoord(pickupLat, pickupLng) || !validCoord(deliveryLat, deliveryLng)) return;
         final String routeKey=currentShopQuoteKey();final JSONArray points=new JSONArray();
-        points.put(new JSONArray().put(pickupLat).put(pickupLng));JSONArray stops=shopWaypoints();for(int i=0;i<stops.length();i++){JSONObject w=stops.optJSONObject(i);points.put(new JSONArray().put(w.optDouble("latitude")).put(w.optDouble("longitude")));}points.put(new JSONArray().put(deliveryLat).put(deliveryLng));
+        try {
+            points.put(new JSONArray().put(pickupLat).put(pickupLng));
+            JSONArray stops=shopWaypoints();
+            for(int i=0;i<stops.length();i++){
+                JSONObject waypoint=stops.optJSONObject(i);
+                if(waypoint==null)return;
+                double lat=waypoint.optDouble("latitude",Double.NaN);
+                double lng=waypoint.optDouble("longitude",Double.NaN);
+                if(!validCoord(lat,lng))return;
+                points.put(new JSONArray().put(lat).put(lng));
+            }
+            points.put(new JSONArray().put(deliveryLat).put(deliveryLng));
+        } catch(org.json.JSONException error) {
+            return;
+        }
         featureRuntime.execute(()->{try{JSONArray merged=new JSONArray();for(int i=0;i<points.length()-1;i++){JSONArray a=points.optJSONArray(i),b=points.optJSONArray(i+1);StableRouteEngine.Result route=StableRouteEngine.fetch(a.optDouble(0),a.optDouble(1),b.optDouble(0),b.optDouble(1));for(int j=i==0?0:1;j<route.latLngPoints.length();j++)merged.put(route.latLngPoints.optJSONArray(j));}featureRuntime.post(mainHandler,()->{if(!destroyed&&mapView!=null&&routeKey.equals(currentShopQuoteKey())){mapView.setWaypoints(shopWaypoints());mapView.drawRideRoute(merged);}});}catch(Exception ignored){}},()->{});
     }
     protected boolean validCoord(double lat, double lng) {

@@ -74,6 +74,22 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
 
 
 
+    private JSONObject stopPricing;
+    private TextView stopPricingText;
+    private int maxStopCount() { return stopPricing==null?2:Math.max(0,Math.min(2,stopPricing.optInt("max_stops",2))); }
+    private void applyStopPricing(JSONObject rule) {
+        if(rule==null)return;
+        stopPricing=rule;
+        if(stopPricingText!=null)stopPricingText.setText("Singgah Rp"+formatMoney(rule.optInt("stop_fee"))+"/titik • gratis "+(rule.optInt("free_seconds")/60)+" menit "+(rule.optInt("free_seconds")%60)+" detik/titik, lalu Rp"+formatMoney(rule.optInt("rate_per_minute"))+"/menit dimulai. Maks. "+maxStopCount()+" singgah. Biaya singgah & tunggu 100% untuk driver.");
+        updateWaypointButton();
+    }
+    private void loadStopPricing() {
+        featureRuntime.execute(() -> {try {
+            JSONObject payload=new JSONObject().put("service_type",isCarService()?"Transcar":"Transbike");
+            JSONObject result=postJson(BASE_URL+"server/ride_stop_config.php",payload);
+            featureRuntime.post(mainHandler,() -> {if(!destroyed&&result.optBoolean("success"))applyStopPricing(result.optJSONObject("stop_pricing"));});
+        }catch(Exception ignored){}},() -> {});
+    }
     protected boolean isCarService() { return false; }
     protected String serviceName() { return isCarService() ? "Transcar" : "TransRide"; }
     protected String offerService() { return isCarService() ? "TransCar" : "TransRide"; }
@@ -201,6 +217,7 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
         if (getIntent() != null && getIntent().getBooleanExtra("split_pay_entry", false)) paymentMethod = "balance";
         if(savedInstanceState!=null) driverNoteDraft=savedInstanceState.getString("driver_note_draft","");
         buildLayout();
+        loadStopPricing();
         String royaltyVoucher=getIntent()==null?"":getIntent().getStringExtra("royalty_voucher_code");
         if(royaltyVoucher!=null&&!royaltyVoucher.isEmpty()&&voucherInput!=null){voucherInput.setText(royaltyVoucher);if(voucherChoiceBtn!=null)voucherChoiceBtn.setText("🏷 Voucher dipilih");}
 
@@ -507,7 +524,8 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
 
         // 2.3 FINAL ORDER UX: tampilkan hanya keputusan utama. Fitur lanjutan tetap tersedia
         // melalui panel Opsi perjalanan agar halaman final tidak terasa penuh.
-        bottomCard.addView(text("⏱ Smart Waiting: gratis 5 menit setiap titik; berikutnya Rp500 per menit tambahan yang dimulai.",10,"#0B477D",false));
+        stopPricingText=text("Biaya persinggahan mengikuti tarif admin. Waktu tunggu dihitung per titik.",10,"#0B477D",false);
+        bottomCard.addView(stopPricingText);
         TextView finalSectionTitle = text("Ringkasan & pembayaran", 12, "#0B3A78", true);
         finalSectionTitle.setPadding(dp(2), 0, dp(2), dp(5));
         bottomCard.addView(finalSectionTitle, new LinearLayout.LayoutParams(-1, -2));
@@ -730,10 +748,10 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
     protected void showWaypointDialog() {
         if (isRouteConfirmationLocked()) return;
         int count = ecosystemFeatures.waypoints.length();
-        if (count >= 2) {
+        if (count >= maxStopCount()) {
             new TransivaAlertDialogBuilder(this)
                     .setTitle("Tambah Tujuan")
-                    .setMessage("Sudah ada 2 pemberhentian. Hapus semua stop jika ingin memilih ulang.")
+                    .setMessage("Batas layanan saat ini " + maxStopCount() + " persinggahan. Hapus titik jika ingin memilih ulang.")
                     .setNegativeButton("Hapus semua", (d,w) -> {
                         ecosystemFeatures.clearWaypoints();
                         selectingWaypoint = false;
@@ -777,6 +795,7 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
         }
         if (!validCoord(lat,lng)) { toastDialog("Posisi peta belum tersedia."); return; }
 
+        if(ecosystemFeatures.waypoints.length()>=maxStopCount()){toastDialog("Batas persinggahan " + maxStopCount() + " titik.");return;}
         final int sequence = ecosystemFeatures.waypoints.length() + 1;
         if (!ecosystemFeatures.addWaypoint(lat,lng,"Stop " + sequence)) {
             toastDialog("Maksimal 2 pemberhentian.");
@@ -874,7 +893,7 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
                     .setNeutralButton("Batal", null).show(); });
         }
         if (waypointHeaderAdd != null) waypointHeaderAdd.setVisibility(
-                count < 2 && !isRouteConfirmationLocked() ? View.VISIBLE : View.GONE);
+                count < maxStopCount() && !isRouteConfirmationLocked() ? View.VISIBLE : View.GONE);
         waypointHeaderRows.setVisibility(count == 0 ? View.GONE : View.VISIBLE);
     }
     protected String addressForWaypoint(int index) {
@@ -903,7 +922,7 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
     }
     protected void updateWaypointButton(){
         int count = ecosystemFeatures.waypoints.length();
-        if (waypointBtn != null) waypointBtn.setText(count >= 2 ? "✓ Persinggahan 2/2" : "＋ Persinggahan " + count + "/2");
+        if (waypointBtn != null) waypointBtn.setText(count >= maxStopCount() ? "✓ Persinggahan " + count + "/" + maxStopCount() : "＋ Persinggahan " + count + "/" + maxStopCount());
         if (waypointQuickButton != null) waypointQuickButton.setVisibility(View.GONE);
         refreshWaypointHeader();
     }
@@ -2502,6 +2521,7 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
                         return;
                     }
 
+                    applyStopPricing(res.optJSONObject("stop_pricing"));
                     int original = jsonInt(
                             res,
                             "original_price",
@@ -2593,6 +2613,7 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
                         info += " • " + ecosystemFeatures.waypoints.length() + " stop";
                     }
 
+                    if(res.optInt("stop_fee")>0)info+="\nTermasuk biaya singgah Rp"+formatMoney(res.optInt("stop_fee"))+" • waktu tunggu dihitung terpisah";
                     fareText.setText("Biaya perjalanan: Rp" + formatMoney(total));
                     paymentSummaryText.setText(info);
                 });

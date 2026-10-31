@@ -40,7 +40,7 @@ public final class SmartWaitingTextView extends LinearLayout {
             long remaining=Math.max(0,free-elapsed);fee=Math.max(0,fee-active.optLong("fee"))+((Math.max(0,elapsed-free)+59)/60)*rate;
             title.setText("SMART WAITING  •  "+active.optString("label")+((SystemClock.elapsedRealtime()-sampledAt)>30000?" • Menunggu sinkronisasi":""));
             clock.setText(remaining>0?String.format(Locale.US,"%02d:%02d gratis",remaining/60,remaining%60):money(fee)+" biaya tunggu");
-            detail.setText(money(rate)+"/menit setelah 5 menit\nTunggu "+money(fee)+"  •  Estimasi total "+money(state.optLong("base_total")+fee));
+            detail.setText(money(rate)+"/menit setelah "+(free/60)+" menit "+(free%60)+" detik gratis\nTunggu "+money(fee)+"  •  Estimasi total "+money(state.optLong("base_total")+fee));
         }else{
             title.setText("SMART WAITING  •  "+(terminal?"Selesai":"Dihentikan"));clock.setText(money(fee)+" biaya tunggu");
             detail.setText("Total "+money(state.optLong("base_total")+fee)+"  •  "+sessions.length()+" titik tunggu");

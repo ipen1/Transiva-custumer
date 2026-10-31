@@ -296,7 +296,7 @@ public class TransivaFirebaseService extends FirebaseMessagingService {
             );
             title = arrival.title;
             body = arrival.body;
-            if(data!=null && "1".equals(data.get("smart_waiting")))body += "\nSmart Waiting aktif: gratis 5 menit, lalu Rp500/menit tambahan yang dimulai.";
+            if(data!=null && "1".equals(data.get("smart_waiting")))body += "\nLihat hitungan waktu tunggu dan tarifnya di detail perjalanan.";
         }
 
         String channelId = channelForType(type);

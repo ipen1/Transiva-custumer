@@ -48,6 +48,16 @@ class TransShopActivityScreenCore extends CustomerAdaptiveActivity {
 
     protected static final String BASE_URL = "https://transiva.my.id/";
     private android.widget.ScrollView shoppingScroll;
+    private boolean shoppingPlanExpanded;
+    private void setShoppingPlanExpanded(boolean expanded){
+        shoppingPlanExpanded=expanded;
+        if(shoppingScroll!=null)shoppingScroll.setVisibility(expanded?View.VISIBLE:View.GONE);
+        if(noteChoiceBtn!=null)noteChoiceBtn.setText(expanded?"Tutup daftar ▴":"Daftar belanja ▾");
+        if(!expanded)hideShoppingKeyboard();
+    }
+    private void hideShoppingKeyboard(){try{View focus=getCurrentFocus();if(focus!=null){((InputMethodManager)getSystemService(INPUT_METHOD_SERVICE)).hideSoftInputFromWindow(focus.getWindowToken(),0);focus.clearFocus();}}catch(Exception ignored){}}
+    private void compactShopButton(Button b){b.setMinHeight(0);b.setMinimumHeight(0);b.setMinWidth(0);b.setMinimumWidth(0);b.setSingleLine(true);b.setEllipsize(android.text.TextUtils.TruncateAt.END);b.setIncludeFontPadding(false);b.setPadding(dp(7),0,dp(7),0);if(android.os.Build.VERSION.SDK_INT>=21){b.setElevation(0);b.setStateListAnimator(null);}}
+
     private JSONObject shoppingStopRule;
     private TextView shoppingTariffText;
     private JSONArray shoppingStops=new JSONArray();
@@ -59,29 +69,35 @@ class TransShopActivityScreenCore extends CustomerAdaptiveActivity {
     private JSONArray shopWaypoints(){readStopDrafts();JSONArray result=new JSONArray();for(int i=0;i<shoppingStops.length();i++){JSONObject w=shoppingStops.optJSONObject(i);if(w==null)continue;try{JSONObject copy=new JSONObject(w.toString());copy.put("sequence",i+1);String note=copy.optString("note");copy.put("note",note.length()>180?note.substring(0,180):note);result.put(copy);}catch(Exception ignored){}}return result;}
     private JSONObject shopPlanPayload(){readStopDrafts();JSONObject p=new JSONObject();JSONArray notes=new JSONArray();for(int i=0;i<shoppingStops.length();i++)notes.put(shoppingStops.optJSONObject(i).optString("note"));try{p.put("pickup_note",noteInput.getText().toString().trim());p.put("stop_notes",notes);}catch(Exception ignored){}return p;}
     private String shopRouteKey(){StringBuilder s=new StringBuilder();for(int i=0;i<shoppingStops.length();i++){JSONObject w=shoppingStops.optJSONObject(i);s.append('|').append(w.optDouble("latitude")).append(',').append(w.optDouble("longitude"));}return s.toString();}
-    private EditText shopListInput(String value,String hint,int max){EditText input=new EditText(this);input.setText(value);input.setHint(hint);input.setTextSize(13);input.setSingleLine(false);input.setMinLines(2);input.setMaxLines(5);input.setGravity(Gravity.TOP);input.setFilters(new android.text.InputFilter[]{new android.text.InputFilter.LengthFilter(max)});input.setPadding(dp(10),dp(8),dp(10),dp(8));input.setBackground(roundStroke("#F8FBFF","#D7E6F8",dp(12),1));return input;}
+    private EditText shopListInput(String value,String hint,int max){EditText input=new EditText(this);input.setText(value);input.setHint(hint);input.setTextSize(13);input.setSingleLine(false);input.setMinLines(1);input.setMaxLines(4);input.setGravity(Gravity.TOP);input.setFilters(new android.text.InputFilter[]{new android.text.InputFilter.LengthFilter(max)});input.setPadding(dp(10),dp(8),dp(10),dp(8));input.setBackground(roundStroke("#F8FBFF","#D7E6F8",dp(12),1));return input;}
     private void buildShoppingPlan(LinearLayout parent){
-        shoppingPlanBox=new LinearLayout(this);shoppingPlanBox.setOrientation(LinearLayout.VERTICAL);shoppingPlanBox.setPadding(dp(12),dp(12),dp(12),dp(12));shoppingPlanBox.setBackground(roundStroke("#FFFFFF","#D7E6F8",dp(18),1));
-        LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-1,-2);lp.setMargins(0,dp(8),0,0);parent.addView(shoppingPlanBox,lp);renderShoppingPlan();
+        shoppingScroll=new android.widget.ScrollView(this);shoppingScroll.setFillViewport(false);shoppingScroll.setVerticalScrollBarEnabled(false);
+        shoppingPlanBox=new LinearLayout(this);shoppingPlanBox.setOrientation(LinearLayout.VERTICAL);shoppingPlanBox.setPadding(dp(10),dp(8),dp(10),dp(8));shoppingPlanBox.setBackground(roundStroke("#FFFFFF","#D7E6F8",dp(16),1));
+        shoppingScroll.addView(shoppingPlanBox,new android.widget.ScrollView.LayoutParams(-1,-2));
+        LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-1,dp(200));lp.setMargins(0,dp(4),0,0);parent.addView(shoppingScroll,lp);shoppingScroll.setVisibility(View.GONE);renderShoppingPlan();
     }
     private void renderShoppingPlan(){
         if(shoppingPlanBox==null)return;readStopDrafts();shoppingPlanBox.removeAllViews();shoppingStopInputs.clear();
-        shoppingPlanBox.addView(text("DAFTAR BELANJA · KARYA DIGITAL INDONESIA",10,"#0B7CFF",true));
-        shoppingPlanBox.addView(text("Toko pertama",14,"#0B3A78",true));
-        TextView origin=text(pickupAddress,11,"#64748B",false);origin.setMaxLines(2);shoppingPlanBox.addView(origin);
+        LinearLayout editorHead=new LinearLayout(this);editorHead.setGravity(Gravity.CENTER_VERTICAL);editorHead.addView(text("Daftar belanja · "+(shoppingStops.length()+1)+" toko",12,"#0B3A78",true),new LinearLayout.LayoutParams(0,dp(40),1));
+        Button collapse=smallButton("Tutup ▴","#FFFFFF","#0B7CFF","#FFFFFF");compactShopButton(collapse);collapse.setTextSize(11);editorHead.addView(collapse,new LinearLayout.LayoutParams(dp(76),dp(40)));collapse.setOnClickListener(v->setShoppingPlanExpanded(false));shoppingPlanBox.addView(editorHead);
+        shoppingPlanBox.addView(text("Toko pertama",12,"#0B3A78",true));
+        TextView origin=text(pickupAddress,11,"#64748B",false);origin.setSingleLine(true);origin.setEllipsize(android.text.TextUtils.TruncateAt.END);shoppingPlanBox.addView(origin);
         if(noteInput.getParent() instanceof android.view.ViewGroup)((android.view.ViewGroup)noteInput.getParent()).removeView(noteInput);
         shoppingPlanBox.addView(noteInput,new LinearLayout.LayoutParams(-1,-2));
         for(int i=0;i<shoppingStops.length();i++){
             final int position=i;JSONObject w=shoppingStops.optJSONObject(i);LinearLayout head=new LinearLayout(this);head.setGravity(Gravity.CENTER_VERTICAL);
-            head.addView(text("Singgah "+(i+1),14,"#B45309",true),new LinearLayout.LayoutParams(0,dp(44),1));Button remove=smallButton("Hapus","#FFFFFF","#B45309","#FFFFFF");remove.setTextSize(11);head.addView(remove,new LinearLayout.LayoutParams(dp(72),dp(44)));shoppingPlanBox.addView(head);
-            TextView address=text(w.optString("address"),11,"#64748B",false);address.setMaxLines(2);shoppingPlanBox.addView(address);
+            head.addView(text("Singgah "+(i+1),12,"#B45309",true),new LinearLayout.LayoutParams(0,dp(44),1));Button remove=smallButton("Hapus","#FFFFFF","#B45309","#FFFFFF");remove.setTextSize(11);compactShopButton(remove);remove.setBackgroundColor(Color.TRANSPARENT);head.addView(remove,new LinearLayout.LayoutParams(dp(72),dp(44)));shoppingPlanBox.addView(head);
+            TextView address=text(w.optString("address"),11,"#64748B",false);address.setSingleLine(true);address.setEllipsize(android.text.TextUtils.TruncateAt.END);shoppingPlanBox.addView(address);
             EditText input=shopListInput(w.optString("note"),"Beli apa di titik ini? Contoh: telur 1 kg, minyak 1 liter",1500);shoppingStopInputs.add(input);shoppingPlanBox.addView(input,new LinearLayout.LayoutParams(-1,-2));
             remove.setOnClickListener(v->{if(ordering)return;readStopDrafts();JSONArray next=new JSONArray();for(int j=0;j<shoppingStops.length();j++)if(j!=position)next.put(shoppingStops.optJSONObject(j));shoppingStops=next;selectingShoppingStop=false;shoppingStopInputs.clear();renderShoppingPlan();if(mapView!=null)mapView.setWaypoints(shopWaypoints());invalidateShopQuote();requestPaymentQuote();});
         }
-        Button add=smallButton("＋ Tambah persinggahan "+shoppingStops.length()+"/"+allowedShoppingStops,"#EAF4FF","#0B7CFF","#D7E6F8");add.setTextSize(12);add.setEnabled(shoppingStops.length()<allowedShoppingStops&&!ordering&&!catalogPickup);
-        add.setOnClickListener(v->{if(ordering||shoppingStops.length()>=allowedShoppingStops)return;if(!validCoord(pickupLat,pickupLng)){toastDialog("Pilih toko pertama di peta terlebih dahulu.");return;}selectingShoppingStop=true;if(shoppingScroll!=null)shoppingScroll.smoothScrollTo(0,((View)mapView.getParent()).getTop());mapView.setWaypointSelectionMode(shoppingStops.length()+1);mapView.showCenterPin(true);modeText.setText("Geser peta ke toko tambahan, lalu tekan TAMBAH STOP");});
+        Button add=smallButton("＋ Tambah persinggahan "+shoppingStops.length()+"/"+allowedShoppingStops,"#EAF4FF","#0B7CFF","#D7E6F8");add.setTextSize(12);compactShopButton(add);add.setEnabled(shoppingStops.length()<allowedShoppingStops&&!ordering&&!catalogPickup);
+        add.setOnClickListener(v->{if(ordering||shoppingStops.length()>=allowedShoppingStops)return;if(!validCoord(pickupLat,pickupLng)){toastDialog("Pilih toko pertama di peta terlebih dahulu.");return;}selectingShoppingStop=true;setShoppingPlanExpanded(false);mapView.setWaypointSelectionMode(shoppingStops.length()+1);mapView.showCenterPin(true);modeText.setText("Geser peta ke toko tambahan, lalu tekan TAMBAH STOP");});
+        if(shoppingStops.length()>=allowedShoppingStops||catalogPickup)add.setVisibility(View.GONE);
         LinearLayout.LayoutParams addLp=new LinearLayout.LayoutParams(-1,dp(44));addLp.setMargins(0,dp(8),0,0);shoppingPlanBox.addView(add,addLp);
         shoppingTariffText=text(shopTariffLabel(),10,"#64748B",false);shoppingPlanBox.addView(shoppingTariffText);
+        if(cartDetailText!=null&&cartDetailText.getVisibility()==View.VISIBLE){if(cartDetailText.getParent() instanceof android.view.ViewGroup)((android.view.ViewGroup)cartDetailText.getParent()).removeView(cartDetailText);shoppingPlanBox.addView(cartDetailText,new LinearLayout.LayoutParams(-1,-2));}
+        if(noteChoiceBtn!=null)noteChoiceBtn.setText(shoppingPlanExpanded?"Tutup daftar ▴":"Daftar belanja ▾");
     }
     private String shopTariffLabel(){if(shoppingStopRule==null)return "Ongkir dan singgah mengikuti tarif admin. Harga barang dikonfirmasi dengan driver lewat chat.";return "Singgah Rp"+formatMoney(shoppingStopRule.optInt("stop_fee"))+"/titik · tunggu gratis "+(shoppingStopRule.optInt("free_seconds")/60)+" menit, lalu Rp"+formatMoney(shoppingStopRule.optInt("rate_per_minute"))+"/menit dimulai. Harga barang di luar ongkir.";}
     private void addShoppingStop(){
@@ -89,7 +105,7 @@ class TransShopActivityScreenCore extends CustomerAdaptiveActivity {
         if(mapView!=null&&mapView.isReady()){com.google.android.gms.maps.model.LatLng p=mapView.getCenter();if(p!=null){a=p.latitude;b=p.longitude;}}
         if(!validCoord(a,b))return;final double lat=a,lng=b;selectingShoppingStop=false;
         try{shoppingStops.put(new JSONObject().put("latitude",lat).put("longitude",lng).put("address",String.format(Locale.US,"%.6f, %.6f",lat,lng)).put("note",""));}catch(Exception ignored){}
-        renderShoppingPlan();if(shoppingScroll!=null)shoppingPlanBox.post(()->shoppingScroll.smoothScrollTo(0,shoppingPlanBox.getTop()));mapView.setWaypoints(shopWaypoints());updateModeUI();invalidateShopQuote();requestPaymentQuote();
+        renderShoppingPlan();setShoppingPlanExpanded(true);if(shoppingScroll!=null)shoppingPlanBox.post(()->shoppingScroll.smoothScrollTo(0,shoppingPlanBox.getBottom()));mapView.setWaypoints(shopWaypoints());updateModeUI();invalidateShopQuote();requestPaymentQuote();
         final JSONObject added=shoppingStops.optJSONObject(shoppingStops.length()-1);
         featureRuntime.execute(()->{String address=buildSmartAddress(lat,lng);featureRuntime.post(mainHandler,()->{if(destroyed)return;try{added.put("address",address);}catch(Exception ignored){}renderShoppingPlan();});},()->{});
     }
@@ -280,46 +296,44 @@ class TransShopActivityScreenCore extends CustomerAdaptiveActivity {
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
         root.setPadding(dp(7), dp(7), dp(7), dp(7));
-        shoppingScroll=new android.widget.ScrollView(this){
-            private boolean mapGesture;
-            @Override public boolean onInterceptTouchEvent(android.view.MotionEvent e){
-                if(e.getActionMasked()==android.view.MotionEvent.ACTION_DOWN){mapGesture=false;if(mapView!=null){int[] xy=new int[2];mapView.getLocationOnScreen(xy);mapGesture=e.getRawY()>=xy[1]&&e.getRawY()<=xy[1]+mapView.getHeight();}}
-                if(mapGesture){if(e.getActionMasked()==android.view.MotionEvent.ACTION_UP||e.getActionMasked()==android.view.MotionEvent.ACTION_CANCEL)mapGesture=false;return false;}return super.onInterceptTouchEvent(e);
-            }
-        };
-        shoppingScroll.setFillViewport(true);shoppingScroll.addView(root,new android.widget.ScrollView.LayoutParams(-1,-2));
-        page.addView(shoppingScroll,new FrameLayout.LayoutParams(-1,-1));
+        page.addView(root,new FrameLayout.LayoutParams(-1,-1));
 
         /* =========================
          * HEADER COMPACT
          * ========================= */
         LinearLayout topCard = new LinearLayout(this);
         topCard.setOrientation(LinearLayout.VERTICAL);
-        topCard.setPadding(dp(9), dp(7), dp(9), dp(7));
+        topCard.setPadding(dp(9), dp(6), dp(9), dp(6));
         topCard.setBackground(roundStroke("#F8FBFF", "#D7E6F8", dp(14), 1));
         root.addView(topCard, new LinearLayout.LayoutParams(-1, -2));
 
         LinearLayout titleRow = new LinearLayout(this);
         titleRow.setGravity(Gravity.CENTER_VERTICAL);
-        topCard.addView(titleRow, new LinearLayout.LayoutParams(-1, dp(30)));
+        topCard.addView(titleRow, new LinearLayout.LayoutParams(-1, dp(40)));
 
-        TextView title = text("TransShop", 17, "#0B3A78", true);
-        titleRow.addView(title, new LinearLayout.LayoutParams(0, -1, 1));
+        LinearLayout wordmark=new LinearLayout(this);wordmark.setOrientation(LinearLayout.VERTICAL);wordmark.setGravity(Gravity.CENTER_VERTICAL);
+        TextView title = text("TransShop", 17, "#0B3A78", true);wordmark.addView(title);
+        TextView signature=text("KARYA DIGITAL INDONESIA",7,"#A17A2B",true);wordmark.addView(signature);
+        titleRow.addView(wordmark,new LinearLayout.LayoutParams(0,-1,1));
 
         modeText = text("Pilih toko / lokasi belanja", 10, "#64748B", false);
+        modeText.setSingleLine(true);modeText.setEllipsize(android.text.TextUtils.TruncateAt.END);
         modeText.setGravity(Gravity.END | Gravity.CENTER_VERTICAL);
-        titleRow.addView(modeText, new LinearLayout.LayoutParams(0, -1, 1.25f));
+        titleRow.addView(modeText, new LinearLayout.LayoutParams(0, -1, .8f));
 
+        Button linkToggle=smallButton("Link","#FFFFFF","#0B7CFF","#D7E6F8");compactShopButton(linkToggle);linkToggle.setTextSize(10);
+        LinearLayout.LayoutParams linkToggleLp=new LinearLayout.LayoutParams(dp(44),dp(40));linkToggleLp.setMargins(dp(5),0,0,0);titleRow.addView(linkToggle,linkToggleLp);
         Button close = smallButton("×", "#FEE2E2", "#DC2626", "#FECACA");
-        LinearLayout.LayoutParams closeLp = new LinearLayout.LayoutParams(dp(30), dp(30));
+        LinearLayout.LayoutParams closeLp = new LinearLayout.LayoutParams(dp(36), dp(40));
         closeLp.setMargins(dp(5), 0, 0, 0);
         titleRow.addView(close, closeLp);
         backBtn = close;
+        compactShopButton(close);close.setTextSize(17);
         close.setOnClickListener(v -> finish());
 
         LinearLayout pointRow = new LinearLayout(this);
         pointRow.setOrientation(LinearLayout.HORIZONTAL);
-        LinearLayout.LayoutParams pointRowLp = new LinearLayout.LayoutParams(-1, dp(50));
+        LinearLayout.LayoutParams pointRowLp = new LinearLayout.LayoutParams(-1, dp(44));
         pointRowLp.setMargins(0, dp(4), 0, 0);
         topCard.addView(pointRow, pointRowLp);
 
@@ -333,7 +347,8 @@ class TransShopActivityScreenCore extends CustomerAdaptiveActivity {
         pickupText.setVisibility(View.GONE);
         deliveryText.setVisibility(View.GONE);
 
-        LinearLayout linkRow = new LinearLayout(this);
+        LinearLayout linkRow = new LinearLayout(this);linkRow.setVisibility(View.GONE);
+        linkToggle.setOnClickListener(v->{boolean show=linkRow.getVisibility()!=View.VISIBLE;linkRow.setVisibility(show?View.VISIBLE:View.GONE);if(!show)hideShoppingKeyboard();});
         linkRow.setOrientation(LinearLayout.HORIZONTAL);
         linkRow.setGravity(Gravity.CENTER_VERTICAL);
         LinearLayout.LayoutParams linkLp = new LinearLayout.LayoutParams(-1, dp(36));
@@ -343,7 +358,7 @@ class TransShopActivityScreenCore extends CustomerAdaptiveActivity {
         googleMapInput = new EditText(this);
         googleMapInput.setSingleLine(true);
         googleMapInput.setTextSize(10);
-        googleMapInput.setHint("Link Google Maps lokasi belanja (opsional)");
+        googleMapInput.setHint("Tempel link Google Maps");
         googleMapInput.setBackground(roundStroke("#FFFFFF", "#D7E6F8", dp(11), 1));
         googleMapInput.setPadding(dp(9), 0, dp(9), 0);
         linkRow.addView(googleMapInput, new LinearLayout.LayoutParams(0, -1, 1));
@@ -351,6 +366,7 @@ class TransShopActivityScreenCore extends CustomerAdaptiveActivity {
         useLinkBtn = smallButton("Pakai", "#EAF4FF", "#0B7CFF", "#9DCAFF");
         LinearLayout.LayoutParams useLinkLp = new LinearLayout.LayoutParams(dp(62), -1);
         useLinkLp.setMargins(dp(5), 0, 0, 0);
+        compactShopButton(useLinkBtn);useLinkBtn.setTextSize(11);
         linkRow.addView(useLinkBtn, useLinkLp);
 
         /* =========================
@@ -358,7 +374,7 @@ class TransShopActivityScreenCore extends CustomerAdaptiveActivity {
          * ========================= */
         FrameLayout mapBox = new FrameLayout(this);
         mapBox.setBackground(roundStroke("#EAF4FF", "#AFCFF2", dp(14), 1));
-        LinearLayout.LayoutParams mapLp = new LinearLayout.LayoutParams(-1, dp(250));
+        LinearLayout.LayoutParams mapLp = new LinearLayout.LayoutParams(-1,0,1f);
         mapLp.setMargins(0, dp(6), 0, dp(6));
         root.addView(mapBox, mapLp);
 
@@ -389,6 +405,7 @@ class TransShopActivityScreenCore extends CustomerAdaptiveActivity {
         FrameLayout.LayoutParams gpsMapLp = new FrameLayout.LayoutParams(dp(42), dp(42));
         gpsMapLp.gravity = Gravity.BOTTOM | Gravity.END;
         gpsMapLp.setMargins(0, 0, dp(10), dp(10));
+        compactShopButton(gpsBtn);
         mapBox.addView(gpsBtn, gpsMapLp);
 
 
@@ -397,7 +414,7 @@ class TransShopActivityScreenCore extends CustomerAdaptiveActivity {
          * ========================= */
         LinearLayout bottomCard = new LinearLayout(this);
         bottomCard.setOrientation(LinearLayout.VERTICAL);
-        bottomCard.setPadding(dp(10), dp(9), dp(10), dp(10));
+        bottomCard.setPadding(dp(10), dp(6), dp(10), dp(6));
         bottomCard.setBackground(roundStroke("#F8FBFF", "#D7E6F8", dp(14), 1));
         LinearLayout.LayoutParams bottomLp = new LinearLayout.LayoutParams(-1, -2);
         bottomLp.setMargins(0, dp(6), 0, 0);
@@ -415,7 +432,7 @@ class TransShopActivityScreenCore extends CustomerAdaptiveActivity {
         voucherInput = new EditText(this);
         voucherInput.setSingleLine(true);
         noteInput = shopListInput("","Beli apa di toko pertama? Tulis satu barang per baris.",2000);
-        buildShoppingPlan(root);root.removeView(shoppingPlanBox);root.addView(shoppingPlanBox,root.indexOfChild(bottomCard));
+        buildShoppingPlan(root);root.removeView(shoppingScroll);root.addView(shoppingScroll,root.indexOfChild(bottomCard));
 
         LinearLayout quickRow = new LinearLayout(this);
         quickRow.setOrientation(LinearLayout.HORIZONTAL);
@@ -427,12 +444,13 @@ class TransShopActivityScreenCore extends CustomerAdaptiveActivity {
         cartDetailText.setVisibility(View.GONE);
         bottomCard.addView(cartDetailText, new LinearLayout.LayoutParams(-1,-2));
 
-        voucherChoiceBtn = smallButton("🏷 Voucher", "#0B7CFF", "#FFFFFF", "#0B7CFF");
-        noteChoiceBtn = smallButton("📝 Daftar belanja", "#F59E0B", "#FFFFFF", "#F59E0B");
+        voucherChoiceBtn = smallButton("🏷 Voucher", "#FFFFFF", "#0B3A78", "#C8D9EC");
+        noteChoiceBtn = smallButton("Daftar belanja ▾", "#EAF4FF", "#0B3A78", "#C8D9EC");
         paymentChoiceBtn = smallButton("💵 Tunai", "#FFFFFF", "#0B3A78", "#C8D9EC");
         voucherChoiceBtn.setTextSize(10);
         noteChoiceBtn.setTextSize(10);
         paymentChoiceBtn.setTextSize(10);
+        compactShopButton(voucherChoiceBtn);compactShopButton(noteChoiceBtn);compactShopButton(paymentChoiceBtn);
 
         quickRow.addView(voucherChoiceBtn, new LinearLayout.LayoutParams(0, -1, 0.95f));
         LinearLayout.LayoutParams noteQuickLp = new LinearLayout.LayoutParams(0, -1, 0.82f);
@@ -447,8 +465,8 @@ class TransShopActivityScreenCore extends CustomerAdaptiveActivity {
         LinearLayout estimateRow = new LinearLayout(this);
         estimateRow.setOrientation(LinearLayout.HORIZONTAL);
         estimateRow.setGravity(Gravity.CENTER_VERTICAL);
-        LinearLayout.LayoutParams estimateLp = new LinearLayout.LayoutParams(-1, dp(66));
-        estimateLp.setMargins(dp(2), dp(6), dp(2), dp(5));
+        LinearLayout.LayoutParams estimateLp = new LinearLayout.LayoutParams(-1, dp(48));
+        estimateLp.setMargins(dp(2), dp(3), dp(2), dp(3));
         bottomCard.addView(estimateRow, estimateLp);
 
         LinearLayout tripInfo = new LinearLayout(this);
@@ -456,10 +474,11 @@ class TransShopActivityScreenCore extends CustomerAdaptiveActivity {
         tripInfo.setGravity(Gravity.CENTER_VERTICAL);
         estimateRow.addView(tripInfo, new LinearLayout.LayoutParams(0, -1, 1));
 
-        distanceInfoText = text("⌁  Jarak : -", 11, "#334155", false);
-        durationInfoText = text("◷  Waktu : -", 11, "#334155", false);
-        tripInfo.addView(distanceInfoText, new LinearLayout.LayoutParams(-1, dp(28)));
-        tripInfo.addView(durationInfoText, new LinearLayout.LayoutParams(-1, dp(28)));
+        distanceInfoText = text("Rute · -", 11, "#334155", false);
+        durationInfoText = text("± -", 11, "#334155", false);
+        tripInfo.addView(distanceInfoText, new LinearLayout.LayoutParams(-1,-2));
+        durationInfoText.setPadding(0,dp(3),0,0);
+        tripInfo.addView(durationInfoText, new LinearLayout.LayoutParams(-1,-2));
 
         LinearLayout priceBox = new LinearLayout(this);
         priceBox.setOrientation(LinearLayout.VERTICAL);
@@ -469,25 +488,26 @@ class TransShopActivityScreenCore extends CustomerAdaptiveActivity {
         originalPriceText = text("", 10, "#94A3B8", false);
         originalPriceText.setGravity(Gravity.END);
         originalPriceText.setVisibility(View.GONE);
-        priceBox.addView(originalPriceText, new LinearLayout.LayoutParams(-1, dp(20)));
+        priceBox.addView(originalPriceText, new LinearLayout.LayoutParams(-1,-2));
 
         finalPriceText = text("Rp -", 18, "#0B3A78", true);
         finalPriceText.setGravity(Gravity.END | Gravity.CENTER_VERTICAL);
-        priceBox.addView(finalPriceText, new LinearLayout.LayoutParams(-1, dp(30)));
+        priceBox.addView(finalPriceText, new LinearLayout.LayoutParams(-1,-2));
 
         discountInfoText = text("", 9, "#16A34A", true);
         discountInfoText.setGravity(Gravity.END);
         discountInfoText.setVisibility(View.GONE);
-        priceBox.addView(discountInfoText, new LinearLayout.LayoutParams(-1, dp(16)));
+        priceBox.addView(discountInfoText, new LinearLayout.LayoutParams(-1,-2));
 
         fareText = text("Tarif dihitung dari database", 8, "#64748B", false);
         fareText.setVisibility(View.GONE);
         paymentSummaryText = text("", 8, "#64748B", false);
         paymentSummaryText.setVisibility(View.GONE);
 
-        // Tombol order lama di bawah dipertahankan sebagai pengendali internal, tetapi tidak ditampilkan.
-        orderBtn = smallButton("PESAN SEKARANG", "#0B7CFF", "#FFFFFF", "#0B7CFF");
-        orderBtn.setVisibility(View.GONE);
+        // CTA tetap terlihat di footer dan tidak menutupi rute peta.
+        orderBtn = smallButton("PESAN TRANSSHOP", "#0B7CFF", "#FFFFFF", "#0B7CFF");
+        compactShopButton(orderBtn);orderBtn.setTextSize(13);orderBtn.setEnabled(false);
+        LinearLayout.LayoutParams ctaLp=new LinearLayout.LayoutParams(-1,dp(44));ctaLp.setMargins(0,dp(3),0,0);bottomCard.addView(orderBtn,ctaLp);
 
         progressBar = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
         progressBar.setVisibility(View.GONE);
@@ -495,6 +515,10 @@ class TransShopActivityScreenCore extends CustomerAdaptiveActivity {
         progressLp.gravity = Gravity.CENTER;
         page.addView(progressBar, progressLp);
 
+        finalPriceText.setOnClickListener(v->{if(!ordering)requestPaymentQuote();});
+        root.addOnLayoutChangeListener((v,l,t,r,b,ol,ot,or,ob)->{
+            if(shoppingScroll!=null&&b-t!=ob-ot){int panel=Math.max(dp(80),Math.min(dp(220),Math.round((b-t)*.30f)));android.view.ViewGroup.LayoutParams lp=shoppingScroll.getLayoutParams();if(lp.height!=panel){lp.height=panel;shoppingScroll.setLayoutParams(lp);}}
+        });
         setContentView(page);
         CustomerAppSettings.apply(this);
         bindActions();
@@ -528,7 +552,7 @@ class TransShopActivityScreenCore extends CustomerAdaptiveActivity {
     }
 
     protected void showNoteDialog() {
-        if(shoppingPlanBox!=null){shoppingPlanBox.requestFocus();noteInput.requestFocus();if(shoppingScroll!=null)shoppingScroll.smoothScrollTo(0,shoppingPlanBox.getTop());((InputMethodManager)getSystemService(INPUT_METHOD_SERVICE)).showSoftInput(noteInput,InputMethodManager.SHOW_IMPLICIT);}
+        if(shoppingPlanBox!=null)setShoppingPlanExpanded(!shoppingPlanExpanded);
     }
 
     protected void showPaymentDialog() {
@@ -557,7 +581,7 @@ class TransShopActivityScreenCore extends CustomerAdaptiveActivity {
 
     /** Tombol ringkasan di atas mengaktifkan pemilihan ulang titik terkait. */
     protected void handlePointButtonClick(String requestedMode) {
-        selectingShoppingStop=false;
+        selectingShoppingStop=false;setShoppingPlanExpanded(false);
         invalidateShopQuote();
         mode = requestedMode;
         if ("pickup".equals(requestedMode)) {
@@ -1146,12 +1170,13 @@ class TransShopActivityScreenCore extends CustomerAdaptiveActivity {
         if(!shopFareGate.hasQuote(currentShopQuoteKey())) { if(!shopFareGate.isPending(currentShopQuoteKey()))requestPaymentQuote(); return; }
         String shoppingList = noteInput == null ? "" : noteInput.getText().toString().trim();
         if (shoppingList.isEmpty()) {
+            setShoppingPlanExpanded(true);
             toastDialog("Tulis daftar barang yang ingin dibelanjakan terlebih dahulu.");
             return;
         }
 
         if(shoppingStops.length()>allowedShoppingStops){toastDialog("Batas layanan saat ini "+allowedShoppingStops+" persinggahan. Hapus titik tambahan terlebih dahulu.");return;}
-        readStopDrafts();for(int i=0;i<shoppingStops.length();i++)if(shoppingStops.optJSONObject(i).optString("note").trim().isEmpty()){toastDialog("Isi daftar belanja Singgah "+(i+1)+" terlebih dahulu.");return;}
+        readStopDrafts();for(int i=0;i<shoppingStops.length();i++)if(shoppingStops.optJSONObject(i).optString("note").trim().isEmpty()){setShoppingPlanExpanded(true);toastDialog("Isi daftar belanja Singgah "+(i+1)+" terlebih dahulu.");return;}
         final JSONArray submittedStops=shopWaypoints();final JSONObject submittedPlan=shopPlanPayload();
         final double submittedPickupLat=pickupLat,submittedPickupLng=pickupLng,submittedDeliveryLat=deliveryLat,submittedDeliveryLng=deliveryLng;
         final String submittedPickupAddress=pickupAddress,submittedDeliveryAddress=deliveryAddress,submittedPayment=paymentMethod;
@@ -1294,8 +1319,8 @@ class TransShopActivityScreenCore extends CustomerAdaptiveActivity {
             if (paymentSummaryText != null) {
                 paymentSummaryText.setText("Pilih lokasi belanja; alamat pengantaran mengikuti alamat delivery akun");
             }
-            if (distanceInfoText != null) distanceInfoText.setText("⌁  Jarak : -");
-            if (durationInfoText != null) durationInfoText.setText("◷  Waktu : -");
+            if (distanceInfoText != null) distanceInfoText.setText("Rute · -");
+            if (durationInfoText != null) durationInfoText.setText("± -");
             if (finalPriceText != null) finalPriceText.setText("Rp -");
             if (originalPriceText != null) originalPriceText.setVisibility(View.GONE);
             if (discountInfoText != null) discountInfoText.setVisibility(View.GONE);
@@ -1315,12 +1340,12 @@ class TransShopActivityScreenCore extends CustomerAdaptiveActivity {
 
         distanceInfoText.setText(String.format(
                 new Locale("id", "ID"),
-                "⌁  Jarak : %.1f km",
+                "Rute · %.1f km",
                 fallbackKm
         ));
         durationInfoText.setText(String.format(
                 new Locale("id", "ID"),
-                "◷  Waktu : %.0f menit",
+                "± %.0f menit",
                 fallbackMinutes
         ));
         finalPriceText.setText("Menghitung...");
@@ -1399,12 +1424,12 @@ class TransShopActivityScreenCore extends CustomerAdaptiveActivity {
 
                     distanceInfoText.setText(String.format(
                             new Locale("id", "ID"),
-                            "⌁  Jarak : %.1f km",
+                            "Rute · %.1f km",
                             distanceKm
                     ));
                     durationInfoText.setText(String.format(
                             new Locale("id", "ID"),
-                            "◷  Waktu : %.0f menit",
+                            "± %.0f menit",
                             durationMinutes
                     ));
 
@@ -1522,11 +1547,11 @@ class TransShopActivityScreenCore extends CustomerAdaptiveActivity {
         if(selectingShoppingStop)return;
         boolean routeComplete = validCoord(pickupLat, pickupLng) && validCoord(deliveryLat, deliveryLng);
         mode = "pickup";
-        modeText.setText(routeComplete ? "Rute siap • antar ke alamat delivery akun" : catalogPickup ? "Toko terpilih: " + catalogStoreName : "Geser peta lalu klik marka Belanja di sini");
+        modeText.setText(routeComplete ? "Rute siap" : catalogPickup ? "Toko terpilih" : "Pilih toko di peta");
         pickupBtn.setAlpha(1f);
         if (mapView != null) {
             if (routeComplete) {
-                mapView.showCenterPin(false);mapView.showOrderAction(true, "PESAN TRANSHOP");
+                mapView.showCenterPin(false);mapView.showOrderAction(false, "");
             } else {
                 mapView.setSelectionMode("pickup");
                 mapView.showCenterPin(true);
@@ -1589,7 +1614,7 @@ class TransShopActivityScreenCore extends CustomerAdaptiveActivity {
     private Button compactPointButton(String title, String sub, String color) {
         Button b = new Button(this);
         b.setText(title + "\n" + sub);
-        b.setAllCaps(false);
+        b.setAllCaps(false);compactShopButton(b);
         b.setTextSize(11);
         b.setGravity(Gravity.CENTER_VERTICAL);
         b.setPadding(dp(10), 0, dp(8), 0);
@@ -1628,7 +1653,7 @@ class TransShopActivityScreenCore extends CustomerAdaptiveActivity {
 
     private Button rowButton(String value, String color) { Button b = smallButton(value, "#FFFFFF", color, "#E2E8F0"); b.setGravity(Gravity.CENTER_VERTICAL); b.setPadding(dp(12), 0, dp(12), 0); return b; }
     private Button smallButton(String value, String bg, String fg, String stroke) { Button b = new Button(this); b.setText(value); b.setAllCaps(false); b.setTextSize(13); b.setTypeface(Typeface.DEFAULT_BOLD); b.setTextColor(Color.parseColor(fg)); b.setBackground(roundStroke(bg, stroke, dp(16), 1)); return b; }
-    private TextView text(String value, int sp, String color, boolean bold) { TextView tv = new TextView(this); tv.setText(value); tv.setTextSize(sp); tv.setTextColor(Color.parseColor(color)); if (bold) tv.setTypeface(Typeface.DEFAULT_BOLD); return tv; }
+    private TextView text(String value, int sp, String color, boolean bold) { TextView tv = new TextView(this); tv.setText(value); tv.setIncludeFontPadding(false); tv.setTextSize(sp); tv.setTextColor(Color.parseColor(color)); if (bold) tv.setTypeface(Typeface.DEFAULT_BOLD); return tv; }
     private GradientDrawable round(String color, int radius) { GradientDrawable gd = new GradientDrawable(); gd.setColor(Color.parseColor(color)); gd.setCornerRadius(radius); return gd; }
     private GradientDrawable roundStroke(String color, String stroke, int radius, int width) { GradientDrawable gd = round(color, radius); gd.setStroke(dp(width), Color.parseColor(stroke)); return gd; }
     private int dp(int v) {

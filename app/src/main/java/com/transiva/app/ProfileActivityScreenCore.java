@@ -104,6 +104,7 @@ class ProfileActivityScreenCore extends CustomerAdaptiveActivity {
     protected TextView emailBadge;
     protected TextView phoneView;
     protected TextView roleView;
+    protected TextView customerReputationText;
     protected TextView loyaltyBadge;
 
     protected EditText usernameInput;
@@ -498,6 +499,7 @@ class ProfileActivityScreenCore extends CustomerAdaptiveActivity {
         loyaltyBadge.setTextSize(10); loyaltyBadge.setMaxLines(2);
         LinearLayout.LayoutParams loyaltyLp = new LinearLayout.LayoutParams(-2, -2);
         loyaltyLp.setMargins(0, dp(6), 0, 0); details.addView(loyaltyBadge, loyaltyLp);
+        customerReputationText=text("",11,"#A17A2B",true);customerReputationText.setVisibility(View.GONE);details.addView(customerReputationText);
     }
 
     protected void buildFormCard(
@@ -1388,6 +1390,9 @@ class ProfileActivityScreenCore extends CustomerAdaptiveActivity {
     protected void applyUser(JSONObject user) { applyUser(user, false); }
 
     private void applyUser(JSONObject user, boolean localPhoto) {
+        JSONObject rep=user.optJSONObject("customer_reputation");
+        if(customerReputationText!=null&&rep!=null&&!rep.optBoolean("unavailable")){customerReputationText.setVisibility(View.VISIBLE);int count=rep.optInt("rating_count");String value=rep.optBoolean("is_exemplary")?"🏅 Customer Teladan · "+String.format(new java.util.Locale("id","ID"),"%.1f",rep.optDouble("average_rating"))+" ★ · "+count+" penilaian":count<5?"Customer baru · "+count+" penilaian":"⭐ "+String.format(new java.util.Locale("id","ID"),"%.1f",rep.optDouble("average_rating"))+" · "+count+" penilaian driver";customerReputationText.setText(value);}
+
         username = first(
                 user.optString("username"),
                 username

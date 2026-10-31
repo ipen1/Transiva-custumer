@@ -47,6 +47,53 @@ class TransShopActivityScreenCore extends CustomerAdaptiveActivity {
 
 
     protected static final String BASE_URL = "https://transiva.my.id/";
+    private android.widget.ScrollView shoppingScroll;
+    private JSONObject shoppingStopRule;
+    private TextView shoppingTariffText;
+    private JSONArray shoppingStops=new JSONArray();
+    private final java.util.ArrayList<EditText> shoppingStopInputs=new java.util.ArrayList<>();
+    private LinearLayout shoppingPlanBox;
+    private boolean selectingShoppingStop;
+    private int allowedShoppingStops=2;
+    private void readStopDrafts(){for(int i=0;i<shoppingStops.length()&&i<shoppingStopInputs.size();i++){try{shoppingStops.getJSONObject(i).put("note",shoppingStopInputs.get(i).getText().toString().trim());}catch(Exception ignored){}}}
+    private JSONArray shopWaypoints(){readStopDrafts();JSONArray result=new JSONArray();for(int i=0;i<shoppingStops.length();i++){JSONObject w=shoppingStops.optJSONObject(i);if(w==null)continue;try{JSONObject copy=new JSONObject(w.toString());copy.put("sequence",i+1);String note=copy.optString("note");copy.put("note",note.length()>180?note.substring(0,180):note);result.put(copy);}catch(Exception ignored){}}return result;}
+    private JSONObject shopPlanPayload(){readStopDrafts();JSONObject p=new JSONObject();JSONArray notes=new JSONArray();for(int i=0;i<shoppingStops.length();i++)notes.put(shoppingStops.optJSONObject(i).optString("note"));try{p.put("pickup_note",noteInput.getText().toString().trim());p.put("stop_notes",notes);}catch(Exception ignored){}return p;}
+    private String shopRouteKey(){StringBuilder s=new StringBuilder();for(int i=0;i<shoppingStops.length();i++){JSONObject w=shoppingStops.optJSONObject(i);s.append('|').append(w.optDouble("latitude")).append(',').append(w.optDouble("longitude"));}return s.toString();}
+    private EditText shopListInput(String value,String hint,int max){EditText input=new EditText(this);input.setText(value);input.setHint(hint);input.setTextSize(13);input.setSingleLine(false);input.setMinLines(2);input.setMaxLines(5);input.setGravity(Gravity.TOP);input.setFilters(new android.text.InputFilter[]{new android.text.InputFilter.LengthFilter(max)});input.setPadding(dp(10),dp(8),dp(10),dp(8));input.setBackground(roundStroke("#F8FBFF","#D7E6F8",dp(12),1));return input;}
+    private void buildShoppingPlan(LinearLayout parent){
+        shoppingPlanBox=new LinearLayout(this);shoppingPlanBox.setOrientation(LinearLayout.VERTICAL);shoppingPlanBox.setPadding(dp(12),dp(12),dp(12),dp(12));shoppingPlanBox.setBackground(roundStroke("#FFFFFF","#D7E6F8",dp(18),1));
+        LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-1,-2);lp.setMargins(0,dp(8),0,0);parent.addView(shoppingPlanBox,lp);renderShoppingPlan();
+    }
+    private void renderShoppingPlan(){
+        if(shoppingPlanBox==null)return;readStopDrafts();shoppingPlanBox.removeAllViews();shoppingStopInputs.clear();
+        shoppingPlanBox.addView(text("DAFTAR BELANJA · KARYA DIGITAL INDONESIA",10,"#0B7CFF",true));
+        shoppingPlanBox.addView(text("Toko pertama",14,"#0B3A78",true));
+        TextView origin=text(pickupAddress,11,"#64748B",false);origin.setMaxLines(2);shoppingPlanBox.addView(origin);
+        if(noteInput.getParent() instanceof android.view.ViewGroup)((android.view.ViewGroup)noteInput.getParent()).removeView(noteInput);
+        shoppingPlanBox.addView(noteInput,new LinearLayout.LayoutParams(-1,-2));
+        for(int i=0;i<shoppingStops.length();i++){
+            final int position=i;JSONObject w=shoppingStops.optJSONObject(i);LinearLayout head=new LinearLayout(this);head.setGravity(Gravity.CENTER_VERTICAL);
+            head.addView(text("Singgah "+(i+1),14,"#B45309",true),new LinearLayout.LayoutParams(0,dp(44),1));Button remove=smallButton("Hapus","#FFFFFF","#B45309","#FFFFFF");remove.setTextSize(11);head.addView(remove,new LinearLayout.LayoutParams(dp(72),dp(44)));shoppingPlanBox.addView(head);
+            TextView address=text(w.optString("address"),11,"#64748B",false);address.setMaxLines(2);shoppingPlanBox.addView(address);
+            EditText input=shopListInput(w.optString("note"),"Beli apa di titik ini? Contoh: telur 1 kg, minyak 1 liter",1500);shoppingStopInputs.add(input);shoppingPlanBox.addView(input,new LinearLayout.LayoutParams(-1,-2));
+            remove.setOnClickListener(v->{if(ordering)return;readStopDrafts();JSONArray next=new JSONArray();for(int j=0;j<shoppingStops.length();j++)if(j!=position)next.put(shoppingStops.optJSONObject(j));shoppingStops=next;selectingShoppingStop=false;shoppingStopInputs.clear();renderShoppingPlan();if(mapView!=null)mapView.setWaypoints(shopWaypoints());invalidateShopQuote();requestPaymentQuote();});
+        }
+        Button add=smallButton("＋ Tambah persinggahan "+shoppingStops.length()+"/"+allowedShoppingStops,"#EAF4FF","#0B7CFF","#D7E6F8");add.setTextSize(12);add.setEnabled(shoppingStops.length()<allowedShoppingStops&&!ordering&&!catalogPickup);
+        add.setOnClickListener(v->{if(ordering||shoppingStops.length()>=allowedShoppingStops)return;if(!validCoord(pickupLat,pickupLng)){toastDialog("Pilih toko pertama di peta terlebih dahulu.");return;}selectingShoppingStop=true;if(shoppingScroll!=null)shoppingScroll.smoothScrollTo(0,((View)mapView.getParent()).getTop());mapView.setWaypointSelectionMode(shoppingStops.length()+1);mapView.showCenterPin(true);modeText.setText("Geser peta ke toko tambahan, lalu tekan TAMBAH STOP");});
+        LinearLayout.LayoutParams addLp=new LinearLayout.LayoutParams(-1,dp(44));addLp.setMargins(0,dp(8),0,0);shoppingPlanBox.addView(add,addLp);
+        shoppingTariffText=text(shopTariffLabel(),10,"#64748B",false);shoppingPlanBox.addView(shoppingTariffText);
+    }
+    private String shopTariffLabel(){if(shoppingStopRule==null)return "Ongkir dan singgah mengikuti tarif admin. Harga barang dikonfirmasi dengan driver lewat chat.";return "Singgah Rp"+formatMoney(shoppingStopRule.optInt("stop_fee"))+"/titik · tunggu gratis "+(shoppingStopRule.optInt("free_seconds")/60)+" menit, lalu Rp"+formatMoney(shoppingStopRule.optInt("rate_per_minute"))+"/menit dimulai. Harga barang di luar ongkir.";}
+    private void addShoppingStop(){
+        if(ordering||shoppingStops.length()>=allowedShoppingStops)return;double a=centerLat,b=centerLng;
+        if(mapView!=null&&mapView.isReady()){com.google.android.gms.maps.model.LatLng p=mapView.getCenter();if(p!=null){a=p.latitude;b=p.longitude;}}
+        if(!validCoord(a,b))return;final double lat=a,lng=b;selectingShoppingStop=false;
+        try{shoppingStops.put(new JSONObject().put("latitude",lat).put("longitude",lng).put("address",String.format(Locale.US,"%.6f, %.6f",lat,lng)).put("note",""));}catch(Exception ignored){}
+        renderShoppingPlan();if(shoppingScroll!=null)shoppingPlanBox.post(()->shoppingScroll.smoothScrollTo(0,shoppingPlanBox.getTop()));mapView.setWaypoints(shopWaypoints());updateModeUI();invalidateShopQuote();requestPaymentQuote();
+        final JSONObject added=shoppingStops.optJSONObject(shoppingStops.length()-1);
+        featureRuntime.execute(()->{String address=buildSmartAddress(lat,lng);featureRuntime.post(mainHandler,()->{if(destroyed)return;try{added.put("address",address);}catch(Exception ignored){}renderShoppingPlan();});},()->{});
+    }
+    @Override protected void onSaveInstanceState(Bundle out){readStopDrafts();out.putDouble("shop_pickup_lat",pickupLat);out.putDouble("shop_pickup_lng",pickupLng);out.putString("shop_pickup_address",pickupAddress);out.putString("shop_stops",shoppingStops.toString());out.putString("shop_primary_note",noteInput==null?"":noteInput.getText().toString());super.onSaveInstanceState(out);}
     protected static final String CREATE_ORDER_URL = BASE_URL + "server/createOrder.php";
     protected static final String PROFILE_URL = BASE_URL + "server/get_customer_profile.php";
     protected static final String PAYMENT_QUOTE_URL = BASE_URL + "server/ride_payment_quote.php";
@@ -129,8 +176,12 @@ class TransShopActivityScreenCore extends CustomerAdaptiveActivity {
         buildLayout();
         String catalogList = getIntent().getStringExtra("transshop_catalog_list");
         if (catalogList != null && !catalogList.trim().isEmpty() && noteInput != null) noteInput.setText(catalogList);
+        if(savedInstanceState!=null){try{pickupLat=savedInstanceState.getDouble("shop_pickup_lat",0);pickupLng=savedInstanceState.getDouble("shop_pickup_lng",0);pickupAddress=savedInstanceState.getString("shop_pickup_address",pickupAddress);if(validCoord(pickupLat,pickupLng))pickupBtn.setText("● Belanja di sini\n"+shortAddress(pickupAddress));shoppingStops=new JSONArray(savedInstanceState.getString("shop_stops","[]"));noteInput.setText(savedInstanceState.getString("shop_primary_note",noteInput.getText().toString()));}catch(Exception ignored){}}
+        renderShoppingPlan();
+        featureRuntime.execute(()->{try{JSONObject r=postJson(BASE_URL+"server/ride_stop_config.php",new JSONObject().put("service_type","Transbike"));JSONObject rule=r.optJSONObject("stop_pricing");if(r.optBoolean("success")&&rule!=null)featureRuntime.post(mainHandler,()->{shoppingStopRule=rule;allowedShoppingStops=Math.max(0,Math.min(2,rule.optInt("max_stops",2)));renderShoppingPlan();});}catch(Exception ignored){}},()->{});
         loadDeliveryLocation();
         applyCatalogCheckout();
+        renderShoppingPlan();
         requestLocationIfNeeded();
     }
 
@@ -229,7 +280,15 @@ class TransShopActivityScreenCore extends CustomerAdaptiveActivity {
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
         root.setPadding(dp(7), dp(7), dp(7), dp(7));
-        page.addView(root, new FrameLayout.LayoutParams(-1, -1));
+        shoppingScroll=new android.widget.ScrollView(this){
+            private boolean mapGesture;
+            @Override public boolean onInterceptTouchEvent(android.view.MotionEvent e){
+                if(e.getActionMasked()==android.view.MotionEvent.ACTION_DOWN){mapGesture=false;if(mapView!=null){int[] xy=new int[2];mapView.getLocationOnScreen(xy);mapGesture=e.getRawY()>=xy[1]&&e.getRawY()<=xy[1]+mapView.getHeight();}}
+                if(mapGesture){if(e.getActionMasked()==android.view.MotionEvent.ACTION_UP||e.getActionMasked()==android.view.MotionEvent.ACTION_CANCEL)mapGesture=false;return false;}return super.onInterceptTouchEvent(e);
+            }
+        };
+        shoppingScroll.setFillViewport(true);shoppingScroll.addView(root,new android.widget.ScrollView.LayoutParams(-1,-2));
+        page.addView(shoppingScroll,new FrameLayout.LayoutParams(-1,-1));
 
         /* =========================
          * HEADER COMPACT
@@ -299,7 +358,7 @@ class TransShopActivityScreenCore extends CustomerAdaptiveActivity {
          * ========================= */
         FrameLayout mapBox = new FrameLayout(this);
         mapBox.setBackground(roundStroke("#EAF4FF", "#AFCFF2", dp(14), 1));
-        LinearLayout.LayoutParams mapLp = new LinearLayout.LayoutParams(-1, 0, 1);
+        LinearLayout.LayoutParams mapLp = new LinearLayout.LayoutParams(-1, dp(250));
         mapLp.setMargins(0, dp(6), 0, dp(6));
         root.addView(mapBox, mapLp);
 
@@ -309,9 +368,9 @@ class TransShopActivityScreenCore extends CustomerAdaptiveActivity {
         mapBox.addView(mapView, webLp);
         mapView.initialize(null, new TransivaGoogleMapView.Listener() {
             @Override public void onReady(double lat, double lng) {
-                mapReady = true;
+                mapReady = true;mapView.setWaypoints(shopWaypoints());
                 centerLat = lat; centerLng = lng; pickLat = lat; pickLng = lng;
-                if (catalogPickup) { mapView.setPickup(pickupLat, pickupLng, pickupAddress); mapView.moveTo(pickupLat,pickupLng,17f); } else goToMyLocation();
+                if (catalogPickup||validCoord(pickupLat,pickupLng)) { mapView.setPickup(pickupLat, pickupLng, pickupAddress); mapView.moveTo(pickupLat,pickupLng,17f); } else goToMyLocation();
                 loadMapPlaces();
                 loadOnlineDrivers();
             }
@@ -320,6 +379,7 @@ class TransShopActivityScreenCore extends CustomerAdaptiveActivity {
             }
         });
         mapView.setCenterActionListener(() -> {
+            if(selectingShoppingStop){addShoppingStop();return;}
             if (validCoord(pickupLat, pickupLng) && validCoord(deliveryLat, deliveryLng)) createOrder();
             else setPointFromCenter();
         });
@@ -354,8 +414,8 @@ class TransShopActivityScreenCore extends CustomerAdaptiveActivity {
 
         voucherInput = new EditText(this);
         voucherInput.setSingleLine(true);
-        noteInput = new EditText(this);
-        noteInput.setSingleLine(true);
+        noteInput = shopListInput("","Beli apa di toko pertama? Tulis satu barang per baris.",2000);
+        buildShoppingPlan(root);root.removeView(shoppingPlanBox);root.addView(shoppingPlanBox,root.indexOfChild(bottomCard));
 
         LinearLayout quickRow = new LinearLayout(this);
         quickRow.setOrientation(LinearLayout.HORIZONTAL);
@@ -468,28 +528,7 @@ class TransShopActivityScreenCore extends CustomerAdaptiveActivity {
     }
 
     protected void showNoteDialog() {
-        final EditText input = new EditText(this);
-        input.setSingleLine(false);
-        input.setMinLines(3);
-        input.setMaxLines(5);
-        input.setText(noteInput == null ? "" : noteInput.getText().toString());
-        input.setHint("Contoh: jemput di depan pagar");
-        input.setPadding(dp(14), dp(8), dp(14), dp(8));
-
-        new TransivaAlertDialogBuilder(this)
-                .setTitle("Catatan untuk driver")
-                .setView(input)
-                .setNegativeButton("Hapus", (dialog, which) -> {
-                    if (noteInput != null) noteInput.setText("");
-                    noteChoiceBtn.setText("📝 Note");
-                })
-                .setNeutralButton("Batal", null)
-                .setPositiveButton("Simpan", (dialog, which) -> {
-                    String note = input.getText().toString().trim();
-                    if (noteInput != null) noteInput.setText(note);
-                    noteChoiceBtn.setText(note.isEmpty() ? "📝 Note" : "📝 Ada Note");
-                })
-                .show();
+        if(shoppingPlanBox!=null){shoppingPlanBox.requestFocus();noteInput.requestFocus();if(shoppingScroll!=null)shoppingScroll.smoothScrollTo(0,shoppingPlanBox.getTop());((InputMethodManager)getSystemService(INPUT_METHOD_SERVICE)).showSoftInput(noteInput,InputMethodManager.SHOW_IMPLICIT);}
     }
 
     protected void showPaymentDialog() {
@@ -518,6 +557,7 @@ class TransShopActivityScreenCore extends CustomerAdaptiveActivity {
 
     /** Tombol ringkasan di atas mengaktifkan pemilihan ulang titik terkait. */
     protected void handlePointButtonClick(String requestedMode) {
+        selectingShoppingStop=false;
         invalidateShopQuote();
         mode = requestedMode;
         if ("pickup".equals(requestedMode)) {
@@ -777,6 +817,7 @@ class TransShopActivityScreenCore extends CustomerAdaptiveActivity {
 
                 if (isPickup) {
                     pickupAddress = address;
+                    renderShoppingPlan();
                     pickupText.setText("Belanja di: " + address);
                     pickupBtn.setText("●  Belanja di " + (catalogPickup ? catalogStoreName : "sini") + "\n" + shortAddress(address));
                     if (mapView != null) mapView.setPickup(pickupLat, pickupLng, address);
@@ -1109,6 +1150,9 @@ class TransShopActivityScreenCore extends CustomerAdaptiveActivity {
             return;
         }
 
+        if(shoppingStops.length()>allowedShoppingStops){toastDialog("Batas layanan saat ini "+allowedShoppingStops+" persinggahan. Hapus titik tambahan terlebih dahulu.");return;}
+        readStopDrafts();for(int i=0;i<shoppingStops.length();i++)if(shoppingStops.optJSONObject(i).optString("note").trim().isEmpty()){toastDialog("Isi daftar belanja Singgah "+(i+1)+" terlebih dahulu.");return;}
+        final JSONArray submittedStops=shopWaypoints();final JSONObject submittedPlan=shopPlanPayload();
         final double submittedPickupLat=pickupLat,submittedPickupLng=pickupLng,submittedDeliveryLat=deliveryLat,submittedDeliveryLng=deliveryLng;
         final String submittedPickupAddress=pickupAddress,submittedDeliveryAddress=deliveryAddress,submittedPayment=paymentMethod;
         final String submittedVoucher=voucherInput==null?"":voucherInput.getText().toString().trim().toUpperCase(Locale.US);
@@ -1153,6 +1197,7 @@ class TransShopActivityScreenCore extends CustomerAdaptiveActivity {
                 payload.put("delivery_address", firstNonEmpty(submittedDeliveryAddress, "Lokasi Pengantaran"));
                 payload.put("userLocation", userLocation);
                 payload.put("note", shoppingList);
+                payload.put("waypoints",submittedStops);payload.put("shopping_plan",submittedPlan);
                 payload.put("payment_method", submittedPayment);
                 payload.put("voucher_code", submittedVoucher);
 
@@ -1237,6 +1282,7 @@ class TransShopActivityScreenCore extends CustomerAdaptiveActivity {
         final long quoteTicket = shopFareGate.begin(quoteKey);
         final double quotePickupLat=pickupLat, quotePickupLng=pickupLng;
         final double quoteDeliveryLat=deliveryLat, quoteDeliveryLng=deliveryLng;
+        final JSONArray quoteStops=shopWaypoints();
         final String quotePaymentMethod=paymentMethod;
         final String quoteVoucher=voucherInput==null?"":voucherInput.getText().toString().trim().toUpperCase(Locale.US);
         if(orderBtn!=null)orderBtn.setEnabled(false);
@@ -1256,15 +1302,10 @@ class TransShopActivityScreenCore extends CustomerAdaptiveActivity {
             return;
         }
 
-        final double fallbackKm = Math.max(
-                0.1,
-                distanceMeter(
-                        quotePickupLat,
-                        quotePickupLng,
-                        quoteDeliveryLat,
-                        quoteDeliveryLng
-                ) / 1000.0
-        );
+        double routeMeters=0,previousLat=quotePickupLat,previousLng=quotePickupLng;
+        for(int i=0;i<quoteStops.length();i++){JSONObject point=quoteStops.optJSONObject(i);double lat=point.optDouble("latitude"),lng=point.optDouble("longitude");routeMeters+=distanceMeter(previousLat,previousLng,lat,lng);previousLat=lat;previousLng=lng;}
+        routeMeters+=distanceMeter(previousLat,previousLng,quoteDeliveryLat,quoteDeliveryLng);
+        final double fallbackKm=Math.max(0.1,routeMeters*1.25/1000.0);
 
         // Tampilkan estimasi jarak/waktu segera, lalu harga diisi dari database.
         final double fallbackMinutes = Math.max(
@@ -1306,6 +1347,7 @@ class TransShopActivityScreenCore extends CustomerAdaptiveActivity {
                 payload.put("pickup_lng", quotePickupLng);
                 payload.put("delivery_lat", quoteDeliveryLat);
                 payload.put("delivery_lng", quoteDeliveryLng);
+                payload.put("waypoints",quoteStops);
                 payload.put("service_type", "Transbike");
                 payload.put("payment_method", quotePaymentMethod);
                 payload.put("voucher_code", quoteVoucher);
@@ -1327,6 +1369,7 @@ class TransShopActivityScreenCore extends CustomerAdaptiveActivity {
                         return;
                     }
 
+                    JSONObject currentStopRule=res.optJSONObject("stop_pricing");if(currentStopRule!=null){shoppingStopRule=currentStopRule;allowedShoppingStops=Math.max(0,Math.min(2,currentStopRule.optInt("max_stops",2)));if(shoppingTariffText!=null)shoppingTariffText.setText(shopTariffLabel());}
                     int original = jsonInt(
                             res,
                             "original_price",
@@ -1438,7 +1481,7 @@ class TransShopActivityScreenCore extends CustomerAdaptiveActivity {
 
     private String currentShopQuoteKey() {
         String voucher=voucherInput==null?"":voucherInput.getText().toString().trim().toUpperCase(Locale.US);
-        return CustomerFareQuoteGate.key(pickupLat,pickupLng,deliveryLat,deliveryLng,paymentMethod,voucher,String.valueOf(userId));
+        return CustomerFareQuoteGate.key(pickupLat,pickupLng,deliveryLat,deliveryLng,paymentMethod,voucher,String.valueOf(userId))+shopRouteKey();
     }
     private boolean isShopQuoteCurrent(long ticket,String key) {
         return !destroyed && !ordering && shopFareGate.isCurrent(ticket) && key.equals(currentShopQuoteKey());
@@ -1476,13 +1519,14 @@ class TransShopActivityScreenCore extends CustomerAdaptiveActivity {
     }
 
     protected void updateModeUI() {
+        if(selectingShoppingStop)return;
         boolean routeComplete = validCoord(pickupLat, pickupLng) && validCoord(deliveryLat, deliveryLng);
         mode = "pickup";
         modeText.setText(routeComplete ? "Rute siap • antar ke alamat delivery akun" : catalogPickup ? "Toko terpilih: " + catalogStoreName : "Geser peta lalu klik marka Belanja di sini");
         pickupBtn.setAlpha(1f);
         if (mapView != null) {
             if (routeComplete) {
-                mapView.showOrderAction(true, "PESAN TRANSHOP");
+                mapView.showCenterPin(false);mapView.showOrderAction(true, "PESAN TRANSHOP");
             } else {
                 mapView.setSelectionMode("pickup");
                 mapView.showCenterPin(true);
@@ -1492,13 +1536,9 @@ class TransShopActivityScreenCore extends CustomerAdaptiveActivity {
 
     protected void requestVisibleOsrmRoute() {
         if (!mapReady || mapView == null || !validCoord(pickupLat, pickupLng) || !validCoord(deliveryLat, deliveryLng)) return;
-        final double aLat = pickupLat, aLng = pickupLng, bLat = deliveryLat, bLng = deliveryLng;
-        featureRuntime.execute(() -> {
-            try {
-                StableRouteEngine.Result route = StableRouteEngine.fetch(aLat, aLng, bLat, bLng);
-                featureRuntime.post(mainHandler, () -> { if (!destroyed && mapView != null) mapView.drawRideRoute(route.latLngPoints); });
-            } catch (Exception ignored) {}
-        }, () -> { Exception ignored = new java.util.concurrent.RejectedExecutionException("Antrean penuh atau waktu tunggu habis");  });
+        final String routeKey=currentShopQuoteKey();final JSONArray points=new JSONArray();
+        points.put(new JSONArray().put(pickupLat).put(pickupLng));JSONArray stops=shopWaypoints();for(int i=0;i<stops.length();i++){JSONObject w=stops.optJSONObject(i);points.put(new JSONArray().put(w.optDouble("latitude")).put(w.optDouble("longitude")));}points.put(new JSONArray().put(deliveryLat).put(deliveryLng));
+        featureRuntime.execute(()->{try{JSONArray merged=new JSONArray();for(int i=0;i<points.length()-1;i++){JSONArray a=points.optJSONArray(i),b=points.optJSONArray(i+1);StableRouteEngine.Result route=StableRouteEngine.fetch(a.optDouble(0),a.optDouble(1),b.optDouble(0),b.optDouble(1));for(int j=i==0?0:1;j<route.latLngPoints.length();j++)merged.put(route.latLngPoints.optJSONArray(j));}featureRuntime.post(mainHandler,()->{if(!destroyed&&mapView!=null&&routeKey.equals(currentShopQuoteKey())){mapView.setWaypoints(shopWaypoints());mapView.drawRideRoute(merged);}});}catch(Exception ignored){}},()->{});
     }
     protected boolean validCoord(double lat, double lng) {
         return CustomerGeoMath.valid(lat, lng);

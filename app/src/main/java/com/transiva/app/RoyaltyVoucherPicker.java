@@ -37,7 +37,7 @@ public final class RoyaltyVoucherPicker {
     private static void showOwned(Activity a,JSONArray rows,String current,Selection callback){
         if(rows==null||rows.length()==0){new TransivaAlertDialogBuilder(a).setTitle("Voucher kamu").setMessage("Belum ada voucher aktif. Tukarkan Poin Transiva untuk mendapatkan voucher.")
             .setPositiveButton("Lihat poin",(d,w)->a.startActivity(new android.content.Intent(a,CustomerLoyaltyActivity.class)))
-            .setNeutralButton("Masukkan kode",(d,w)->manual(a,current,callback)).setNegativeButton("Tutup",null).show();return;}
+            .setNeutralButton("Masukkan kode",(d,w)->manual(a,current,callback)).setNegativeButton(current!=null&&!current.trim().isEmpty()?"Hapus voucher":"Tutup",(d,w)->{if(current!=null&&!current.trim().isEmpty())callback.apply("",0);}).show();return;}
         ScrollView scroll=new ScrollView(a);LinearLayout list=new LinearLayout(a);list.setOrientation(LinearLayout.VERTICAL);list.setPadding(dp(a,16),0,dp(a,16),0);scroll.addView(list);
         LinearLayout holder=new LinearLayout(a);holder.setOrientation(LinearLayout.VERTICAL);int limit=Math.min(dp(a,340),a.getResources().getDisplayMetrics().heightPixels/2);holder.addView(scroll,new LinearLayout.LayoutParams(-1,Math.min(limit,dp(a,rows.length()*110))));
         final AlertDialog dialog=new TransivaAlertDialogBuilder(a).setTitle("Voucher kamu").setView(holder)

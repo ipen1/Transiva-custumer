@@ -2301,6 +2301,8 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
         }
 
         final String submittedDriverNote=noteInput.getText().toString().trim();
+        final String submittedQuoteToken=finalFareQuote==null?"":finalFareQuote.optString("quote_token", "");
+        if(submittedQuoteToken.isEmpty()){requestPaymentQuote();toastDialog("Hitung ulang dan periksa tarif sebelum memesan.");return;}
         ordering = true;
         setLoading(true);
         orderBtn.setEnabled(false);
@@ -2326,6 +2328,7 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
 
                 JSONObject payload = new JSONObject();
                 payload.put("id", orderId);
+                payload.put("quote_token", submittedQuoteToken);
                 payload.put("user_id", userId);
                 payload.put("username", username);
                 payload.put("customer", username);
@@ -2360,12 +2363,14 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
             } catch (Exception e) {
                 featureRuntime.post(mainHandler, () -> {
                     resetOrderButton();
+                    if(CustomerOrderQuotePolicy.refreshRequired(e))requestPaymentQuote();
                     toastDialog(ReliableOrderClient.failureMessage(e));
                 });
             }
         }, () -> { Exception e = new java.util.concurrent.RejectedExecutionException("Antrean penuh atau waktu tunggu habis"); 
                 featureRuntime.post(mainHandler, () -> {
                     resetOrderButton();
+                    if(CustomerOrderQuotePolicy.refreshRequired(e))requestPaymentQuote();
                     toastDialog(ReliableOrderClient.failureMessage(e));
                 });
              });
@@ -2375,6 +2380,7 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
         resetOrderButton();
 
         if (res == null || !res.optBoolean("success", false)) {
+            if(CustomerOrderQuotePolicy.refreshRequired(res))requestPaymentQuote();
             String msg = res != null
                     ? res.optString("message", "Gagal membuat order " + orderNoun() + ".")
                     : "Gagal membuat order " + orderNoun() + ".";

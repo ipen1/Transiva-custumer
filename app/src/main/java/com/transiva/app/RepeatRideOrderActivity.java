@@ -34,6 +34,8 @@ public class RepeatRideOrderActivity extends CustomerAdaptiveActivity {
 
     private int userId;
     private boolean submitting;
+    private String acceptedQuoteToken="";
+    private String acceptedQuoteInput="";
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -308,6 +310,7 @@ public class RepeatRideOrderActivity extends CustomerAdaptiveActivity {
             String pickupAddress,
             String deliveryAddress
     ) {
+        final String submittedNote=noteInput.getText().toString().trim();
         submitting = true;
         loading.setVisibility(ProgressBar.VISIBLE);
 
@@ -360,18 +363,32 @@ public class RepeatRideOrderActivity extends CustomerAdaptiveActivity {
 
                 payload.put(
                         "note",
-                        noteInput
-                                .getText()
-                                .toString()
-                                .trim()
+                        submittedNote
                 );
 
+                final String quoteInput=payload.toString();
+                if(acceptedQuoteToken.isEmpty() || !quoteInput.equals(acceptedQuoteInput)) {
+                    JSONObject quote=RepeatOrderApi.post(ApiConfig.server("ride_payment_quote.php"),payload);
+                    if(!quote.optBoolean("success") || quote.optString("quote_token").isEmpty())
+                        throw new IllegalStateException(quote.optString("message","Tarif belum dapat dihitung."));
+                    runOnUiThread(() -> {
+                        if(isFinishing() || isDestroyed())return;
+                        submitting=false;loading.setVisibility(ProgressBar.GONE);
+                        new TransivaAlertDialogBuilder(this).setTitle("Periksa tarif terbaru")
+                            .setMessage("Total perjalanan Rp " + String.format(new java.util.Locale("id","ID"),"%,d",quote.optInt("price")) + "\nPembayaran tunai. Biaya tunggu mengikuti ketentuan perjalanan.")
+                            .setNegativeButton("Kembali",(d,w)->{acceptedQuoteToken="";acceptedQuoteInput="";})
+                            .setPositiveButton("Pesan",(d,w)->{acceptedQuoteToken=quote.optString("quote_token");acceptedQuoteInput=quoteInput;submitOrder(pickupAddress,deliveryAddress);}).show();
+                    });
+                    return;
+                }
+                payload.put("quote_token",acceptedQuoteToken);
                 JSONObject response =
                         RepeatOrderApi.post(
                                 CREATE_ORDER_URL,
                                 payload
                         );
 
+                acceptedQuoteToken="";acceptedQuoteInput="";
                 if (
                         !response.optBoolean(
                                 "success",

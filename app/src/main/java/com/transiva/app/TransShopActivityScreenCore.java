@@ -1149,6 +1149,8 @@ class TransShopActivityScreenCore extends CustomerAdaptiveActivity {
         return false;
     }
 
+    private String acceptedShopQuoteToken="";
+
     protected void createOrder() {
         if (ordering) return;
 
@@ -1190,6 +1192,8 @@ class TransShopActivityScreenCore extends CustomerAdaptiveActivity {
         final String submittedPickupAddress=pickupAddress,submittedDeliveryAddress=deliveryAddress,submittedPayment=paymentMethod;
         final String submittedVoucher=voucherInput==null?"":voucherInput.getText().toString().trim().toUpperCase(Locale.US);
         final int submittedUserId=userId;final String submittedUsername=username;
+        final String submittedQuoteToken=acceptedShopQuoteToken;
+        if(submittedQuoteToken.isEmpty()){requestPaymentQuote();toastDialog("Hitung ulang dan periksa tarif sebelum memesan.");return;}
         ordering = true;
         shopFareGate.invalidate();
         setLoading(true);
@@ -1220,6 +1224,7 @@ class TransShopActivityScreenCore extends CustomerAdaptiveActivity {
                 payload.put("username", submittedUsername);
                 payload.put("customer", submittedUsername);
                 payload.put("order_type", "TransShop");
+                payload.put("quote_token",submittedQuoteToken);
                 payload.put("driver_type", "bike");
                 payload.put("service_type", "TransShop");
                 payload.put("service_name", "TransShop");
@@ -1245,12 +1250,14 @@ class TransShopActivityScreenCore extends CustomerAdaptiveActivity {
             } catch (Exception e) {
                 featureRuntime.post(mainHandler, () -> {
                     resetOrderButton();
+                    if(CustomerOrderQuotePolicy.refreshRequired(e))requestPaymentQuote();
                     toastDialog(ReliableOrderClient.failureMessage(e));
                 });
             }
         }, () -> { Exception e = new java.util.concurrent.RejectedExecutionException("Antrean penuh atau waktu tunggu habis"); 
                 featureRuntime.post(mainHandler, () -> {
                     resetOrderButton();
+                    if(CustomerOrderQuotePolicy.refreshRequired(e))requestPaymentQuote();
                     toastDialog(ReliableOrderClient.failureMessage(e));
                 });
              });
@@ -1260,6 +1267,7 @@ class TransShopActivityScreenCore extends CustomerAdaptiveActivity {
         resetOrderButton();
 
         if (res == null || !res.optBoolean("success", false)) {
+            if(CustomerOrderQuotePolicy.refreshRequired(res))requestPaymentQuote();
             String msg = res != null
                     ? res.optString("message", "Gagal membuat order motor.")
                     : "Gagal membuat order motor.";
@@ -1451,6 +1459,7 @@ class TransShopActivityScreenCore extends CustomerAdaptiveActivity {
                     }
 
                     if (!shopFareGate.accept(quoteTicket, quoteKey)) return;
+                    acceptedShopQuoteToken=res.optString("quote_token", "");
                     royaltyOriginalFare=original;
                     int voucherDiscount=jsonInt(res,"voucher_discount",Math.max(0,discount-jsonInt(res,"hemat_discount",0)));
                     voucherChoiceBtn.setText(voucherDiscount>0?"🏷 Hemat Rp"+formatMoney(voucherDiscount):(voucherInput.getText().toString().trim().isEmpty()?"🏷 Voucher":"🏷 Voucher dipilih"));

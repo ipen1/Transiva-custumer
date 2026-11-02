@@ -54,7 +54,7 @@ public final class CustomerProfileCache {
         if(k.isEmpty()||user==null||!String.valueOf(user.opt("id")).equals(id))return;
         // Persist only profile fields, never tokens, passwords, or a cached wallet balance.
         JSONObject safe=new JSONObject();
-        String[] fields={"id","username","email","phone","phone_number","profile_photo","photo","delivery_address","delivery_lat","delivery_lng","email_verified","verified_by_admin","role"};
+        String[] fields={"id","username","email","phone","phone_number","profile_photo","photo","delivery_address","delivery_lat","delivery_lng","email_verified","verified_by_admin","role","customer_reputation"};
         try{for(String field:fields)if(user.has(field))safe.put(field,user.opt(field));}catch(Exception e){return;}
         revision++;
         c.getSharedPreferences(PREF,Context.MODE_PRIVATE).edit().putString("owner",k).putString("json",safe.toString()).putLong("saved",System.currentTimeMillis()).apply();

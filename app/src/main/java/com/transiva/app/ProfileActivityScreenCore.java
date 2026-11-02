@@ -439,13 +439,17 @@ class ProfileActivityScreenCore extends CustomerAdaptiveActivity {
             LinearLayout root
     ) {
         LinearLayout card = new LinearLayout(this);
-        card.setGravity(Gravity.CENTER_VERTICAL);
+        card.setOrientation(LinearLayout.VERTICAL);
         card.setPadding(dp(14), dp(16), dp(14), dp(16));
         card.setBackground(gradient("#075EF4", "#25A7FF", 22));
         card.setElevation(dp(3));
         LinearLayout.LayoutParams cardLp = new LinearLayout.LayoutParams(-1, -2);
         cardLp.setMargins(0, dp(10), 0, dp(10));
         root.addView(card, cardLp);
+
+        LinearLayout identityRow = new LinearLayout(this);
+        identityRow.setGravity(Gravity.CENTER_VERTICAL);
+        card.addView(identityRow, new LinearLayout.LayoutParams(-1, -2));
 
         FrameLayout avatarFrame = new FrameLayout(this);
         GradientDrawable border = new GradientDrawable();
@@ -460,7 +464,7 @@ class ProfileActivityScreenCore extends CustomerAdaptiveActivity {
         avatarView.setOutlineProvider(ViewOutlineProvider.BACKGROUND);
         FrameLayout.LayoutParams imageLp = new FrameLayout.LayoutParams(dp(94), dp(94), Gravity.CENTER);
         avatarFrame.addView(avatarView, imageLp);
-        card.addView(avatarFrame, new LinearLayout.LayoutParams(dp(102), dp(102)));
+        identityRow.addView(avatarFrame, new LinearLayout.LayoutParams(dp(102), dp(102)));
         TextView editPhoto = text("✎", 18, "#FFFFFF", true);
         editPhoto.setGravity(Gravity.CENTER); editPhoto.setBackground(round("#064CCB", 18));
         FrameLayout.LayoutParams editLp = new FrameLayout.LayoutParams(dp(32), dp(32), Gravity.BOTTOM | Gravity.END);
@@ -471,7 +475,7 @@ class ProfileActivityScreenCore extends CustomerAdaptiveActivity {
         LinearLayout details = new LinearLayout(this);
         details.setOrientation(LinearLayout.VERTICAL);
         LinearLayout.LayoutParams detailsLp = new LinearLayout.LayoutParams(0, -2, 1f);
-        detailsLp.setMargins(dp(14), 0, 0, 0); card.addView(details, detailsLp);
+        detailsLp.setMargins(dp(14), 0, 0, 0); identityRow.addView(details, detailsLp);
         nameView = text(username, 21, "#FFFFFF", true);
         nameView.setMaxLines(2); nameView.setEllipsize(TextUtils.TruncateAt.END);
         details.addView(nameView);
@@ -499,7 +503,14 @@ class ProfileActivityScreenCore extends CustomerAdaptiveActivity {
         loyaltyBadge.setTextSize(10); loyaltyBadge.setMaxLines(2);
         LinearLayout.LayoutParams loyaltyLp = new LinearLayout.LayoutParams(-2, -2);
         loyaltyLp.setMargins(0, dp(6), 0, 0); details.addView(loyaltyBadge, loyaltyLp);
-        customerReputationText=text("",11,"#A17A2B",true);customerReputationText.setVisibility(View.GONE);details.addView(customerReputationText);
+        // Reserve a full-width row so ratings never squeeze the loyalty badge or avatar.
+        customerReputationText = text("⭐ Memuat penilaian…", 12, "#FFFFFF", true);
+        customerReputationText.setGravity(Gravity.CENTER);
+        customerReputationText.setPadding(dp(12), dp(9), dp(12), dp(9));
+        customerReputationText.setBackground(round("#064CCB", 12));
+        LinearLayout.LayoutParams reputationLp = new LinearLayout.LayoutParams(-1, -2);
+        reputationLp.setMargins(0, dp(12), 0, 0);
+        card.addView(customerReputationText, reputationLp);
     }
 
     protected void buildFormCard(
@@ -1369,7 +1380,10 @@ class ProfileActivityScreenCore extends CustomerAdaptiveActivity {
         if(loading||photoBusy||profileFetching||userId.isEmpty())return;
         if(!userId.equals(CustomerSessionGuard.capture(this).account))return;
         JSONObject cached=CustomerProfileCache.cached(this);if(cached!=null&&!profileEditMode)applyUser(cached);
-        if(!force&&CustomerProfileCache.isFresh(this)){if(profileStatus!=null)profileStatus.setVisibility(View.GONE);return;}
+        // Old snapshots omitted reputation. Fetch them even while other profile fields are fresh.
+        JSONObject reputation = cached == null ? null : cached.optJSONObject("customer_reputation");
+        boolean hasReputation = reputation != null && !reputation.optBoolean("unavailable");
+        if(!force&&hasReputation&&CustomerProfileCache.isFresh(this)){if(profileStatus!=null)profileStatus.setVisibility(View.GONE);return;}
         profileFetching=true;setLoading(true);
         if(profileStatus!=null){profileStatus.setText(cached==null?"Menyiapkan profil…":"Memperbarui profil…");profileStatus.setVisibility(View.VISIBLE);}
         if(progress!=null&&(cached!=null||(pullRefresh!=null&&pullRefresh.isRefreshing())))progress.setVisibility(View.GONE);
@@ -1383,15 +1397,36 @@ class ProfileActivityScreenCore extends CustomerAdaptiveActivity {
                     CustomerProfileCache.put(this,user);if(!profileEditMode)applyUser(user);
                     if(pullRefresh!=null)pullRefresh.finish(true);if(profileStatus!=null)profileStatus.setVisibility(View.GONE);});
             }catch(Exception error){postProfile(request,generation,() -> {profileFetching=false;profileRead=null;setLoading(false);
+                if(!hasReputation && customerReputationText!=null)customerReputationText.setText("⭐ Penilaian belum tersedia");
                 if(pullRefresh!=null)pullRefresh.finish(false);if(profileStatus!=null){profileStatus.setText("Profil belum diperbarui. Tarik ke bawah untuk mencoba lagi.");profileStatus.setVisibility(View.VISIBLE);}});}
         }, () -> postProfile(request,generation,() -> {cancelProfileRead();if(pullRefresh!=null)pullRefresh.finish(false);}), () -> {if(!isFinishing()&&!isDestroyed()&&profileRead==request&&profileGeneration==generation){cancelProfileRead();if(pullRefresh!=null)pullRefresh.finish(false);}});
+    }
+
+    private void renderCustomerReputation(JSONObject reputation) {
+        if (customerReputationText == null || reputation == null) return;
+        String value;
+        if (reputation.optBoolean("unavailable")) {
+            value = "⭐ Penilaian belum tersedia";
+        } else {
+            int count = Math.max(0, reputation.optInt("rating_count"));
+            if (count == 0) {
+                value = "⭐ Belum ada penilaian driver";
+            } else {
+                value = "⭐ " + String.format(new Locale("id", "ID"), "%.1f",
+                        reputation.optDouble("average_rating", 0))
+                        + " · " + count + " penilaian driver";
+                if (reputation.optBoolean("is_exemplary")) value += "\nCustomer Teladan";
+            }
+        }
+        customerReputationText.setText(value);
+        customerReputationText.setContentDescription(value);
+        customerReputationText.setVisibility(View.VISIBLE);
     }
 
     protected void applyUser(JSONObject user) { applyUser(user, false); }
 
     private void applyUser(JSONObject user, boolean localPhoto) {
-        JSONObject rep=user.optJSONObject("customer_reputation");
-        if(customerReputationText!=null&&rep!=null&&!rep.optBoolean("unavailable")){customerReputationText.setVisibility(View.VISIBLE);int count=rep.optInt("rating_count");String value=rep.optBoolean("is_exemplary")?"🏅 Customer Teladan · "+String.format(new java.util.Locale("id","ID"),"%.1f",rep.optDouble("average_rating"))+" ★ · "+count+" penilaian":count<5?"Customer baru · "+count+" penilaian":"⭐ "+String.format(new java.util.Locale("id","ID"),"%.1f",rep.optDouble("average_rating"))+" · "+count+" penilaian driver";customerReputationText.setText(value);}
+        renderCustomerReputation(user.optJSONObject("customer_reputation"));
 
         username = first(
                 user.optString("username"),

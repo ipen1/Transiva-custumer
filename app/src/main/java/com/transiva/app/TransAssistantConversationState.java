@@ -47,6 +47,6 @@ public final class TransAssistantConversationState {
 
     public static void clear(Context c){prefs(c).edit().remove(KEY).apply();}
     private static TransAssistantConversationState empty(){return new TransAssistantConversationState("","","","",0L);}
-    private static SharedPreferences prefs(Context c){return c.getApplicationContext().getSharedPreferences(PREF,Context.MODE_PRIVATE);}
+    private static SharedPreferences prefs(Context c){return c.getApplicationContext().getSharedPreferences(TransAssistantSessionStorage.key(c,PREF),Context.MODE_PRIVATE);}
     private static String safe(String s){return s==null?"":s.trim();}
 }

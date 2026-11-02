@@ -6,6 +6,10 @@ import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
 import android.os.Bundle;
+import org.json.JSONArray;
+import org.json.JSONObject;
+import android.content.Intent;
+import android.text.InputFilter;
 import android.os.Handler;
 import android.os.Looper;
 import android.view.Gravity;
@@ -23,7 +27,7 @@ import android.widget.TextView;
 
 import com.airbnb.lottie.LottieAnimationView;
 
-/** Premium Trans Asisten 3.0 UI with native dark-mode palette and local intelligent engine. */
+/** Premium Trans Asisten UI with native dark-mode palette and local intelligent engine. */
 public class TransAssistantActivity extends CustomerAdaptiveActivity {
     private static final int BLUE = Color.rgb(7, 94, 244);
     private static final int CYAN = Color.rgb(0, 210, 255);
@@ -37,6 +41,11 @@ public class TransAssistantActivity extends CustomerAdaptiveActivity {
     private TextView stateText;
     private TextView robotMode;
     private boolean dark;
+    private boolean sending;
+    private final CustomerLifecycleNetworkScope csScope=new CustomerLifecycleNetworkScope();
+    private CustomerSessionGuard csSession;
+    private String selectedOrder="", selectedSource="";
+    private TextView sendButton;
     private final Handler handler = new Handler(Looper.getMainLooper());
 
     @Override protected void onCreate(Bundle b) {
@@ -46,11 +55,13 @@ public class TransAssistantActivity extends CustomerAdaptiveActivity {
         dark = false; // Source colors stay light; the shared theme engine renders both modes.
         CustomerWindowPolicy.status(w, dark ? Color.rgb(4,13,25) : NAVY);
         CustomerWindowPolicy.navigation(w, dark ? Color.rgb(5,16,29) : Color.WHITE);
+        csSession=CustomerSessionGuard.capture(this);
         engine = new TransAssistantEngine(this);
         TransAssistantSync.sync(this,true);
         setContentView(build());
         setState("IDLE", 0, 59, true);
-        addBot("Halo! Saya Trans Asisten 3.0. Saya memahami bahasa sehari-hari, konteks percakapan, dan pertanyaan dari pengetahuan admin. Ceritakan kebutuhan Anda.", "", "", 1.0, false);
+        addBot("Halo, Kak! Saya Trans Asisten, bantuan otomatis Transiva. Ceritakan kendala pesanan, saldo, voucher, atau akun. Untuk pemeriksaan data terbaru saya memerlukan internet. Kakak juga bisa meminta bantuan admin.", "OPEN_SUPPORT", "Pusat Bantuan", 1.0, false);
+        restoreConversation();
 
         // Dashboard can hand a suggested phrase directly to the assistant.
         String dashboardPrompt = getIntent() == null ? "" : getIntent().getStringExtra("ai_prompt");
@@ -65,6 +76,7 @@ public class TransAssistantActivity extends CustomerAdaptiveActivity {
     }
 
     @Override protected void onDestroy() {
+        csScope.destroy();
         handler.removeCallbacksAndMessages(null);
         if (mascot != null) mascot.cancelAnimation();
         super.onDestroy();
@@ -88,13 +100,16 @@ public class TransAssistantActivity extends CustomerAdaptiveActivity {
         back.setOnClickListener(v -> finish());
         bar.addView(back, new LinearLayout.LayoutParams(dp(40), dp(44)));
         LinearLayout titleBox = new LinearLayout(this); titleBox.setOrientation(LinearLayout.VERTICAL);
-        titleBox.addView(text("Trans Asisten 3.0", 20, "#FFFFFF", true));
-        titleBox.addView(text("Asisten pintar lokal • konteks aktif • 24/7", 11, "#CDEBFF", false));
+        titleBox.addView(text("Trans Asisten", 20, "#FFFFFF", true));
+        titleBox.addView(text("CS otomatis • pesanan • saldo • bantuan", 11, "#CDEBFF", false));
         bar.addView(titleBox, new LinearLayout.LayoutParams(0, -2, 1));
-        TextView local = text("●  LOKAL", 10, "#BDF7FF", true);
+        TextView local = text("●  CS", 10, "#BDF7FF", true);
         local.setPadding(dp(10), dp(6), dp(10), dp(6));
         local.setBackground(round("#1836A5D9", "#6AE8FF", 20, 1));
         bar.addView(local);
+        TextView reset=text("↺",24,"#FFFFFF",true);reset.setPadding(dp(8),0,0,0);reset.setContentDescription("Mulai percakapan baru");
+        reset.setOnClickListener(v->{if(sending)return;TransAssistantMemory.clear(this);TransAssistantConversationState.clear(this);selectedOrder="";selectedSource="";messages.removeAllViews();addBot("Percakapan baru dimulai. Apa yang bisa saya bantu, Kak?","OPEN_SUPPORT","Pusat Bantuan",1,false);});
+        bar.addView(reset);
         hero.addView(bar, new LinearLayout.LayoutParams(-1, -2));
 
         FrameLayout mascotStage = new FrameLayout(this);
@@ -121,7 +136,7 @@ public class TransAssistantActivity extends CustomerAdaptiveActivity {
         chipsScroll.setHorizontalScrollBarEnabled(false);
         LinearLayout chips = new LinearLayout(this);
         chips.setPadding(dp(12), dp(10), dp(12), dp(6));
-        String[] prompts = {"📦 Mau pesan barang", "🏍 Pulang kantor", "🍜 Saya lapar", "📍 Cari tempat", "🧾 Cek pesanan"};
+        String[] prompts = {"🧾 Cek pesanan", "💳 Saldo kepotong", "🎟 Voucher tidak bisa", "📋 Cek status laporan", "🎧 Hubungi admin"};
         for (String p : prompts) {
             TextView c = text(p, 12, dark ? "#D9ECFF" : "#0B4E9B", true);
             c.setPadding(dp(12), dp(9), dp(12), dp(9));
@@ -153,12 +168,14 @@ public class TransAssistantActivity extends CustomerAdaptiveActivity {
         input.setHintTextColor(Color.parseColor(dark ? "#8FA8C1" : "#8296AD"));
         input.setPadding(dp(14), dp(10), dp(14), dp(10));
         input.setBackground(round(dark ? "#132B42" : "#F3F8FF", dark ? "#315B7F" : "#CFE3F8", 22, 1));
+        input.setFilters(new InputFilter[]{new InputFilter.LengthFilter(1500)});
         input.setSingleLine(false); input.setMaxLines(3); input.setImeOptions(EditorInfo.IME_ACTION_SEND);
         input.setOnFocusChangeListener((v,focused)->{ if(focused && input.getText().length()==0) setState("MENDENGARKAN",60,119,true); else if(!focused) setState("SIAP MEMBANTU",0,59,true); });
         input.setOnEditorActionListener((v, action, e) -> { if (action == EditorInfo.IME_ACTION_SEND) { send(); return true; } return false; });
         composerWrap.addView(input, new LinearLayout.LayoutParams(0, -2, 1));
 
         TextView send = text("➤", 24, "#FFFFFF", true);
+        sendButton=send;
         send.setGravity(Gravity.CENTER); send.setContentDescription("Kirim pertanyaan");
         send.setBackground(round("#0878F9", null, 24, 0));
         send.setOnClickListener(v -> send());
@@ -168,20 +185,72 @@ public class TransAssistantActivity extends CustomerAdaptiveActivity {
         return root;
     }
 
+    private void restoreConversation(){
+        JSONArray turns=TransAssistantMemory.snapshot(this);
+        long cutoff=System.currentTimeMillis()-30L*60L*1000L;
+        for(int i=0;i<turns.length();i++){
+            JSONObject turn=turns.optJSONObject(i);if(turn==null||turn.optLong("ts",0)<cutoff)continue;
+            if("user".equals(turn.optString("role")))addUser(turn.optString("text",""));
+            else addBot(turn.optString("text",""),"","",1,false);
+        }
+    }
+
     private void send() {
-        final String q = input.getText().toString().trim();
-        if (q.isEmpty()) return;
-        addUser(q); input.setText("");
-        setState("MEMIKIRKAN...", 120, 179, true);
-        // Short visual thinking phase keeps the local engine responsive while making state changes legible.
-        handler.postDelayed(() -> {
-            if (isFinishing() || isDestroyed()) return;
-            TransAssistantEngine.Reply r = engine.answer(q);
-            setState("MENJAWAB", 180, 239, true);
-            addBot(r.text, r.action, r.actionLabel, r.confidence, r.needsConfirmation);
-            handler.postDelayed(() -> { if (!isFinishing() && !isDestroyed()) setState("SELESAI", 240, 299, false); }, 520);
-            handler.postDelayed(() -> { if (!isFinishing() && !isDestroyed()) setState("SIAP MEMBANTU", 0, 59, true); }, 1450);
-        }, 420);
+        final String q=input.getText().toString().trim();
+        if(q.isEmpty()||sending)return;
+        if(!csSession.matches(this)){finish();return;}
+        sending=true;sendButton.setEnabled(false);sendButton.setAlpha(.45f);
+        addUser(TransAssistantMemory.redact(q));input.setText("");
+        setState("MEMIKIRKAN...",120,179,true);
+        final String previous=TransAssistantConversationState.read(this).intent;
+        final String orderForRequest=selectedOrder, sourceForRequest=selectedSource;
+        csScope.execute(()->{
+            JSONObject remote=null;boolean unavailable=false;
+            TransAssistantEngine.Reply local;
+            try{local=engine.preview(q);}catch(Exception e){local=new TransAssistantEngine.Reply("Panduan belum berhasil disiapkan. Silakan buka Pusat Bantuan.","OPEN_SUPPORT","Pusat Bantuan","UNKNOWN",0,false);}
+            try{if(!"CS_SECURITY".equals(local.intent)&&!"CS_PRIVACY".equals(local.intent))remote=TransAssistantCsClient.ask(this,csSession,q,previous,orderForRequest,sourceForRequest);}
+            catch(Exception e){unavailable=true;}
+            final JSONObject result=remote;final boolean failed=unavailable;final TransAssistantEngine.Reply localReply=local;
+            csScope.post(handler,()->{
+                if(isFinishing()||isDestroyed()||!csSession.matches(this))return;
+                TransAssistantEngine.Reply reply;
+                JSONObject data=result==null?null:result.optJSONObject("reply");
+                if(result!=null&&result.optBoolean("handled")&&data!=null&&!data.optString("text").isEmpty()){
+                    reply=new TransAssistantEngine.Reply(data.optString("text"),data.optString("action"),data.optString("action_label"),data.optString("intent"),.9,false);
+                    if(!"CS_HUMAN".equals(reply.intent)){selectedOrder=data.optString("order_id","");selectedSource=data.optString("order_source","");}
+                    TransAssistantMemory.add(this,"user",q,"");
+                    TransAssistantMemory.add(this,"assistant",reply.text,reply.intent);
+                    TransAssistantConversationState.update(this,reply.intent,TransAssistantMemory.redact(q));
+                }else{
+                    reply=localReply;
+                    if(!reply.intent.startsWith("CS_")||"CS_SECURITY".equals(reply.intent)||"CS_PRIVACY".equals(reply.intent)){selectedOrder="";selectedSource="";}
+                    if(failed)reply=new TransAssistantEngine.Reply("Pemeriksaan server belum berhasil. Berikut panduan lokal; data terbaru belum terverifikasi.\n\n"+reply.text,reply.action,reply.actionLabel,reply.intent,reply.confidence,reply.needsConfirmation);
+                    engine.remember(q,reply);
+                }
+                sending=false;sendButton.setEnabled(true);sendButton.setAlpha(1f);
+                setState("MENJAWAB",180,239,true);
+                addBot(reply.text,reply.action,reply.actionLabel,reply.confidence,reply.needsConfirmation);
+                handler.postDelayed(()->{if(!isFinishing()&&!isDestroyed()&&!sending)setState("SIAP MEMBANTU",0,59,true);},900L);
+            });
+        },()->csScope.post(handler,()->{
+            sending=false;sendButton.setEnabled(true);sendButton.setAlpha(1f);input.setText(q);
+            addBot("Aplikasi sedang sibuk. Pertanyaan belum diproses; silakan kirim kembali.","OPEN_SUPPORT","Pusat Bantuan",1,false);
+            setState("SIAP MEMBANTU",0,59,true);
+        }));
+    }
+
+    private void openSupport(){
+        Intent intent=new Intent(this,CustomerSupportActivity.class);
+        JSONArray turns=TransAssistantMemory.snapshot(this);StringBuilder summary=new StringBuilder("Ringkasan percakapan Trans Asisten (belum diverifikasi admin):\n");
+        for(int i=Math.max(0,turns.length()-6);i<turns.length();i++){
+            JSONObject t=turns.optJSONObject(i);if(t==null)continue;
+            String text=t.optString("text","");if(text.length()>500)text=text.substring(0,500)+"…";
+            summary.append("user".equals(t.optString("role"))?"Customer: ":"Asisten: ").append(text).append('\n');
+        }
+        intent.putExtra("assistant_subject","Bantuan dari Trans Asisten");
+        intent.putExtra("assistant_detail",TransAssistantMemory.redact(summary.toString()));
+        if(!selectedOrder.isEmpty()){intent.putExtra("order_id",selectedOrder);intent.putExtra("source",selectedSource);}
+        startActivity(intent);
     }
 
     private void setState(String label, int min, int max, boolean loop) {
@@ -221,12 +290,12 @@ public class TransAssistantActivity extends CustomerAdaptiveActivity {
         box.setBackground(round(dark ? "#122A43" : "#FFFFFF", dark ? "#315B7F" : "#D7E8F8", 18, 1));
         TextView v = text(s, 14, dark ? "#EEF5FF" : "#17324D", false); box.addView(v);
         if (confirm) {
-            TextView hint = text("Perkiraan maksud • " + Math.round(confidence * 100) + "%", 10, dark ? "#9FC5E8" : "#6685A3", true);
+            TextView hint = text("Mohon pastikan topik yang dimaksud", 10, dark ? "#9FC5E8" : "#6685A3", true);
             hint.setPadding(0, dp(7), 0, 0); box.addView(hint);
         }
         if (action != null && !action.isEmpty()) {
             TextView b = text((label == null || label.isEmpty() ? "Buka" : label) + "  ›", 13, dark ? "#67B6FF" : "#0878F9", true);
-            b.setPadding(0, dp(9), 0, dp(2)); b.setOnClickListener(x -> TransAssistantActions.run(this, action)); box.addView(b);
+            b.setPadding(0, dp(9), 0, dp(2)); b.setOnClickListener(x -> {if("OPEN_SUPPORT".equals(action))openSupport();else TransAssistantActions.run(this,action);}); box.addView(b);
         }
         LinearLayout.LayoutParams bp = new LinearLayout.LayoutParams(0, -2, 1); bp.setMargins(dp(8),0,dp(30),0); row.addView(box, bp);
         LinearLayout.LayoutParams rp = new LinearLayout.LayoutParams(-1, -2); rp.setMargins(0,dp(5),0,dp(5)); messages.addView(row, rp); scrollBottom();

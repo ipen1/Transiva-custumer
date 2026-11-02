@@ -13,6 +13,7 @@ public final class TransAssistantEngine {
     }
     private static final double DIRECT=.74,CONFIRM=.54,AMBIGUITY=.07;
     private final Context context;
+    private final ThreadLocal<Boolean> previewMode=new ThreadLocal<>();
     private static final Map<String,String> SLANG=new HashMap<>();
     private static final LinkedHashMap<String,String> PHRASES=new LinkedHashMap<>();
     static{
@@ -22,12 +23,19 @@ public final class TransAssistantEngine {
     }
     public TransAssistantEngine(Context c){context=c.getApplicationContext();}
 
+    /** Runs matching off the main thread without committing conversation state. */
+    public Reply preview(String raw){previewMode.set(true);try{return answer(raw);}finally{previewMode.remove();}}
+    public void remember(String raw,Reply reply){TransAssistantMemory.add(context,"user",raw,"");done(reply,smartNorm(raw));}
+
     public Reply answer(String raw){
-        String q=smartNorm(raw);if(q.isEmpty())return r("Ceritakan kebutuhan Anda. Saya bisa membantu perjalanan, makanan, pengiriman, pembayaran, akun, chat, dan status pesanan.","","","EMPTY",1,false);
-        TransAssistantMemory.add(context,"user",raw,"");
+        String q=smartNorm(raw==null?"":raw.substring(0,Math.min(raw.length(),1500)));if(q.isEmpty())return r("Ceritakan kebutuhan Anda. Saya bisa membantu perjalanan, makanan, pengiriman, pembayaran, akun, chat, dan status pesanan.","","","EMPTY",1,false);
+        if(!Boolean.TRUE.equals(previewMode.get()))TransAssistantMemory.add(context,"user",raw,"");
+        String csPrevious=TransAssistantConversationState.read(context).intent;
+        Reply cs=TransAssistantCsBrain.answer(context,raw,csPrevious);
+        if(cs!=null)return done(cs,q);
         TransAssistantRuntimeContext runtime=TransAssistantRuntimeContext.read(context);
         Reply z=runtimeAnswer(q,runtime);if(z!=null)return done(z,q);
-        if(isGreeting(q))return done(r("Halo 👋 Saya Trans Asisten 3.1. Tulis seperti biasa—misalnya ‘mau pulang’, ‘lapar’, ‘saldo kurang’, ‘kirim paket’, atau ‘driver di mana’.","","","GREETING",.99,false),q);
+        if(isGreeting(q))return done(r("Halo 👋 Saya Trans Asisten. Tulis seperti biasa—misalnya ‘mau pulang’, ‘lapar’, ‘saldo kurang’, ‘kirim paket’, atau ‘driver di mana’.","","","GREETING",.99,false),q);
         if(hasAny(q,"terima kasih","makasih","thanks"))return done(r("Sama-sama. Saya siap membantu kebutuhan Transiva berikutnya.","","","THANKS",.99,false),q);
 
         String previous=TransAssistantMemory.lastIntent(context);
@@ -38,7 +46,7 @@ public final class TransAssistantEngine {
         for(TransAssistantKnowledge.Entry e:entries){
             double s=score(q,e);
             if(!previous.isEmpty()&&previous.equals(e.intent)&&isFollowUp(q))s+=.14;
-            if(isVeryShortFollowUp(q)&&!recent.isEmpty())s=Math.max(s,score(recent+" "+q,e)-.05);
+            if(isVeryShortFollowUp(q)&&isFollowUp(q)&&!recent.isEmpty())s=Math.max(s,score(recent+" "+q,e)-.05);
             s=Math.min(1,s);Ranked rr=new Ranked(e,s);if(best==null||rr.score>best.score){second=best;best=rr;}else if(second==null||rr.score>second.score)second=rr;
         }
         Reply lifestyle=lifestyleIntent(q);if(lifestyle!=null&&(best==null||best.score<.72))return done(lifestyle,q);
@@ -48,10 +56,10 @@ public final class TransAssistantEngine {
             if(best.score>=DIRECT&&!ambiguous)return done(r(ans,best.entry.action,best.entry.actionLabel,best.entry.intent,best.score,false),q);
             if(best.score>=threshold){String t="Sepertinya Anda menanyakan "+best.entry.title+". "+ans;return done(r(t,best.entry.action,best.entry.actionLabel,best.entry.intent,best.score,true),q);}
         }
-        return done(r("Saya belum yakin dengan maksud Anda. Coba tulis lebih spesifik, misalnya ‘pesan ojek’, ‘kirim paket’, ‘saldo kurang’, ‘cari makanan’, atau ‘cek pesanan’.","OPEN_HELP","Buka bantuan","UNKNOWN",best==null?0:best.score,false),q);
+        return done(r("Saya belum menangkap kendalanya, Kak. Apakah terkait pesanan, saldo/top up, voucher, atau akun? Ceritakan apa yang terjadi dan pesan yang muncul. Jika ingin ditangani petugas, ketik ‘hubungi admin’.","OPEN_SUPPORT","Pusat Bantuan","UNKNOWN",best==null?0:best.score,false),q);
     }
 
-    private Reply done(Reply x,String q){TransAssistantMemory.add(context,"assistant",x.text,x.intent);if(!x.intent.isEmpty()&&!"GREETING".equals(x.intent)&&!"THANKS".equals(x.intent)&&!"EMPTY".equals(x.intent)){TransAssistantLearningReporter.report(context,q,x);}if(!x.intent.isEmpty()&&!"UNKNOWN".equals(x.intent)&&!"GREETING".equals(x.intent)&&!"THANKS".equals(x.intent))TransAssistantConversationState.update(context,x.intent,q);return x;}
+    private Reply done(Reply x,String q){if(Boolean.TRUE.equals(previewMode.get()))return x;TransAssistantMemory.add(context,"assistant",x.text,x.intent);if(!x.intent.startsWith("CS_")&&!x.intent.isEmpty()&&!"GREETING".equals(x.intent)&&!"THANKS".equals(x.intent)&&!"EMPTY".equals(x.intent)){TransAssistantLearningReporter.report(context,q,x);}if(!x.intent.isEmpty()&&!"UNKNOWN".equals(x.intent)&&!"GREETING".equals(x.intent)&&!"THANKS".equals(x.intent))TransAssistantConversationState.update(context,x.intent,TransAssistantMemory.redact(q));return x;}
 
     private Reply runtimeAnswer(String q,TransAssistantRuntimeContext s){
         if(hasAny(q,"internet","koneksi","offline","jaringan")&&!s.online)return r("Perangkat sedang offline. Panduan lokal tetap tersedia, tetapi data merchant dan status terbaru membutuhkan internet.","","","DEVICE_NETWORK",1,false);

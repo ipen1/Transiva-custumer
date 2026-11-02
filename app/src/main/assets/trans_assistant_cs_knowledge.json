@@ -1,0 +1,312 @@
+{
+  "version": "4.0-native-cs",
+  "entries": [
+    {
+      "intent": "CS_SECURITY",
+      "title": "Keamanan akun",
+      "patterns": [
+        "\\b(otp|password|kata sandi|pin)\\b",
+        "\\b(ditipu|penipuan|dibajak|diretas|hack|phishing)\\b"
+      ],
+      "answer": "Jangan bagikan OTP, PIN, atau kata sandi, termasuk di chat ini. Jika ada transaksi yang tidak Anda kenali, hentikan komunikasi dengan pihak tersebut dan hubungi admin lewat Pusat Bantuan. Saya tidak dapat memblokir akun atau membalikkan transaksi dari chat.",
+      "action": "OPEN_SUPPORT",
+      "action_label": "Hubungi tim bantuan",
+      "follow_up": ""
+    },
+    {
+      "intent": "CS_HUMAN",
+      "title": "Bantuan admin",
+      "patterns": [
+        "\\b(hubungi|panggil|minta|ingin|mau|bicara|chat|sambungkan|sambung|ketemu)\\b.*\\b(admin|petugas|manusia|operator|cs asli|customer service)\\b",
+        "^(admin|petugas|manusia|operator|customer service|komplain|keluhan)$",
+        "\\b(buat laporan|laporkan|komplain|pengaduan)\\b"
+      ],
+      "answer": "Saya bisa menyiapkan ringkasan percakapan di formulir Pusat Bantuan. Periksa isinya dan tekan Kirim Keluhan agar laporan masuk ke admin. Membuka formulir belum mengirim laporan.",
+      "action": "OPEN_SUPPORT",
+      "action_label": "Periksa dan kirim laporan",
+      "follow_up": ""
+    },
+    {
+      "intent": "CS_TICKET",
+      "title": "Status laporan",
+      "patterns": [
+        "\\b(status|cek|balasan|jawaban|kabar|perkembangan)\\b.*\\b(tiket|laporan|keluhan|pengaduan)\\b",
+        "\\b(tiket|laporan|keluhan)\\b.*\\b(sudah|dibalas|dijawab|diproses)\\b"
+      ],
+      "answer": "Buka Pusat Bantuan untuk melihat status laporan dan balasan admin.",
+      "action": "OPEN_SUPPORT",
+      "action_label": "Lihat riwayat laporan",
+      "follow_up": ""
+    },
+    {
+      "intent": "CS_DEBIT",
+      "title": "Saldo terpotong",
+      "patterns": [
+        "\\b(saldo|uang|bayar|pembayaran|potongan)\\b.*\\b(terpotong|kepotong|dipotong|dobel|ganda|dua kali|2 kali|hilang)\\b",
+        "\\b(terpotong|kepotong|dobel|ganda)\\b.*\\b(saldo|uang|bayar)\\b"
+      ],
+      "answer": "Saya paham ini mengkhawatirkan. Jangan membayar ulang dulu. Bandingkan nomor order dan rincian transaksi di Riwayat. Dua baris transaksi belum cukup untuk memastikan terjadi potongan ganda. Jika masih tidak sesuai, lampirkan bukti di laporan agar admin memeriksa pencatatan pembayaran. Saya belum memastikan penyebab atau menjanjikan refund.",
+      "action": "OPEN_HISTORY",
+      "action_label": "Periksa riwayat transaksi",
+      "follow_up": "Apakah kendalanya saldo terpotong dua kali, atau saldo terpotong tetapi pesanan tidak terbentuk?",
+      "cases": [
+        {
+          "pattern": "\\b(dobel|ganda|dua kali|2 kali)\\b",
+          "answer": "Untuk dugaan potongan dua kali, cocokkan dua transaksi: nomor order, nominal, waktu, dan apakah keduanya benar-benar debit. Simpan screenshot rincian keduanya. Saya belum dapat memastikan potongan ganda dari tampilan saldo saja; admin perlu memeriksa buku transaksi."
+        },
+        {
+          "pattern": "\\b(tidak|belum)\\b.*\\b(pesanan|order|driver)\\b|\\b(pesanan|order)\\b.*\\b(tidak ada|belum ada|gagal|tidak terbentuk)\\b",
+          "answer": "Jika saldo terpotong tetapi pesanan tidak terbentuk, jangan membuat pembayaran ulang. Periksa Riwayat untuk memastikan apakah order sempat tercatat. Siapkan waktu kejadian, nominal, dan screenshot transaksi untuk laporan admin. Pemeriksaan order saja belum membuktikan dana sudah dikembalikan."
+        }
+      ],
+      "negative_patterns": [
+        "\\b(saldo|uang) (tidak|belum) (terpotong|kepotong|dipotong)\\b"
+      ]
+    },
+    {
+      "intent": "CS_TOPUP_PENDING",
+      "title": "Top up belum masuk",
+      "patterns": [
+        "\\b(top up|topup|transfer|deposit|isi saldo|pengisian)\\b.*\\b(belum|tidak|gagal|lama|pending|nyangkut)\\b",
+        "\\b(saldo belum masuk|saldo tidak masuk)\\b"
+      ],
+      "answer": "Jangan transfer ulang dulu, Kak. Cocokkan nominal, rekening tujuan, waktu transfer, dan status pada menu Top Up. Jika transfer berhasil tetapi saldo belum masuk, buat laporan dengan bukti transfer dan waktu transaksi. Jangan sertakan PIN atau OTP.",
+      "action": "OPEN_TOPUP",
+      "action_label": "Periksa Top Up",
+      "follow_up": "Transfernya sudah dinyatakan berhasil oleh bank atau dompet digital, atau masih tertunda?",
+      "cases": [
+        {
+          "pattern": "\\b(sudah berhasil|sudah transfer|transfer berhasil)\\b",
+          "answer": "Jika transfer sudah berhasil, jangan transfer ulang. Siapkan nominal, waktu, metode pembayaran, dan foto bukti transfer, lalu kirim laporan. Nominal saldo saat ini saja tidak membuktikan transfer tersebut sudah tercatat."
+        },
+        {
+          "pattern": "\\b(pending|tertunda|diproses)\\b",
+          "answer": "Jika transfer masih tertunda di bank atau dompet digital, periksa status di penyedia pembayaran tersebut terlebih dahulu. Jangan mengirim pembayaran kedua. Jika status sudah berhasil tetapi saldo belum masuk, laporkan dengan bukti transfer."
+        }
+      ]
+    },
+    {
+      "intent": "CS_REFUND",
+      "title": "Pengembalian dana",
+      "patterns": [
+        "\\b(refund|pengembalian dana|uang kembali|saldo kembali|uang balik|saldo balik|dikembalikan)\\b"
+      ],
+      "answer": "Pengembalian dana perlu diperiksa sesuai pesanan dan catatan pembayaran. Saya tidak bisa memastikan dana sudah kembali atau menentukan waktunya tanpa bukti transaksi. Buka Riwayat, lalu laporkan nomor order, nominal, dan waktu transaksi bila belum sesuai.",
+      "action": "OPEN_SUPPORT",
+      "action_label": "Ajukan pemeriksaan dana",
+      "follow_up": ""
+    },
+    {
+      "intent": "CS_VOUCHER",
+      "title": "Voucher dan promo",
+      "patterns": [
+        "\\b(voucher|voucer|vocer|kupon|promo|diskon)\\b"
+      ],
+      "answer": "Untuk voucher, periksa masa berlaku, layanan yang didukung, minimum transaksi, dan apakah voucher sudah terpakai. Pilih voucher sebelum konfirmasi pesanan dan pastikan potongan terlihat pada rincian total. Jika ongkir gagal dimuat atau potongan tidak muncul, jangan konfirmasi dulu; catat kode voucher dan laporkan.",
+      "action": "OPEN_SUPPORT",
+      "action_label": "Laporkan kendala voucher",
+      "follow_up": "Voucher tidak muncul, ditolak, atau sudah dipilih tetapi totalnya tidak berkurang?",
+      "cases": [
+        {
+          "pattern": "\\b(tidak muncul|belum muncul|hilang)\\b",
+          "answer": "Jika voucher tidak muncul, periksa dahulu daftar voucher yang dimiliki: apakah klaim berhasil, masa berlaku masih aktif, dan layanannya sesuai. Jika tercatat di daftar tetapi tidak muncul saat memesan, lampirkan screenshot kedua halaman pada laporan."
+        },
+        {
+          "pattern": "\\b(tidak berkurang|tidak dipotong|potongan tidak muncul|total tetap|ongkir error|ongkir gagal)\\b",
+          "answer": "Jika voucher sudah dipilih tetapi total tidak berkurang atau ongkir error, jangan konfirmasi pesanan dulu. Periksa syarat layanan dan minimum transaksi. Simpan kode voucher serta screenshot rincian harga untuk pemeriksaan admin."
+        },
+        {
+          "pattern": "\\b(cara|bagaimana|gunakan|pakai|menggunakan)\\b",
+          "answer": "Buka layanan yang sesuai, isi detail pesanan, lalu pilih voucher sebelum konfirmasi. Periksa bahwa voucher berhasil dipilih dan potongannya tercantum pada total pembayaran. Voucher yang baru diklaim perlu sudah tercatat pada daftar voucher Anda."
+        }
+      ]
+    },
+    {
+      "intent": "CS_REWARD",
+      "title": "Popup hadiah",
+      "patterns": [
+        "\\b(popup|pop up|hadiah)\\b"
+      ],
+      "answer": "Jika pemberitahuan hadiah terus muncul meski sudah ditutup, catat kapan munculnya, misalnya setelah login atau setelah pesanan selesai. Laporkan beserta screenshot. Jangan menghapus data aplikasi sebagai langkah pertama.",
+      "action": "OPEN_SUPPORT",
+      "action_label": "Laporkan popup berulang",
+      "follow_up": ""
+    },
+    {
+      "intent": "CS_FOOD_PROBLEM",
+      "title": "Masalah makanan",
+      "patterns": [
+        "\\b(makanan|menu|pesanan|barang|paket)\\b.*\\b(kurang|tumpah|rusak|salah|basi|tidak sesuai|belum diterima|tidak diterima)\\b",
+        "\\b(selesai|diterima)\\b.*\\b(tapi|tetapi|padahal)\\b.*\\b(belum|tidak)\\b"
+      ],
+      "answer": "Jika makanan atau barang belum diterima, jangan konfirmasi sudah diterima. Jika kurang, rusak, atau tidak sesuai, simpan foto kemasan dan isi pesanan serta nomor order. Hubungi driver atau merchant melalui pesanan dan buat laporan agar admin bisa memeriksa.",
+      "action": "OPEN_SUPPORT",
+      "action_label": "Laporkan masalah pesanan",
+      "follow_up": ""
+    },
+    {
+      "intent": "CS_CANCEL",
+      "title": "Pembatalan pesanan",
+      "patterns": [
+        "\\b(batal|batalkan|membatalkan|cancel|cancelkan)\\b"
+      ],
+      "answer": "Pembatalan harus melalui tombol yang tersedia pada pesanan dan mengikuti statusnya. Saya belum membatalkan apa pun. Periksa pesanan aktif; jika tombol batal tidak tersedia, hubungi admin dengan nomor order. Jangan membuat pesanan pengganti sebelum status pesanan pertama jelas.",
+      "action": "OPEN_ACTIVE_ORDER",
+      "action_label": "Periksa pilihan pembatalan",
+      "follow_up": "",
+      "cases": [
+        {
+          "pattern": "\\b(sudah|telah)\\b.*\\b(batal|dibatalkan|cancel)\\b",
+          "answer": "Jika pesanan sudah dibatalkan, periksa status di Riwayat dan rincian transaksinya. Bila dana belum sesuai, buat laporan dengan nomor order dan nominal. Saya belum memastikan ada refund atau berapa lama prosesnya."
+        }
+      ]
+    },
+    {
+      "intent": "CS_DRIVER_LATE",
+      "title": "Driver belum datang",
+      "patterns": [
+        "\\b(driver|pengemudi|ojek)\\b.*\\b(lama|belum|tidak datang|tidak bergerak|diam|nyasar|susah|sulit|hilang)\\b",
+        "\\b(belum dapat driver|belum ada driver|menunggu driver|nunggu driver)\\b",
+        "\\b(kapan|berapa lama)\\b.*\\b(driver|pengemudi)\\b",
+        "\\b(driver|pengemudi)\\b.*\\b(kapan datang|kapan sampai)\\b"
+      ],
+      "answer": "Saya bantu cek status pesanan, Kak. Jika driver sudah ditugaskan, gunakan chat pada pesanan untuk menanyakan posisinya. Jika belum ada driver, jangan membuat order berulang. Saya tidak dapat memastikan waktu kedatangan hanya dari status.",
+      "action": "OPEN_ACTIVE_ORDER",
+      "action_label": "Lihat pesanan dan driver",
+      "follow_up": ""
+    },
+    {
+      "intent": "CS_STATUS",
+      "title": "Status pesanan",
+      "patterns": [
+        "\\b(status|cek|lacak|posisi)\\b.*\\b(pesanan|order|driver|paket)\\b",
+        "\\b(driver|pesanan|order|paket)\\b.*\\b(di mana|dimana|sampai mana|belum sampai|kapan sampai)\\b",
+        "\\b(sudah sampai mana|pesanan saya bagaimana|order saya bagaimana)\\b",
+        "\\b(pesanan|order|paket)\\b.*\\b(belum datang|belum tiba)\\b"
+      ],
+      "answer": "Untuk melihat status terbaru, buka pesanan aktif. Informasi lokal dapat tertinggal; pemeriksaan langsung memerlukan koneksi server.",
+      "action": "OPEN_ACTIVE_ORDER",
+      "action_label": "Lihat pesanan aktif",
+      "follow_up": ""
+    },
+    {
+      "intent": "CS_BALANCE",
+      "title": "Cek saldo",
+      "patterns": [
+        "\\b(cek saldo|berapa saldo|saldo saya|saldo sekarang|sisa saldo)\\b"
+      ],
+      "answer": "Saldo pada perangkat belum tentu yang terbaru. Buka Top Up atau rincian transaksi untuk menyegarkan data. Saya tidak mengubah saldo dari percakapan.",
+      "action": "OPEN_TOPUP",
+      "action_label": "Lihat saldo dan Top Up",
+      "follow_up": ""
+    },
+    {
+      "intent": "CS_TOPUP",
+      "title": "Cara isi saldo",
+      "patterns": [
+        "\\b(top up|topup|isi saldo|tambah saldo|saldo kurang|deposit)\\b"
+      ],
+      "answer": "Buka menu Top Up, pilih metode yang tersedia, lalu ikuti nominal dan petunjuk yang ditampilkan. Periksa kembali tujuan pembayaran sebelum transfer.",
+      "action": "OPEN_TOPUP",
+      "action_label": "Buka Top Up",
+      "follow_up": ""
+    },
+    {
+      "intent": "CS_REFERRAL",
+      "title": "Referral",
+      "patterns": [
+        "\\b(referral|referal|ajak teman|kode undangan|undang teman)\\b"
+      ],
+      "answer": "Gunakan kode atau tautan pada menu referral akun Anda. Periksa syarat program yang sedang ditampilkan, termasuk syarat akun baru dan transaksi. Bonus tidak bisa saya pastikan hanya karena tautan telah dibagikan. Jika syarat sudah dipenuhi tetapi bonus belum masuk, laporkan kode undangan dan waktu kejadian.",
+      "action": "OPEN_PROFILE",
+      "action_label": "Buka akun dan referral",
+      "follow_up": ""
+    },
+    {
+      "intent": "CS_POINTS",
+      "title": "Poin loyalitas",
+      "patterns": [
+        "\\b(poin|point|loyalitas|level|silver|gold|platinum)\\b"
+      ],
+      "answer": "Periksa saldo poin dan syarat hadiah pada menu Poin Transiva. Poin, saldo uang, dan voucher adalah hal berbeda. Setelah menukar poin, cek apakah voucher berhasil tercatat dan sesuai layanan sebelum digunakan.",
+      "action": "OPEN_PROFILE",
+      "action_label": "Buka akun dan poin",
+      "follow_up": ""
+    },
+    {
+      "intent": "CS_LOGIN",
+      "title": "Akun dan login",
+      "patterns": [
+        "\\b(login|masuk akun|verifikasi|akun terkunci|akun diblokir|ganti nomor|hapus akun|email)\\b"
+      ],
+      "answer": "Ceritakan pesan yang muncul saat login atau verifikasi. Pastikan memakai metode dan akun yang sama seperti saat mendaftar. Jangan berikan kata sandi atau kode verifikasi di percakapan. Jika akses tetap gagal, gunakan Pusat Bantuan dan sertakan screenshot tanpa data rahasia.",
+      "action": "OPEN_SUPPORT",
+      "action_label": "Minta bantuan akun",
+      "follow_up": ""
+    },
+    {
+      "intent": "CS_GPS",
+      "title": "Lokasi dan peta",
+      "patterns": [
+        "\\b(gps|lokasi|titik jemput|titik tujuan|peta|maps|alamat)\\b"
+      ],
+      "answer": "Aktifkan lokasi dan izin lokasi presisi untuk Transiva. Periksa titik jemput dan tujuan di peta sebelum memesan. Jika hasil pencarian kurang tepat, tambahkan nama wilayah atau atur pin langsung.",
+      "action": "OPEN_LOCATION_SETTINGS",
+      "action_label": "Periksa pengaturan lokasi",
+      "follow_up": ""
+    },
+    {
+      "intent": "CS_APP_ERROR",
+      "title": "Gangguan aplikasi",
+      "patterns": [
+        "\\b(error|eror|bug|crash|macet|blank|layar putih|force close|keluar sendiri|lemot|tidak bisa dibuka)\\b"
+      ],
+      "answer": "Coba periksa koneksi, tutup lalu buka kembali aplikasi, dan pastikan versi yang digunakan terbaru. Jika ada pesanan aktif, periksa statusnya sebelum mencoba memesan lagi. Jika berulang, laporkan menu, langkah kejadian, dan screenshot pesan error.",
+      "action": "OPEN_SUPPORT",
+      "action_label": "Laporkan gangguan aplikasi",
+      "follow_up": ""
+    },
+    {
+      "intent": "CS_FARE",
+      "title": "Tarif perjalanan",
+      "patterns": [
+        "\\b(tarif|ongkir|ongkos|biaya|harga|mahal|potongan driver|fee)\\b"
+      ],
+      "answer": "Tarif mengikuti layanan, rute, dan pengaturan server. Gunakan rincian total di halaman pemesanan sebagai acuan sebelum konfirmasi. Saya tidak menghitung atau menjamin tarif dari chat tanpa kutipan harga resmi.",
+      "action": "OPEN_HISTORY",
+      "action_label": "Periksa rincian pesanan",
+      "follow_up": ""
+    },
+    {
+      "intent": "CS_PAYMENT_DISPUTE",
+      "title": "Diminta membayar ulang",
+      "patterns": [
+        "\\b(ditagih|bayar lagi|bayar ulang|minta bayar|meminta bayar)\\b",
+        "\\b(tunai|cash)\\b.*\\b(padahal|sudah)\\b.*\\b(saldo|bayar|non tunai|nontunai)\\b"
+      ],
+      "answer": "Jangan membayar dua kali sebelum memeriksa metode pembayaran dan rincian pesanan. Jika diminta tunai padahal pembayaran non-tunai sudah tercatat, simpan bukti permintaan tersebut dan hubungi admin untuk pemeriksaan. Status pembayaran yang tercatat perlu dicocokkan dengan transaksi; saya belum memastikan ada kelebihan pembayaran.",
+      "action": "OPEN_SUPPORT",
+      "action_label": "Laporkan permintaan pembayaran"
+    },
+    {
+      "intent": "CS_LOST_ITEM",
+      "title": "Barang tertinggal",
+      "patterns": [
+        "\\b(barang|tas|dompet|hp|telepon|paket)\\b.*\\b(tertinggal|ketinggalan|hilang)\\b"
+      ],
+      "answer": "Catat nomor order, ciri barang, dan perkiraan lokasi atau waktu tertinggal. Hubungi driver melalui rincian pesanan jika tombol chat masih tersedia, lalu buat laporan ke admin. Jangan bagikan kode pembuka perangkat atau PIN. Pengembalian barang belum dapat saya pastikan dari chat ini.",
+      "action": "OPEN_SUPPORT",
+      "action_label": "Laporkan barang tertinggal"
+    },
+    {
+      "intent": "CS_DRIVER_CONDUCT",
+      "title": "Perilaku driver",
+      "patterns": [
+        "\\b(driver|pengemudi|sopir)\\b.*\\b(kasar|mengancam|melecehkan|berbahaya|ugal ugalan|memaksa)\\b"
+      ],
+      "answer": "Utamakan keselamatan, Kak. Jika perjalanan terasa tidak aman, cari tempat aman dan minta bantuan orang di sekitar. Simpan nomor order dan bukti kejadian jika aman dilakukan, lalu laporkan ke admin. Jika sedang dalam bahaya langsung, hubungi layanan darurat setempat; jangan menunggu balasan chat ini.",
+      "action": "OPEN_SUPPORT",
+      "action_label": "Laporkan kejadian ke admin"
+    }
+  ]
+}

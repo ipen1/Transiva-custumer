@@ -510,6 +510,11 @@ class CustomerTripActivityScreenCore extends CustomerAdaptiveActivity {
         loadTripPhoto(driverPhotoView,firstNonEmpty(driver.optString("driver_photo"),driver.optString("photo"),order.optString("driver_photo")),false);
         loadTripPhoto(vehiclePhotoView,firstNonEmpty(driver.optString("vehicle_photo"),order.optString("vehicle_photo")),true);
         lastDriverName = driverName;
+        // Only a live transition may schedule a reward; opening an old finished trip cannot.
+        if (!trackingOnly && !lastStatus.isEmpty() && CustomerOrderState.rank(lastStatus) >= 0
+                && !CustomerOrderState.isEnded(lastStatus) && isFinishedStatus(status)) {
+            RoyaltyRewardFeedback.completed(this, orderId, orderSource);
+        }
         lastStatus = status;
         if (tripStatus != null) {
             try {

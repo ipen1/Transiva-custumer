@@ -2074,6 +2074,9 @@ class CustomerHistoryActivityScreenCore extends CustomerAdaptiveActivity {
                     progressBar.setVisibility(View.GONE);
 
                     if (success) {
+                        RoyaltyRewardFeedback.completed(this,
+                                first(order.optString("order_id"), order.optString("id")),
+                                order.optString("source", "orders"));
                         try {
                             order.put("customer_received", 1);
                         } catch (Exception ignored) {
@@ -2085,7 +2088,7 @@ class CustomerHistoryActivityScreenCore extends CustomerAdaptiveActivity {
                     new TransivaAlertDialogBuilder(this)
                             .setTitle(success ? "Berhasil" : "Gagal")
                             .setMessage(message)
-                            .setPositiveButton("OK", null)
+                            .setPositiveButton("OK", (d, w) -> { if (success) RoyaltyRewardFeedback.check(this); })
                             .show();
                 });
 

@@ -86,18 +86,70 @@ class TransShopActivityScreenCore extends CustomerAdaptiveActivity {
         TextView origin=text(pickupAddress,11,"#64748B",false);origin.setSingleLine(true);origin.setEllipsize(android.text.TextUtils.TruncateAt.END);shoppingPlanBox.addView(origin);
         if(noteInput.getParent() instanceof android.view.ViewGroup)((android.view.ViewGroup)noteInput.getParent()).removeView(noteInput);
         shoppingPlanBox.addView(new ShopSavedNoteView(this,noteInput,primaryNoteSaved,saved -> primaryNoteSaved = saved),new LinearLayout.LayoutParams(-1,-2));
-        for(int i=0;i<shoppingStops.length();i++){
-            final int position=i;JSONObject w=shoppingStops.optJSONObject(i);LinearLayout head=new LinearLayout(this);head.setGravity(Gravity.CENTER_VERTICAL);
-            head.addView(text("Singgah "+(i+1),12,"#B45309",true),new LinearLayout.LayoutParams(0,dp(44),1));Button remove=smallButton("Hapus","#FFFFFF","#B45309","#FFFFFF");remove.setTextSize(11);compactShopButton(remove);remove.setBackgroundColor(Color.TRANSPARENT);head.addView(remove,new LinearLayout.LayoutParams(dp(72),dp(44)));shoppingPlanBox.addView(head);
-            TextView address=text(w.optString("address"),11,"#64748B",false);address.setSingleLine(true);address.setEllipsize(android.text.TextUtils.TruncateAt.END);shoppingPlanBox.addView(address);
-            EditText input=shopListInput(w.optString("note"),"Beli apa di titik ini? Contoh: telur 1 kg, minyak 1 liter",1500);shoppingStopInputs.add(input);shoppingPlanBox.addView(new ShopSavedNoteView(this,input,w.optBoolean("note_saved",false),saved->{try{w.put("note_saved",saved);}catch(org.json.JSONException ignored){}}),new LinearLayout.LayoutParams(-1,-2));
-            remove.setOnClickListener(v->{if(ordering)return;readStopDrafts();JSONArray next=new JSONArray();for(int j=0;j<shoppingStops.length();j++)if(j!=position)next.put(shoppingStops.optJSONObject(j));shoppingStops=next;selectingShoppingStop=false;shoppingStopInputs.clear();renderShoppingPlan();if(mapView!=null){mapView.setWaypoints(shopWaypoints());mapView.clearRoute();}updateModeUI();invalidateShopQuote();requestPaymentQuote();});
+        for (int i = 0; i < shoppingStops.length(); i++) {
+            final int position = i;
+            JSONObject stop = shoppingStops.optJSONObject(i);
+            LinearLayout section = new LinearLayout(this);
+            section.setOrientation(LinearLayout.VERTICAL);
+            section.setTag(stop);
+            LinearLayout.LayoutParams sectionParams = new LinearLayout.LayoutParams(-1, -2);
+            sectionParams.topMargin = dp(8);
+            shoppingPlanBox.addView(section, sectionParams);
+
+            LinearLayout header = new LinearLayout(this);
+            header.setGravity(Gravity.CENTER_VERTICAL);
+            section.addView(header, new LinearLayout.LayoutParams(-1, -2));
+
+            LinearLayout labels = new LinearLayout(this);
+            labels.setOrientation(LinearLayout.VERTICAL);
+            header.addView(labels, new LinearLayout.LayoutParams(0, -2, 1));
+            labels.addView(text("Singgah " + (i + 1), 12, "#B45309", true));
+            TextView address = text(stop.optString("address"), 11, "#64748B", false);
+            address.setSingleLine(true);
+            address.setEllipsize(android.text.TextUtils.TruncateAt.END);
+            address.setTag("stop_address");
+            labels.addView(address);
+
+            Button remove = smallButton("Hapus", "#FFFFFF", "#B45309", "#FFFFFF");
+            remove.setTextSize(11);
+            compactShopButton(remove);
+            remove.setBackgroundColor(Color.TRANSPARENT);
+            remove.setContentDescription("Hapus Singgah " + (i + 1));
+            header.addView(remove, new LinearLayout.LayoutParams(dp(60), dp(44)));
+            remove.setOnClickListener(v -> removeShoppingStop(position));
+
+            EditText input = shopListInput(stop.optString("note"),
+                    "Beli apa di titik ini? Contoh: telur 1 kg, minyak 1 liter", 1500);
+            shoppingStopInputs.add(input);
+            section.addView(new ShopSavedNoteView(this, input, stop.optBoolean("note_saved", false),
+                    saved -> {
+                        try { stop.put("note_saved", saved); }
+                        catch (org.json.JSONException ignored) {}
+                    }), new LinearLayout.LayoutParams(-1, -2));
         }
         updateShoppingStopButton();
         shoppingTariffText=text(shopTariffLabel(),10,"#64748B",false);shoppingPlanBox.addView(shoppingTariffText);
         if(cartDetailText!=null&&cartDetailText.getVisibility()==View.VISIBLE){if(cartDetailText.getParent() instanceof android.view.ViewGroup)((android.view.ViewGroup)cartDetailText.getParent()).removeView(cartDetailText);shoppingPlanBox.addView(cartDetailText,new LinearLayout.LayoutParams(-1,-2));}
         if(noteChoiceBtn!=null)noteChoiceBtn.setText(shoppingPlanExpanded?"List Belanjaan ▴":"List Belanjaan ▾");
     }
+    private void removeShoppingStop(int position) {
+        if (ordering) return;
+        readStopDrafts();
+        JSONArray remaining = new JSONArray();
+        for (int i = 0; i < shoppingStops.length(); i++) {
+            if (i != position) remaining.put(shoppingStops.optJSONObject(i));
+        }
+        shoppingStops = remaining;
+        selectingShoppingStop = false;
+        shoppingStopInputs.clear();
+        renderShoppingPlan();
+        mapView.setWaypoints(shopWaypoints());
+        mapView.clearRoute();
+        updateModeUI();
+        invalidateShopQuote();
+        requestPaymentQuote();
+    }
+
     private Button addStopButton;
     private boolean deliveryOverride;
     private boolean editingDelivery;
@@ -132,10 +184,39 @@ class TransShopActivityScreenCore extends CustomerAdaptiveActivity {
         if (!validCoord(lat, lng)) return;
         selectingShoppingStop = false;
         mapView.clearRoute();
-        try{shoppingStops.put(new JSONObject().put("latitude",lat).put("longitude",lng).put("address",String.format(Locale.US,"%.6f, %.6f",lat,lng)).put("note",""));}catch(Exception ignored){}
-        renderShoppingPlan();setShoppingPlanExpanded(true);if(shoppingScroll!=null)shoppingPlanBox.post(()->shoppingScroll.smoothScrollTo(0,shoppingPlanBox.getBottom()));mapView.setWaypoints(shopWaypoints());updateModeUI();invalidateShopQuote();requestPaymentQuote();
-        final JSONObject added=shoppingStops.optJSONObject(shoppingStops.length()-1);
-        featureRuntime.execute(()->{String address=buildSmartAddress(lat,lng);featureRuntime.post(mainHandler,()->{if(destroyed)return;try{added.put("address",address);}catch(Exception ignored){}renderShoppingPlan();});},()->{});
+        final JSONObject added = new JSONObject();
+        try {
+            added.put("latitude", lat).put("longitude", lng)
+                    .put("address", shortCoord(lat, lng)).put("note", "");
+        } catch (org.json.JSONException invalidPoint) {
+            updateModeUI();
+            return;
+        }
+        shoppingStops.put(added);
+        renderShoppingPlan();
+        setShoppingPlanExpanded(true);
+        shoppingScroll.post(() -> {
+            View section = shoppingPlanBox.findViewWithTag(added);
+            if (section != null && shoppingPlanExpanded) shoppingScroll.smoothScrollTo(0, section.getTop());
+        });
+        mapView.setWaypoints(shopWaypoints());
+        updateModeUI();
+        invalidateShopQuote();
+        requestPaymentQuote();
+
+        featureRuntime.execute(() -> {
+            String address = buildSmartAddress(lat, lng);
+            featureRuntime.post(mainHandler, () -> {
+                if (destroyed) return;
+                try { added.put("address", address); }
+                catch (org.json.JSONException ignored) {}
+                View section = shoppingPlanBox.findViewWithTag(added);
+                if (section != null) {
+                    TextView label = (TextView) section.findViewWithTag("stop_address");
+                    if (label != null) label.setText(address);
+                }
+            });
+        }, () -> {});
     }
     @Override protected void onSaveInstanceState(Bundle out){readStopDrafts();out.putBoolean("shop_delivery_override",deliveryOverride);out.putDouble("shop_delivery_lat",deliveryLat);out.putDouble("shop_delivery_lng",deliveryLng);out.putString("shop_delivery_address",deliveryAddress);out.putDouble("shop_pickup_lat",pickupLat);out.putDouble("shop_pickup_lng",pickupLng);out.putString("shop_pickup_address",pickupAddress);out.putString("shop_stops",shoppingStops.toString());out.putString("shop_primary_note",noteInput==null?"":noteInput.getText().toString());out.putBoolean("shop_primary_saved",primaryNoteSaved);out.putString("shop_voucher",voucherInput==null?"":voucherInput.getText().toString());super.onSaveInstanceState(out);}
     protected static final String CREATE_ORDER_URL = BASE_URL + "server/createOrder.php";
@@ -1607,6 +1688,11 @@ class TransShopActivityScreenCore extends CustomerAdaptiveActivity {
     }
 
     protected void updateModeUI() {
+        if (orderBtn != null) {
+            boolean routeConfirmed = !selectingShoppingStop && "idle".equals(mode)
+                    && validCoord(pickupLat, pickupLng) && validCoord(deliveryLat, deliveryLng);
+            orderBtn.setVisibility(routeConfirmed ? View.VISIBLE : View.GONE);
+        }
         if (selectingShoppingStop) {
             modeText.setText("Pilih titik singgah");
             mapView.setWaypointSelectionMode(shoppingStops.length() + 1);
@@ -1658,7 +1744,7 @@ class TransShopActivityScreenCore extends CustomerAdaptiveActivity {
 
 
 
-    private void resetOrderButton() { ordering = false; setLoading(false); orderBtn.setEnabled(true); orderBtn.setText("🛍️ Pesan TransShop"); }
+    private void resetOrderButton() { ordering = false; setLoading(false); orderBtn.setEnabled(true); orderBtn.setText("PESAN TRANSSHOP"); }
     private void setLoading(boolean b) { if (progressBar != null) progressBar.setVisibility(b ? View.VISIBLE : View.GONE); }
     private int checkSelfPermissionCompat(String p) { return android.os.Build.VERSION.SDK_INT >= 23 ? checkSelfPermission(p) : PackageManager.PERMISSION_GRANTED; }
 

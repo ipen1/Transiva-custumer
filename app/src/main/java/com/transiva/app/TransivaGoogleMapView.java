@@ -258,11 +258,29 @@ public final class TransivaGoogleMapView extends FrameLayout implements OnMapRea
                 if (reason == GoogleMap.OnCameraMoveStartedListener.REASON_GESTURE && gestureListener != null) gestureListener.onGestureStart();
             });
         }
+        if (shopDeliveryClick != null) bindShopMarkerClick();
         LatLng c = map.getCameraPosition().target;
         if (listener != null) listener.onReady(c.latitude, c.longitude);
     }
 
     public boolean isReady() { return ready && googleMap != null; }
+
+    private Runnable shopDeliveryClick;
+
+    /** Enables TransShop pins and delivery editing for this picker instance. */
+    public void enableShopPicker(Runnable deliveryClick) {
+        shopDeliveryClick = deliveryClick;
+        setSelectionMode("pickup");
+        if (isReady()) bindShopMarkerClick();
+    }
+
+    private void bindShopMarkerClick() {
+        googleMap.setOnMarkerClickListener(marker -> {
+            if (!marker.equals(deliveryMarker)) return false;
+            shopDeliveryClick.run();
+            return true;
+        });
+    }
 
     public void setSelectionMode(String mode) {
         selectionMode = "delivery".equals(mode) ? "delivery" : "pickup";
@@ -270,10 +288,12 @@ public final class TransivaGoogleMapView extends FrameLayout implements OnMapRea
         setOrderFocus(false);
         if (centerPin != null) {
             boolean delivery = "delivery".equals(selectionMode);
-            centerPin.setImageResource(delivery
-                    ? R.drawable.map_destination_pin : R.drawable.map_pickup_pin);
+            centerPin.setImageResource(shopDeliveryClick != null
+                    ? (delivery ? R.drawable.map_shop_delivery_pin : R.drawable.map_shop_pickup_pin)
+                    : (delivery ? R.drawable.map_destination_pin : R.drawable.map_pickup_pin));
             if (centerAction != null) {
-                centerAction.setText("Pilih lokasi ini");
+                centerAction.setText(shopDeliveryClick == null ? "Pilih lokasi ini"
+                        : (delivery ? "Antar ke sini" : "Belanja di sini"));
                 // CTA utama selalu memakai biru Transiva; warna pin tetap membedakan jemput/tujuan.
                 centerAction.setBackground(actionBackground("#0B7CFF"));
             }
@@ -286,7 +306,8 @@ public final class TransivaGoogleMapView extends FrameLayout implements OnMapRea
         updateCenterActionPosition(false);
         setOrderFocus(false);
         if (centerPin != null) {
-            centerPin.setImageResource(R.drawable.map_destination_pin);
+            centerPin.setImageResource(shopDeliveryClick != null
+                    ? R.drawable.map_shop_stop_pin : R.drawable.map_destination_pin);
             centerPin.setVisibility(VISIBLE);
         }
         if (centerAction != null) {
@@ -364,8 +385,10 @@ public final class TransivaGoogleMapView extends FrameLayout implements OnMapRea
         boolean selecting = mode == Mode.PICKER && pickerVisible;
         // Keep the confirmed green pickup visible while choosing a destination.
         // During manual pickup selection the center pin is the only pickup pin.
-        if (pickupMarker != null) pickupMarker.setVisible(!selecting || "delivery".equals(selectionMode));
-        if (deliveryMarker != null) deliveryMarker.setVisible(!selecting);
+        if (pickupMarker != null) pickupMarker.setVisible(!selecting || "delivery".equals(selectionMode)
+                || (shopDeliveryClick != null && "waypoint".equals(selectionMode)));
+        if (deliveryMarker != null) deliveryMarker.setVisible(!selecting
+                || (shopDeliveryClick != null && !"delivery".equals(selectionMode)));
         if (centerPin != null && selecting) centerPin.setVisibility(VISIBLE);
     }
 
@@ -432,8 +455,8 @@ public final class TransivaGoogleMapView extends FrameLayout implements OnMapRea
             pickupMarker = googleMap.addMarker(new MarkerOptions()
                     .position(p)
                     .anchor(0.5f, 1f)
-                    .icon(icon(R.drawable.map_pickup_pin, 42, 54))
-                    .title("Lokasi Jemput"));
+                    .icon(icon(shopDeliveryClick != null ? R.drawable.map_shop_pickup_pin : R.drawable.map_pickup_pin, 42, 54))
+                    .title(shopDeliveryClick != null ? "Lokasi Belanja" : "Lokasi Jemput"));
         } else pickupMarker.setPosition(p);
         if (pickupMarker != null) pickupMarker.setSnippet(label == null ? "" : label);
         syncPickerMarkers();
@@ -446,7 +469,7 @@ public final class TransivaGoogleMapView extends FrameLayout implements OnMapRea
             deliveryMarker = googleMap.addMarker(new MarkerOptions()
                     .position(p)
                     .anchor(0.5f, 1f)
-                    .icon(icon(R.drawable.map_destination_pin, 42, 54))
+                    .icon(icon(shopDeliveryClick != null ? R.drawable.map_shop_delivery_pin : R.drawable.map_destination_pin, 42, 54))
                     .title("Lokasi Pengantaran"));
         } else deliveryMarker.setPosition(p);
         if (deliveryMarker != null) deliveryMarker.setSnippet(label == null ? "" : label);
@@ -478,7 +501,8 @@ public final class TransivaGoogleMapView extends FrameLayout implements OnMapRea
             Marker marker = googleMap.addMarker(new MarkerOptions()
                     .position(new LatLng(lat, lng))
                     .anchor(0.5f, 1f)
-                    .icon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_ORANGE))
+                    .icon(shopDeliveryClick != null ? icon(R.drawable.map_shop_stop_pin, 42, 54)
+                            : BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_ORANGE))
                     .title("Stop " + seq)
                     .snippet(address));
             if (marker != null) waypointMarkers.add(marker);

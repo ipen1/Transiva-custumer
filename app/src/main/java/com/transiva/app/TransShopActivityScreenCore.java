@@ -67,7 +67,7 @@ class TransShopActivityScreenCore extends CustomerAdaptiveActivity {
             shoppingStops=new JSONArray(draft.getString("stops","[]"));
             pickupLat=Double.parseDouble(draft.getString("lat","0"));pickupLng=Double.parseDouble(draft.getString("lng","0"));
             pickupAddress=draft.getString("address",pickupAddress);
-            if(validCoord(pickupLat,pickupLng))pickupBtn.setText("● Belanja di sini\n"+shortAddress(pickupAddress));
+            if(validCoord(pickupLat,pickupLng))pickupBtn.setText("Belanja di sini\n"+shortAddress(pickupAddress));
         }catch(Exception ignored){}
     }
     private void setShoppingPlanExpanded(boolean expanded){
@@ -110,27 +110,53 @@ class TransShopActivityScreenCore extends CustomerAdaptiveActivity {
             head.addView(text("Singgah "+(i+1),12,"#B45309",true),new LinearLayout.LayoutParams(0,dp(44),1));Button remove=smallButton("Hapus","#FFFFFF","#B45309","#FFFFFF");remove.setTextSize(11);compactShopButton(remove);remove.setBackgroundColor(Color.TRANSPARENT);head.addView(remove,new LinearLayout.LayoutParams(dp(72),dp(44)));shoppingPlanBox.addView(head);
             TextView address=text(w.optString("address"),11,"#64748B",false);address.setSingleLine(true);address.setEllipsize(android.text.TextUtils.TruncateAt.END);shoppingPlanBox.addView(address);
             EditText input=shopListInput(w.optString("note"),"Beli apa di titik ini? Contoh: telur 1 kg, minyak 1 liter",1500);shoppingStopInputs.add(input);shoppingPlanBox.addView(new ShopSavedNoteView(this,input,w.optBoolean("note_saved",false),saved->{try{w.put("note_saved",saved);}catch(org.json.JSONException ignored){}saveShoppingDraft();}),new LinearLayout.LayoutParams(-1,-2));
-            remove.setOnClickListener(v->{if(ordering)return;readStopDrafts();JSONArray next=new JSONArray();for(int j=0;j<shoppingStops.length();j++)if(j!=position)next.put(shoppingStops.optJSONObject(j));shoppingStops=next;selectingShoppingStop=false;shoppingStopInputs.clear();renderShoppingPlan();saveShoppingDraft();if(mapView!=null)mapView.setWaypoints(shopWaypoints());invalidateShopQuote();requestPaymentQuote();});
+            remove.setOnClickListener(v->{if(ordering)return;readStopDrafts();JSONArray next=new JSONArray();for(int j=0;j<shoppingStops.length();j++)if(j!=position)next.put(shoppingStops.optJSONObject(j));shoppingStops=next;selectingShoppingStop=false;shoppingStopInputs.clear();renderShoppingPlan();saveShoppingDraft();if(mapView!=null){mapView.setWaypoints(shopWaypoints());mapView.clearRoute();}updateModeUI();invalidateShopQuote();requestPaymentQuote();});
         }
-        Button add=smallButton("＋ Tambah persinggahan "+shoppingStops.length()+"/"+allowedShoppingStops,"#EAF4FF","#0B7CFF","#D7E6F8");add.setTextSize(12);compactShopButton(add);add.setEnabled(shoppingStops.length()<allowedShoppingStops&&!ordering&&!catalogPickup);
-        add.setOnClickListener(v->{if(ordering||shoppingStops.length()>=allowedShoppingStops)return;if(!validCoord(pickupLat,pickupLng)){toastDialog("Pilih toko pertama di peta terlebih dahulu.");return;}selectingShoppingStop=true;setShoppingPlanExpanded(false);mapView.setWaypointSelectionMode(shoppingStops.length()+1);mapView.showCenterPin(true);modeText.setText("Geser peta ke toko tambahan, lalu tekan TAMBAH STOP");});
-        if(shoppingStops.length()>=allowedShoppingStops||catalogPickup)add.setVisibility(View.GONE);
-        LinearLayout.LayoutParams addLp=new LinearLayout.LayoutParams(-1,dp(44));addLp.setMargins(0,dp(8),0,0);shoppingPlanBox.addView(add,addLp);
+        updateShoppingStopButton();
         shoppingTariffText=text(shopTariffLabel(),10,"#64748B",false);shoppingPlanBox.addView(shoppingTariffText);
         if(cartDetailText!=null&&cartDetailText.getVisibility()==View.VISIBLE){if(cartDetailText.getParent() instanceof android.view.ViewGroup)((android.view.ViewGroup)cartDetailText.getParent()).removeView(cartDetailText);shoppingPlanBox.addView(cartDetailText,new LinearLayout.LayoutParams(-1,-2));}
         if(noteChoiceBtn!=null)noteChoiceBtn.setText(shoppingPlanExpanded?"Tutup daftar ▴":"Daftar belanja ▾");
     }
+    private Button addStopButton;
+    private boolean deliveryOverride;
+    private boolean editingDelivery;
+    private boolean cameraTouched;
+    private boolean gpsPending;
+
+    private void updateShoppingStopButton() {
+        if (addStopButton == null) return;
+        boolean available = !catalogPickup && shoppingStops.length() < allowedShoppingStops;
+        if (!available && selectingShoppingStop) {
+            selectingShoppingStop = false;
+            updateModeUI();
+        }
+        addStopButton.setVisibility(available ? View.VISIBLE : View.GONE);
+        addStopButton.setText(selectingShoppingStop ? "Batal pilih persinggahan"
+                : "＋ Tambah persinggahan " + shoppingStops.length() + "/" + allowedShoppingStops);
+    }
+
+    private void toggleShoppingStopSelection() {
+        if (ordering || !mapReady || catalogPickup || shoppingStops.length() >= allowedShoppingStops) return;
+        selectingShoppingStop = !selectingShoppingStop;
+        cameraTouched = true;
+        setShoppingPlanExpanded(false);
+        updateModeUI();
+    }
+
     private String shopTariffLabel(){if(shoppingStopRule==null)return "Ongkir dan singgah mengikuti tarif admin. Harga barang dikonfirmasi dengan driver lewat chat.";return "Singgah Rp"+formatMoney(shoppingStopRule.optInt("stop_fee"))+"/titik · tunggu gratis "+(shoppingStopRule.optInt("free_seconds")/60)+" menit, lalu Rp"+formatMoney(shoppingStopRule.optInt("rate_per_minute"))+"/menit dimulai. Harga barang di luar ongkir.";}
     private void addShoppingStop(){
-        if(ordering||shoppingStops.length()>=allowedShoppingStops)return;double a=centerLat,b=centerLng;
-        if(mapView!=null&&mapView.isReady()){com.google.android.gms.maps.model.LatLng p=mapView.getCenter();if(p!=null){a=p.latitude;b=p.longitude;}}
-        if(!validCoord(a,b))return;final double lat=a,lng=b;selectingShoppingStop=false;
+        if (ordering || !mapReady || catalogPickup || shoppingStops.length() >= allowedShoppingStops) return;
+        com.google.android.gms.maps.model.LatLng point = mapView.getCenter();
+        final double lat = point.latitude, lng = point.longitude;
+        if (!validCoord(lat, lng)) return;
+        selectingShoppingStop = false;
+        mapView.clearRoute();
         try{shoppingStops.put(new JSONObject().put("latitude",lat).put("longitude",lng).put("address",String.format(Locale.US,"%.6f, %.6f",lat,lng)).put("note",""));}catch(Exception ignored){}
         renderShoppingPlan();saveShoppingDraft();setShoppingPlanExpanded(true);if(shoppingScroll!=null)shoppingPlanBox.post(()->shoppingScroll.smoothScrollTo(0,shoppingPlanBox.getBottom()));mapView.setWaypoints(shopWaypoints());updateModeUI();invalidateShopQuote();requestPaymentQuote();
         final JSONObject added=shoppingStops.optJSONObject(shoppingStops.length()-1);
         featureRuntime.execute(()->{String address=buildSmartAddress(lat,lng);featureRuntime.post(mainHandler,()->{if(destroyed)return;try{added.put("address",address);saveShoppingDraft();}catch(Exception ignored){}renderShoppingPlan();});},()->{});
     }
-    @Override protected void onSaveInstanceState(Bundle out){readStopDrafts();out.putDouble("shop_pickup_lat",pickupLat);out.putDouble("shop_pickup_lng",pickupLng);out.putString("shop_pickup_address",pickupAddress);out.putString("shop_stops",shoppingStops.toString());out.putString("shop_primary_note",noteInput==null?"":noteInput.getText().toString());out.putBoolean("shop_primary_saved",primaryNoteSaved);out.putString("shop_voucher",voucherInput==null?"":voucherInput.getText().toString());super.onSaveInstanceState(out);}
+    @Override protected void onSaveInstanceState(Bundle out){readStopDrafts();out.putBoolean("shop_delivery_override",deliveryOverride);out.putDouble("shop_delivery_lat",deliveryLat);out.putDouble("shop_delivery_lng",deliveryLng);out.putString("shop_delivery_address",deliveryAddress);out.putDouble("shop_pickup_lat",pickupLat);out.putDouble("shop_pickup_lng",pickupLng);out.putString("shop_pickup_address",pickupAddress);out.putString("shop_stops",shoppingStops.toString());out.putString("shop_primary_note",noteInput==null?"":noteInput.getText().toString());out.putBoolean("shop_primary_saved",primaryNoteSaved);out.putString("shop_voucher",voucherInput==null?"":voucherInput.getText().toString());super.onSaveInstanceState(out);}
     protected static final String CREATE_ORDER_URL = BASE_URL + "server/createOrder.php";
     protected static final String PROFILE_URL = BASE_URL + "server/get_customer_profile.php";
     protected static final String PAYMENT_QUOTE_URL = BASE_URL + "server/ride_payment_quote.php";
@@ -157,33 +183,6 @@ class TransShopActivityScreenCore extends CustomerAdaptiveActivity {
     protected boolean ordering = false;
     protected String mode = "pickup";
 
-    /*
-     * SATU-SATUNYA PENGATURAN UKURAN MARKER JEMPUT/TUJUAN.
-     *
-     * Marker center Android dan marker tersimpan Leaflet memakai ukuran yang sama.
-     * Cukup ubah angka MARKER_WIDTH_DP untuk memperbesar atau memperkecil semuanya.
-     *
-     * Rekomendasi:
-     * 36 = kecil
-     * 40 = sedang
-     * 44 = besar
-     */
-    protected static final int MARKER_WIDTH_DP = 40;
-
-    // Rasio mengikuti file ikon asli (46 x 58).
-    protected static final int MARKER_HEIGHT_DP =
-            Math.round(MARKER_WIDTH_DP * 58f / 46f);
-
-    protected static final int MARKER_BOX_WIDTH_DP = MARKER_WIDTH_DP;
-    protected static final int MARKER_BOX_HEIGHT_DP = MARKER_HEIGHT_DP;
-    protected static final int MARKER_IMAGE_WIDTH_DP = MARKER_WIDTH_DP;
-    protected static final int MARKER_IMAGE_HEIGHT_DP = MARKER_HEIGHT_DP;
-
-    protected static final int MARKER_ANCHOR_X_PX =
-            MARKER_BOX_WIDTH_DP / 2;
-
-    protected static final int MARKER_ANCHOR_Y_PX =
-            Math.max(1, MARKER_IMAGE_HEIGHT_DP - 2);
     protected String username = "";
     protected String authToken = "";
     protected String paymentMethod = "cash";
@@ -191,8 +190,6 @@ class TransShopActivityScreenCore extends CustomerAdaptiveActivity {
 
     protected double pickupLat = 0, pickupLng = 0;
     protected double deliveryLat = 0, deliveryLng = 0;
-    protected double centerLat = -0.018137, centerLng = 120.087380;
-    protected double pickLat = 0, pickLng = 0;
 
     protected String catalogStoreName = "";
     protected boolean catalogPickup = false;
@@ -213,17 +210,26 @@ class TransShopActivityScreenCore extends CustomerAdaptiveActivity {
         buildLayout();
         String catalogList = getIntent().getStringExtra("transshop_catalog_list");
         if (catalogList != null && !catalogList.trim().isEmpty() && noteInput != null) noteInput.setText(catalogList);
-        if(savedInstanceState!=null){try{pickupLat=savedInstanceState.getDouble("shop_pickup_lat",0);pickupLng=savedInstanceState.getDouble("shop_pickup_lng",0);pickupAddress=savedInstanceState.getString("shop_pickup_address",pickupAddress);if(validCoord(pickupLat,pickupLng))pickupBtn.setText("● Belanja di sini\n"+shortAddress(pickupAddress));shoppingStops=new JSONArray(savedInstanceState.getString("shop_stops","[]"));noteInput.setText(savedInstanceState.getString("shop_primary_note",noteInput.getText().toString()));}catch(Exception ignored){}}
+        if(savedInstanceState!=null){try{pickupLat=savedInstanceState.getDouble("shop_pickup_lat",0);pickupLng=savedInstanceState.getDouble("shop_pickup_lng",0);pickupAddress=savedInstanceState.getString("shop_pickup_address",pickupAddress);if(validCoord(pickupLat,pickupLng))pickupBtn.setText("Belanja di sini\n"+shortAddress(pickupAddress));shoppingStops=new JSONArray(savedInstanceState.getString("shop_stops","[]"));noteInput.setText(savedInstanceState.getString("shop_primary_note",noteInput.getText().toString()));}catch(Exception ignored){}}
         if(savedInstanceState==null)restoreShoppingDraft();
         else primaryNoteSaved=savedInstanceState.getBoolean("shop_primary_saved",false);
         String claimedVoucher=savedInstanceState==null?getIntent().getStringExtra("royalty_voucher_code"):savedInstanceState.getString("shop_voucher","");
         if(claimedVoucher!=null&&voucherInput!=null){voucherInput.setText(claimedVoucher);voucherChoiceBtn.setText(claimedVoucher.trim().isEmpty()?"🏷 Voucher":"🏷 Voucher dipilih");}
         renderShoppingPlan();
         featureRuntime.execute(()->{try{JSONObject r=postJson(BASE_URL+"server/ride_stop_config.php",new JSONObject().put("service_type","Transbike"));JSONObject rule=r.optJSONObject("stop_pricing");if(r.optBoolean("success")&&rule!=null)featureRuntime.post(mainHandler,()->{shoppingStopRule=rule;allowedShoppingStops=Math.max(0,Math.min(2,rule.optInt("max_stops",2)));renderShoppingPlan();});}catch(Exception ignored){}},()->{});
-        loadDeliveryLocation();
+        if (savedInstanceState != null && savedInstanceState.getBoolean("shop_delivery_override")) {
+            deliveryOverride = true;
+            deliveryLat = savedInstanceState.getDouble("shop_delivery_lat");
+            deliveryLng = savedInstanceState.getDouble("shop_delivery_lng");
+            deliveryAddress = savedInstanceState.getString("shop_delivery_address", deliveryAddress);
+            showDeliveryPoint();
+        } else {
+            loadDeliveryLocation();
+        }
         applyCatalogCheckout();
         renderShoppingPlan();
-        requestLocationIfNeeded();
+        finishPointSelection();
+        requestPaymentQuote();
     }
 
     protected void applyCatalogCheckout() {
@@ -239,7 +245,7 @@ class TransShopActivityScreenCore extends CustomerAdaptiveActivity {
                 invalidateShopQuote();
                 catalogPickup = true; pickupLat=lat; pickupLng=lng;
                 pickupAddress = catalogStoreName + " - " + shop.optString("location", "");
-                pickupBtn.setText("●  Belanja di " + catalogStoreName + "\n" + shortAddress(shop.optString("location", "")));
+                pickupBtn.setText("Belanja di " + catalogStoreName + "\n" + shortAddress(shop.optString("location", "")));
                 pickupText.setText("Belanja di: " + pickupAddress);
                 if (mapView != null) {mapView.setPickup(lat,lng,pickupAddress);if(mapReady)mapView.moveTo(lat,lng,17f);}
                 updateModeUI();
@@ -362,10 +368,25 @@ class TransShopActivityScreenCore extends CustomerAdaptiveActivity {
         pointRowLp.setMargins(0, dp(4), 0, 0);
         topCard.addView(pointRow, pointRowLp);
 
-        pickupBtn = compactPointButton("●  Belanja di sini", "Belum dipilih", "#16A34A");
-        deliveryBtn = compactPointButton("●  Tujuan", "Belum dipilih", "#EF4444");
+        pickupBtn = compactPointButton("Belanja di sini", "Belum dipilih", "#8B2CC4");
+        deliveryBtn = compactPointButton("Pengantaran", "Belum dipilih", "#0B7CFF");
 
-        pointRow.addView(pickupBtn, new LinearLayout.LayoutParams(-1, -1));
+        pointRow.addView(pickupBtn, new LinearLayout.LayoutParams(0, -1, 1f));
+        LinearLayout.LayoutParams deliveryParams = new LinearLayout.LayoutParams(0, -1, 1f);
+        deliveryParams.leftMargin = dp(5);
+        pointRow.addView(deliveryBtn, deliveryParams);
+        pickupBtn.setMaxLines(2);
+        deliveryBtn.setMaxLines(2);
+        pickupBtn.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        deliveryBtn.setEllipsize(android.text.TextUtils.TruncateAt.END);
+
+        addStopButton = smallButton("＋ Tambah persinggahan", "#FFF4E5", "#B45309", "#F9D6A2");
+        compactShopButton(addStopButton);
+        addStopButton.setTextSize(11);
+        LinearLayout.LayoutParams stopParams = new LinearLayout.LayoutParams(-1, dp(36));
+        stopParams.topMargin = dp(4);
+        topCard.addView(addStopButton, stopParams);
+        addStopButton.setOnClickListener(v -> toggleShoppingStopSelection());
 
         pickupText = text("Belanja di: belum dipilih", 9, "#334155", false);
         deliveryText = text("Pengantaran: belum dipilih", 9, "#334155", false);
@@ -407,26 +428,36 @@ class TransShopActivityScreenCore extends CustomerAdaptiveActivity {
         FrameLayout.LayoutParams webLp = new FrameLayout.LayoutParams(-1, -1);
         webLp.setMargins(dp(1), dp(1), dp(1), dp(1));
         mapBox.addView(mapView, webLp);
+        mapView.enableShopPicker(() -> handlePointButtonClick("delivery"));
+        mapView.setGestureListener(new TransivaGoogleMapView.GestureListener() {
+            @Override public void onGestureStart() { cameraTouched = true; }
+            @Override public void onGestureEnd() {}
+        });
         mapView.initialize(null, new TransivaGoogleMapView.Listener() {
             @Override public void onReady(double lat, double lng) {
                 mapReady = true;mapView.setWaypoints(shopWaypoints());
-                centerLat = lat; centerLng = lng; pickLat = lat; pickLng = lng;
-                if (catalogPickup||validCoord(pickupLat,pickupLng)) { mapView.setPickup(pickupLat, pickupLng, pickupAddress); mapView.moveTo(pickupLat,pickupLng,17f); } else goToMyLocation();
+                showDeliveryPoint();
+                if (validCoord(pickupLat, pickupLng)) {
+                    mapView.setPickup(pickupLat, pickupLng, pickupAddress);
+                    mapView.centerOnInitialLocation(pickupLat, pickupLng, 17f);
+                } else if (validCoord(deliveryLat, deliveryLng)) {
+                    centerMapNearSavedDelivery();
+                }
+                updateModeUI();
+                requestVisibleOsrmRoute();
                 loadMapPlaces();
                 loadOnlineDrivers();
             }
-            @Override public void onCenterChanged(double lat, double lng) {
-                centerLat = lat; centerLng = lng; pickLat = lat; pickLng = lng;
-            }
+            @Override public void onCenterChanged(double lat, double lng) {}
         });
         mapView.setCenterActionListener(() -> {
             if(selectingShoppingStop){addShoppingStop();return;}
-            if (validCoord(pickupLat, pickupLng) && validCoord(deliveryLat, deliveryLng)) createOrder();
-            else setPointFromCenter();
+            if (!"idle".equals(mode)) setPointFromCenter();
         });
 
         gpsBtn = smallButton("⌖", "#FFFFFF", "#0B7CFF", "#9DCAFF");
         gpsBtn.setTextSize(18);
+        gpsBtn.setContentDescription("Cari lokasi presisi dengan GPS");
         FrameLayout.LayoutParams gpsMapLp = new FrameLayout.LayoutParams(dp(42), dp(42));
         gpsMapLp.gravity = Gravity.BOTTOM | Gravity.END;
         gpsMapLp.setMargins(0, 0, dp(10), dp(10));
@@ -581,6 +612,7 @@ class TransShopActivityScreenCore extends CustomerAdaptiveActivity {
 
     protected void bindActions() {
         pickupBtn.setOnClickListener(v -> handlePointButtonClick("pickup"));
+        deliveryBtn.setOnClickListener(v -> handlePointButtonClick("delivery"));
         gpsBtn.setOnClickListener(v -> goToMyLocation());
         backBtn.setOnClickListener(v -> finish());
         orderBtn.setOnClickListener(v -> createOrder());
@@ -589,118 +621,141 @@ class TransShopActivityScreenCore extends CustomerAdaptiveActivity {
 
     /** Tombol ringkasan di atas mengaktifkan pemilihan ulang titik terkait. */
     protected void handlePointButtonClick(String requestedMode) {
-        selectingShoppingStop=false;setShoppingPlanExpanded(false);
-        invalidateShopQuote();
+        if (ordering || !mapReady) return;
+        selectingShoppingStop = false;
+        cameraTouched = true;
+        setShoppingPlanExpanded(false);
         mode = requestedMode;
-        if ("pickup".equals(requestedMode)) {
-            catalogPickup = false;
-            pickupLat = 0;
-            pickupLng = 0;
-            if (mapView != null) mapView.clearPickup();
-        } else {
-            deliveryLat = 0;
-            deliveryLng = 0;
-            if (mapView != null) mapView.clearDelivery();
-        }
+        boolean pickup = "pickup".equals(mode);
+        editingDelivery = !pickup;
+        double lat = pickup ? pickupLat : deliveryLat;
+        double lng = pickup ? pickupLng : deliveryLng;
+        if (validCoord(lat, lng)) mapView.centerOnInitialLocation(lat, lng, 17f);
         updateModeUI();
     }
 
-
-
     protected void loadDeliveryLocation() {
-        if (userId <= 0) {
-            toastDialog("User ID tidak ditemukan. Silakan login ulang.");
-            return;
-        }
-        final java.lang.ref.WeakReference<TransShopActivityScreenCore> weak=new java.lang.ref.WeakReference<>(this);
-        CustomerProfileCache.fetch(getApplicationContext(),false,user->{
-            TransShopActivityScreenCore screen=weak.get();
-            if(screen==null||screen.destroyed||screen.isFinishing()||screen.isDestroyed())return;
-            if(user==null){screen.toastDialog("Alamat delivery belum dapat dimuat. Coba kembali.");return;}
-            screen.invalidateShopQuote();
-            screen.deliveryLat=user.optDouble("delivery_lat",0);
-            screen.deliveryLng=user.optDouble("delivery_lng",0);
-            screen.deliveryAddress=screen.firstNonEmpty(user.optString("delivery_address",""),"Alamat delivery");
-            if(!screen.validCoord(screen.deliveryLat,screen.deliveryLng)){
-                screen.modeText.setText("Alamat delivery belum valid");
-                screen.toastDialog("Tetapkan lokasi pengantaran dari menu Akun terlebih dahulu.");return;
-            }
-            screen.deliveryText.setText("Pengantaran: "+screen.deliveryAddress);
-            screen.deliveryBtn.setText("●  Antar ke alamat akun\n"+screen.shortAddress(screen.deliveryAddress));
-            screen.updateModeUI();
-            if(screen.validCoord(screen.pickupLat,screen.pickupLng))screen.requestPaymentQuote();
+        if (userId <= 0) return;
+        applySavedDelivery(CustomerProfileCache.cached(this));
+        final java.lang.ref.WeakReference<TransShopActivityScreenCore> weak =
+                new java.lang.ref.WeakReference<>(this);
+        CustomerProfileCache.fetch(getApplicationContext(), false, user -> {
+            TransShopActivityScreenCore screen = weak.get();
+            if (screen == null || screen.destroyed || screen.isFinishing() || screen.isDestroyed()
+                    || screen.deliveryOverride || screen.ordering || user == null) return;
+            screen.applySavedDelivery(user);
         });
     }
 
+    private void applySavedDelivery(JSONObject profile) {
+        if (profile == null) return;
+        double lat = profile.optDouble("delivery_lat", 0);
+        double lng = profile.optDouble("delivery_lng", 0);
+        if (!validCoord(lat, lng)) return;
+        boolean changed = lat != deliveryLat || lng != deliveryLng;
+        deliveryLat = lat;
+        deliveryLng = lng;
+        deliveryAddress = firstNonEmpty(profile.optString("delivery_address"), shortCoord(lat, lng));
+        showDeliveryPoint();
+        if ("delivery".equals(mode) && !editingDelivery) finishPointSelection();
+        if (mapReady && !cameraTouched && !validCoord(pickupLat, pickupLng)) {
+            centerMapNearSavedDelivery();
+        }
+        if (changed && validCoord(pickupLat, pickupLng)) {
+            invalidateShopQuote();
+            requestPaymentQuote();
+        }
+    }
+
+    private void centerMapNearSavedDelivery() {
+        // Leave the saved delivery pin visible beside the initial shop picker.
+        double offset = deliveryLat > 89 ? -0.0008 : 0.0008;
+        mapView.centerOnInitialLocation(deliveryLat + offset, deliveryLng, 17f);
+    }
+
+    private void showDeliveryPoint() {
+        if (!validCoord(deliveryLat, deliveryLng)) return;
+        deliveryText.setText("Pengantaran: " + deliveryAddress);
+        deliveryBtn.setText("Pengantaran\n" + shortAddress(deliveryAddress));
+        mapView.setDelivery(deliveryLat, deliveryLng, deliveryAddress);
+    }
+
     protected void setPointFromCenter() {
+        if (ordering || !mapReady) return;
+        com.google.android.gms.maps.model.LatLng selected = mapView.getCenter();
+        if (!validCoord(selected.latitude, selected.longitude)) return;
+        cameraTouched = true;
         invalidateShopQuote();
-        double selectedLat = validCoord(pickLat, pickLng) ? pickLat : centerLat;
-        double selectedLng = validCoord(pickLat, pickLng) ? pickLng : centerLng;
-        if (!validCoord(selectedLat, selectedLng)) return;
-
-        if ("pickup".equals(mode)) {
-            pickupLat = selectedLat;
-            pickupLng = selectedLng;
-            pickupAddress = "Mencari alamat jemput...";
-
+        mapView.clearRoute();
+        boolean pickup = "pickup".equals(mode);
+        if (pickup) {
+            catalogPickup = false;
+            pickupLat = selected.latitude;
+            pickupLng = selected.longitude;
+            pickupAddress = shortCoord(pickupLat, pickupLng);
             pickupText.setText("Belanja di: " + pickupAddress);
-            pickupBtn.setText("●  Belanja di sini\nMencari alamat...");
-            if (mapView != null) mapView.setPickup(pickupLat, pickupLng, pickupAddress);
-
+            pickupBtn.setText("Belanja di sini\n" + pickupAddress);
+            mapView.setPickup(pickupLat, pickupLng, pickupAddress);
             resolveAddressAsync(true, pickupLat, pickupLng);
-            mode = "pickup";
         } else {
-            deliveryLat = selectedLat;
-            deliveryLng = selectedLng;
-            deliveryAddress = "Mencari alamat pengantaran...";
-
-            deliveryText.setText("Pengantaran: " + deliveryAddress);
-            deliveryBtn.setText("●  Tujuan\nMencari alamat...");
-            if (mapView != null) mapView.setDelivery(deliveryLat, deliveryLng, deliveryAddress);
-
+            deliveryOverride = true;
+            deliveryLat = selected.latitude;
+            deliveryLng = selected.longitude;
+            deliveryAddress = shortCoord(deliveryLat, deliveryLng);
+            showDeliveryPoint();
             resolveAddressAsync(false, deliveryLat, deliveryLng);
         }
+        finishPointSelection();
+        requestPaymentQuote();
+    }
 
+    private void finishPointSelection() {
+        editingDelivery = false;
+        mode = !validCoord(pickupLat, pickupLng) ? "pickup"
+                : !validCoord(deliveryLat, deliveryLng) ? "delivery" : "idle";
         updateModeUI();
-
     }
 
     protected void goToMyLocation() {
-        invalidateShopQuote();
+        if (ordering || !mapReady || gpsPending) return;
         if (checkSelfPermissionCompat(Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
             requestPermissions(new String[]{Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION}, REQ_LOCATION);
             return;
         }
-        setLoading(true);
+        if (!selectingShoppingStop && "idle".equals(mode)) handlePointButtonClick("delivery");
+        final String targetMode = mode;
+        final boolean targetStop = selectingShoppingStop;
+        cameraTouched = true;
+        gpsPending = true;
+        gpsBtn.setEnabled(false);
         try {
-            android.location.LocationManager lm = (android.location.LocationManager) getSystemService(LOCATION_SERVICE);
-            Location best = null;
-            for (String p : lm.getProviders(true)) {
-                try {
-                    Location l = lm.getLastKnownLocation(p);
-                    if (l != null && (best == null || l.getAccuracy() < best.getAccuracy())) best = l;
-                } catch (Exception ignored) {}
-            }
-            if (best != null) {
-                centerLat = best.getLatitude(); centerLng = best.getLongitude(); pickLat = centerLat; pickLng = centerLng;
-                if (mapView != null) mapView.moveTo(centerLat, centerLng, 17f);
-
-                // Jangan otomatis menetapkan titik saat halaman baru dibuka.
-                // Marker center harus tetap pada mode Jemput sampai pengguna menekan Jemput.
-                if (!validCoord(pickupLat, pickupLng)) {
-                    mode = "pickup";
-                    updateModeUI();
+            TransivaFreshLocation.request(this, new TransivaFreshLocation.Callback() {
+                @Override public void onLocation(Location location, boolean fresh) {
+                    if (!finishGpsRequest(targetMode, targetStop)) return;
+                    if (!fresh || !validCoord(location.getLatitude(), location.getLongitude())) {
+                        toastDialog("Titik GPS terbaru belum ditemukan. Coba lagi atau geser peta.");
+                        return;
+                    }
+                    mapView.centerOnInitialLocation(location.getLatitude(), location.getLongitude(), 18f);
+                    if (!location.hasAccuracy() || location.getAccuracy() > 35f) {
+                        toastDialog("Akurasi GPS masih rendah. Periksa titik di peta sebelum memilih.");
+                    }
                 }
-            } else {
-                toastDialog("GPS belum mendapatkan lokasi. Aktifkan lokasi lalu tekan GPS lagi.");
-            }
-        } catch (Exception e) {
-            toastDialog("GPS tidak tersedia di perangkat ini.");
-        } finally {
-            setLoading(false);
+                @Override public void onFailure(String message) {
+                    if (finishGpsRequest(targetMode, targetStop)) toastDialog(message);
+                }
+            });
+        } catch (RuntimeException error) {
+            if (finishGpsRequest(targetMode, targetStop)) toastDialog("GPS tidak tersedia di perangkat ini.");
         }
     }
 
+    private boolean finishGpsRequest(String targetMode, boolean targetStop) {
+        if (destroyed || isFinishing() || !gpsPending) return false;
+        gpsPending = false;
+        gpsBtn.setEnabled(true);
+        return !ordering && targetMode.equals(mode) && targetStop == selectingShoppingStop;
+    }
 
     /** Applies a WhatsApp/Google Maps location received through SharedLocationActivity. */
     protected void applySharedLocationIntent() {
@@ -742,12 +797,13 @@ class TransShopActivityScreenCore extends CustomerAdaptiveActivity {
                     }
 
                     invalidateShopQuote();
+                    selectingShoppingStop = false;
                     if (asPickup) {
                         pickupLat = coordinate[0];
                         pickupLng = coordinate[1];
                         pickupAddress = "Mencari alamat jemput...";
                         pickupText.setText("Belanja di: " + pickupAddress);
-                        pickupBtn.setText("●  Belanja di sini\\nMencari alamat...");
+                        pickupBtn.setText("Belanja di sini\nMencari alamat...");
                         mode = "pickup";
                         if (mapView != null) {
                             mapView.setPickup(pickupLat, pickupLng, pickupAddress);
@@ -755,11 +811,12 @@ class TransShopActivityScreenCore extends CustomerAdaptiveActivity {
                         }
                         resolveAddressAsync(true, pickupLat, pickupLng);
                     } else {
+                        deliveryOverride = true;
                         deliveryLat = coordinate[0];
                         deliveryLng = coordinate[1];
                         deliveryAddress = "Mencari alamat pengantaran...";
                         deliveryText.setText("Pengantaran: " + deliveryAddress);
-                        deliveryBtn.setText("●  Tujuan\\nMencari alamat...");
+                        deliveryBtn.setText("Pengantaran\nMencari alamat...");
                         mode = "delivery";
                         if (mapView != null) {
                             mapView.setDelivery(deliveryLat, deliveryLng, deliveryAddress);
@@ -767,7 +824,7 @@ class TransShopActivityScreenCore extends CustomerAdaptiveActivity {
                         }
                         resolveAddressAsync(false, deliveryLat, deliveryLng);
                     }
-                    updateModeUI();
+                    finishPointSelection();
                 });
             } catch (Exception ignored) {
                 featureRuntime.post(mainHandler, () -> {
@@ -805,12 +862,12 @@ class TransShopActivityScreenCore extends CustomerAdaptiveActivity {
                     invalidateShopQuote();
                     pickupLat = c[0]; pickupLng = c[1]; pickupAddress = "Mencari alamat lokasi belanja...";
                     pickupText.setText("Belanja di: " + pickupAddress);
-                    pickupBtn.setText("●  Belanja di sini\nMencari alamat...");
+                    pickupBtn.setText("Belanja di sini\nMencari alamat...");
                     googleMapInput.setText("");
                     if (mapView != null) { mapView.setPickup(pickupLat, pickupLng, pickupAddress); mapView.moveTo(pickupLat, pickupLng, 17f); }
                     resolveAddressAsync(true, pickupLat, pickupLng);
-                    mode = "pickup";
-                    updateModeUI();
+                    selectingShoppingStop = false;
+                    finishPointSelection();
                 });
             } catch (Exception e) {
                 featureRuntime.post(mainHandler, () -> { setLoading(false); toastDialog("Gagal membaca link Google Maps."); });
@@ -851,18 +908,20 @@ class TransShopActivityScreenCore extends CustomerAdaptiveActivity {
                     pickupAddress = address;
                     renderShoppingPlan();
                     pickupText.setText("Belanja di: " + address);
-                    pickupBtn.setText("●  Belanja di " + (catalogPickup ? catalogStoreName : "sini") + "\n" + shortAddress(address));
+                    pickupBtn.setText("Belanja di " + (catalogPickup ? catalogStoreName : "sini") + "\n" + shortAddress(address));
                     if (mapView != null) mapView.setPickup(pickupLat, pickupLng, address);
                 } else {
                     deliveryAddress = address;
                     deliveryText.setText("Pengantaran: " + address);
-                    deliveryBtn.setText("●  Tujuan\n" + shortAddress(address));
+                    deliveryBtn.setText("Pengantaran\n" + shortAddress(address));
                     if (mapView != null) mapView.setDelivery(deliveryLat, deliveryLng, address);
                 }
 
                 // Quote harus dipanggil setelah koordinat kedua titik sudah tersimpan.
                 if (validCoordinate(pickupLat, pickupLng)
-                        && validCoordinate(deliveryLat, deliveryLng)) {
+                        && validCoordinate(deliveryLat, deliveryLng)
+                        && !shopFareGate.isPending(currentShopQuoteKey())
+                        && !shopFareGate.hasQuote(currentShopQuoteKey())) {
                     requestPaymentQuote();
                 }
             });
@@ -1153,6 +1212,10 @@ class TransShopActivityScreenCore extends CustomerAdaptiveActivity {
 
     protected void createOrder() {
         if (ordering) return;
+        if (selectingShoppingStop || !"idle".equals(mode)) {
+            toastDialog("Konfirmasi titik yang sedang dipilih di peta terlebih dahulu.");
+            return;
+        }
 
         if (userId <= 0) {
             readUser();
@@ -1173,7 +1236,7 @@ class TransShopActivityScreenCore extends CustomerAdaptiveActivity {
         }
 
         if (!validCoord(deliveryLat, deliveryLng)) {
-            toastDialog("Alamat delivery akun belum valid. Buka menu Akun dan tetapkan alamat delivery.");
+            toastDialog("Pilih lokasi pengantaran di peta terlebih dahulu.");
             return;
         }
 
@@ -1334,7 +1397,7 @@ class TransShopActivityScreenCore extends CustomerAdaptiveActivity {
         if (!validCoordinate(quotePickupLat, quotePickupLng)
                 || !validCoordinate(quoteDeliveryLat, quoteDeliveryLng)) {
             if (paymentSummaryText != null) {
-                paymentSummaryText.setText("Pilih lokasi belanja; alamat pengantaran mengikuti alamat delivery akun");
+                paymentSummaryText.setText("Pilih lokasi belanja dan pengantaran untuk menghitung ongkir");
             }
             if (distanceInfoText != null) distanceInfoText.setText("Rute · -");
             if (durationInfoText != null) durationInfoText.setText("± -");
@@ -1411,7 +1474,7 @@ class TransShopActivityScreenCore extends CustomerAdaptiveActivity {
                         return;
                     }
 
-                    JSONObject currentStopRule=res.optJSONObject("stop_pricing");if(currentStopRule!=null){shoppingStopRule=currentStopRule;allowedShoppingStops=Math.max(0,Math.min(2,currentStopRule.optInt("max_stops",2)));if(shoppingTariffText!=null)shoppingTariffText.setText(shopTariffLabel());}
+                    JSONObject currentStopRule=res.optJSONObject("stop_pricing");if(currentStopRule!=null){shoppingStopRule=currentStopRule;allowedShoppingStops=Math.max(0,Math.min(2,currentStopRule.optInt("max_stops",2)));if(shoppingTariffText!=null)shoppingTariffText.setText(shopTariffLabel());updateShoppingStopButton();}
                     int original = jsonInt(
                             res,
                             "original_price",
@@ -1565,19 +1628,19 @@ class TransShopActivityScreenCore extends CustomerAdaptiveActivity {
     }
 
     protected void updateModeUI() {
-        if(selectingShoppingStop)return;
-        boolean routeComplete = validCoord(pickupLat, pickupLng) && validCoord(deliveryLat, deliveryLng);
-        mode = "pickup";
-        modeText.setText(routeComplete ? "Rute siap" : catalogPickup ? "Toko terpilih" : "Pilih toko di peta");
-        pickupBtn.setAlpha(1f);
-        if (mapView != null) {
-            if (routeComplete) {
-                mapView.showCenterPin(false);mapView.showOrderAction(false, "");
-            } else {
-                mapView.setSelectionMode("pickup");
-                mapView.showCenterPin(true);
-            }
+        if (selectingShoppingStop) {
+            modeText.setText("Pilih titik singgah");
+            mapView.setWaypointSelectionMode(shoppingStops.length() + 1);
+            mapView.showCenterPin(true);
+        } else if ("idle".equals(mode)) {
+            modeText.setText("Rute siap");
+            mapView.showOrderAction(false, "");
+        } else {
+            modeText.setText("delivery".equals(mode) ? "Pilih pengantaran" : "Pilih toko di peta");
+            mapView.setSelectionMode(mode);
+            mapView.showCenterPin(true);
         }
+        updateShoppingStopButton();
     }
 
     protected void requestVisibleOsrmRoute() {
@@ -1619,11 +1682,15 @@ class TransShopActivityScreenCore extends CustomerAdaptiveActivity {
     private void resetOrderButton() { ordering = false; setLoading(false); orderBtn.setEnabled(true); orderBtn.setText("🛍️ Pesan TransShop"); }
     private void setLoading(boolean b) { if (progressBar != null) progressBar.setVisibility(b ? View.VISIBLE : View.GONE); }
     private int checkSelfPermissionCompat(String p) { return android.os.Build.VERSION.SDK_INT >= 23 ? checkSelfPermission(p) : PackageManager.PERMISSION_GRANTED; }
-    private void requestLocationIfNeeded() { if (checkSelfPermissionCompat(Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED && android.os.Build.VERSION.SDK_INT >= 23) requestPermissions(new String[]{Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION}, REQ_LOCATION); }
 
     @Override public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
-        if (requestCode == REQ_LOCATION && grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) goToMyLocation();
+        if (requestCode != REQ_LOCATION) return;
+        if (checkSelfPermissionCompat(Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
+            goToMyLocation();
+        } else {
+            toastDialog("Izinkan lokasi presisi untuk memakai GPS, atau pilih titik dengan menggeser peta.");
+        }
     }
 
     private void hideKeyboard() { try { ((InputMethodManager)getSystemService(Context.INPUT_METHOD_SERVICE)).hideSoftInputFromWindow(googleMapInput.getWindowToken(), 0); } catch (Exception ignored) {} }

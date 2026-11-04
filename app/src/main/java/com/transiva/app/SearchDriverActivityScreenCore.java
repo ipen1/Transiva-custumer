@@ -45,6 +45,7 @@ import android.widget.TextView;
 import org.json.JSONArray;
 import java.util.concurrent.atomic.AtomicBoolean;
 import org.json.JSONObject;
+import org.json.JSONException;
 
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
@@ -98,6 +99,7 @@ class SearchDriverActivityScreenCore extends CustomerAdaptiveActivity {
     protected boolean destroyed = false;
 
     protected String activeOrderId = "";
+    private boolean shopOrder;
     protected double userLat = 0;
     protected double userLng = 0;
     protected boolean hasUserLocation = false;
@@ -144,6 +146,12 @@ class SearchDriverActivityScreenCore extends CustomerAdaptiveActivity {
                 "bike"
         ));
 
+        String savedOrderType = activeOrderId.equals(getStringPref("active_order_id"))
+                ? getStringPref("active_order_type") : "";
+        shopOrder = "TransShop".equalsIgnoreCase(firstNonEmpty(
+                getIntent().getStringExtra("active_order_type"),
+                getIntent().getStringExtra("order_type"), savedOrderType));
+
         buildLayout();
         getUserLocationThenStart();
     }
@@ -153,7 +161,8 @@ class SearchDriverActivityScreenCore extends CustomerAdaptiveActivity {
     protected void buildLayout() {
         FrameLayout page = new FrameLayout(this);
         pageRoot = page;
-        page.setBackground(roundGradient("#020817", "#071A36", 0));
+        page.setBackground(shopOrder ? roundGradient("#100C27", "#101E3C", 0)
+                : roundGradient("#020817", "#071A36", 0));
 
         ScrollView scroll = new ScrollView(this);
         scroll.setFillViewport(true);
@@ -165,30 +174,42 @@ class SearchDriverActivityScreenCore extends CustomerAdaptiveActivity {
         root.setPadding(dp(18), dp(16), dp(18), dp(20));
         scroll.addView(root, new ScrollView.LayoutParams(-1, -2));
 
-        TextView appTitle = text("TRANSIVA • MATCHMAKING", 13, "#53B7FF", true);
+        TextView appTitle = text(shopOrder ? "TRANSIVA  /  TRANSSHOP" : "TRANSIVA • MATCHMAKING",
+                13, shopOrder ? "#D6BDFF" : "#53B7FF", true);
         appTitle.setGravity(Gravity.CENTER);
         root.addView(appTitle, new LinearLayout.LayoutParams(-1, -2));
 
-        titleText = text("Temukan driver yang pas", 22, "#F0F7FF", true);
+        titleText = text(shopOrder ? "Pesanan belanja dibuat" : "Temukan driver yang pas", 22, "#F0F7FF", true);
         titleText.setGravity(Gravity.CENTER);
         LinearLayout.LayoutParams titleLp = new LinearLayout.LayoutParams(-1, -2);
         titleLp.setMargins(0, dp(10), 0, dp(6));
         root.addView(titleText, titleLp);
 
-        subtitleText = text("Mencocokkan Anda dengan driver terdekat", 14, "#D5E8FF", false);
+        subtitleText = text(shopOrder ? "Mencari driver untuk belanjaan Anda"
+                : "Mencocokkan Anda dengan driver terdekat", 14, "#D5E8FF", false);
         subtitleText.setGravity(Gravity.CENTER);
         root.addView(subtitleText, new LinearLayout.LayoutParams(-1, -2));
 
         searchStatus = new PremiumOrderStatusView(this, true);
-        searchStatus.bind(null, "Mencari driver terdekat", "Pesanan sedang diproses");
+        JSONObject initialStatus = null;
+        if (shopOrder) {
+            initialStatus = new JSONObject();
+            try {
+                initialStatus.put("order_id", activeOrderId);
+                initialStatus.put("order_type", "TransShop");
+                initialStatus.put("service_name", "TransShop");
+                initialStatus.put("status", "pending");
+            } catch (JSONException ignored) {}
+        }
+        searchStatus.bind(initialStatus, "Mencari driver terdekat", "Pesanan sedang diproses");
         LinearLayout.LayoutParams searchStatusLp = new LinearLayout.LayoutParams(-1, -2);
         searchStatusLp.topMargin = dp(16); root.addView(searchStatus, searchStatusLp);
-        matchingView = new CustomerMatchmakingView(this, "car".equals(cachedDriverType));
+        matchingView = new CustomerMatchmakingView(this, "car".equals(cachedDriverType), shopOrder);
         LinearLayout.LayoutParams matchingLp = new LinearLayout.LayoutParams(-1, dp(192));
         matchingLp.setMargins(0, dp(12), 0, dp(14));
         root.addView(matchingView, matchingLp);
 
-        countdownLabel = text("MENCARI DI SEKITAR JEMPUT", 10, "#8FCBFF", true);
+        countdownLabel = text((shopOrder ? "MENCARI DI SEKITAR TOKO" : "MENCARI DI SEKITAR JEMPUT"), 10, "#8FCBFF", true);
         countdownLabel.setGravity(Gravity.CENTER);
         root.addView(countdownLabel, new LinearLayout.LayoutParams(-1, -2));
 
@@ -395,7 +416,7 @@ class SearchDriverActivityScreenCore extends CustomerAdaptiveActivity {
         stopMatchCountdown();
         countdownRemainingMs = 90000L;
         if (countdownText != null) countdownText.setText("00:30");
-        if (countdownLabel != null) countdownLabel.setText("MENCARI DI SEKITAR JEMPUT");
+        if (countdownLabel != null) countdownLabel.setText((shopOrder ? "MENCARI DI SEKITAR TOKO" : "MENCARI DI SEKITAR JEMPUT"));
         setSearchPhase(1);
         matchCountdown = new CountDownTimer(90000L, 1000L) {
             @Override public void onTick(long millisUntilFinished) {
@@ -430,9 +451,10 @@ class SearchDriverActivityScreenCore extends CustomerAdaptiveActivity {
         searchPhase = safe;
         if (matchingView != null) matchingView.setSearchPhase(safe);
         if (countdownLabel != null) {
-            countdownLabel.setText(safe == 1 ? "MENCARI DI SEKITAR JEMPUT" : (safe == 2 ? "MEMPERLUAS PENCARIAN" : "MENCARI DRIVER ONLINE"));
+            countdownLabel.setText(safe == 1 ? (shopOrder ? "MENCARI DI SEKITAR TOKO" : "MENCARI DI SEKITAR JEMPUT") : (safe == 2 ? "MEMPERLUAS PENCARIAN" : "MENCARI DRIVER ONLINE"));
         }
-        if (safe == 1) setSubtitle("Memprioritaskan driver di sekitar titik jemput");
+        if (safe == 1) setSubtitle(shopOrder ? "Memprioritaskan driver di sekitar toko"
+                : "Memprioritaskan driver di sekitar titik jemput");
         else if (safe == 2) setSubtitle("Mencari kecocokan di area yang lebih luas");
         else setSubtitle("Pencarian diperluas ke seluruh driver online");
         loadMatchingDrivers();
@@ -463,13 +485,14 @@ class SearchDriverActivityScreenCore extends CustomerAdaptiveActivity {
         icon.setBackground(roundGradient("#10B981", "#0B7CFF", dp(48)));
         box.addView(icon, new LinearLayout.LayoutParams(dp(96), dp(96)));
 
-        TextView found = text("MATCH FOUND", 28, "#FFF1A6", true);
+        TextView found = text(shopOrder ? "Driver siap belanja" : "MATCH FOUND", 28, "#FFF1A6", true);
         found.setGravity(Gravity.CENTER);
         LinearLayout.LayoutParams foundLp = new LinearLayout.LayoutParams(-1, -2);
         foundLp.setMargins(0, dp(18), 0, dp(6));
         box.addView(found, foundLp);
 
-        TextView desc = text("Driver menerima pesananmu • perjalanan siap dimulai", 15, "#D7E9FF", false);
+        TextView desc = text(shopOrder ? "Driver menerima pesanan TransShop Anda"
+                : "Driver menerima pesananmu • perjalanan siap dimulai", 15, "#D7E9FF", false);
         desc.setGravity(Gravity.CENTER);
         box.addView(desc, new LinearLayout.LayoutParams(-1, -2));
 
@@ -546,7 +569,7 @@ class SearchDriverActivityScreenCore extends CustomerAdaptiveActivity {
                     matchingView.setDriverCount(drivers.size());
                     if (drivers.size() > 0 && hasUserLocation) {
                         double nearest = nearestDistance(drivers);
-                        setSubtitle(nearest < 0.1 ? "Driver tersedia di dekat titik jemput"
+                        setSubtitle(nearest < 0.1 ? (shopOrder ? "Driver tersedia di dekat toko" : "Driver tersedia di dekat titik jemput")
                                 : "Driver terdekat sekitar " + String.format(Locale.US, "%.1f", nearest) + " km");
                     } else if (drivers.size() > 0) {
                         setSubtitle("Ada " + drivers.size() + " driver aktif, menunggu GPS akurat");
@@ -627,6 +650,10 @@ class SearchDriverActivityScreenCore extends CustomerAdaptiveActivity {
                 statusOrder.put("status", status);
                 if (statusOrder.optString("order_id").isEmpty()) statusOrder.put("order_id", activeOrderId);
                 if (statusOrder.optString("order_type").isEmpty()) statusOrder.put("order_type", res.optString("order_type"));
+                if (shopOrder) {
+                    statusOrder.put("order_type", "TransShop");
+                    statusOrder.put("service_name", "TransShop");
+                }
                 featureRuntime.post(mainHandler, () -> {
                     if (!isFinishing() && !isDestroyed() && searchStatus != null)
                         searchStatus.bind(statusOrder, "", "Pesanan sedang diproses");
@@ -716,7 +743,8 @@ class SearchDriverActivityScreenCore extends CustomerAdaptiveActivity {
         playDriverAcceptedEffect();
 
         titleText.setText("DRIVER SUDAH TERHUBUNG");
-        setSubtitle("Driver menerima pesananmu • membuka perjalanan sekarang");
+        setSubtitle(shopOrder ? "Driver menerima pesanan belanja Anda"
+                : "Driver menerima pesananmu • membuka perjalanan sekarang");
         cancelBtn.setVisibility(View.GONE);
         driverCard.setVisibility(View.VISIBLE);
         driverCard.setAlpha(0f);

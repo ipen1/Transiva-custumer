@@ -51,29 +51,10 @@ class TransShopActivityScreenCore extends CustomerAdaptiveActivity {
     private boolean shoppingPlanExpanded;
     private boolean primaryNoteSaved;
     private int royaltyOriginalFare;
-    private android.content.SharedPreferences shoppingDraftPrefs(){return getSharedPreferences("transshop_saved_notes_"+userId,MODE_PRIVATE);}
-    private void saveShoppingDraft(){
-        if(catalogPickup)return;
-        readStopDrafts();
-        shoppingDraftPrefs().edit().putString("note",noteInput.getText().toString())
-            .putBoolean("saved",primaryNoteSaved).putString("stops",shoppingStops.toString())
-            .putString("address",pickupAddress).putString("lat",String.valueOf(pickupLat))
-            .putString("lng",String.valueOf(pickupLng)).apply();
-    }
-    private void restoreShoppingDraft(){
-        if(getIntent().hasExtra("transshop_store_json"))return;
-        android.content.SharedPreferences draft=shoppingDraftPrefs();
-        try{noteInput.setText(draft.getString("note",""));primaryNoteSaved=draft.getBoolean("saved",false);
-            shoppingStops=new JSONArray(draft.getString("stops","[]"));
-            pickupLat=Double.parseDouble(draft.getString("lat","0"));pickupLng=Double.parseDouble(draft.getString("lng","0"));
-            pickupAddress=draft.getString("address",pickupAddress);
-            if(validCoord(pickupLat,pickupLng))pickupBtn.setText("Belanja di sini\n"+shortAddress(pickupAddress));
-        }catch(Exception ignored){}
-    }
     private void setShoppingPlanExpanded(boolean expanded){
         shoppingPlanExpanded=expanded;
         if(shoppingScroll!=null)shoppingScroll.setVisibility(expanded?View.VISIBLE:View.GONE);
-        if(noteChoiceBtn!=null)noteChoiceBtn.setText(expanded?"Tutup daftar ▴":"Daftar belanja ▾");
+        if(noteChoiceBtn!=null)noteChoiceBtn.setText(expanded?"List Belanjaan ▴":"List Belanjaan ▾");
         if(!expanded)hideShoppingKeyboard();
     }
     private void hideShoppingKeyboard(){try{View focus=getCurrentFocus();if(focus!=null){((InputMethodManager)getSystemService(INPUT_METHOD_SERVICE)).hideSoftInputFromWindow(focus.getWindowToken(),0);focus.clearFocus();}}catch(Exception ignored){}}
@@ -99,23 +80,23 @@ class TransShopActivityScreenCore extends CustomerAdaptiveActivity {
     }
     private void renderShoppingPlan(){
         if(shoppingPlanBox==null)return;readStopDrafts();shoppingPlanBox.removeAllViews();shoppingStopInputs.clear();
-        LinearLayout editorHead=new LinearLayout(this);editorHead.setGravity(Gravity.CENTER_VERTICAL);editorHead.addView(text("Daftar belanja · "+(shoppingStops.length()+1)+" toko",12,"#0B3A78",true),new LinearLayout.LayoutParams(0,dp(40),1));
+        LinearLayout editorHead=new LinearLayout(this);editorHead.setGravity(Gravity.CENTER_VERTICAL);editorHead.addView(text("List Belanjaan · "+(shoppingStops.length()+1)+" toko",12,"#0B3A78",true),new LinearLayout.LayoutParams(0,dp(40),1));
         Button collapse=smallButton("Tutup ▴","#FFFFFF","#0B7CFF","#FFFFFF");compactShopButton(collapse);collapse.setTextSize(11);editorHead.addView(collapse,new LinearLayout.LayoutParams(dp(76),dp(40)));collapse.setOnClickListener(v->setShoppingPlanExpanded(false));shoppingPlanBox.addView(editorHead);
         shoppingPlanBox.addView(text("Toko pertama",12,"#0B3A78",true));
         TextView origin=text(pickupAddress,11,"#64748B",false);origin.setSingleLine(true);origin.setEllipsize(android.text.TextUtils.TruncateAt.END);shoppingPlanBox.addView(origin);
         if(noteInput.getParent() instanceof android.view.ViewGroup)((android.view.ViewGroup)noteInput.getParent()).removeView(noteInput);
-        shoppingPlanBox.addView(new ShopSavedNoteView(this,noteInput,primaryNoteSaved,saved->{primaryNoteSaved=saved;saveShoppingDraft();}),new LinearLayout.LayoutParams(-1,-2));
+        shoppingPlanBox.addView(new ShopSavedNoteView(this,noteInput,primaryNoteSaved,saved -> primaryNoteSaved = saved),new LinearLayout.LayoutParams(-1,-2));
         for(int i=0;i<shoppingStops.length();i++){
             final int position=i;JSONObject w=shoppingStops.optJSONObject(i);LinearLayout head=new LinearLayout(this);head.setGravity(Gravity.CENTER_VERTICAL);
             head.addView(text("Singgah "+(i+1),12,"#B45309",true),new LinearLayout.LayoutParams(0,dp(44),1));Button remove=smallButton("Hapus","#FFFFFF","#B45309","#FFFFFF");remove.setTextSize(11);compactShopButton(remove);remove.setBackgroundColor(Color.TRANSPARENT);head.addView(remove,new LinearLayout.LayoutParams(dp(72),dp(44)));shoppingPlanBox.addView(head);
             TextView address=text(w.optString("address"),11,"#64748B",false);address.setSingleLine(true);address.setEllipsize(android.text.TextUtils.TruncateAt.END);shoppingPlanBox.addView(address);
-            EditText input=shopListInput(w.optString("note"),"Beli apa di titik ini? Contoh: telur 1 kg, minyak 1 liter",1500);shoppingStopInputs.add(input);shoppingPlanBox.addView(new ShopSavedNoteView(this,input,w.optBoolean("note_saved",false),saved->{try{w.put("note_saved",saved);}catch(org.json.JSONException ignored){}saveShoppingDraft();}),new LinearLayout.LayoutParams(-1,-2));
-            remove.setOnClickListener(v->{if(ordering)return;readStopDrafts();JSONArray next=new JSONArray();for(int j=0;j<shoppingStops.length();j++)if(j!=position)next.put(shoppingStops.optJSONObject(j));shoppingStops=next;selectingShoppingStop=false;shoppingStopInputs.clear();renderShoppingPlan();saveShoppingDraft();if(mapView!=null){mapView.setWaypoints(shopWaypoints());mapView.clearRoute();}updateModeUI();invalidateShopQuote();requestPaymentQuote();});
+            EditText input=shopListInput(w.optString("note"),"Beli apa di titik ini? Contoh: telur 1 kg, minyak 1 liter",1500);shoppingStopInputs.add(input);shoppingPlanBox.addView(new ShopSavedNoteView(this,input,w.optBoolean("note_saved",false),saved->{try{w.put("note_saved",saved);}catch(org.json.JSONException ignored){}}),new LinearLayout.LayoutParams(-1,-2));
+            remove.setOnClickListener(v->{if(ordering)return;readStopDrafts();JSONArray next=new JSONArray();for(int j=0;j<shoppingStops.length();j++)if(j!=position)next.put(shoppingStops.optJSONObject(j));shoppingStops=next;selectingShoppingStop=false;shoppingStopInputs.clear();renderShoppingPlan();if(mapView!=null){mapView.setWaypoints(shopWaypoints());mapView.clearRoute();}updateModeUI();invalidateShopQuote();requestPaymentQuote();});
         }
         updateShoppingStopButton();
         shoppingTariffText=text(shopTariffLabel(),10,"#64748B",false);shoppingPlanBox.addView(shoppingTariffText);
         if(cartDetailText!=null&&cartDetailText.getVisibility()==View.VISIBLE){if(cartDetailText.getParent() instanceof android.view.ViewGroup)((android.view.ViewGroup)cartDetailText.getParent()).removeView(cartDetailText);shoppingPlanBox.addView(cartDetailText,new LinearLayout.LayoutParams(-1,-2));}
-        if(noteChoiceBtn!=null)noteChoiceBtn.setText(shoppingPlanExpanded?"Tutup daftar ▴":"Daftar belanja ▾");
+        if(noteChoiceBtn!=null)noteChoiceBtn.setText(shoppingPlanExpanded?"List Belanjaan ▴":"List Belanjaan ▾");
     }
     private Button addStopButton;
     private boolean deliveryOverride;
@@ -152,9 +133,9 @@ class TransShopActivityScreenCore extends CustomerAdaptiveActivity {
         selectingShoppingStop = false;
         mapView.clearRoute();
         try{shoppingStops.put(new JSONObject().put("latitude",lat).put("longitude",lng).put("address",String.format(Locale.US,"%.6f, %.6f",lat,lng)).put("note",""));}catch(Exception ignored){}
-        renderShoppingPlan();saveShoppingDraft();setShoppingPlanExpanded(true);if(shoppingScroll!=null)shoppingPlanBox.post(()->shoppingScroll.smoothScrollTo(0,shoppingPlanBox.getBottom()));mapView.setWaypoints(shopWaypoints());updateModeUI();invalidateShopQuote();requestPaymentQuote();
+        renderShoppingPlan();setShoppingPlanExpanded(true);if(shoppingScroll!=null)shoppingPlanBox.post(()->shoppingScroll.smoothScrollTo(0,shoppingPlanBox.getBottom()));mapView.setWaypoints(shopWaypoints());updateModeUI();invalidateShopQuote();requestPaymentQuote();
         final JSONObject added=shoppingStops.optJSONObject(shoppingStops.length()-1);
-        featureRuntime.execute(()->{String address=buildSmartAddress(lat,lng);featureRuntime.post(mainHandler,()->{if(destroyed)return;try{added.put("address",address);saveShoppingDraft();}catch(Exception ignored){}renderShoppingPlan();});},()->{});
+        featureRuntime.execute(()->{String address=buildSmartAddress(lat,lng);featureRuntime.post(mainHandler,()->{if(destroyed)return;try{added.put("address",address);}catch(Exception ignored){}renderShoppingPlan();});},()->{});
     }
     @Override protected void onSaveInstanceState(Bundle out){readStopDrafts();out.putBoolean("shop_delivery_override",deliveryOverride);out.putDouble("shop_delivery_lat",deliveryLat);out.putDouble("shop_delivery_lng",deliveryLng);out.putString("shop_delivery_address",deliveryAddress);out.putDouble("shop_pickup_lat",pickupLat);out.putDouble("shop_pickup_lng",pickupLng);out.putString("shop_pickup_address",pickupAddress);out.putString("shop_stops",shoppingStops.toString());out.putString("shop_primary_note",noteInput==null?"":noteInput.getText().toString());out.putBoolean("shop_primary_saved",primaryNoteSaved);out.putString("shop_voucher",voucherInput==null?"":voucherInput.getText().toString());super.onSaveInstanceState(out);}
     protected static final String CREATE_ORDER_URL = BASE_URL + "server/createOrder.php";
@@ -211,8 +192,7 @@ class TransShopActivityScreenCore extends CustomerAdaptiveActivity {
         String catalogList = getIntent().getStringExtra("transshop_catalog_list");
         if (catalogList != null && !catalogList.trim().isEmpty() && noteInput != null) noteInput.setText(catalogList);
         if(savedInstanceState!=null){try{pickupLat=savedInstanceState.getDouble("shop_pickup_lat",0);pickupLng=savedInstanceState.getDouble("shop_pickup_lng",0);pickupAddress=savedInstanceState.getString("shop_pickup_address",pickupAddress);if(validCoord(pickupLat,pickupLng))pickupBtn.setText("Belanja di sini\n"+shortAddress(pickupAddress));shoppingStops=new JSONArray(savedInstanceState.getString("shop_stops","[]"));noteInput.setText(savedInstanceState.getString("shop_primary_note",noteInput.getText().toString()));}catch(Exception ignored){}}
-        if(savedInstanceState==null)restoreShoppingDraft();
-        else primaryNoteSaved=savedInstanceState.getBoolean("shop_primary_saved",false);
+        if(savedInstanceState!=null)primaryNoteSaved=savedInstanceState.getBoolean("shop_primary_saved",false);
         String claimedVoucher=savedInstanceState==null?getIntent().getStringExtra("royalty_voucher_code"):savedInstanceState.getString("shop_voucher","");
         if(claimedVoucher!=null&&voucherInput!=null){voucherInput.setText(claimedVoucher);voucherChoiceBtn.setText(claimedVoucher.trim().isEmpty()?"🏷 Voucher":"🏷 Voucher dipilih");}
         renderShoppingPlan();
@@ -501,7 +481,7 @@ class TransShopActivityScreenCore extends CustomerAdaptiveActivity {
         bottomCard.addView(cartDetailText, new LinearLayout.LayoutParams(-1,-2));
 
         voucherChoiceBtn = smallButton("🏷 Voucher", "#FFFFFF", "#0B3A78", "#C8D9EC");
-        noteChoiceBtn = smallButton("Daftar belanja ▾", "#EAF4FF", "#0B3A78", "#C8D9EC");
+        noteChoiceBtn = smallButton("List Belanjaan ▾", "#EAF4FF", "#0B3A78", "#C8D9EC");
         paymentChoiceBtn = smallButton("💵 Tunai", "#FFFFFF", "#0B3A78", "#C8D9EC");
         voucherChoiceBtn.setTextSize(10);
         noteChoiceBtn.setTextSize(10);
@@ -509,7 +489,7 @@ class TransShopActivityScreenCore extends CustomerAdaptiveActivity {
         compactShopButton(voucherChoiceBtn);compactShopButton(noteChoiceBtn);compactShopButton(paymentChoiceBtn);
 
         quickRow.addView(voucherChoiceBtn, new LinearLayout.LayoutParams(0, -1, 0.95f));
-        LinearLayout.LayoutParams noteQuickLp = new LinearLayout.LayoutParams(0, -1, 0.82f);
+        LinearLayout.LayoutParams noteQuickLp = new LinearLayout.LayoutParams(0, -1, 1f);
         noteQuickLp.setMargins(dp(6), 0, dp(6), 0);
         quickRow.addView(noteChoiceBtn, noteQuickLp);
         quickRow.addView(paymentChoiceBtn, new LinearLayout.LayoutParams(0, -1, 1.18f));
@@ -1244,12 +1224,12 @@ class TransShopActivityScreenCore extends CustomerAdaptiveActivity {
         String shoppingList = noteInput == null ? "" : noteInput.getText().toString().trim();
         if (shoppingList.isEmpty()) {
             setShoppingPlanExpanded(true);
-            toastDialog("Tulis daftar barang yang ingin dibelanjakan terlebih dahulu.");
+            toastDialog("Isi List Belanjaan untuk toko pertama.");
             return;
         }
 
         if(shoppingStops.length()>allowedShoppingStops){toastDialog("Batas layanan saat ini "+allowedShoppingStops+" persinggahan. Hapus titik tambahan terlebih dahulu.");return;}
-        readStopDrafts();for(int i=0;i<shoppingStops.length();i++)if(shoppingStops.optJSONObject(i).optString("note").trim().isEmpty()){setShoppingPlanExpanded(true);toastDialog("Isi daftar belanja Singgah "+(i+1)+" terlebih dahulu.");return;}
+        readStopDrafts();for(int i=0;i<shoppingStops.length();i++)if(shoppingStops.optJSONObject(i).optString("note").trim().isEmpty()){setShoppingPlanExpanded(true);toastDialog("Isi List Belanjaan untuk Singgah "+(i+1)+" terlebih dahulu.");return;}
         final JSONArray submittedStops=shopWaypoints();final JSONObject submittedPlan=shopPlanPayload();
         final double submittedPickupLat=pickupLat,submittedPickupLng=pickupLng,submittedDeliveryLat=deliveryLat,submittedDeliveryLng=deliveryLng;
         final String submittedPickupAddress=pickupAddress,submittedDeliveryAddress=deliveryAddress,submittedPayment=paymentMethod;
@@ -1344,7 +1324,6 @@ class TransShopActivityScreenCore extends CustomerAdaptiveActivity {
             return;
         }
 
-        if(!catalogPickup)shoppingDraftPrefs().edit().clear().apply();
         getSharedPreferences("transiva", MODE_PRIVATE).edit()
                 .putString("active_order_id", orderId)
                 .putString("active_order_type", "TransShop")

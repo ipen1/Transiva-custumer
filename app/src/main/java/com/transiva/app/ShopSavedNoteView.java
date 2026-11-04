@@ -75,7 +75,7 @@ final class ShopSavedNoteView extends LinearLayout {
     }
     private void save(){
         String value=input.getText().toString().trim();
-        if(value.isEmpty()){input.setError("Tulis daftar belanja terlebih dahulu");input.requestFocus();return;}
+        if(value.isEmpty()){input.setError("Isi List Belanjaan terlebih dahulu");input.requestFocus();return;}
         input.setText(value);
         input.clearFocus();
         InputMethodManager keyboard=(InputMethodManager)activity.getSystemService(Activity.INPUT_METHOD_SERVICE);

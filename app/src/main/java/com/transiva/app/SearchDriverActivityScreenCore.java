@@ -100,6 +100,7 @@ class SearchDriverActivityScreenCore extends CustomerAdaptiveActivity {
 
     protected String activeOrderId = "";
     private boolean shopOrder;
+    private String requestedOrderType = "";
     protected double userLat = 0;
     protected double userLng = 0;
     protected boolean hasUserLocation = false;
@@ -148,9 +149,9 @@ class SearchDriverActivityScreenCore extends CustomerAdaptiveActivity {
 
         String savedOrderType = activeOrderId.equals(getStringPref("active_order_id"))
                 ? getStringPref("active_order_type") : "";
-        shopOrder = "TransShop".equalsIgnoreCase(firstNonEmpty(
-                getIntent().getStringExtra("active_order_type"),
-                getIntent().getStringExtra("order_type"), savedOrderType));
+        requestedOrderType = firstNonEmpty(getIntent().getStringExtra("active_order_type"),
+                getIntent().getStringExtra("order_type"), savedOrderType);
+        shopOrder = "TransShop".equalsIgnoreCase(requestedOrderType);
 
         buildLayout();
         getUserLocationThenStart();
@@ -467,7 +468,26 @@ class SearchDriverActivityScreenCore extends CustomerAdaptiveActivity {
         }
     }
 
-    protected void playDriverAcceptedEffect() {
+    private String driverReadyMessage(JSONObject order, JSONObject response) {
+        String type = firstNonEmpty(order.optString("order_type"), response.optString("order_type"),
+                order.optString("service_type"), response.optString("service_type"),
+                requestedOrderType).toLowerCase(Locale.ROOT);
+        switch (type) {
+            case "transshop": case "shop": case "transmart": case "mart":
+                return "Driver siap membelanjakan pesanan Anda.";
+            case "transfood": case "food":
+                return "Driver siap mengambil pesanan Anda di restoran.";
+            case "transsend": case "send": case "pickup":
+                return "Driver siap mengambil paket Anda.";
+            case "transride": case "transbike": case "transcar":
+            case "ride": case "bike": case "car": case "motor": case "mobil":
+                return "Driver siap menjemput Anda.";
+            default:
+                return "Driver sudah menerima pesanan Anda.";
+        }
+    }
+
+    protected void playDriverAcceptedEffect(String message) {
         if (pageRoot == null || destroyed) return;
 
         FrameLayout overlay = new FrameLayout(this);
@@ -485,14 +505,13 @@ class SearchDriverActivityScreenCore extends CustomerAdaptiveActivity {
         icon.setBackground(roundGradient("#10B981", "#0B7CFF", dp(48)));
         box.addView(icon, new LinearLayout.LayoutParams(dp(96), dp(96)));
 
-        TextView found = text(shopOrder ? "Driver siap belanja" : "MATCH FOUND", 28, "#FFF1A6", true);
+        TextView found = text("Driver Siap", 28, "#FFF1A6", true);
         found.setGravity(Gravity.CENTER);
         LinearLayout.LayoutParams foundLp = new LinearLayout.LayoutParams(-1, -2);
         foundLp.setMargins(0, dp(18), 0, dp(6));
         box.addView(found, foundLp);
 
-        TextView desc = text(shopOrder ? "Driver menerima pesanan TransShop Anda"
-                : "Driver menerima pesananmu • perjalanan siap dimulai", 15, "#D7E9FF", false);
+        TextView desc = text(message, 15, "#D7E9FF", false);
         desc.setGravity(Gravity.CENTER);
         box.addView(desc, new LinearLayout.LayoutParams(-1, -2));
 
@@ -740,11 +759,13 @@ class SearchDriverActivityScreenCore extends CustomerAdaptiveActivity {
         matchingView.setVisibility(View.GONE);
         countdownLabel.setVisibility(View.GONE);
         countdownText.setVisibility(View.GONE);
-        playDriverAcceptedEffect();
+        JSONObject order = data.optJSONObject("order");
+        if (order == null) order = new JSONObject();
+        String readyMessage = driverReadyMessage(order, data);
+        playDriverAcceptedEffect(readyMessage);
 
-        titleText.setText("DRIVER SUDAH TERHUBUNG");
-        setSubtitle(shopOrder ? "Driver menerima pesanan belanja Anda"
-                : "Driver menerima pesananmu • membuka perjalanan sekarang");
+        titleText.setText("Driver Siap");
+        setSubtitle(readyMessage);
         cancelBtn.setVisibility(View.GONE);
         driverCard.setVisibility(View.VISIBLE);
         driverCard.setAlpha(0f);
@@ -755,9 +776,6 @@ class SearchDriverActivityScreenCore extends CustomerAdaptiveActivity {
 
         JSONObject driver = data.optJSONObject("driver");
         if (driver == null) driver = new JSONObject();
-
-        JSONObject order = data.optJSONObject("order");
-        if (order == null) order = new JSONObject();
 
         String driverName = firstNonEmpty(
                 driver.optString("name", ""),

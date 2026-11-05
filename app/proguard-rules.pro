@@ -93,3 +93,9 @@
 -keep class com.transiva.app.FcmRegistrationWorker { public <init>(android.content.Context, androidx.work.WorkerParameters); }
 
 -keep class com.transiva.app.CallDeliveryReceiptWorker { public <init>(android.content.Context, androidx.work.WorkerParameters); }
+
+# ReleaseEdgeToEdgeTest invokes this API from the separate instrumentation APK.
+# Keep this narrow ABI so the floating-dialog regression can run after R8.
+-keep class com.transiva.app.CustomerWindowPolicy {
+    public static void install(android.view.Window);
+}

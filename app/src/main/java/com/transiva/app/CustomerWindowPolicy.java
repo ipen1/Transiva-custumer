@@ -50,16 +50,19 @@ public final class CustomerWindowPolicy {
         if (content == null) return;
         if (!state.installed) {
             state.installed = true;
-            // API 35+ enforces edge-to-edge for our non-floating activity/media
-            // windows. Older Android needs explicit layout behind system bars.
-            // Avoid core 1.17 enableEdgeToEdge: it calls deprecated color setters.
-            // Our own legacy theme supplies transparency, BarProtection colors it.
-            if (Build.VERSION.SDK_INT < 35)
-                WindowCompat.setDecorFitsSystemWindows(window, false);
+            // Apply explicitly on every API: Android 15+ only enforces this for
+            // non-floating windows. Food stories use a Dialog with a floating
+            // theme, even after its size is changed to MATCH_PARENT. Leaving that
+            // window fitted by the OS and also padding it here applies insets twice.
+            // Legacy themes provide transparency; BarProtection paints behind bars.
+            WindowCompat.setDecorFitsSystemWindows(window, false);
             if (Build.VERSION.SDK_INT >= 29) {
                 window.setNavigationBarContrastEnforced(false);
             }
-            window.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
+            // Keep the caller's keyboard visibility state and other window flags.
+            int softInputMode = window.getAttributes().softInputMode;
+            window.setSoftInputMode((softInputMode & ~WindowManager.LayoutParams.SOFT_INPUT_MASK_ADJUST)
+                    | WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
             state.left = content.getPaddingLeft(); state.top = content.getPaddingTop();
             state.right = content.getPaddingRight(); state.bottom = content.getPaddingBottom();
             decor.getOverlay().add(state.protection);

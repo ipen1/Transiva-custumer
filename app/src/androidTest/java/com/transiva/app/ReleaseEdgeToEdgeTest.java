@@ -1,10 +1,13 @@
 package com.transiva.app;
 
 import android.app.Instrumentation;
+import android.app.Dialog;
 import android.content.Intent;
 import android.view.View;
 import android.graphics.Insets;
 import android.view.WindowInsets;
+import android.view.WindowManager;
+import android.widget.FrameLayout;
 import androidx.test.ext.junit.runners.AndroidJUnit4;
 import androidx.test.platform.app.InstrumentationRegistry;
 import androidx.test.filters.SdkSuppress;
@@ -52,6 +55,44 @@ public class ReleaseEdgeToEdgeTest {
                 content.dispatchApplyWindowInsets(insets(0,23,0,31,0));
                 assertEquals(b+31,content.getPaddingBottom());
                 assertFalse("API 35+ theme still enables navigation contrast scrim",activity.getWindow().isNavigationBarContrastEnforced());
+            });
+        } finally {i.runOnMainSync(activity::finish);}
+    }
+
+    @Test public void floatingMediaDialogPreservesKeyboardStateAndAppliesInsetsOnce() {
+        Instrumentation i=InstrumentationRegistry.getInstrumentation();
+        RegisterActivity activity=(RegisterActivity)i.startActivitySync(new Intent(i.getTargetContext(),RegisterActivity.class)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+        try {
+            i.runOnMainSync(()->{
+                Dialog dialog=new Dialog(activity,android.R.style.Theme_Material_Light_Dialog_NoActionBar);
+                dialog.setContentView(new FrameLayout(activity));
+                dialog.show();
+                try {
+                    android.view.Window window=dialog.getWindow();
+                    assertNotNull(window);
+                    window.setLayout(-1,-1);
+                    window.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_HIDDEN
+                            | WindowManager.LayoutParams.SOFT_INPUT_ADJUST_PAN);
+                    View content=window.findViewById(android.R.id.content);
+                    int l=content.getPaddingLeft(),t=content.getPaddingTop();
+                    int r=content.getPaddingRight(),b=content.getPaddingBottom();
+                    for(int repeat=0;repeat<3;repeat++) {
+                        CustomerWindowPolicy.install(window);
+                        int mode=window.getAttributes().softInputMode;
+                        assertEquals(WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_HIDDEN,
+                                mode & WindowManager.LayoutParams.SOFT_INPUT_MASK_STATE);
+                        assertEquals(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE,
+                                mode & WindowManager.LayoutParams.SOFT_INPUT_MASK_ADJUST);
+                        content.dispatchApplyWindowInsets(insets(7,23,11,31,240));
+                        assertEquals(l+7,content.getPaddingLeft());
+                        assertEquals(t+23,content.getPaddingTop());
+                        assertEquals(r+11,content.getPaddingRight());
+                        assertEquals(b+240,content.getPaddingBottom());
+                    }
+                    content.dispatchApplyWindowInsets(insets(0,23,0,31,0));
+                    assertEquals(b+31,content.getPaddingBottom());
+                } finally { dialog.dismiss(); }
             });
         } finally {i.runOnMainSync(activity::finish);}
     }

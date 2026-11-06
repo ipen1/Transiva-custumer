@@ -36,8 +36,6 @@ import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.io.OutputStreamWriter;
-import java.net.HttpURLConnection;
-import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.util.Locale;
 import java.util.regex.Matcher;
@@ -618,8 +616,9 @@ class TransShopActivityScreenCore extends CustomerAdaptiveActivity {
 
         fareText = text("Tarif dihitung dari database", 8, "#64748B", false);
         fareText.setVisibility(View.GONE);
-        paymentSummaryText = text("", 8, "#64748B", false);
+        paymentSummaryText = text("", 11, "#536B83", false);
         paymentSummaryText.setVisibility(View.GONE);
+        bottomCard.addView(paymentSummaryText, new LinearLayout.LayoutParams(-1, -2));
 
         // CTA tetap terlihat di footer dan tidak menutupi rute peta.
         orderBtn = smallButton("PESAN TRANSSHOP", "#0B7CFF", "#FFFFFF", "#0B7CFF");
@@ -676,7 +675,11 @@ class TransShopActivityScreenCore extends CustomerAdaptiveActivity {
         deliveryBtn.setOnClickListener(v -> handlePointButtonClick("delivery"));
         gpsBtn.setOnClickListener(v -> goToMyLocation());
         backBtn.setOnClickListener(v -> finish());
-        orderBtn.setOnClickListener(v -> createOrder());
+        orderBtn.setOnClickListener(v -> {
+            String key = currentShopQuoteKey();
+            if (shopFareGate.hasQuote(key)) createOrder();
+            else if (!shopFareGate.isPending(key)) requestPaymentQuote();
+        });
         useLinkBtn.setOnClickListener(v -> useGoogleMapLink());
     }
 
@@ -862,7 +865,7 @@ class TransShopActivityScreenCore extends CustomerAdaptiveActivity {
                     if (asPickup) {
                         pickupLat = coordinate[0];
                         pickupLng = coordinate[1];
-                        pickupAddress = "Mencari alamat jemput...";
+                        pickupAddress = shortCoord(pickupLat, pickupLng);
                         pickupText.setText("Belanja di: " + pickupAddress);
                         pickupBtn.setText("Belanja di sini\nMencari alamat...");
                         mode = "pickup";
@@ -875,7 +878,7 @@ class TransShopActivityScreenCore extends CustomerAdaptiveActivity {
                         deliveryOverride = true;
                         deliveryLat = coordinate[0];
                         deliveryLng = coordinate[1];
-                        deliveryAddress = "Mencari alamat pengantaran...";
+                        deliveryAddress = shortCoord(deliveryLat, deliveryLng);
                         deliveryText.setText("Pengantaran: " + deliveryAddress);
                         deliveryBtn.setText("Pengantaran\nMencari alamat...");
                         mode = "delivery";
@@ -886,6 +889,7 @@ class TransShopActivityScreenCore extends CustomerAdaptiveActivity {
                         resolveAddressAsync(false, deliveryLat, deliveryLng);
                     }
                     finishPointSelection();
+                    requestPaymentQuote();
                 });
             } catch (Exception ignored) {
                 featureRuntime.post(mainHandler, () -> {
@@ -921,7 +925,7 @@ class TransShopActivityScreenCore extends CustomerAdaptiveActivity {
                     setLoading(false);
                     if (c == null || !validCoord(c[0], c[1])) { toastDialog("Link Google Maps tidak bisa dibaca."); return; }
                     invalidateShopQuote();
-                    pickupLat = c[0]; pickupLng = c[1]; pickupAddress = "Mencari alamat lokasi belanja...";
+                    pickupLat = c[0]; pickupLng = c[1]; pickupAddress = shortCoord(pickupLat, pickupLng);
                     pickupText.setText("Belanja di: " + pickupAddress);
                     pickupBtn.setText("Belanja di sini\nMencari alamat...");
                     googleMapInput.setText("");
@@ -929,6 +933,7 @@ class TransShopActivityScreenCore extends CustomerAdaptiveActivity {
                     resolveAddressAsync(true, pickupLat, pickupLng);
                     selectingShoppingStop = false;
                     finishPointSelection();
+                    requestPaymentQuote();
                 });
             } catch (Exception e) {
                 featureRuntime.post(mainHandler, () -> { setLoading(false); toastDialog("Gagal membaca link Google Maps."); });
@@ -978,13 +983,6 @@ class TransShopActivityScreenCore extends CustomerAdaptiveActivity {
                     if (mapView != null) mapView.setDelivery(deliveryLat, deliveryLng, address);
                 }
 
-                // Quote harus dipanggil setelah koordinat kedua titik sudah tersimpan.
-                if (validCoordinate(pickupLat, pickupLng)
-                        && validCoordinate(deliveryLat, deliveryLng)
-                        && !shopFareGate.isPending(currentShopQuoteKey())
-                        && !shopFareGate.hasQuote(currentShopQuoteKey())) {
-                    requestPaymentQuote();
-                }
             });
         }, () -> featureRuntime.post(mainHandler, () -> { setLoading(false);toastDialog("Sistem sedang sibuk. Coba lagi."); }));
     }
@@ -1009,78 +1007,7 @@ class TransShopActivityScreenCore extends CustomerAdaptiveActivity {
     }
 
     protected String reverseAddress(double lat, double lng) {
-        HttpURLConnection conn = null;
-
-        try {
-            String urlText =
-                    "https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat="
-                            + lat + "&lon=" + lng + "&zoom=18&addressdetails=1";
-
-            URL url = new URL(urlText);
-            conn = CustomerApiClient.open(this, url.toString());
-            conn.setRequestMethod("GET");
-            conn.setConnectTimeout(12000);
-            conn.setReadTimeout(12000);
-            conn.setUseCaches(false);
-            conn.setRequestProperty("User-Agent", "TransivaAndroid/1.0");
-            conn.setRequestProperty("Accept", "application/json");
-            String requestToken = refreshAuthToken();
-            if (!requestToken.isEmpty()) {
-                conn.setRequestProperty("Authorization", "Bearer " + requestToken);
-                conn.setRequestProperty("X-App-Scope", "customer");
-            }
-            conn.setRequestProperty("X-Device-UUID", DeviceIdentityManager.getInstallationUuid(this));
-
-            String body = readStream(conn.getInputStream());
-            JSONObject json = new JSONObject(body);
-            JSONObject a = json.optJSONObject("address");
-
-            if (a != null) {
-                String road = firstNonEmpty(
-                        a.optString("road", ""),
-                        a.optString("pedestrian", ""),
-                        a.optString("footway", ""),
-                        a.optString("neighbourhood", "")
-                );
-
-                String area = firstNonEmpty(
-                        a.optString("village", ""),
-                        a.optString("suburb", ""),
-                        a.optString("town", ""),
-                        a.optString("city", ""),
-                        a.optString("county", "")
-                );
-
-                if (road.length() > 0 && area.length() > 0) {
-                    return road + ", " + area;
-                }
-
-                return firstNonEmpty(road, area, compactDisplayName(json.optString("display_name", "")));
-            }
-
-            return compactDisplayName(json.optString("display_name", ""));
-        } catch (Exception ignored) {
-            return "";
-        } finally {
-            if (conn != null) conn.disconnect();
-        }
-    }
-
-    protected String compactDisplayName(String value) {
-        String v = firstNonEmpty(value, "");
-        if (v.length() == 0) return "";
-
-        String[] parts = v.split(",");
-        StringBuilder sb = new StringBuilder();
-
-        for (int i = 0; i < parts.length && i < 3; i++) {
-            String part = parts[i].trim();
-            if (part.length() == 0) continue;
-            if (sb.length() > 0) sb.append(", ");
-            sb.append(part);
-        }
-
-        return sb.length() > 0 ? sb.toString() : v;
+        return new CustomerGeocodingRepository(this).reverse(lat, lng);
     }
 
     protected String findNearestPlaceName(double lat, double lng) {
@@ -1444,16 +1371,20 @@ class TransShopActivityScreenCore extends CustomerAdaptiveActivity {
     protected void requestPaymentQuote() {
         if (ordering || destroyed) return;
         final String quoteKey = currentShopQuoteKey();
+        if (shopFareGate.isPending(quoteKey)) return;
         final long quoteTicket = shopFareGate.begin(quoteKey);
         final double quotePickupLat=pickupLat, quotePickupLng=pickupLng;
         final double quoteDeliveryLat=deliveryLat, quoteDeliveryLng=deliveryLng;
         final JSONArray quoteStops=shopWaypoints();
         final String quotePaymentMethod=paymentMethod;
         final String quoteVoucher=voucherInput==null?"":voucherInput.getText().toString().trim().toUpperCase(Locale.US);
-        if(orderBtn!=null)orderBtn.setEnabled(false);
+        if (orderBtn != null) {
+            orderBtn.setEnabled(false);
+            orderBtn.setText("Menghitung ongkir…");
+        }
+        acceptedShopQuoteToken = "";
         if(originalPriceText!=null)originalPriceText.setVisibility(View.GONE);
         if(discountInfoText!=null)discountInfoText.setVisibility(View.GONE);
-        requestVisibleOsrmRoute();
         if (!validCoordinate(quotePickupLat, quotePickupLng)
                 || !validCoordinate(quoteDeliveryLat, quoteDeliveryLng)) {
             if (paymentSummaryText != null) {
@@ -1467,30 +1398,11 @@ class TransShopActivityScreenCore extends CustomerAdaptiveActivity {
             return;
         }
 
-        double routeMeters=0,previousLat=quotePickupLat,previousLng=quotePickupLng;
-        for(int i=0;i<quoteStops.length();i++){JSONObject point=quoteStops.optJSONObject(i);double lat=point.optDouble("latitude"),lng=point.optDouble("longitude");routeMeters+=distanceMeter(previousLat,previousLng,lat,lng);previousLat=lat;previousLng=lng;}
-        routeMeters+=distanceMeter(previousLat,previousLng,quoteDeliveryLat,quoteDeliveryLng);
-        final double fallbackKm=Math.max(0.1,routeMeters*1.25/1000.0);
-
-        // Tampilkan estimasi jarak/waktu segera, lalu harga diisi dari database.
-        final double fallbackMinutes = Math.max(
-                1.0,
-                (fallbackKm / 25.0) * 60.0
-        );
-
-        distanceInfoText.setText(String.format(
-                new Locale("id", "ID"),
-                "Rute · %.1f km",
-                fallbackKm
-        ));
-        durationInfoText.setText(String.format(
-                new Locale("id", "ID"),
-                "± %.0f menit",
-                fallbackMinutes
-        ));
+        distanceInfoText.setText("Rute · —");
+        durationInfoText.setText("—");
         finalPriceText.setText("Menghitung...");
         finalPriceText.setTextColor(Color.parseColor("#64748B"));
-        paymentSummaryText.setText("Mengambil tarif dari database...");
+        paymentSummaryText.setVisibility(View.GONE);
 
         featureRuntime.execute(() -> {
             try {
@@ -1523,14 +1435,7 @@ class TransShopActivityScreenCore extends CustomerAdaptiveActivity {
                     if (!isShopQuoteCurrent(quoteTicket, quoteKey)) return;
 
                     if (!res.optBoolean("success", false)) {
-                        shopFareGate.reject(quoteTicket);
-                        String message = firstNonEmpty(
-                                res.optString("message", ""),
-                                "Tarif belum dapat dihitung"
-                        );
-                        paymentSummaryText.setText(message);
-                        finalPriceText.setText("Rp -");
-                        finalPriceText.setTextColor(Color.parseColor("#0B3A78"));
+                        showShopQuoteRetry(quoteTicket, res.optString("message", "Ongkir belum dapat dihitung."));
                         return;
                     }
 
@@ -1548,45 +1453,29 @@ class TransShopActivityScreenCore extends CustomerAdaptiveActivity {
                     );
                     int balance = jsonInt(res, "balance", 0);
 
-                    double distanceKm = jsonDouble(
-                            res,
-                            "distance_km",
-                            fallbackKm
-                    );
-                    double durationMinutes = jsonDouble(
-                            res,
-                            "duration_minutes",
-                            jsonDouble(res, "estimated_minutes", fallbackMinutes)
-                    );
-
-                    distanceKm = Math.max(0.1, distanceKm);
-                    durationMinutes = Math.max(1.0, durationMinutes);
-
-                    distanceInfoText.setText(String.format(
-                            new Locale("id", "ID"),
-                            "Rute · %.1f km",
-                            distanceKm
-                    ));
-                    durationInfoText.setText(String.format(
-                            new Locale("id", "ID"),
-                            "± %.0f menit",
-                            durationMinutes
-                    ));
-
-                    if (!CustomerFinancialRules.validRideQuote(original,total)) {
-                        shopFareGate.reject(quoteTicket);
-                        paymentSummaryText.setText("Tarif database tidak valid");
-                        finalPriceText.setText("Rp -");
-                        finalPriceText.setTextColor(Color.parseColor("#0B3A78"));
+                    double distanceKm = res.optDouble("distance_km", Double.NaN);
+                    double durationMinutes = res.optDouble("duration_minutes", Double.NaN);
+                    String quoteToken = res.optString("quote_token", "");
+                    if (!CustomerFinancialRules.validRideQuote(original, total) || quoteToken.isEmpty()
+                            || !Double.isFinite(distanceKm) || distanceKm < 0
+                            || !Double.isFinite(durationMinutes) || durationMinutes < 0) {
+                        showShopQuoteRetry(quoteTicket, "Ongkir belum dapat diverifikasi. Coba hitung ulang.");
                         return;
                     }
+                    Locale id = new Locale("id", "ID");
+                    distanceInfoText.setText(String.format(id, "Rute · %.1f km", distanceKm));
+                    durationInfoText.setText(String.format(id, "± %.0f menit", Math.max(1.0, durationMinutes)));
 
                     if (!shopFareGate.accept(quoteTicket, quoteKey)) return;
-                    acceptedShopQuoteToken=res.optString("quote_token", "");
+                    acceptedShopQuoteToken = quoteToken;
                     royaltyOriginalFare=original;
                     int voucherDiscount=jsonInt(res,"voucher_discount",Math.max(0,discount-jsonInt(res,"hemat_discount",0)));
                     voucherChoiceBtn.setText(voucherDiscount>0?"🏷 Hemat Rp"+formatMoney(voucherDiscount):(voucherInput.getText().toString().trim().isEmpty()?"🏷 Voucher":"🏷 Voucher dipilih"));
-                    if(orderBtn!=null)orderBtn.setEnabled(true);
+                    if (orderBtn != null) {
+                        orderBtn.setText("PESAN TRANSSHOP");
+                        orderBtn.setEnabled(true);
+                    }
+                    requestVisibleOsrmRoute();
                     finalPriceText.setText("Rp " + formatMoney(total));
 
                     if (discount > 0 && original > total) {
@@ -1628,24 +1517,28 @@ class TransShopActivityScreenCore extends CustomerAdaptiveActivity {
                     fareText.setText("Tarif database: Rp" + formatMoney(total));
                     paymentSummaryText.setText(info);
                 });
-            } catch (Exception e) {
+            } catch (Exception error) {
+                String message = error instanceof TransivaHttpRepository.ServerResponseException
+                        ? error.getMessage() : "Koneksi tarif terputus. Coba hitung ulang.";
                 featureRuntime.post(mainHandler, () -> {
-                    if (!isShopQuoteCurrent(quoteTicket, quoteKey)) return;
-                    shopFareGate.reject(quoteTicket);
-                    paymentSummaryText.setText("Gagal terhubung ke server tarif");
-                    finalPriceText.setText("Rp -");
-                    finalPriceText.setTextColor(Color.parseColor("#0B3A78"));
+                    if (isShopQuoteCurrent(quoteTicket, quoteKey)) showShopQuoteRetry(quoteTicket, message);
                 });
             }
-        }, () -> { Exception e = new java.util.concurrent.RejectedExecutionException("Antrean penuh atau waktu tunggu habis"); 
-                featureRuntime.post(mainHandler, () -> {
-                    if (!isShopQuoteCurrent(quoteTicket, quoteKey)) return;
-                    shopFareGate.reject(quoteTicket);
-                    paymentSummaryText.setText("Gagal terhubung ke server tarif");
-                    finalPriceText.setText("Rp -");
-                    finalPriceText.setTextColor(Color.parseColor("#0B3A78"));
-                });
-             });
+        }, () -> featureRuntime.post(mainHandler, () -> {
+            if (isShopQuoteCurrent(quoteTicket, quoteKey)) {
+                showShopQuoteRetry(quoteTicket, "Layanan tarif sedang sibuk. Coba hitung ulang.");
+            }
+        }));
+    }
+
+    private void showShopQuoteRetry(long ticket, String message) {
+        shopFareGate.reject(ticket);
+        paymentSummaryText.setText(firstNonEmpty(message, "Ongkir belum tersedia. Coba hitung ulang."));
+        paymentSummaryText.setVisibility(View.VISIBLE);
+        finalPriceText.setText("Rp —");
+        finalPriceText.setTextColor(Color.parseColor("#0B3A78"));
+        orderBtn.setText("Hitung ulang ongkir");
+        orderBtn.setEnabled(true);
     }
 
     private String currentShopQuoteKey() {
@@ -1657,6 +1550,8 @@ class TransShopActivityScreenCore extends CustomerAdaptiveActivity {
     }
     private void invalidateShopQuote() {
         shopFareGate.invalidate();
+        acceptedShopQuoteToken = "";
+        if (paymentSummaryText != null) paymentSummaryText.setVisibility(View.GONE);
         if(finalPriceText!=null)finalPriceText.setText("Rp -");
         if(originalPriceText!=null)originalPriceText.setVisibility(View.GONE);
         if(discountInfoText!=null)discountInfoText.setVisibility(View.GONE);
@@ -1744,7 +1639,12 @@ class TransShopActivityScreenCore extends CustomerAdaptiveActivity {
 
 
 
-    private void resetOrderButton() { ordering = false; setLoading(false); orderBtn.setEnabled(true); orderBtn.setText("PESAN TRANSSHOP"); }
+    private void resetOrderButton() {
+        ordering = false;
+        setLoading(false);
+        orderBtn.setEnabled(true);
+        orderBtn.setText(shopFareGate.hasQuote(currentShopQuoteKey()) ? "PESAN TRANSSHOP" : "Hitung ulang ongkir");
+    }
     private void setLoading(boolean b) { if (progressBar != null) progressBar.setVisibility(b ? View.VISIBLE : View.GONE); }
     private int checkSelfPermissionCompat(String p) { return android.os.Build.VERSION.SDK_INT >= 23 ? checkSelfPermission(p) : PackageManager.PERMISSION_GRANTED; }
 

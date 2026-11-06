@@ -14,6 +14,7 @@ public final class SmartWaitingTextView extends LinearLayout {
     private long sampledAt;
     private boolean terminal;
     private boolean compact;
+    private boolean tripPresentation;
     private final TextView title, clock, detail;
     private final Runnable tick=new Runnable(){public void run(){render();if(isAttachedToWindow()&&!terminal&&state!=null&&state.optJSONObject("active")!=null)postDelayed(this,1000);}};
     public SmartWaitingTextView(Context context){
@@ -25,6 +26,21 @@ public final class SmartWaitingTextView extends LinearLayout {
     private int dp(int n){return Math.round(n*getResources().getDisplayMetrics().density);}
     private TextView label(Context c,int size,int color){TextView v=new TextView(c);v.setTextSize(size);v.setTextColor(color);v.setIncludeFontPadding(false);v.setPadding(0,dp(1),0,dp(1));return v;}
     public void setCompactPresentation(boolean value){compact=value;render();}
+    public void setTripPresentation() {
+        compact = true;
+        tripPresentation = true;
+        removeAllViews();
+        LinearLayout header = new LinearLayout(getContext());
+        boolean stack = getResources().getConfiguration().screenWidthDp < 340
+                || getResources().getConfiguration().fontScale > 1.2f;
+        header.setOrientation(stack ? VERTICAL : HORIZONTAL);
+        header.setGravity(android.view.Gravity.CENTER_VERTICAL);
+        header.addView(title, new LayoutParams(stack ? -1 : 0, -2, stack ? 0 : 1));
+        header.addView(clock, new LayoutParams(-2, -2));
+        addView(header, new LayoutParams(-1, -2));
+        addView(detail, new LayoutParams(-1, -2));
+        render();
+    }
     public void bind(JSONObject value){bind(value,value==null?"":value.optString("order_status"));}
     public void bind(JSONObject value,String status){state=value;sampledAt=SystemClock.elapsedRealtime();String s=status==null?"":status.toLowerCase(Locale.US);terminal=s.equals("finished")||s.equals("completed")||s.equals("canceled")||s.equals("cancelled")||s.equals("cancel");removeCallbacks(tick);if(s.startsWith("cancel")){state=null;}render();if(isAttachedToWindow()&&!terminal&&state!=null&&state.optJSONObject("active")!=null)postDelayed(tick,1000);}
     @Override protected void onAttachedToWindow(){super.onAttachedToWindow();removeCallbacks(tick);post(tick);}
@@ -38,9 +54,19 @@ public final class SmartWaitingTextView extends LinearLayout {
         if(active!=null){
             long elapsed=active.optLong("elapsed_seconds")+Math.min(30,Math.max(0,(SystemClock.elapsedRealtime()-sampledAt)/1000)),free=active.optLong("free_seconds",300),rate=active.optLong("rate_per_minute",500);
             long remaining=Math.max(0,free-elapsed);fee=Math.max(0,fee-active.optLong("fee"))+((Math.max(0,elapsed-free)+59)/60)*rate;
-            title.setText("SMART WAITING  •  "+active.optString("label")+((SystemClock.elapsedRealtime()-sampledAt)>30000?" • Menunggu sinkronisasi":""));
+            String waitingLabel = active.optString("label");
+            boolean stale = SystemClock.elapsedRealtime() - sampledAt > 30000;
+            title.setText((tripPresentation ? "Tunggu · " : "SMART WAITING  •  ") + waitingLabel
+                    + (stale ? " · Menunggu sinkronisasi" : ""));
             clock.setText(remaining>0?String.format(Locale.US,"%02d:%02d gratis",remaining/60,remaining%60):money(fee)+" biaya tunggu");
-            detail.setText(money(rate)+"/menit setelah "+(free/60)+" menit "+(free%60)+" detik gratis\nTunggu "+money(fee)+"  •  Estimasi total "+money(state.optLong("base_total")+fee));
+            if (tripPresentation) {
+                String freeLabel = free % 60 == 0 ? (free / 60) + " mnt" : (free / 60) + " mnt " + (free % 60) + " dtk";
+                String paidWaiting = remaining > 0 && fee > 0 ? " · Biaya tunggu " + money(fee) : "";
+                detail.setText(money(rate) + "/mnt setelah " + freeLabel + " gratis" + paidWaiting
+                        + " · Est. total " + money(state.optLong("base_total") + fee));
+            } else {
+                detail.setText(money(rate)+"/menit setelah "+(free/60)+" menit "+(free%60)+" detik gratis\nTunggu "+money(fee)+"  •  Estimasi total "+money(state.optLong("base_total")+fee));
+            }
         }else{
             title.setText("SMART WAITING  •  "+(terminal?"Selesai":"Dihentikan"));clock.setText(money(fee)+" biaya tunggu");
             detail.setText("Total "+money(state.optLong("base_total")+fee)+"  •  "+sessions.length()+" titik tunggu");

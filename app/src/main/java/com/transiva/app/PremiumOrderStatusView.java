@@ -109,7 +109,11 @@ public final class PremiumOrderStatusView extends LinearLayout {
         }
         action.setText(compact ? "›" : actionText);
         action.setContentDescription(actionText);
-        if (compact) setContentDescription(service.getText() + ". " + (empty ? "" : status.getText()) + ". " + actionText);
+        if (compact && action.getVisibility() == VISIBLE) {
+            setContentDescription(service.getText() + ". " + (empty ? "" : status.getText()) + ". " + actionText);
+        } else {
+            setContentDescription(null);
+        }
         status.setContentDescription("Status pesanan: " + status.getText());
         CustomerAppSettings.applyToView(getContext(), this);
     }
@@ -138,6 +142,10 @@ public final class PremiumOrderStatusView extends LinearLayout {
 
     /** Optional trip-page presentation: driver identity already has its own row. */
     public void setReferenceVisible(boolean visible) { reference.setVisibility(visible ? VISIBLE : GONE); }
+
+    public void setActionVisible(boolean visible) {
+        action.setVisibility(visible ? VISIBLE : GONE);
+    }
 
     public void setAction(View.OnClickListener listener) { action.setOnClickListener(listener); setOnClickListener(listener); }
     public static int step(String raw) {

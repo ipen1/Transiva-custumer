@@ -22,8 +22,6 @@ import android.webkit.WebSettings;
 import android.widget.Button;
 import android.widget.FrameLayout;
 import android.widget.ImageView;
-import android.widget.EditText;
-import android.widget.RatingBar;
 import android.widget.LinearLayout;
 import android.widget.ProgressBar;
 import android.widget.TextView;
@@ -54,8 +52,6 @@ class CustomerTripActivityScreenCore extends CustomerAdaptiveActivity {
     protected static final String CHECK_STATUS_URL = BASE_URL + "server/check_order_status.php";
     protected static final String PICKUP_STATUS_URL = BASE_URL + "server/get_pickup_order_status.php";
     protected static final String CUSTOMER_ACTION_URL = BASE_URL + "server/customer_order_action.php";
-    protected static final String SAVE_REVIEW_URL = BASE_URL + "server/save_driver_review.php";
-    protected static final String SAVE_FOOD_REVIEW_URL = BASE_URL + "server/save_food_review.php";
     protected static final String SHARE_TRIP_URL = BASE_URL + "server/share_trip.php";
     protected static final String CREATE_SHARED_TRIP_URL = BASE_URL + "server/create_shared_trip.php";
 
@@ -90,6 +86,21 @@ class CustomerTripActivityScreenCore extends CustomerAdaptiveActivity {
     private Button shareTripButton;
     private boolean shareBusy;
     private boolean tripLayoutBuilt, foodStatusRouted;
+    private boolean resumed;
+    private TextView finishHint;
+    private int finishSeconds = 5;
+    private final Runnable finishTick = new Runnable() {
+        @Override public void run() {
+            if (!resumed || isFinishing() || isDestroyed()) return;
+            if (finishSeconds == 0) {
+                goHomeAfterFinished();
+                return;
+            }
+            finishHint.setText("Kembali ke beranda dalam " + finishSeconds + " detik");
+            finishSeconds--;
+            mainHandler.postDelayed(this, 1000);
+        }
+    };
 
     protected String orderId = "";
     protected String activeDriverType = "motor";
@@ -101,10 +112,8 @@ class CustomerTripActivityScreenCore extends CustomerAdaptiveActivity {
     protected boolean firstFocus = true;
     protected boolean trackingStarted = false;
     protected boolean finishedCountdownStarted = false;
-    protected boolean reviewDialogShown = false;
     protected boolean lastDataAlreadyPushed = false;
 
-    protected int finishSeconds = 5;
 
     protected double pickupLat = 0;
     protected double pickupLng = 0;
@@ -151,10 +160,25 @@ class CustomerTripActivityScreenCore extends CustomerAdaptiveActivity {
     private void buildStatusGate(){
         LinearLayout gate=new LinearLayout(this);gate.setOrientation(LinearLayout.VERTICAL);gate.setGravity(Gravity.CENTER);gate.setPadding(dp(24),dp(24),dp(24),dp(24));
         gate.setBackgroundColor(CustomerAppSettings.isDarkMode(this)?0xFF071426:0xFFF7FAFF);
-        gate.addView(new ProgressBar(this),new LinearLayout.LayoutParams(dp(36),dp(36)));
-        statusText=text("Memeriksa status pesanan…",16,CustomerAppSettings.isDarkMode(this)?"#EEF5FF":"#133152",true);statusText.setGravity(Gravity.CENTER);statusText.setPadding(0,dp(16),0,dp(16));gate.addView(statusText);
-        Button retry=outlineButton("Coba lagi");retry.setOnClickListener(v->fetchDriverPosition());gate.addView(retry,new LinearLayout.LayoutParams(-1,dp(48)));
-        Button home=outlineButton("Ke beranda");home.setOnClickListener(v->goToHome());gate.addView(home,new LinearLayout.LayoutParams(-1,dp(48)));setContentView(gate);
+        TextView brand = text("TRANSIVA", 11, "#1268D5", true);
+        brand.setLetterSpacing(.12f);
+        gate.addView(brand);
+        TextView title = text("Perjalanan Anda", 22, "#0B3A78", true);
+        title.setGravity(Gravity.CENTER);
+        gate.addView(title, tripRow(6));
+        statusText = text("Memeriksa status pesanan…", 14, "#536B83", false);
+        statusText.setGravity(Gravity.CENTER);
+        gate.addView(statusText, tripRow(8));
+        Button retry = outlineButton("Periksa lagi");
+        retry.setMinHeight(dp(48));
+        retry.setOnClickListener(v -> fetchDriverPosition());
+        gate.addView(retry, tripRow(16));
+        Button home = outlineButton("Ke beranda");
+        home.setMinHeight(dp(48));
+        home.setOnClickListener(v -> goToHome());
+        gate.addView(home, tripRow(8));
+        setContentView(gate);
+        CustomerAppSettings.apply(this);
     }
 
     private void openFoodStatus(JSONObject response){
@@ -224,12 +248,10 @@ class CustomerTripActivityScreenCore extends CustomerAdaptiveActivity {
         deliveryLat = getDoubleExtraOrPref(i, sp, "delivery_lat", 0);
         deliveryLng = getDoubleExtraOrPref(i, sp, "delivery_lng", 0);
 
-        orderSource = firstNonEmpty(
-                i.getStringExtra("order_source"),
-                i.getStringExtra("source"),
-                sp.getString("active_order_source", "orders"),
-                "orders"
-        ).toLowerCase(Locale.US);
+        String savedSource = orderId.equals(sp.getString("active_order_id", ""))
+                ? sp.getString("active_order_source", "") : "";
+        orderSource = firstNonEmpty(i.getStringExtra("order_source"), i.getStringExtra("source"),
+                savedSource, "orders").toLowerCase(Locale.US);
 
         activeDriverType = firstNonEmpty(
                 i.getStringExtra("active_driver_type"),
@@ -268,48 +290,52 @@ class CustomerTripActivityScreenCore extends CustomerAdaptiveActivity {
 
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
-        root.setPadding(dp(12), dp(8), dp(12), dp(8));
+        root.setPadding(dp(12), dp(10), dp(12), dp(10));
         page.addView(root, new FrameLayout.LayoutParams(-1, -1));
 
         LinearLayout card = new LinearLayout(this);
         card.setOrientation(LinearLayout.VERTICAL);
-        card.setPadding(dp(12), dp(10), dp(12), dp(12));
-        card.setBackground(roundStroke("#FAFCFF", "#D7E6F8", dp(18), 1));
-        card.setElevation(dp(2));
-        android.widget.ScrollView tripScroll=new android.widget.ScrollView(this);tripScroll.setFillViewport(true);tripScroll.setClipToPadding(false);root.addView(tripScroll,new LinearLayout.LayoutParams(-1,-1));tripScroll.addView(card,new android.widget.ScrollView.LayoutParams(-1,-2));
+        android.widget.ScrollView tripScroll = new android.widget.ScrollView(this);
+        tripScroll.setClipToPadding(false);
+        root.addView(tripScroll, new LinearLayout.LayoutParams(-1, -1));
+        tripScroll.addView(card, new android.widget.ScrollView.LayoutParams(-1, -2));
 
         LinearLayout head = new LinearLayout(this);
         head.setOrientation(LinearLayout.HORIZONTAL);
         head.setGravity(Gravity.CENTER_VERTICAL);
         card.addView(head, new LinearLayout.LayoutParams(-1, -2));
 
-        TextView title = text("Perjalanan Anda", 16, "#0B3A78", true);
-        head.addView(title, new LinearLayout.LayoutParams(0, -2, 1));
+        Button close = smallButton("‹", "#EDF5FF", "#1268D5", "#DCEBFF");
+        close.setTextSize(23);
+        close.setPadding(0, 0, 0, 0);
+        close.setContentDescription("Kembali ke beranda");
+        head.addView(close, new LinearLayout.LayoutParams(dp(48), dp(48)));
+        close.setOnClickListener(v -> goToHome());
 
-        TextView liveBadge = text("LIVE", 9, "#0B8B70", true);
+        LinearLayout heading = new LinearLayout(this);
+        heading.setOrientation(LinearLayout.VERTICAL);
+        heading.addView(text("TRANSIVA", 10, "#1268D5", true));
+        heading.addView(text("Perjalanan Anda", 19, "#0B3A78", true));
+        LinearLayout.LayoutParams headingLp = new LinearLayout.LayoutParams(0, -2, 1);
+        headingLp.setMargins(dp(9), 0, dp(6), 0);
+        head.addView(heading, headingLp);
+
+        TextView liveBadge = text("●  LIVE", 10, "#0B7661", true);
         liveBadge.setGravity(Gravity.CENTER);
         liveBadge.setPadding(dp(8), dp(5), dp(8), dp(5));
         liveBadge.setBackground(round("#E8F8F1", dp(9)));
-        LinearLayout.LayoutParams liveBadgeLp = new LinearLayout.LayoutParams(-2, -2);
-        liveBadgeLp.setMargins(dp(5), 0, dp(8), 0);
-        head.addView(liveBadge, liveBadgeLp);
-        Button close = smallButton("‹", "#EDF5FF", "#1268D5", "#DCEBFF");
-        close.setContentDescription("Kembali ke beranda");
-        head.addView(close, new LinearLayout.LayoutParams(dp(44), dp(44)));
-        close.setOnClickListener(v -> goToHome());
+        head.addView(liveBadge, new LinearLayout.LayoutParams(-2, -2));
 
         tripStatus = new PremiumOrderStatusView(this, true);
-        tripStatus.setEmbedded();
+        tripStatus.setActionVisible(false);
         tripStatus.setReferenceVisible(false);
-        tripStatus.bind(null, "Menyiapkan perjalanan", "Lihat posisi di peta  ↓");
-        tripStatus.setAction(v -> openLiveDriver());
-        LinearLayout.LayoutParams statusLp = new LinearLayout.LayoutParams(-1, -2);
-        statusLp.topMargin = dp(4); card.addView(tripStatus, statusLp);
+        tripStatus.bind(null, "Menyiapkan perjalanan", "");
+        card.addView(tripStatus, tripRow(8));
 
         LinearLayout driverBox = new LinearLayout(this);
         driverBox.setOrientation(LinearLayout.HORIZONTAL);
         driverBox.setGravity(Gravity.CENTER_VERTICAL);
-        driverBox.setPadding(dp(8), dp(7), dp(8), dp(7));
+        driverBox.setPadding(dp(9), dp(6), dp(9), dp(6));
         driverBox.setBackground(roundStroke("#FFFFFF", "#E2E8F0", dp(18), 1));
         LinearLayout.LayoutParams dlp = new LinearLayout.LayoutParams(-1, -2);
         dlp.setMargins(0, dp(8), 0, 0);
@@ -331,7 +357,7 @@ class CustomerTripActivityScreenCore extends CustomerAdaptiveActivity {
         driverBox.addView(info, ilp);
 
         driverNameText = text("Driver", 13, "#0B3A78", true);
-        driverTypeText = text("car".equals(activeDriverType) ? "TransCar" : "TransRide", 9, "#2563EB", true);
+        driverTypeText = text("Driver Anda", 10, "#2563EB", true);
         driverPlateText = text("Plat —", 11, "#64748B", false);
         driverPlateText.setSingleLine(true);
         driverPlateText.setEllipsize(android.text.TextUtils.TruncateAt.END);
@@ -339,7 +365,7 @@ class CustomerTripActivityScreenCore extends CustomerAdaptiveActivity {
         driverNameText.setEllipsize(android.text.TextUtils.TruncateAt.END);
         info.addView(driverNameText);
         info.addView(driverPlateText);
-        driverTypeText.setTextSize(9);
+        driverTypeText.setTextSize(10);
         driverTypeText.setGravity(Gravity.CENTER);
         driverTypeText.setPadding(dp(6), dp(5), dp(6), dp(5));
         driverTypeText.setMaxLines(2);
@@ -351,59 +377,73 @@ class CustomerTripActivityScreenCore extends CustomerAdaptiveActivity {
         statusText.setPadding(dp(2), dp(5), dp(2), dp(5));
         card.addView(statusText, new LinearLayout.LayoutParams(-1, -2));
 
-        waitingView=new SmartWaitingTextView(this); waitingView.setCompactPresentation(true); card.addView(waitingView,new LinearLayout.LayoutParams(-1,-2));
-        paymentInfoText = text("", 12, "#0B3A78", true); paymentInfoText.setPadding(dp(10),dp(7),dp(10),dp(7)); paymentInfoText.setVisibility(View.GONE); card.addView(paymentInfoText,new LinearLayout.LayoutParams(-1,-2));
+        waitingView = new SmartWaitingTextView(this);
+        waitingView.setTripPresentation();
+        card.addView(waitingView, tripRow(6));
+        paymentInfoText = text("", 12, "#0B3A78", true);
+        paymentInfoText.setPadding(dp(10), dp(7), dp(10), dp(7));
+        paymentInfoText.setVisibility(View.GONE);
+        card.addView(paymentInfoText, tripRow(6));
         receivedButton = smallButton("✅ Terima Pesanan", "#DCFCE7", "#047857", "#86EFAC"); receivedButton.setVisibility(View.GONE); receivedButton.setOnClickListener(v -> sendCustomerAction("confirm_received")); receivedButton.setMinHeight(dp(50)); LinearLayout.LayoutParams rlp=new LinearLayout.LayoutParams(-1,-2); rlp.setMargins(0,dp(8),0,0); card.addView(receivedButton,rlp);
         LinearLayout priceActions=new LinearLayout(this); priceActions.setOrientation(LinearLayout.HORIZONTAL); priceActions.setVisibility(View.GONE); priceActions.setTag("price_actions");
         approvePriceButton=smallButton("Setujui Harga", "#DBEAFE", "#1D4ED8", "#93C5FD"); approvePriceButton.setMinHeight(dp(48)); approvePriceButton.setOnClickListener(v->confirmPriceChange()); priceActions.addView(approvePriceButton,new LinearLayout.LayoutParams(0,-2,1));
         rejectPriceButton=smallButton("Tolak", "#FEE2E2", "#B91C1C", "#FCA5A5"); rejectPriceButton.setMinHeight(dp(48)); rejectPriceButton.setOnClickListener(v->sendCustomerAction("reject_price")); LinearLayout.LayoutParams rej=new LinearLayout.LayoutParams(0,-2,1); rej.setMargins(dp(8),0,0,0); priceActions.addView(rejectPriceButton,rej); LinearLayout.LayoutParams palp=new LinearLayout.LayoutParams(-1,-2); palp.setMargins(0,dp(8),0,0); card.addView(priceActions,palp);
 
+        LinearLayout mapCard = new LinearLayout(this);
+        mapCard.setOrientation(LinearLayout.VERTICAL);
+        mapCard.setPadding(dp(5), dp(5), dp(5), dp(2));
+        mapCard.setBackground(roundStroke("#FFFFFF", "#DCE8F6", dp(18), 1));
+        card.addView(mapCard, tripRow(8));
+
         mapView = new TransivaGoogleMapView(this, TransivaGoogleMapView.Mode.TRIP);
-        mapView.setBackground(round("#EDF4FC", dp(18))); mapView.setClipToOutline(true);
-        LinearLayout.LayoutParams mlp = new LinearLayout.LayoutParams(-1, dp(Math.max(180, Math.min(280, (int)(getResources().getConfiguration().screenHeightDp * 0.30f)))));
-        mlp.setMargins(0, dp(4), 0, dp(10));
-        card.addView(mapView, mlp);
+        mapView.setBackground(round("#EDF4FC", dp(14)));
+        mapView.setClipToOutline(true);
+        int mapHeight = Math.max(195, Math.min(360, (int)(getResources().getConfiguration().screenHeightDp * .40f)));
+        mapCard.addView(mapView, new LinearLayout.LayoutParams(-1, dp(mapHeight)));
         mapView.initialize(null, new TransivaGoogleMapView.Listener() {
             @Override public void onReady(double lat, double lng) {
+                if (mapView == null || finishedCountdownStarted || isDestroyed()) return;
                 mapReady = true;
                 pushAllMarkersToMap();
             }
             @Override public void onCenterChanged(double lat, double lng) { }
         });
 
-        tripInfoText = text("Menyiapkan rute perjalanan...", 12, "#64748B", false);
-        tripInfoText.setPadding(dp(4), 0, dp(4), dp(8));
-        card.addView(tripInfoText, new LinearLayout.LayoutParams(-1, -2));
-
-        Button liveBtn = outlineButton("⌖  Pusatkan peta"); liveBtn.setMinHeight(dp(44));
-        liveBtn.setTextSize(12);
-        liveBtn.setTextColor(Color.parseColor("#1268D5"));
-        liveBtn.setBackground(roundStroke("#EDF5FF", "#D7E7FA", dp(12), 1));
-        LinearLayout.LayoutParams liveLp = new LinearLayout.LayoutParams(-1, -2);
-        liveLp.setMargins(0, 0, 0, dp(8));
-        card.addView(liveBtn, liveLp);
+        LinearLayout mapFooter = new LinearLayout(this);
+        boolean stackMapFooter = getResources().getConfiguration().screenWidthDp < 340
+                || getResources().getConfiguration().fontScale > 1.2f;
+        mapFooter.setOrientation(stackMapFooter ? LinearLayout.VERTICAL : LinearLayout.HORIZONTAL);
+        mapFooter.setGravity(Gravity.CENTER_VERTICAL);
+        mapFooter.setPadding(dp(6), dp(3), dp(2), 0);
+        mapCard.addView(mapFooter, new LinearLayout.LayoutParams(-1, -2));
+        tripInfoText = text("Menyiapkan rute…", 11, "#536B83", false);
+        tripInfoText.setPadding(0, dp(3), dp(5), dp(3));
+        mapFooter.addView(tripInfoText, new LinearLayout.LayoutParams(stackMapFooter ? -1 : 0, -2, stackMapFooter ? 0 : 1));
+        Button liveBtn = outlineButton("⌖  Pusatkan");
+        liveBtn.setContentDescription("Pusatkan peta");
+        liveBtn.setMinHeight(dp(48));
+        liveBtn.setBackground(round("#EDF5FF", dp(12)));
+        mapFooter.addView(liveBtn, new LinearLayout.LayoutParams(stackMapFooter ? -1 : -2, -2));
         liveBtn.setOnClickListener(v -> { if (mapView != null) mapView.fitAll(); });
 
         LinearLayout safetyRow = new LinearLayout(this);
         safetyRow.setOrientation(LinearLayout.HORIZONTAL);
-        if (getResources().getConfiguration().screenWidthDp < 360
+        if (getResources().getConfiguration().screenWidthDp < 320
                 || getResources().getConfiguration().fontScale > 1.15f) safetyRow.setOrientation(LinearLayout.VERTICAL);
-        Button shareBtn = outlineButton("Bagikan trip"); shareBtn.setMinHeight(dp(44));
+        Button shareBtn = outlineButton("Bagikan trip"); shareBtn.setMinHeight(dp(48));
         shareTripButton = shareBtn;
         shareBtn.setTextColor(Color.WHITE);
         shareBtn.setBackground(roundStroke("#167CFF", "#167CFF", dp(12), 1));
-        Button sosBtn = outlineButton("SOS · Bantuan"); sosBtn.setMinHeight(dp(44));
+        Button sosBtn = outlineButton("SOS · Bantuan"); sosBtn.setMinHeight(dp(48));
         sosBtn.setTextColor(Color.parseColor("#B54147"));
         sosBtn.setBackground(roundStroke("#FFF4F4", "#F2D8DB", dp(12), 1));
         boolean stackSafety = safetyRow.getOrientation() == LinearLayout.VERTICAL;
         safetyRow.addView(shareBtn, new LinearLayout.LayoutParams(stackSafety ? -1 : 0, -2, stackSafety ? 0 : 1));
         LinearLayout.LayoutParams sosLp = new LinearLayout.LayoutParams(stackSafety ? -1 : 0, -2, stackSafety ? 0 : 1); sosLp.setMargins(stackSafety ? 0 : dp(8),stackSafety ? dp(8) : 0,0,0);
         safetyRow.addView(sosBtn, sosLp);
-        LinearLayout.LayoutParams safetyLp = new LinearLayout.LayoutParams(-1, -2); safetyLp.setMargins(0,0,0,dp(8)); card.addView(safetyRow, safetyLp);
+        card.addView(safetyRow, tripRow(8));
         shareBtn.setOnClickListener(v -> shareTrip());
         sosBtn.setOnClickListener(v -> openSos());
-
-        // Header close already returns home; keep the map and actions compact.
 
         progressBar = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
         progressBar.setVisibility(View.GONE);
@@ -413,6 +453,12 @@ class CustomerTripActivityScreenCore extends CustomerAdaptiveActivity {
 
         setContentView(page);
         CustomerAppSettings.apply(this);
+    }
+
+    private LinearLayout.LayoutParams tripRow(int top) {
+        LinearLayout.LayoutParams row = new LinearLayout.LayoutParams(-1, -2);
+        row.topMargin = dp(top);
+        return row;
     }
 
     private void loadTripPhoto(ImageView target,String raw,boolean vehicle){
@@ -450,7 +496,8 @@ class CustomerTripActivityScreenCore extends CustomerAdaptiveActivity {
                 if (orderSource.contains("pickup")) {
                     res = getJson(PICKUP_STATUS_URL + "?order_id=" + Uri.encode(orderId));
                 } else {
-                    JSONObject payload = new JSONObject().put("order_id", orderId);
+                    JSONObject payload = new JSONObject().put("order_id", orderId)
+                            .put("include_terminal", true);
                     res = postJson(CHECK_STATUS_URL, payload);
                 }
                 featureRuntime.post(mainHandler, () -> {
@@ -460,7 +507,9 @@ class CustomerTripActivityScreenCore extends CustomerAdaptiveActivity {
                         handleStatusResponse(res);
                     } else if (statusText != null) {
                         statusText.setVisibility(View.VISIBLE);
-                        statusText.setText(firstNonEmpty(res.optString("message", ""), "Menunggu status order..."));
+                        String message = res.optString("message", "");
+                        statusText.setText(tripLayoutBuilt && CustomerOrderState.isTrip(lastStatus)
+                                ? "Memeriksa pembaruan perjalanan…" : firstNonEmpty(message, "Memeriksa status pesanan…"));
                     }
                 });
             } catch (Exception e) {
@@ -475,6 +524,11 @@ class CustomerTripActivityScreenCore extends CustomerAdaptiveActivity {
             } finally {
                 trackingRequestInFlight.set(false);
             }
+        }, () -> {
+            trackingRequestInFlight.set(false);
+            featureRuntime.post(mainHandler, () -> {
+                if (generation == trackingGeneration.get()) setLoading(false);
+            });
         });
     }
 
@@ -482,13 +536,28 @@ class CustomerTripActivityScreenCore extends CustomerAdaptiveActivity {
 
     protected void handleStatusResponse(JSONObject res) {
         if(!trackingOnly&&FoodOrderDecision.needsFoodScreen(res,orderId)){openFoodStatus(res);return;}
-        if(!tripLayoutBuilt){buildLayout();tripLayoutBuilt=true;if(mapView!=null){mapView.onStartMap();mapView.onResumeMap();}startRideProtectionIfEnabled();}
         JSONObject driver = res.optJSONObject("driver");
         if (driver == null) driver = new JSONObject();
         JSONObject order = res.optJSONObject("order");
         if (order == null) order = new JSONObject();
 
         String status = CustomerOrderState.laterOf(lastStatus, firstNonEmpty(res.optString("status", ""), order.optString("status", "")));
+        if (CustomerOrderState.isEnded(status)) {
+            if (!trackingOnly && CustomerOrderState.isTrip(lastStatus) && isFinishedStatus(status)) {
+                RoyaltyRewardFeedback.completed(this, orderId, orderSource);
+            }
+            lastStatus = status;
+            CustomerOrderBreadcrumbs.state(orderId, status, orderSource);
+            showTripEnd(order);
+            return;
+        }
+        if (!tripLayoutBuilt) {
+            buildLayout();
+            tripLayoutBuilt = true;
+            mapView.onStartMap();
+            mapView.onResumeMap();
+            startRideProtectionIfEnabled();
+        }
         String driverName = firstNonEmpty(
                 driver.optString("name", ""),
                 driver.optString("username", ""),
@@ -510,11 +579,6 @@ class CustomerTripActivityScreenCore extends CustomerAdaptiveActivity {
         loadTripPhoto(driverPhotoView,firstNonEmpty(driver.optString("driver_photo"),driver.optString("photo"),order.optString("driver_photo")),false);
         loadTripPhoto(vehiclePhotoView,firstNonEmpty(driver.optString("vehicle_photo"),order.optString("vehicle_photo")),true);
         lastDriverName = driverName;
-        // Only a live transition may schedule a reward; opening an old finished trip cannot.
-        if (!trackingOnly && !lastStatus.isEmpty() && CustomerOrderState.rank(lastStatus) >= 0
-                && !CustomerOrderState.isEnded(lastStatus) && isFinishedStatus(status)) {
-            RoyaltyRewardFeedback.completed(this, orderId, orderSource);
-        }
         lastStatus = status;
         if (tripStatus != null) {
             try {
@@ -522,7 +586,7 @@ class CustomerTripActivityScreenCore extends CustomerAdaptiveActivity {
                 visualOrder.put("status", status); visualOrder.put("driver_name", driverName);
                 if (visualOrder.optString("order_id").isEmpty()) visualOrder.put("order_id", orderId);
                 if (visualOrder.optString("order_type").isEmpty()) visualOrder.put("order_type", res.optString("order_type"));
-                tripStatus.bind(visualOrder, "", "Lihat posisi di peta  ↓");
+                tripStatus.bind(visualOrder, "", "");
             } catch (org.json.JSONException ignored) { }
         }
         CustomerOrderBreadcrumbs.state(orderId, status, orderSource);
@@ -561,8 +625,7 @@ class CustomerTripActivityScreenCore extends CustomerAdaptiveActivity {
         boolean hasDriverLocation = validCoord(lat, lng);
 
         driverNameText.setText(driverName);
-        driverTypeText.setText("car".equals(activeDriverType) ? "TransCar" : "TransRide");
-        driverPlateText.setText("Plat " + plate);
+        driverPlateText.setText("-".equals(plate) ? "Pelat belum tersedia" : "Pelat " + plate);
         setStatusText(status, driverName, hasDriverLocation);
         // Data driver dan tombol aksi berubah dari polling server; pastikan view baru/
         // yang diperbarui tetap menggunakan tema customer yang sedang aktif.
@@ -584,17 +647,7 @@ class CustomerTripActivityScreenCore extends CustomerAdaptiveActivity {
 
         agreedServerRoute=order.optJSONObject("server_route");
         updatePaymentControls(order, status);
-        saveTripPrefs();
-
-        if (isFinishedStatus(status)) {
-            stopRideProtection();
-            if ("food".equals(orderType) || "transfood".equals(orderType)) {
-                showFoodReviewDialog(order);
-            } else {
-                showDriverReviewDialog(order);
-            }
-            return;
-        }
+        if (!trackingOnly) saveTripPrefs();
 
         if (hasDriverLocation) {
             double[] target = getTarget(status);
@@ -671,7 +724,7 @@ class CustomerTripActivityScreenCore extends CustomerAdaptiveActivity {
             .setNegativeButton("Batal",null).setPositiveButton("Setujui",(d,w)->sendCustomerAction("approve_price",shownId,shownPrice)).show();
     }
     protected void updatePaymentControls(JSONObject order,String status){
-        if(waitingView!=null)waitingView.bind(order.optJSONObject("smart_waiting"),order.optString("status"));
+        if (waitingView != null && !trackingOnly) waitingView.bind(order.optJSONObject("smart_waiting"), status);
         JSONObject extension=order.optJSONObject("destination_extension");
         pendingDestinationProposal=extension!=null && "pending".equals(extension.optString("status"))?extension:null;
         destinationRequestId=extension!=null && "pending".equals(extension.optString("status"))?extension.optLong("id"):0;
@@ -687,7 +740,8 @@ class CustomerTripActivityScreenCore extends CustomerAdaptiveActivity {
         double price=order.optDouble("price",0), original=order.optDouble("original_price",price), requested=order.optDouble("price_change_requested",0);
         destinationRequestedPrice=requested;
         String change=order.optString("price_change_status","none").toLowerCase(Locale.US), reason=order.optString("price_change_reason","");
-        String line=(nonCash?"💳 TransPay • sudah dibayar":"💵 Tunai • bayar ke driver")+(price>0?" • "+rupiah(price):"");
+        String line = (nonCash ? "TransPay · sudah dibayar" : "Tunai · bayar ke driver")
+                + (price > 0 ? "  ·  " + rupiah(price) : "");
         String proposal=CustomerOrderChangeState.summary(order);
         if(!proposal.isEmpty()) line+="\n"+proposal;
         if(extensionTravelling && statusText!=null){statusText.setText("Dalam perjalanan ke tujuan tambahan");statusText.setVisibility(View.VISIBLE);}
@@ -730,7 +784,11 @@ class CustomerTripActivityScreenCore extends CustomerAdaptiveActivity {
         }
         if (points.length() < 2) return false;
         mapView.drawOsrmRoute(points,lastStatus);
-        if(tripInfoText!=null)tripInfoText.setText("Rute disetujui: "+String.format(Locale.US,"%.2f",route.optDouble("distance")/1000)+" km • "+Math.max(1,(int)Math.ceil(route.optDouble("duration")/60))+" menit");return true;
+        if (tripInfoText != null) {
+            tripInfoText.setText("Rute pesanan · " + formatTripDistance(route.optDouble("distance"))
+                    + " · " + Math.max(1, (int)Math.ceil(route.optDouble("duration") / 60)) + " menit");
+        }
+        return true;
     }
     protected void requestStableRoute(double toLat,double toLng,boolean force){
         if(CustomerOrderState.targetsDelivery(lastStatus) && drawAgreedServerRoute())return;
@@ -762,16 +820,25 @@ class CustomerTripActivityScreenCore extends CustomerAdaptiveActivity {
                 }}
                 StableRouteEngine.Result r=StableRouteEngine.fetch(a,b,extensionRoute?finalLat:toLat,extensionRoute?finalLng:toLng);
                 for(int n=0;n<r.latLngPoints.length();n++)points.put(r.latLngPoints.opt(n));meters+=r.distanceMeters;seconds+=r.durationSeconds;
-                final double km=meters/1000d,sec=seconds;
+                final double distance = meters, duration = seconds;
                 featureRuntime.post(mainHandler, () -> {
                     if (generation != routeGeneration.get() || !targetKey.equals(routeTargetKey()) || isFinishing() || isDestroyed() || points.length()<2) return;
                     lastRouteFromLat=fromLat; lastRouteFromLng=fromLng; lastRouteToLat=toLat; lastRouteToLng=toLng; lastRouteStatus=status;
                     appliedRouteKey=targetKey;
                     if (mapView != null) mapView.drawOsrmRoute(points, status);
-                    if (tripInfoText != null && km > 0 && sec > 0) tripInfoText.setText("Estimasi rute driver: " + String.format(Locale.US, "%.1f", km) + " KM • " + Math.max(1, (int)Math.ceil(sec / 60.0)) + " menit");
+                    if (tripInfoText != null) {
+                        String eta = duration > 0 ? " · " + Math.max(1, (int)Math.ceil(duration / 60)) + " menit" : "";
+                        tripInfoText.setText(CustomerOrderState.ARRIVED_PICKUP.equals(status) ? "Driver di titik jemput"
+                                : "Estimasi driver · " + formatTripDistance(distance) + eta);
+                    }
                 });
             }catch(Exception error){ TransivaCrashReporter.record(error,"customer_route","stable_route"); } finally{ routeRequestInFlight=false; }
         }, () -> routeRequestInFlight=false);
+    }
+
+    private String formatTripDistance(double meters) {
+        if (meters < 100) return Math.max(0, Math.round(meters)) + " m";
+        return String.format(new Locale("id", "ID"), "%.1f km", meters / 1000);
     }
 
     private String routeTargetKey() {
@@ -826,157 +893,84 @@ class CustomerTripActivityScreenCore extends CustomerAdaptiveActivity {
     }
 
 
-    protected void showFoodReviewDialog(JSONObject order) {
-        if (reviewDialogShown || isFinishing()) return;
-        if (order.optInt("rating", 0) > 0) { goHomeAfterFinished(); return; }
-        reviewDialogShown = true;
-
-        LinearLayout box = new LinearLayout(this);
-        box.setOrientation(LinearLayout.VERTICAL);
-        box.setPadding(dp(20), dp(8), dp(20), 0);
-        RoyaltyRewardFeedback.attach(this,box,orderId,orderSource);
-
-        String restaurant = firstNonEmpty(order.optString("restaurant_name"), order.optString("pickup_address"), "merchant");
-        TextView prompt = new TextView(this);
-        prompt.setText("Bagaimana makanan dan pelayanan " + restaurant + "?");
-        prompt.setTextSize(16);
-        prompt.setTextColor(Color.parseColor("#0B3A78"));
-        box.addView(prompt);
-
-        RatingBar stars = new RatingBar(this, null, android.R.attr.ratingBarStyle);
-        stars.setNumStars(5); stars.setStepSize(1f); stars.setRating(5f);
-        box.addView(stars, new LinearLayout.LayoutParams(-2,-2));
-
-        EditText review = new EditText(this);
-        review.setHint("Tulis ulasan makanan (opsional)"); review.setMinLines(2); review.setMaxLines(4);
-        box.addView(review, new LinearLayout.LayoutParams(-1,-2));
-
-        AlertDialog dialog = new TransivaAlertDialogBuilder(this)
-                .setTitle("Beri Rating Makanan")
-                .setView(box)
-                .setCancelable(false)
-                .setNegativeButton("Nanti", (d,w) -> goHomeAfterFinished())
-                .setPositiveButton("Kirim", null)
-                .create();
-        dialog.setOnShowListener(x -> dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
-            int rating = Math.max(1, Math.round(stars.getRating()));
-            submitFoodReview(order, rating, review.getText().toString().trim(), dialog);
-        }));
-        dialog.show();
-    }
-
-    protected void submitFoodReview(JSONObject order, int rating, String review, AlertDialog dialog) {
-        setLoading(true);
-        featureRuntime.execute(() -> {
-            try {
-                JSONObject body = new JSONObject();
-                body.put("id", order.optInt("id", 0));
-                body.put("order_id", orderId);
-                body.put("rating", rating);
-                body.put("review", review);
-                JSONObject res = postJson(SAVE_FOOD_REVIEW_URL, body);
-                boolean ok = res.optBoolean("success", false);
-                String msg = firstNonEmpty(res.optString("message"), ok ? "Terima kasih atas ulasannya." : "Rating makanan gagal disimpan.");
-                featureRuntime.post(mainHandler, () -> {
-                    setLoading(false);
-                    if (ok) { dialog.dismiss(); showInfo("Terima kasih", msg); mainHandler.postDelayed(this::goHomeAfterFinished, 700); }
-                    else showInfo("Gagal", msg);
-                });
-            } catch (Exception e) {
-                TransivaCrashReporter.recordNetworkFailure(e,"POST",SAVE_FOOD_REVIEW_URL);
-                featureRuntime.post(mainHandler, () -> { setLoading(false); showInfo("Gagal", "Koneksi server bermasalah."); });
-            }
-        });
-    }
-
-    protected void showDriverReviewDialog(JSONObject order) {
-        if (reviewDialogShown || isFinishing()) return;
-        if (order.optInt("rating", 0) > 0) { goHomeAfterFinished(); return; }
-        reviewDialogShown = true;
-        LinearLayout box = new LinearLayout(this);
-        box.setOrientation(LinearLayout.VERTICAL);
-        box.setPadding(dp(20), dp(8), dp(20), 0);
-        RoyaltyRewardFeedback.attach(this,box,orderId,orderSource);
-        TextView prompt = new TextView(this);
-        prompt.setText("Bagaimana pelayanan " + firstNonEmpty(order.optString("driver_name"), order.optString("driver"), "driver") + "?");
-        prompt.setTextSize(16);
-        prompt.setTextColor(Color.parseColor("#0B3A78"));
-        box.addView(prompt);
-        RatingBar stars = new RatingBar(this, null, android.R.attr.ratingBarStyle);
-        stars.setNumStars(5); stars.setStepSize(1f); stars.setRating(5f);
-        box.addView(stars, new LinearLayout.LayoutParams(-2,-2));
-        EditText review = new EditText(this);
-        review.setHint("Tulis ulasan (opsional)"); review.setMinLines(2); review.setMaxLines(4);
-        box.addView(review, new LinearLayout.LayoutParams(-1,-2));
-        AlertDialog dialog = new TransivaAlertDialogBuilder(this)
-                .setTitle("Beri Rating Driver")
-                .setView(box)
-                .setCancelable(false)
-                .setNegativeButton("Lewati", (d,w) -> goHomeAfterFinished())
-                .setPositiveButton("Kirim", null)
-                .create();
-        dialog.setOnShowListener(x -> dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
-            int rating = Math.max(1, Math.round(stars.getRating()));
-            submitDriverReview(rating, review.getText().toString().trim(), dialog);
-        }));
-        dialog.show();
-    }
-
-    protected void submitDriverReview(int rating, String review, AlertDialog dialog) {
-        setLoading(true);
-        featureRuntime.execute(() -> {
-            try {
-                JSONObject body = new JSONObject();
-                body.put("order_id", orderId);
-                body.put("source", orderSource.contains("pickup") ? "pickup_orders" : "orders");
-                body.put("rating", rating);
-                body.put("review", review);
-                JSONObject res = postJson(SAVE_REVIEW_URL, body);
-                boolean ok = res.optBoolean("success", false);
-                String msg = firstNonEmpty(res.optString("message"), ok ? "Terima kasih atas ulasannya." : "Rating gagal disimpan.");
-                featureRuntime.post(mainHandler, () -> {
-                    setLoading(false);
-                    if (ok) { dialog.dismiss(); showInfo("Terima kasih", msg); mainHandler.postDelayed(this::goHomeAfterFinished, 700); }
-                    else showInfo("Gagal", msg);
-                });
-            } catch (Exception e) {
-                TransivaCrashReporter.recordNetworkFailure(e,"POST",SAVE_REVIEW_URL);
-                featureRuntime.post(mainHandler, () -> { setLoading(false); showInfo("Gagal", "Koneksi server bermasalah."); });
-            }
-        });
-    }
-
-    protected void startFinishCountdown() {
+    private void showTripEnd(JSONObject order) {
         if (finishedCountdownStarted) return;
         finishedCountdownStarted = true;
+        trackingStarted = false;
         mainHandler.removeCallbacks(trackingRunnable);
-        finishSeconds = 5;
+        routeGeneration.incrementAndGet();
+        boolean finished = isFinishedStatus(lastStatus);
+        if (clearActiveOrder()) stopRideProtection();
+        if (mapView != null) {
+            mapView.onPauseMap();
+            mapView.onStopMap();
+            mapView.onDestroyMap();
+            mapView = null;
+            mapReady = false;
+        }
 
-        Runnable r = new Runnable() {
-            @Override public void run() {
-                if (finishSeconds <= 0) {
-                    goHomeAfterFinished();
-                    return;
-                }
-                statusText.setVisibility(View.VISIBLE);
-                statusText.setText("✅ Order selesai\nKembali ke dashboard dalam " + finishSeconds + " detik...");
-                finishSeconds--;
-                mainHandler.postDelayed(this, 1000);
-            }
-        };
-        featureRuntime.post(mainHandler, r);
+        android.widget.ScrollView scroll = new android.widget.ScrollView(this);
+        scroll.setFillViewport(true);
+        scroll.setBackgroundColor(Color.parseColor("#F3F8FF"));
+        LinearLayout page = new LinearLayout(this);
+        page.setOrientation(LinearLayout.VERTICAL);
+        page.setGravity(Gravity.CENTER);
+        page.setPadding(dp(18), dp(24), dp(18), dp(24));
+        scroll.addView(page, new android.widget.ScrollView.LayoutParams(-1, -2));
+
+        LinearLayout panel = new LinearLayout(this);
+        panel.setOrientation(LinearLayout.VERTICAL);
+        panel.setGravity(Gravity.CENTER_HORIZONTAL);
+        panel.setPadding(dp(16), dp(23), dp(16), dp(18));
+        panel.setBackground(roundStroke("#FFFFFF", "#DCE8F6", dp(22), 1));
+        page.addView(panel, new LinearLayout.LayoutParams(-1, -2));
+
+        TextView mark = text(finished ? "✓" : "×", 33, finished ? "#087758" : "#9E3547", true);
+        mark.setGravity(Gravity.CENTER);
+        mark.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+        mark.setBackground(round(finished ? "#E5F8EE" : "#FCECEF", dp(28)));
+        panel.addView(mark, new LinearLayout.LayoutParams(dp(56), dp(56)));
+
+        TextView brand = text("TRANSIVA", 11, "#1268D5", true);
+        brand.setGravity(Gravity.CENTER);
+        brand.setLetterSpacing(.12f);
+        panel.addView(brand, tripRow(12));
+        TextView title = text(finished ? "Perjalanan selesai" : "Pesanan dibatalkan", 23, "#0B3A78", true);
+        title.setGravity(Gravity.CENTER);
+        panel.addView(title, tripRow(3));
+        TextView copy = text(finished ? "Terima kasih sudah menggunakan layanan Transiva. Sampai jumpa di perjalanan berikutnya!"
+                : "Perjalanan ini telah berakhir. Rincian pesanan tersedia di Aktivitas.", 14, "#536B83", false);
+        copy.setGravity(Gravity.CENTER);
+        panel.addView(copy, tripRow(7));
+
+        if (finished) {
+            PremiumOrderStatusView progress = new PremiumOrderStatusView(this, true);
+            progress.setActionVisible(false);
+            progress.setReferenceVisible(false);
+            progress.bind(order, "", "");
+            progress.bindProgress(CustomerOrderState.FINISHED);
+            panel.addView(progress, tripRow(14));
+            finishHint = text("Kembali ke beranda dalam 5 detik", 12, "#536B83", false);
+            finishHint.setGravity(Gravity.CENTER);
+            panel.addView(finishHint, tripRow(12));
+        }
+
+        Button home = smallButton("Kembali ke beranda", "#1268D5", "#FFFFFF", "#1268D5");
+        home.setMinHeight(dp(48));
+        home.setOnClickListener(v -> goHomeAfterFinished());
+        panel.addView(home, tripRow(10));
+        setContentView(scroll);
+        CustomerAppSettings.apply(this);
+        if (finished && resumed) mainHandler.post(finishTick);
     }
 
     protected void goHomeAfterFinished() {
-        clearActiveOrder();
-        try {
-            Intent i = new Intent(CustomerTripActivityScreenCore.this, CustomerDashboardActivity.class);
-            i.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
-            startActivity(i);
-        } catch (Exception ignored) {}
+        mainHandler.removeCallbacks(finishTick);
+        Intent home = new Intent(this, CustomerDashboardActivity.class);
+        home.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+        startActivity(home);
         finish();
     }
-
 
     private void finishShareRequest() {
         shareBusy = false;
@@ -1047,6 +1041,7 @@ class CustomerTripActivityScreenCore extends CustomerAdaptiveActivity {
         try {
             getSharedPreferences("transiva", MODE_PRIVATE).edit()
                     .putString("active_order_id", orderId)
+                    .putString("active_order_source", orderSource)
                     .putString("active_driver_type", activeDriverType)
                     .putString("active_order_status", lastStatus == null ? "" : lastStatus)
                     .putString("pickup_lat", String.valueOf(pickupLat))
@@ -1059,9 +1054,10 @@ class CustomerTripActivityScreenCore extends CustomerAdaptiveActivity {
 
 
 
-    private void clearActiveOrder() {
-        try {
-            getSharedPreferences("transiva", MODE_PRIVATE).edit()
+    private boolean clearActiveOrder() {
+        SharedPreferences prefs = getSharedPreferences("transiva", MODE_PRIVATE);
+        if (trackingOnly || !orderId.equals(prefs.getString("active_order_id", ""))) return false;
+        prefs.edit()
                     .remove("active_order_id")
                     .remove("pickup_lat")
                     .remove("pickup_lng")
@@ -1072,8 +1068,9 @@ class CustomerTripActivityScreenCore extends CustomerAdaptiveActivity {
                     .remove("active_order_type")
                     .remove("active_service_name")
                     .remove("active_order_price")
+                    .remove("active_order_source")
                     .apply();
-        } catch (Exception ignored) {}
+        return true;
     }
 
     private JSONObject getJson(String urlText) throws Exception {
@@ -1239,10 +1236,13 @@ class CustomerTripActivityScreenCore extends CustomerAdaptiveActivity {
 
     @Override
     public void onBackPressed() {
-        goToHome();
+        if (finishedCountdownStarted) goHomeAfterFinished();
+        else goToHome();
     }
 
     @Override protected void onPause() {
+        resumed = false;
+        mainHandler.removeCallbacks(finishTick);
         featureRuntime.onPause();
         if (mapView != null) mapView.onPauseMap();
         mainHandler.removeCallbacks(trackingRunnable);
@@ -1258,10 +1258,12 @@ class CustomerTripActivityScreenCore extends CustomerAdaptiveActivity {
 
     @Override protected void onResume() {
         super.onResume();
+        resumed = true;
         featureRuntime.onResume();
         if (mapView != null) mapView.onResumeMap();
         CustomerAppSettings.apply(this);
         mainHandler.removeCallbacks(trackingRunnable);
+        if (finishHint != null && finishedCountdownStarted) mainHandler.post(finishTick);
         if (trackingStarted && !finishedCountdownStarted) {
             fetchDriverPosition();
             mainHandler.postDelayed(trackingRunnable, TRACKING_MS);
@@ -1279,7 +1281,6 @@ class CustomerTripActivityScreenCore extends CustomerAdaptiveActivity {
     }
 
     @Override protected void onDestroy() {
-        if (isFinishedStatus(lastStatus)) stopRideProtection();
         routeGeneration.incrementAndGet();
         featureRuntime.destroy();
         trackingGeneration.incrementAndGet();

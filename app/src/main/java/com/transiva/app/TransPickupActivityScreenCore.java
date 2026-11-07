@@ -84,6 +84,10 @@ class TransPickupActivityScreenCore extends CustomerAdaptiveFragmentActivity {
     private boolean pickupScreenClosed;
     protected String otpCode = "";
     private boolean submittingOrder = false;
+    private boolean recoveryScreen;
+    private boolean recoveryBusy;
+    private String completedOrderId = "";
+    private android.app.AlertDialog recoveryReceipt;
     protected LocationManager locationManager;
     private LocationListener locationListener;
 
@@ -95,6 +99,18 @@ class TransPickupActivityScreenCore extends CustomerAdaptiveFragmentActivity {
             if (android.os.Build.VERSION.SDK_INT >= 23) CustomerWindowPolicy.appearance(getWindow(), 0);
         } catch (Exception ignored) {}
         loadSession();
+        if (ReliableOrderClient.hasPickupRecovery(this)) {
+            recoveryScreen = true;
+            showRecovery(false);
+            return;
+        }
+        if (savedInstanceState != null
+                && Integer.toString(userId).equals(savedInstanceState.getString("sendRecoveryOwner", ""))
+                && !savedInstanceState.getString("sendCompletedOrder", "").isEmpty()) {
+            startActivity(new Intent(this, CustomerHistoryActivity.class));
+            finish();
+            return;
+        }
         buildBase();
         buildForm();
         restoreDraft(savedInstanceState);
@@ -721,36 +737,139 @@ class TransPickupActivityScreenCore extends CustomerAdaptiveFragmentActivity {
                 p.put("receiver_name", receiverName); p.put("receiver_phone", receiverPhone); p.put("note", submittedNote);
                 p.put("payment_method", submittedPayment); // price, distance, dan OTP dihitung/dibuat ulang oleh server
                 JSONObject res = ReliableOrderClient.create(this, BASE_URL + "server/create_pickup_order.php", p, TIMEOUT_MS);
-                boolean ok = res.optBoolean("success", false);
-                String msg = firstNonEmpty(res.optString("message"), ok ? "Order penjemputan berhasil dibuat" : "Gagal membuat order penjemputan");
                 networkScope.post(mainHandler, () -> {
                     if (pickupScreenClosed || isFinishing() || isDestroyed()) return;
-                    setLoading(false);
-                    if (!ok) { submittingOrder = false; updateCheckoutButton(); }
-                    if (ok) {
-                        otpCode = res.optString("otp", "").trim();
-                        android.app.AlertDialog receipt = new TransivaAlertDialogBuilder(this)
-                                .setTitle("Paket siap dikirim")
-                                .setCancelable(false)
-                                .setMessage(msg + "\n\nOrder ID: " + res.optString("order_id", "-") + "\nOTP penerima: " + otpCode + "\n\nBerikan OTP hanya setelah paket diterima.")
-                                .setNeutralButton("Salin OTP", null)
-                                .setPositiveButton("Lihat Aktivitas", (d, w) -> { startActivity(new Intent(this, CustomerHistoryActivity.class)); finish(); })
-                                .create();
-                        receipt.setOnShowListener(dialog -> receipt.getButton(android.app.AlertDialog.BUTTON_NEUTRAL)
-                                .setOnClickListener(v -> copyOtp()));
-                        receipt.show();
-                    } else showInfo("Gagal", msg);
+                    if (res.optBoolean("success")) {
+                        showPickupReceipt(res);
+                    } else {
+                        submittingOrder = false;
+                        setLoading(false);
+                        updateCheckoutButton();
+                        showInfo("Pengiriman", res.optString("message", "Pengiriman belum berhasil."));
+                    }
                 });
             } catch (Exception e) {
                 networkScope.post(mainHandler, () -> {
                     if (pickupScreenClosed || isFinishing() || isDestroyed()) return;
-                    submittingOrder = false;
-                    updateCheckoutButton();
-                    setLoading(false);
-                    showInfo("Pengiriman", ReliableOrderClient.failureMessage(e));
+                    if (ReliableOrderClient.hasPickupRecovery(this)) {
+                        recoveryScreen = true;
+                        submittingOrder = false;
+                        showRecovery(false);
+                    } else {
+                        submittingOrder = false;
+                        updateCheckoutButton();
+                        setLoading(false);
+                        showInfo("Pengiriman", ReliableOrderClient.failureMessage(e));
+                    }
                 });
             }
         }).start();
+    }
+
+    private void showRecovery(boolean retry) {
+        if (recoveryBusy || pickupScreenClosed) return;
+        recoveryScreen = true;
+        recoveryBusy = true;
+        renderRecovery("Memeriksa pengiriman sebelumnya…", false, false);
+        networkScope.execute(() -> {
+            try {
+                JSONObject result = retry ? ReliableOrderClient.retryPickup(this, TIMEOUT_MS)
+                        : ReliableOrderClient.recoverPickup(this, TIMEOUT_MS);
+                networkScope.post(mainHandler, () -> {
+                    if (pickupScreenClosed || isFinishing() || isDestroyed()) return;
+                    recoveryBusy = false;
+                    if (result != null && result.optBoolean("success")) {
+                        showPickupReceipt(result);
+                    } else if (result != null && result.optBoolean("recovery_pending")) {
+                        renderRecovery("Pengiriman sebelumnya belum terkonfirmasi. Lanjutkan permintaan yang sama atau periksa Aktivitas.", true, false);
+                    } else if (ReliableOrderClient.hasPickupRecovery(this)) {
+                        renderRecovery("Pengiriman belum dapat dipastikan. Periksa lagi atau lihat Aktivitas.", false, false);
+                    } else {
+                        renderRecovery(result == null ? "Tidak ada pengiriman yang menunggu pemulihan."
+                                : result.optString("message", "Pengiriman sebelumnya belum berhasil."), false, true);
+                    }
+                });
+            } catch (Exception unavailable) {
+                networkScope.post(mainHandler, () -> {
+                    if (pickupScreenClosed || isFinishing() || isDestroyed()) return;
+                    recoveryBusy = false;
+                    renderRecovery("Hasil pengiriman belum dapat dimuat. Periksa koneksi dan coba lagi, atau lihat Aktivitas.", false,
+                            !ReliableOrderClient.hasPickupRecovery(this));
+                });
+            }
+        }, () -> networkScope.post(mainHandler, () -> {
+            recoveryBusy = false;
+            renderRecovery("Aplikasi sedang sibuk. Coba periksa lagi.", false, false);
+        }));
+    }
+
+    private void renderRecovery(String message, boolean canRetry, boolean canStartNew) {
+        LinearLayout content = new LinearLayout(this);
+        content.setOrientation(LinearLayout.VERTICAL);
+        content.setGravity(Gravity.CENTER);
+        content.setPadding(dp(22), dp(24), dp(22), dp(24));
+        content.setBackgroundColor(Color.parseColor("#F3F8FF"));
+        content.addView(text("TransSend", 24, "#0B3A78", true));
+        TextView copy = text(message, 15, "#536B83", false);
+        copy.setGravity(Gravity.CENTER);
+        copy.setPadding(0, dp(12), 0, dp(18));
+        content.addView(copy);
+        if (recoveryBusy) {
+            content.addView(new ProgressBar(this), new LinearLayout.LayoutParams(dp(32), dp(32)));
+        } else {
+            Button check = primaryButton(canRetry ? "Lanjutkan pengiriman yang sama" : "Periksa lagi");
+            check.setOnClickListener(v -> showRecovery(canRetry));
+            content.addView(check, new LinearLayout.LayoutParams(-1, -2));
+            if (canStartNew) {
+                Button create = outlineButton("Kembali ke TransSend");
+                create.setOnClickListener(v -> recreate());
+                content.addView(create, new LinearLayout.LayoutParams(-1, -2));
+            }
+        }
+        Button history = outlineButton("Lihat Aktivitas");
+        history.setOnClickListener(v -> {
+            startActivity(new Intent(this, CustomerHistoryActivity.class));
+            finish();
+        });
+        content.addView(history, new LinearLayout.LayoutParams(-1, -2));
+        ScrollView scroll = new ScrollView(this);
+        scroll.setFillViewport(true);
+        scroll.addView(content, new ScrollView.LayoutParams(-1, -2));
+        setContentView(scroll);
+        CustomerAppSettings.apply(this);
+    }
+
+    private void showPickupReceipt(JSONObject response) {
+        if (recoveryReceipt != null && recoveryReceipt.isShowing()) return;
+        completedOrderId = response.optString("order_id", "").trim();
+        if (completedOrderId.isEmpty()) {
+            submittingOrder = false;
+            showRecovery(false);
+            return;
+        }
+        submittingOrder = true;
+        setLoading(false);
+        if (!recoveryScreen) updateCheckoutButton();
+        otpCode = response.optString("otp", "").trim();
+        String otpMessage = otpCode.isEmpty() ? "OTP dapat dilihat pada rincian pesanan di Aktivitas."
+                : "OTP penerima: " + otpCode + "\nBerikan OTP hanya setelah paket diterima.";
+        recoveryReceipt = new TransivaAlertDialogBuilder(this)
+                .setTitle("Paket siap dikirim")
+                .setCancelable(false)
+                .setMessage("Pengiriman berhasil dibuat.\n\nOrder ID: " + completedOrderId + "\n\n" + otpMessage)
+                .setPositiveButton("Lihat Aktivitas", (dialog, which) -> {
+                    startActivity(new Intent(this, CustomerHistoryActivity.class).putExtra("order_id", completedOrderId));
+                    ReliableOrderClient.acknowledgePickup(this, completedOrderId);
+                    finish();
+                })
+                .create();
+        if (!otpCode.isEmpty()) recoveryReceipt.setButton(android.app.AlertDialog.BUTTON_NEUTRAL, "Salin OTP",
+                (android.content.DialogInterface.OnClickListener) null);
+        recoveryReceipt.setOnShowListener(dialog -> {
+            Button copy = recoveryReceipt.getButton(android.app.AlertDialog.BUTTON_NEUTRAL);
+            if (copy != null) copy.setOnClickListener(v -> copyOtp());
+        });
+        recoveryReceipt.show();
     }
 
     private boolean hasRoutePoints() {
@@ -759,6 +878,8 @@ class TransPickupActivityScreenCore extends CustomerAdaptiveFragmentActivity {
 
     private void restoreDraft(Bundle state) {
         if (state == null) return;
+        String draftOwner = state.getString("sendRecoveryOwner", "");
+        if (!draftOwner.isEmpty() && !Integer.toString(userId).equals(draftOwner)) return;
         pickupLat = state.getDouble("sendPickupLat");
         pickupLng = state.getDouble("sendPickupLng");
         deliveryLat = state.getDouble("sendDeliveryLat");
@@ -779,6 +900,9 @@ class TransPickupActivityScreenCore extends CustomerAdaptiveFragmentActivity {
 
     @Override protected void onSaveInstanceState(Bundle out) {
         super.onSaveInstanceState(out);
+        out.putString("sendRecoveryOwner", Integer.toString(userId));
+        out.putString("sendCompletedOrder", completedOrderId);
+        if (recoveryScreen) return;
         out.putDouble("sendPickupLat", pickupLat);
         out.putDouble("sendPickupLng", pickupLng);
         out.putDouble("sendDeliveryLat", deliveryLat);
@@ -839,6 +963,7 @@ class TransPickupActivityScreenCore extends CustomerAdaptiveFragmentActivity {
     }
 
     @Override protected void onDestroy() {
+        if (recoveryReceipt != null) recoveryReceipt.dismiss();
         pickupScreenClosed=true;pickupFareGate.invalidate();
         if (locationManager != null && locationListener != null) {
             try { locationManager.removeUpdates(locationListener); } catch (RuntimeException ignored) { }
@@ -863,6 +988,11 @@ class TransPickupActivityScreenCore extends CustomerAdaptiveFragmentActivity {
         }
     }
     @Override public void onBackPressed() {
+        if (recoveryScreen && !submittingOrder) {
+            startActivity(new Intent(this, CustomerDashboardActivity.class));
+            finish();
+            return;
+        }
         if (submittingOrder) return;
         if (isCheckout() && detailsOpen) setDetailsOpen(false);
         else if (!isCheckout() && hasRoutePoints()) openCheckout();

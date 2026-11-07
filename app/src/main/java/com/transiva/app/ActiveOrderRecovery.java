@@ -18,6 +18,15 @@ public final class ActiveOrderRecovery {
         String username = clean(session.getUsername());
         if (userId.isEmpty() && username.isEmpty()) { callback.onResult(false); return; }
 
+        if (ReliableOrderClient.hasPickupRecovery(activity)) {
+            Intent intent = new Intent(activity, TransPickupActivity.class);
+            intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
+            activity.startActivity(intent);
+            activity.finish();
+            callback.onResult(true);
+            return;
+        }
+
         UnifiedLiveOrderCenter.refresh(activity, (orders, fromCache, error) -> {
             if (activity.isFinishing() || activity.isDestroyed()) return;
             UnifiedLiveOrderCenter.Order primary = UnifiedLiveOrderCenter.primary(orders);

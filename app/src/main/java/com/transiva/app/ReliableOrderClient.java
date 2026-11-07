@@ -29,6 +29,9 @@ public final class ReliableOrderClient {
             changed=!saved.isEmpty()&&!saved.equals(canonical)&&!key.isEmpty();IN_FLIGHT.add(slot);
         }
         try{
+            if (isPickupSlot(slot) && prefs.contains(slot + ":receipt")) {
+                throw new PendingAttemptException("Pesanan sebelumnya sudah berhasil. Buka kembali TransSend untuk melihat hasilnya.");
+            }
             if(!user.equals(new SessionManager(app).getUserId()))throw new InterruptedException("Account changed");
             if(changed){
                 JSONObject resolution;
@@ -40,7 +43,7 @@ public final class ReliableOrderClient {
                 if(resolution.optBoolean("attempt_found")){
                     JSONObject original=resolution.optJSONObject("order_response");
                     if(original==null)throw new PendingAttemptException("Hasil pesanan sebelumnya belum dapat dibaca.");
-                    clear(prefs,slot);original.put("recovered_attempt",true);original.put("message","Hasil pesanan sebelumnya dipulihkan. Periksa Aktivitas sebelum membuat pesanan baru.");return original;
+                    saveOutcome(prefs,slot,original);original.put("recovered_attempt",true);original.put("message","Hasil pesanan sebelumnya dipulihkan. Periksa Aktivitas sebelum membuat pesanan baru.");return original;
                 }
                 // Server acquired the same attempt lock and confirmed it has no committed receipt.
                 key="";
@@ -52,7 +55,7 @@ public final class ReliableOrderClient {
             body.put("id",key);body.put("user_id",user);
             try {
                 JSONObject result=TransivaHttpRepository.postJsonIdempotent(app,url,body,timeout,key);
-                clear(prefs,slot);return result;
+                saveOutcome(prefs,slot,result);return result;
             } catch (Exception error) {
                 if (definitelyRejected(error)) { clear(prefs,slot); throw error; }
                 // A missing HTTP acknowledgement may still have committed: resolve the SAME key.
@@ -66,7 +69,7 @@ public final class ReliableOrderClient {
                         JSONObject receipt=found.optJSONObject("order_response");
                         if(found.optBoolean("success") && found.optBoolean("attempt_found") && receipt!=null
                                 && user.equals(new SessionManager(app).getUserId())) {
-                            clear(prefs,slot);receipt.put("recovered_attempt",true);return receipt;
+                            saveOutcome(prefs,slot,receipt);receipt.put("recovered_attempt",true);return receipt;
                         }
                     } catch(Exception ignored) { /* Preserve the key until its outcome is known. */ }
                 }
@@ -74,6 +77,116 @@ public final class ReliableOrderClient {
             }
         }finally{synchronized(ReliableOrderClient.class){IN_FLIGHT.remove(slot);}}
     }
+    private static final String PICKUP_URL = "https://transiva.my.id/server/create_pickup_order.php";
+
+    private static boolean isPickupSlot(String slot) {
+        return slot.endsWith(":create_pickup_order.php");
+    }
+
+    private static void saveOutcome(SharedPreferences prefs, String slot, JSONObject result) throws Exception {
+        if (!isPickupSlot(slot) || !result.optBoolean("success")) {
+            clear(prefs, slot);
+            return;
+        }
+        String id = result.optString("order_id", "").trim();
+        if (id.isEmpty()) throw new PendingAttemptException("Hasil pengiriman belum lengkap. Periksa kembali TransSend.");
+        // Save the result and remove the attempt in one disk commit before returning to an Activity.
+        // OTP is fetched from the authenticated receipt endpoint when needed.
+        JSONObject saved = new JSONObject().put("success", true).put("order_id", id);
+        String key = prefs.getString(slot + ":key", "");
+        boolean stored = prefs.edit().putString(slot + ":receipt", saved.toString())
+                .putString(slot + ":receipt_attempt", key)
+                .remove(slot + ":payload").remove(slot + ":key").commit();
+        if (!stored) throw new PendingAttemptException("Hasil pengiriman belum tersimpan di perangkat. Periksa kembali TransSend.");
+    }
+
+    private static String pickupSlot(Context context) {
+        SessionManager session = new SessionManager(context);
+        String user = session.getUserId();
+        return session.isLoggedIn() && user != null && !user.isEmpty() && !"0".equals(user)
+                ? "order:" + user + ":create_pickup_order.php" : "";
+    }
+
+    public static boolean hasPickupRecovery(Context context) {
+        String slot = pickupSlot(context);
+        if (slot.isEmpty()) return false;
+        SharedPreferences prefs = context.getSharedPreferences("transiva_order_attempts", Context.MODE_PRIVATE);
+        return prefs.contains(slot + ":receipt") || !prefs.getString(slot + ":key", "").isEmpty();
+    }
+
+    public static JSONObject recoverPickup(Context context, int timeout) throws Exception {
+        Context app = context.getApplicationContext();
+        CustomerTransportSession owner = CustomerTransportSession.capture(app);
+        String slot = pickupSlot(app);
+        if (slot.isEmpty()) throw new PendingAttemptException("Login diperlukan.");
+        SharedPreferences prefs = app.getSharedPreferences("transiva_order_attempts", Context.MODE_PRIVATE);
+        synchronized (ReliableOrderClient.class) {
+            if (!IN_FLIGHT.add(slot)) throw new PendingAttemptException("Pengiriman sebelumnya masih diproses. Periksa lagi sebentar.");
+        }
+        try {
+            owner.check(app);
+            String saved = prefs.getString(slot + ":receipt", "");
+            JSONObject receipt = saved.isEmpty() ? null : new JSONObject(saved);
+            String key = prefs.getString(slot + (receipt == null ? ":key" : ":receipt_attempt"), "");
+            if (key.isEmpty()) return receipt;
+            JSONObject response;
+            try {
+                String url = PICKUP_URL.substring(0, PICKUP_URL.lastIndexOf('/') + 1)
+                        + "customer_resolve_order_attempt.php?attempt_key="
+                        + java.net.URLEncoder.encode(key, "UTF-8");
+                response = TransivaHttpRepository.getJsonOnce(app, url, receipt == null ? timeout : Math.min(timeout, 5000));
+            } catch (Exception unavailable) {
+                owner.check(app);
+                if (receipt != null) return receipt;
+                throw unavailable;
+            }
+            owner.check(app);
+            if (!response.optBoolean("success")) {
+                if (receipt != null) return receipt;
+                throw new PendingAttemptException("Hasil pengiriman belum dapat diperiksa.");
+            }
+            if (!response.optBoolean("attempt_found")) {
+                if (receipt != null) return receipt;
+                return new JSONObject().put("recovery_pending", true);
+            }
+            JSONObject original = response.optJSONObject("order_response");
+            if (original == null || !original.optBoolean("success") || original.optString("order_id", "").isEmpty()) {
+                throw new PendingAttemptException("Hasil pengiriman belum lengkap. Periksa lagi.");
+            }
+            if (receipt != null && !receipt.optString("order_id").equals(original.optString("order_id"))) {
+                throw new PendingAttemptException("Hasil pengiriman belum cocok. Periksa Aktivitas.");
+            }
+            if (receipt == null) saveOutcome(prefs, slot, original);
+            return original;
+        } finally {
+            synchronized (ReliableOrderClient.class) { IN_FLIGHT.remove(slot); }
+        }
+    }
+
+    public static JSONObject retryPickup(Context context, int timeout) throws Exception {
+        String slot = pickupSlot(context);
+        SharedPreferences prefs = context.getSharedPreferences("transiva_order_attempts", Context.MODE_PRIVATE);
+        if (slot.isEmpty() || prefs.contains(slot + ":receipt")) {
+            throw new PendingAttemptException("Periksa hasil pengiriman sebelumnya.");
+        }
+        String payload = prefs.getString(slot + ":payload", "");
+        if (payload.isEmpty() || prefs.getString(slot + ":key", "").isEmpty()) {
+            throw new PendingAttemptException("Data pengiriman sebelumnya belum tersedia. Periksa Aktivitas.");
+        }
+        return create(context, PICKUP_URL, new JSONObject(payload), timeout);
+    }
+
+    public static boolean acknowledgePickup(Context context, String orderId) {
+        String slot = pickupSlot(context);
+        if (slot.isEmpty() || orderId == null || orderId.isEmpty()) return false;
+        SharedPreferences prefs = context.getSharedPreferences("transiva_order_attempts", Context.MODE_PRIVATE);
+        try {
+            JSONObject saved = new JSONObject(prefs.getString(slot + ":receipt", "{}"));
+            if (!orderId.equals(saved.optString("order_id"))) return false;
+            return prefs.edit().remove(slot + ":receipt").remove(slot + ":receipt_attempt").commit();
+        } catch (org.json.JSONException invalid) { return false; }
+    }
+
     private static void clear(SharedPreferences prefs,String slot){prefs.edit().remove(slot+":payload").remove(slot+":key").commit();}
     static boolean definitelyRejected(Exception error) {
         if(!(error instanceof TransivaHttpRepository.ServerResponseException))return false;

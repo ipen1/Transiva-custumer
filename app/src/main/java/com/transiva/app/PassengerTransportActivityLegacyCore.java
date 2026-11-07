@@ -154,6 +154,8 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
     protected TextView distanceInfoText, durationInfoText, originalPriceText, finalPriceText, discountInfoText, wizardStepText, tripRouteSummaryText;
     protected Button voucherChoiceBtn, noteChoiceBtn, paymentChoiceBtn;
     protected LinearLayout bookingDetailsCard;
+    private boolean editingCheckoutPoint;
+    private android.window.OnBackInvokedCallback checkoutBackCallback;
     protected EditText googleMapInput, noteInput, voucherInput;
     private String driverNoteDraft = "";
     private boolean orderAfterNote;
@@ -372,7 +374,7 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
         closeLp.setMargins(dp(4), 0, 0, 0);
         titleRow.addView(close, closeLp);
         backBtn = close;
-        close.setOnClickListener(v -> finish());
+        close.setContentDescription("Tutup " + serviceTitle());
 
         LinearLayout pointRow = new LinearLayout(this);
         pointFields = pointRow;
@@ -456,8 +458,10 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
                 centerLat = lat; centerLng = lng; pickLat = lat; pickLng = lng;
             }
         });
+        mapView.setRoutePointClickListener(pickup -> beginCheckoutPointEdit(pickup ? "pickup" : "delivery"));
         mapView.setGestureListener(new TransivaGoogleMapView.GestureListener() {
             @Override public void onGestureStart() {
+                if (isRouteConfirmationLocked()) return;
                 pointSelectionGeneration++;
                 pointSearchHandler.removeCallbacksAndMessages(null);
                 if (transportPlaceSearch != null) transportPlaceSearch.cancel();
@@ -465,16 +469,20 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
                 if (pointSearchScroll != null) pointSearchScroll.setVisibility(View.GONE);
                 if (pointSearchResults != null) pointSearchResults.setTag("");
                 followInitialGpsCamera = false;
-                if ("pickup".equals(mode)) { pickupGpsSelected = false; pickupGpsPinned = true; }
+                if ("pickup".equals(mode) && !editingCheckoutPoint) {
+                    pickupGpsSelected = false;
+                    pickupGpsPinned = true;
+                }
                 // Setelah tujuan dikonfirmasi, menggeser peta tidak boleh mengubah nama tujuan.
-                if (selectingWaypoint || (!"pickup".equals(mode) && deliverySelectionLocked)) return;
+                if (selectingWaypoint || (!"pickup".equals(mode) && deliverySelectionLocked && !editingCheckoutPoint)) return;
                 destinationResolveGeneration++;
                 pendingDeliveryTitle = ""; pendingDeliverySubtitle = "";
                 if ("pickup".equals(mode)) { if (pickupBtn != null) pickupBtn.setText("●  Jemput di mana?\nMencari lokasi…"); }
                 else if (deliveryBtn != null) deliveryBtn.setText("●  Mau ke mana?\nMencari lokasi…");
             }
             @Override public void onGestureEnd() {
-                if (selectingWaypoint || (!"pickup".equals(mode) && deliverySelectionLocked)) return;
+                if (isRouteConfirmationLocked() || selectingWaypoint
+                        || (!"pickup".equals(mode) && deliverySelectionLocked && !editingCheckoutPoint)) return;
                 final double lat = pickLat, lng = pickLng;
                 if (!validCoord(lat, lng)) return;
                 final boolean resolvingPickup = "pickup".equals(mode);
@@ -483,7 +491,7 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
                     final String road = reverseAddress(lat, lng);
                     final String admin = buildAdministrativeFallback(lat, lng);
                     featureRuntime.post(mainHandler, () -> resolveNearestGooglePlace(lat, lng, googleName -> {
-                        if (destroyed || selectingWaypoint || resolvingPickup != "pickup".equals(mode) || (!resolvingPickup && deliverySelectionLocked) || generation != destinationResolveGeneration) return;
+                        if (destroyed || selectingWaypoint || resolvingPickup != "pickup".equals(mode) || (!resolvingPickup && deliverySelectionLocked && !editingCheckoutPoint) || generation != destinationResolveGeneration) return;
                         String localName = findNearestPlaceName(lat, lng);
                         String landmark = cleanLandmarkName(firstNonEmpty(googleName, localName, ""));
                         String title;
@@ -506,6 +514,10 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
         });
 
         mapView.setCenterActionListener(() -> {
+            if (editingCheckoutPoint) {
+                confirmCheckoutPoint();
+                return;
+            }
             if (selectingWaypoint) {
                 addWaypointFromCenter();
                 return;
@@ -1080,13 +1092,132 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
     }
 
     protected void bindActions() {
-        pickupBtn.setOnClickListener(v -> { if (isRouteConfirmationLocked()) return; mode = "pickup"; openDestinationAutocomplete(); });
-        deliveryBtn.setOnClickListener(v -> { if (isRouteConfirmationLocked()) return; mode = "delivery"; openDestinationAutocomplete(); });
+        pickupBtn.setOnClickListener(v -> onPointCardClicked("pickup"));
+        deliveryBtn.setOnClickListener(v -> onPointCardClicked("delivery"));
         gpsBtn.setOnClickListener(v -> goToMyLocation());
-        backBtn.setOnClickListener(v -> finish());
+        backBtn.setOnClickListener(v -> onBackPressed());
         orderBtn.setOnClickListener(v -> handleWizardPrimaryAction());
         googleMapInput.setOnClickListener(v -> openDestinationAutocomplete());
         useLinkBtn.setOnClickListener(v -> openDestinationAutocomplete());
+    }
+
+    private void onPointCardClicked(String point) {
+        if (ordering || beginCheckoutPointEdit(point)) return;
+        mode = point;
+        openDestinationAutocomplete();
+    }
+
+    private boolean beginCheckoutPointEdit(String point) {
+        if (ordering || (!editingCheckoutPoint && !isRouteConfirmationLocked())) return false;
+        if (editingCheckoutPoint && point.equals(mode)) return true;
+        closePointSearch();
+        editingCheckoutPoint = true;
+        setCheckoutBackEnabled(true);
+        mode = point;
+        followInitialGpsCamera = false;
+        selectingWaypoint = false;
+        pendingDeliveryTitle = "";
+        pendingDeliverySubtitle = "";
+        ++destinationResolveGeneration;
+        ++quoteVersion;
+        ++routePreviewVersion;
+        quoteLoading = false;
+        restoreConfirmedPointLabels();
+        updateModeUI();
+        if (mapView != null) {
+            boolean pickup = "pickup".equals(point);
+            double lat = pickup ? pickupLat : deliveryLat;
+            double lng = pickup ? pickupLng : deliveryLng;
+            mapView.clearRoute();
+            centerLat = pickLat = lat;
+            centerLng = pickLng = lng;
+            mapView.centerOnInitialLocation(lat, lng, 17f);
+        }
+        return true;
+    }
+
+    private void confirmCheckoutPoint() {
+        if (!mapReady || mapView == null || ordering) return;
+        LatLng selected = mapView.getCenter();
+        if (!validCoord(selected.latitude, selected.longitude)) return;
+        boolean pickup = "pickup".equals(mode);
+        double oldLat = pickup ? pickupLat : deliveryLat;
+        double oldLng = pickup ? pickupLng : deliveryLng;
+        if (Math.abs(oldLat - selected.latitude) < .0000001
+                && Math.abs(oldLng - selected.longitude) < .0000001) {
+            cancelCheckoutPointEdit();
+            return;
+        }
+
+        locationQuoteReady = false;
+        finalFareQuote = null;
+        lastQuotedFare = -1;
+        finalPriceText.setText("Menghitung ulang…");
+        originalPriceText.setVisibility(View.GONE);
+        discountInfoText.setVisibility(View.GONE);
+        distanceInfoText.setText("Memperbarui rute…");
+        durationInfoText.setText("");
+        if (pickup) {
+            pickupLat = selected.latitude;
+            pickupLng = selected.longitude;
+            pickupAddress = "Mencari alamat jemput…";
+            pickupGpsSelected = false;
+            pickupGpsPinned = true;
+            mapView.setPickup(pickupLat, pickupLng, pickupAddress);
+            updateGpsBadge(liveGpsBest);
+        } else {
+            deliveryLat = selected.latitude;
+            deliveryLng = selected.longitude;
+            deliveryAddress = "Mencari alamat tujuan…";
+            mapView.setDelivery(deliveryLat, deliveryLng, deliveryAddress);
+        }
+        finishCheckoutPointEdit();
+        resolveAddressAsync(pickup, selected.latitude, selected.longitude);
+    }
+
+    private void restoreConfirmedPointLabels() {
+        pickupText.setText("Penjemputan: " + pickupAddress);
+        deliveryText.setText("Pengantaran: " + deliveryAddress);
+        pickupBtn.setText("●  Jemput\n" + shortAddress(pickupAddress));
+        deliveryBtn.setText("●  Tujuan\n" + shortAddress(deliveryAddress));
+    }
+
+    private void finishCheckoutPointEdit() {
+        editingCheckoutPoint = false;
+        setCheckoutBackEnabled(false);
+        mode = "delivery";
+        deliverySelectionLocked = true;
+        ++destinationResolveGeneration;
+        pendingDeliveryTitle = "";
+        pendingDeliverySubtitle = "";
+        restoreConfirmedPointLabels();
+        updateModeUI();
+        if (mapView != null) mapView.post(() -> {
+            if (!destroyed && !editingCheckoutPoint && mapView != null) mapView.fitAll();
+        });
+    }
+
+    private void cancelCheckoutPointEdit() {
+        finishCheckoutPointEdit();
+        if (locationQuoteReady) requestVisibleOsrmRoute();
+        else requestPaymentQuote();
+    }
+
+    @Override public void onBackPressed() {
+        if (editingCheckoutPoint) cancelCheckoutPointEdit();
+        else super.onBackPressed();
+    }
+
+    private void setCheckoutBackEnabled(boolean enabled) {
+        if (android.os.Build.VERSION.SDK_INT < 33) return;
+        if (enabled && checkoutBackCallback == null) {
+            checkoutBackCallback = this::cancelCheckoutPointEdit;
+            getOnBackInvokedDispatcher().registerOnBackInvokedCallback(
+                    android.window.OnBackInvokedDispatcher.PRIORITY_DEFAULT, checkoutBackCallback);
+        } else if (!enabled && checkoutBackCallback != null) {
+            getOnBackInvokedDispatcher().unregisterOnBackInvokedCallback(checkoutBackCallback);
+            checkoutBackCallback = null;
+        }
     }
 
     /**
@@ -1116,7 +1247,7 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
     private long pointSelectionGeneration;
 
     protected void openDestinationAutocomplete() {
-        if (ordering || isRouteConfirmationLocked()) return;
+        if (ordering || editingCheckoutPoint || isRouteConfirmationLocked()) return;
         followInitialGpsCamera = false;
         if ("pickup".equals(mode)) { pickupGpsSelected = false; pickupGpsPinned = true; }
         showSmartDestinationSearch();
@@ -1661,7 +1792,7 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
     private void applyGpsPickup(Location loc, boolean force) {
         if (loc == null || !loc.hasAccuracy() || loc.getAccuracy() > 100f) return;
         if (Math.max(0L, (android.os.SystemClock.elapsedRealtimeNanos() - loc.getElapsedRealtimeNanos()) / 1000000L) > 15000L) return;
-        if (!force && (!pickupGpsSelected || pickupGpsPinned || isRouteConfirmationLocked())) return;
+        if (editingCheckoutPoint || (!force && (!pickupGpsSelected || pickupGpsPinned || isRouteConfirmationLocked()))) return;
         if (!force && liveGpsBest != null && lastGpsAppliedAt > 0 &&
                 loc.getTime() < lastGpsAppliedAt) return;
         pickupLat=loc.getLatitude(); pickupLng=loc.getLongitude();
@@ -1686,7 +1817,7 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
                 if (!screenLocationActive || destroyed || isFinishing()) return;
                 liveGpsBest = loc;
                 updateGpsBadge(loc);
-                if (!pickupGpsSelected || pickupGpsPinned || isRouteConfirmationLocked()) return;
+                if (editingCheckoutPoint || !pickupGpsSelected || pickupGpsPinned || isRouteConfirmationLocked()) return;
                 // A recent cache can position the map immediately, but only a fresh,
                 // accurate fix becomes the order's pickup coordinate.
                 if (followInitialGpsCamera && mapView != null) {
@@ -1720,6 +1851,14 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
     }
 
     protected void goToMyLocation() {
+        if (editingCheckoutPoint) {
+            if (mapView != null && liveGpsBest != null) {
+                mapView.centerOnInitialLocation(liveGpsBest.getLatitude(), liveGpsBest.getLongitude(), 17f);
+            } else {
+                toastDialog("Lokasi perangkat belum tersedia. Geser peta untuk memilih titik.");
+            }
+            return;
+        }
         if (isRouteConfirmationLocked()) return;
         closePointSearch();
         if (!hasLocationPermission()) {
@@ -1918,9 +2057,7 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
             String road = reverseAddress(lat, lng);
             String localMerchant = findNearestPlaceName(lat, lng);
             featureRuntime.post(mainHandler, () -> resolveNearestGooglePlace(lat, lng, (googleName) -> {
-                if (destroyed || (isPickup && (requestId != pickupAddressRequest ||
-                    Math.abs(lat-pickupLat)>0.000001 || Math.abs(lng-pickupLng)>0.000001))) return;
-                if(!isPickup && (requestId!=deliveryAddressRequest || Math.abs(lat-deliveryLat)>0.000001 || Math.abs(lng-deliveryLng)>0.000001)) return;
+                if (!isCurrentAddressRequest(isPickup, requestId, lat, lng)) return;
                 if(isPickup) pickupAddressResolving=false;
                 String nearName = firstNonEmpty(googleName, localMerchant, "");
                 String address;
@@ -1930,7 +2067,19 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
                 else address = String.format(Locale.US, "%.6f, %.6f", lat, lng);
                 applyResolvedAddress(isPickup, address);
             }));
-        }, () -> featureRuntime.post(mainHandler, () -> { setLoading(false);toastDialog("Sistem sedang sibuk. Coba lagi."); }));
+        }, () -> featureRuntime.post(mainHandler, () -> {
+            if (!isCurrentAddressRequest(isPickup, requestId, lat, lng)) return;
+            if (isPickup) pickupAddressResolving = false;
+            applyResolvedAddress(isPickup, String.format(Locale.US, "%.6f, %.6f", lat, lng));
+        }));
+    }
+
+    private boolean isCurrentAddressRequest(boolean pickup, long requestId, double lat, double lng) {
+        long currentId = pickup ? pickupAddressRequest : deliveryAddressRequest;
+        double currentLat = pickup ? pickupLat : deliveryLat;
+        double currentLng = pickup ? pickupLng : deliveryLng;
+        return !destroyed && currentId == requestId
+                && Math.abs(lat - currentLat) <= .000001 && Math.abs(lng - currentLng) <= .000001;
     }
 
     protected interface NearbyPlaceCallback { void onResult(String name); }
@@ -2459,7 +2608,7 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
     private long deliveryAddressRequest;
     private boolean locationReady() {
         boolean busy=pickupAddressResolving && Math.abs(pickupLat-resolvingPickupLat)<0.000001 && Math.abs(pickupLng-resolvingPickupLng)<0.000001;
-        return !busy && validCoord(pickupLat,pickupLng) && validCoord(deliveryLat,deliveryLng)
+        return !editingCheckoutPoint && !busy && validCoord(pickupLat,pickupLng) && validCoord(deliveryLat,deliveryLng)
             && addressReady(pickupAddress) && addressReady(deliveryAddress);
     }
     private boolean addressReady(String address) {
@@ -2469,6 +2618,7 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
 
 
     private void requestPaymentQuote() {
+        if (editingCheckoutPoint) return;
         final int quoteRequest = ++quoteVersion;
         locationQuoteReady=false;
         quoteLoading=false;
@@ -2520,40 +2670,48 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
         finalFareQuote=null;updateStopSummary();
         paymentSummaryText.setText("Menghitung biaya perjalanan...");
 
+        final JSONObject payload;
+        try {
+            payload = new JSONObject();
+
+            JSONObject pickup = new JSONObject();
+            pickup.put("latitude", pickupLat);
+            pickup.put("longitude", pickupLng);
+
+            JSONObject delivery = new JSONObject();
+            delivery.put("latitude", deliveryLat);
+            delivery.put("longitude", deliveryLng);
+
+            payload.put("pickup", pickup);
+            payload.put("delivery", delivery);
+
+            // Field datar ditambahkan untuk kompatibilitas endpoint lama/hosting cache.
+            payload.put("pickup_lat", pickupLat);
+            payload.put("pickup_lng", pickupLng);
+            payload.put("delivery_lat", deliveryLat);
+            payload.put("delivery_lng", deliveryLng);
+            payload.put("service_type", isCarService() ? "Transcar" : "Transbike");
+            payload.put("payment_method", paymentMethod);
+            payload.put("price_mode", priceMode);
+            JSONObject ecosystem = new JSONObject(ecosystemFeatures.toJson().toString());
+            payload.put("ecosystem", ecosystem);
+            payload.put("waypoints", ecosystem.optJSONArray("waypoints"));
+            payload.put(
+                    "voucher_code",
+                    voucherInput == null
+                            ? ""
+                            : voucherInput.getText().toString()
+                            .trim()
+                            .toUpperCase(Locale.US)
+            );
+        } catch (org.json.JSONException invalid) {
+            quoteLoading = false;
+            showQuoteRetry();
+            return;
+        }
+
         featureRuntime.execute(() -> {
             try {
-                JSONObject payload = new JSONObject();
-
-                JSONObject pickup = new JSONObject();
-                pickup.put("latitude", pickupLat);
-                pickup.put("longitude", pickupLng);
-
-                JSONObject delivery = new JSONObject();
-                delivery.put("latitude", deliveryLat);
-                delivery.put("longitude", deliveryLng);
-
-                payload.put("pickup", pickup);
-                payload.put("delivery", delivery);
-
-                // Field datar ditambahkan untuk kompatibilitas endpoint lama/hosting cache.
-                payload.put("pickup_lat", pickupLat);
-                payload.put("pickup_lng", pickupLng);
-                payload.put("delivery_lat", deliveryLat);
-                payload.put("delivery_lng", deliveryLng);
-                payload.put("service_type", isCarService() ? "Transcar" : "Transbike");
-                payload.put("payment_method", paymentMethod);
-                payload.put("price_mode", priceMode);
-                payload.put("ecosystem", ecosystemFeatures.toJson());
-                payload.put("waypoints", ecosystemFeatures.waypoints);
-                payload.put(
-                        "voucher_code",
-                        voucherInput == null
-                                ? ""
-                                : voucherInput.getText().toString()
-                                .trim()
-                                .toUpperCase(Locale.US)
-                );
-
                 JSONObject res = postJson(PAYMENT_QUOTE_URL, payload);
 
                 featureRuntime.post(mainHandler, () -> {
@@ -2692,8 +2850,8 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
 
     private void showQuoteRetry() {
         finalPriceText.setTextSize(13);
-        finalPriceText.setText("Coba lagi ↻");
-        finalPriceText.setContentDescription("Tarif belum tersedia. Ketuk untuk mencoba lagi");
+        finalPriceText.setText("Hitung ulang ↻");
+        finalPriceText.setContentDescription("Tarif belum tersedia. Ketuk untuk hitung ulang ongkir.");
         updateWizardState();
     }
 
@@ -2724,16 +2882,23 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
     private void updateModeUI() {
         boolean pickupMode = "pickup".equals(mode);
 
-        boolean routeComplete = validCoord(pickupLat, pickupLng) && validCoord(deliveryLat, deliveryLng);
+        boolean routeComplete = !editingCheckoutPoint && validCoord(pickupLat, pickupLng) && validCoord(deliveryLat, deliveryLng);
         if (bookingDetailsCard != null) bookingDetailsCard.setVisibility(routeComplete ? View.VISIBLE : View.GONE);
-        if (pickupBtn != null) { pickupBtn.setEnabled(!routeComplete); pickupBtn.setClickable(!routeComplete); }
-        if (deliveryBtn != null) { deliveryBtn.setEnabled(!routeComplete); deliveryBtn.setClickable(!routeComplete); }
+        if (pickupBtn != null) pickupBtn.setContentDescription("Ubah titik jemput. " + pickupAddress);
+        if (deliveryBtn != null) deliveryBtn.setContentDescription("Ubah titik tujuan. " + deliveryAddress);
+        if (backBtn != null) {
+            backBtn.setText(editingCheckoutPoint ? "‹" : "×");
+            backBtn.setContentDescription(editingCheckoutPoint ? "Batalkan perubahan titik" : "Tutup " + serviceTitle());
+        }
+        if (pointUtilityRow != null && pointSearchHost == null) {
+            pointUtilityRow.setVisibility(editingCheckoutPoint ? View.GONE : View.VISIBLE);
+        }
         if (waypointQuickButton != null) waypointQuickButton.setVisibility(View.GONE);
         if (waypointBtn != null) waypointBtn.setVisibility(View.GONE);
         refreshWaypointHeader();
         modeText.setText(
-                routeComplete
-                        ? "Rute siap"
+                routeComplete ? "Ketuk titik untuk ubah"
+                        : editingCheckoutPoint ? (pickupMode ? "Geser pin jemput" : "Geser pin tujuan")
                         : (pickupMode ? "Cek titik jemput" : "Cari atau pilih tujuan")
         );
         if (tripRouteSummaryText != null && routeComplete) {
@@ -2747,8 +2912,8 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
             tripRouteSummaryText.setText(itinerary.toString());
         }
 
-        pickupBtn.setAlpha(pickupMode ? 1f : .80f);
-        deliveryBtn.setAlpha(pickupMode ? .80f : 1f);
+        pickupBtn.setAlpha(routeComplete || pickupMode ? 1f : .80f);
+        deliveryBtn.setAlpha(routeComplete || !pickupMode ? 1f : .80f);
         if (mapView != null) {
             if (routeComplete) {
                 mapView.showOrderAction(false, "");
@@ -2760,7 +2925,7 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
     }
 
     private void requestVisibleOsrmRoute() {
-        if (!mapReady || mapView == null || !validCoord(pickupLat, pickupLng)) return;
+        if (editingCheckoutPoint || !mapReady || mapView == null || !validCoord(pickupLat, pickupLng)) return;
         final int previewRequest = ++routePreviewVersion;
         final JSONArray routeStops = new JSONArray();
         try {
@@ -2984,6 +3149,7 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
     }
 
     @Override protected void onDestroy() {
+        setCheckoutBackEnabled(false);
         featureRuntime.destroy();
         destroyed = true;
         screenLocationActive = false;

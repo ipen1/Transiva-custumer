@@ -258,7 +258,7 @@ public final class TransivaGoogleMapView extends FrameLayout implements OnMapRea
                 if (reason == GoogleMap.OnCameraMoveStartedListener.REASON_GESTURE && gestureListener != null) gestureListener.onGestureStart();
             });
         }
-        if (shopDeliveryClick != null) bindShopMarkerClick();
+        if (shopDeliveryClick != null || routePointClick != null) bindPickerMarkerClick();
         LatLng c = map.getCameraPosition().target;
         if (listener != null) listener.onReady(c.latitude, c.longitude);
     }
@@ -271,14 +271,27 @@ public final class TransivaGoogleMapView extends FrameLayout implements OnMapRea
     public void enableShopPicker(Runnable deliveryClick) {
         shopDeliveryClick = deliveryClick;
         setSelectionMode("pickup");
-        if (isReady()) bindShopMarkerClick();
+        if (isReady()) bindPickerMarkerClick();
     }
 
-    private void bindShopMarkerClick() {
+    interface RoutePointClick { boolean onClick(boolean pickup); }
+    private RoutePointClick routePointClick;
+
+    void setRoutePointClickListener(RoutePointClick listener) {
+        routePointClick = listener;
+        if (isReady()) bindPickerMarkerClick();
+    }
+
+    private void bindPickerMarkerClick() {
         googleMap.setOnMarkerClickListener(marker -> {
-            if (!marker.equals(deliveryMarker)) return false;
-            shopDeliveryClick.run();
-            return true;
+            if (shopDeliveryClick != null && marker.equals(deliveryMarker)) {
+                shopDeliveryClick.run();
+                return true;
+            }
+            if (routePointClick == null) return false;
+            if (marker.equals(pickupMarker)) return routePointClick.onClick(true);
+            if (marker.equals(deliveryMarker)) return routePointClick.onClick(false);
+            return false;
         });
     }
 

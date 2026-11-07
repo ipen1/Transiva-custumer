@@ -28,6 +28,7 @@ public final class DashboardStateCache {
     private static String orderId(JSONObject order) {
         if (order == null) return "";
         String id = order.optString("order_id", "").trim();
+        if (id.isEmpty()) id = order.optString("id_order", "").trim();
         return id.isEmpty() ? order.optString("id", "").trim() : id;
     }
 

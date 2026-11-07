@@ -41,6 +41,12 @@ public final class CustomerDashboardPresenter {
         request(username, userId, false);
     }
 
+    public void refreshAfterCancellation(String username, int userId) {
+        cancelLoad();
+        lastSuccessAt = 0L;
+        request(username, userId, false);
+    }
+
     private void request(String username, int userId, boolean visibleLoading) {
         if (loading || view == null) return;
         final long requestGeneration=++generation;

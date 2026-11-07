@@ -92,6 +92,8 @@ public final class CustomerActivityOrderAction {
 
                 activity.runOnUiThread(() -> {
                     if (success) {
+                        com.transiva.app.customer.data.DashboardStateCache.rememberCancellation(
+                                activity, Integer.toString(userId), order);
                         callback.onSuccess(message);
                     } else {
                         callback.onError(message);

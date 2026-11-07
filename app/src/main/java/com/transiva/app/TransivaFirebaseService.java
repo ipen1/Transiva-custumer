@@ -118,7 +118,13 @@ public class TransivaFirebaseService extends FirebaseMessagingService {
                 "general"
         ).toLowerCase();
 
-        if (isChat(type) && !CustomerChatPushGuard.accept(this, data)) return;
+        if (isChat(type)) {
+            traceChatPush(data, "RECEIVED");
+            if (!CustomerChatPushGuard.accept(this, data)) {
+                traceChatPush(data, "FILTERED");
+                return;
+            }
+        }
 
         if ("split_bill_update".equals(type) || "split_bill_invite".equals(type)) {
             Intent rt = new Intent("com.transiva.app.SPLIT_BILL_REALTIME");
@@ -396,11 +402,20 @@ public class TransivaFirebaseService extends FirebaseMessagingService {
                                 Manifest.permission.POST_NOTIFICATIONS
                         ) != PackageManager.PERMISSION_GRANTED
         ) {
+            if (isChat(type)) traceChatPush(data, "POST_NOTIFICATIONS_DENIED");
             return;
         }
 
+        if (isChat(type)) {
+            String blockReason = CallDeliveryTrace.notificationBlockReason(this, channelId);
+            if (!blockReason.isEmpty()) {
+                traceChatPush(data, blockReason);
+                return;
+            }
+        }
         try {
             NotificationManagerCompat.from(this).notify(requestCode,builder.build());
+            if (isChat(type)) traceChatPush(data, "POSTED");
         } catch (RuntimeException unavailable) {
             try {
                 NotificationCompat.Builder fallback=new NotificationCompat.Builder(this,channelId)
@@ -408,10 +423,20 @@ public class TransivaFirebaseService extends FirebaseMessagingService {
                     .setContentText(first(body,"Notifikasi baru")).setContentIntent(pendingIntent)
                     .setPriority(priorityForType(type)).setAutoCancel(true);
                 NotificationManagerCompat.from(this).notify(requestCode,fallback.build());
-            }catch(RuntimeException failed){android.util.Log.w("TransivaNotification","Notification unavailable",failed);}
+                if (isChat(type)) traceChatPush(data, "POSTED");
+            } catch (RuntimeException failed) {
+                if (isChat(type)) traceChatPush(data, "POST_FAILED");
+                android.util.Log.w("TransivaNotification", "Notification unavailable", failed);
+            }
         }
+    }
 
-
+    private static void traceChatPush(Map<String, String> data, String stage) {
+        String id = data == null ? null : data.get("chat_id");
+        if (id != null && id.matches("[1-9][0-9]{0,18}")) {
+            android.util.Log.i("TransivaChatPush", "id=" + id + " stage=" + stage
+                    + " device_at_ms=" + System.currentTimeMillis());
+        }
     }
 
     private Intent buildArrivalIntent(String event, String orderId, Map<String, String> data) {

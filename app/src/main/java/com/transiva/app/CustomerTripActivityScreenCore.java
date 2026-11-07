@@ -935,7 +935,11 @@ class CustomerTripActivityScreenCore extends CustomerAdaptiveActivity {
         brand.setGravity(Gravity.CENTER);
         brand.setLetterSpacing(.12f);
         panel.addView(brand, tripRow(12));
-        TextView title = text(finished ? "Perjalanan selesai" : "Pesanan dibatalkan", 23, "#0B3A78", true);
+        String service = order.optString("order_type", "");
+        boolean food = "food".equalsIgnoreCase(service) || "transfood".equalsIgnoreCase(service)
+                || orderId.toUpperCase(Locale.ROOT).startsWith("FOOD-");
+        String endTitle = finished ? (food ? "Pesanan makanan selesai" : "Pesanan selesai") : "Pesanan dibatalkan";
+        TextView title = text(endTitle, 23, "#0B3A78", true);
         title.setGravity(Gravity.CENTER);
         panel.addView(title, tripRow(3));
         TextView copy = text(finished ? "Terima kasih sudah menggunakan layanan Transiva. Sampai jumpa di perjalanan berikutnya!"
@@ -950,6 +954,7 @@ class CustomerTripActivityScreenCore extends CustomerAdaptiveActivity {
             progress.bind(order, "", "");
             progress.bindProgress(CustomerOrderState.FINISHED);
             panel.addView(progress, tripRow(14));
+            if (!trackingOnly) addCompletionPayment(panel, order);
             finishHint = text("Kembali ke beranda dalam 5 detik", 12, "#536B83", false);
             finishHint.setGravity(Gravity.CENTER);
             panel.addView(finishHint, tripRow(12));
@@ -962,6 +967,29 @@ class CustomerTripActivityScreenCore extends CustomerAdaptiveActivity {
         setContentView(scroll);
         CustomerAppSettings.apply(this);
         if (finished && resumed) mainHandler.post(finishTick);
+    }
+
+    private void addCompletionPayment(LinearLayout panel, JSONObject order) {
+        double total = order.optDouble("price", Double.NaN);
+        if (!Double.isFinite(total) || total < 0) return;
+        String method = order.optString("payment_label", "").trim();
+        if (method.isEmpty()) {
+            String value = order.optString("payment_method", "");
+            if ("balance".equalsIgnoreCase(value)) method = "TransPay";
+            else if ("cash".equalsIgnoreCase(value)) method = "Tunai";
+        }
+        JSONObject waiting = order.optJSONObject("smart_waiting");
+        long fee = order.optLong("waiting_fee_applied", waiting == null ? 0L : waiting.optLong("applied_fee"));
+        LinearLayout receipt = new LinearLayout(this);
+        receipt.setOrientation(LinearLayout.VERTICAL);
+        receipt.setPadding(dp(12), dp(10), dp(12), dp(10));
+        receipt.setBackground(roundStroke("#F5F9FF", "#DCE8F6", dp(14), 1));
+        receipt.addView(text(method.isEmpty() ? "Total akhir" : "Total akhir · " + method, 12, "#536B83", false));
+        receipt.addView(text(rupiah(total), 19, "#0B3A78", true));
+        if (fee > 0) {
+            receipt.addView(text("Termasuk biaya tunggu " + rupiah(fee), 11, "#536B83", false));
+        }
+        panel.addView(receipt, tripRow(8));
     }
 
     protected void goHomeAfterFinished() {

@@ -2220,16 +2220,24 @@ class CustomerDashboardActivityScreenCore extends CustomerAdaptiveActivity
                     renderDashboardCancel();
                     CustomerActivityOrderAction.cancel(this, order, userId, username,
                             new CustomerActivityOrderAction.Callback() {
-                        private void complete(String message) {
+                        private void complete(String message, boolean canceled) {
                             dashboardCancelBusy = false;
                             if (isFinishing() || isDestroyed()
                                     || !java.util.Objects.equals(sessionToken, new SessionManager(CustomerDashboardActivityScreenCore.this).getToken())) return;
-                            renderDashboardCancel();
+                            if (canceled && wasDashboardOrderCanceled(activeOrderJson)) {
+                                renderDashboardOrder(null, "");
+                                refreshSmartRecommendation();
+                            } else {
+                                renderDashboardCancel();
+                            }
                             Toast.makeText(CustomerDashboardActivityScreenCore.this, message, Toast.LENGTH_SHORT).show();
-                            if (presenter != null) presenter.refresh(username, userId);
+                            if (presenter != null) {
+                                if (canceled) presenter.refreshAfterCancellation(username, userId);
+                                else presenter.refresh(username, userId);
+                            }
                         }
-                        @Override public void onSuccess(String message) { complete(message); }
-                        @Override public void onError(String message) { complete(message); }
+                        @Override public void onSuccess(String message) { complete(message, true); }
+                        @Override public void onError(String message) { complete(message, false); }
                     });
                 }).show();
     }
@@ -2618,22 +2626,7 @@ class CustomerDashboardActivityScreenCore extends CustomerAdaptiveActivity
         currentBalance = state.balance;
         renderBalance();
 
-        String activeOrderText =
-                first(
-                        state.activeOrderText,
-                        "Belum ada pesanan aktif"
-                );
-
-        currentOrderText = activeOrderText;
-        activeOrderJson = state.activeOrder;
-        if(dashboardWaiting!=null)dashboardWaiting.bind(activeOrderJson==null||!isActiveOrderText(activeOrderText)?null:activeOrderJson.optJSONObject("smart_waiting"),activeOrderJson==null?"":activeOrderJson.optString("status"));
-        boolean hasActiveOrder = isActiveOrderText(activeOrderText);
-        if (premiumOrder != null) premiumOrder.bind(
-                hasActiveOrder ? activeOrderJson : null,
-                hasActiveOrder ? activeOrderText : "Belum ada pesanan aktif",
-                hasActiveOrder ? "Pantau pesanan Anda  ›" : "Lihat pusat pesanan  ›");
-
-        renderDashboardCancel();
+        renderDashboardOrder(state.activeOrder, state.activeOrderText);
         renderGrowthState(state);
 
         if (orderHint != null) {
@@ -2643,6 +2636,27 @@ class CustomerDashboardActivityScreenCore extends CustomerAdaptiveActivity
 
         renderPromos(state.promos);
         refreshSmartRecommendation();
+    }
+
+    private boolean wasDashboardOrderCanceled(JSONObject order) {
+        return com.transiva.app.customer.data.DashboardStateCache.wasCanceled(
+                this, Integer.toString(userId), order);
+    }
+
+    private void renderDashboardOrder(JSONObject order, String label) {
+        boolean active = order != null && !wasDashboardOrderCanceled(order)
+                && !CustomerOrderState.isEnded(order.optString("status")) && isActiveOrderText(label);
+        activeOrderJson = active ? order : null;
+        currentOrderText = active ? label : "Belum ada pesanan aktif";
+        if (dashboardWaiting != null) {
+            dashboardWaiting.bind(active ? order.optJSONObject("smart_waiting") : null,
+                    active ? order.optString("status") : "");
+        }
+        if (premiumOrder != null) {
+            premiumOrder.bind(activeOrderJson, currentOrderText,
+                    active ? "Pantau pesanan Anda  ›" : "Lihat pusat pesanan  ›");
+        }
+        renderDashboardCancel();
     }
 
     private void renderGrowthState(DashboardState state) {

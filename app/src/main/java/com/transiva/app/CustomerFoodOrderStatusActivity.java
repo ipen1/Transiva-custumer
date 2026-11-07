@@ -56,7 +56,17 @@ public class CustomerFoodOrderStatusActivity extends CustomerAdaptiveActivity {
             JSONObject response=TransivaHttpRepository.postJson(this,ApiConfig.ROOT+"server/customer_food_order_status.php",new JSONObject().put("order_id",requestedOrder),20000);
             runtime.post(handler,()->{if(request!=generation||routed)return;inFlight=false;if(!response.optBoolean("success")){terminal=false;handler.removeCallbacks(tick);error();return;}if(!foreground)return;if(FoodOrderDecision.terminal(response)){showOutcome(response,true);return;}
                 terminal=false;handler.removeCallbacks(tick);remaining=8000;
-                if(CustomerOrderState.hasDriver(FoodOrderDecision.status(response))||CustomerOrderState.isFinished(FoodOrderDecision.status(response))){routed=true;Intent trip=new Intent(this,CustomerOrderState.isFinished(FoodOrderDecision.status(response))?CustomerHistoryActivity.class:CustomerTripActivity.class).putExtra("order_id",orderId).putExtra("source","orders").putExtra("food_status_resolved",true);startActivity(trip);finish();return;}
+                String status = FoodOrderDecision.status(response);
+                if (CustomerOrderState.hasDriver(status) || CustomerOrderState.isFinished(status)) {
+                    routed = true;
+                    Intent trip = new Intent(this, CustomerTripActivity.class)
+                            .putExtra("order_id", orderId)
+                            .putExtra("source", "orders")
+                            .putExtra("food_status_resolved", true);
+                    startActivity(trip);
+                    finish();
+                    return;
+                }
                 showWaiting(response);if(foreground)handler.postDelayed(poll,4000);
             });
             // Preserve the existing redispatch heartbeat only for a still-active, unassigned food order.

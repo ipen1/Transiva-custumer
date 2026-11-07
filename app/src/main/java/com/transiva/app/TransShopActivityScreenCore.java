@@ -257,6 +257,7 @@ class TransShopActivityScreenCore extends CustomerAdaptiveActivity {
     protected String deliveryAddress = "Lokasi Pengantaran";
     protected boolean destroyed = false;
     private final CustomerFareQuoteGate shopFareGate = new CustomerFareQuoteGate();
+    private JSONArray quotedRoute;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -503,7 +504,7 @@ class TransShopActivityScreenCore extends CustomerAdaptiveActivity {
                     centerMapNearSavedDelivery();
                 }
                 updateModeUI();
-                requestVisibleOsrmRoute();
+                drawQuotedRoute();
                 loadMapPlaces();
                 loadOnlineDrivers();
             }
@@ -1383,6 +1384,8 @@ class TransShopActivityScreenCore extends CustomerAdaptiveActivity {
             orderBtn.setText("Menghitung ongkir…");
         }
         acceptedShopQuoteToken = "";
+        quotedRoute = null;
+        if (mapView != null) mapView.clearRoute();
         if(originalPriceText!=null)originalPriceText.setVisibility(View.GONE);
         if(discountInfoText!=null)discountInfoText.setVisibility(View.GONE);
         if (!validCoordinate(quotePickupLat, quotePickupLng)
@@ -1428,8 +1431,10 @@ class TransShopActivityScreenCore extends CustomerAdaptiveActivity {
                 payload.put("service_type", "Transbike");
                 payload.put("payment_method", quotePaymentMethod);
                 payload.put("voucher_code", quoteVoucher);
+                payload.put("include_route_geometry", true);
 
                 JSONObject res = postJson(PAYMENT_QUOTE_URL, payload);
+                JSONArray route = decodeQuotedRoute(res.optJSONArray("route_geometry"));
 
                 featureRuntime.post(mainHandler, () -> {
                     if (!isShopQuoteCurrent(quoteTicket, quoteKey)) return;
@@ -1468,6 +1473,7 @@ class TransShopActivityScreenCore extends CustomerAdaptiveActivity {
 
                     if (!shopFareGate.accept(quoteTicket, quoteKey)) return;
                     acceptedShopQuoteToken = quoteToken;
+                    quotedRoute = route;
                     royaltyOriginalFare=original;
                     int voucherDiscount=jsonInt(res,"voucher_discount",Math.max(0,discount-jsonInt(res,"hemat_discount",0)));
                     voucherChoiceBtn.setText(voucherDiscount>0?"🏷 Hemat Rp"+formatMoney(voucherDiscount):(voucherInput.getText().toString().trim().isEmpty()?"🏷 Voucher":"🏷 Voucher dipilih"));
@@ -1475,7 +1481,7 @@ class TransShopActivityScreenCore extends CustomerAdaptiveActivity {
                         orderBtn.setText("PESAN TRANSSHOP");
                         orderBtn.setEnabled(true);
                     }
-                    requestVisibleOsrmRoute();
+                    drawQuotedRoute();
                     finalPriceText.setText("Rp " + formatMoney(total));
 
                     if (discount > 0 && original > total) {
@@ -1551,6 +1557,8 @@ class TransShopActivityScreenCore extends CustomerAdaptiveActivity {
     private void invalidateShopQuote() {
         shopFareGate.invalidate();
         acceptedShopQuoteToken = "";
+        quotedRoute = null;
+        if (mapView != null) mapView.clearRoute();
         if (paymentSummaryText != null) paymentSummaryText.setVisibility(View.GONE);
         if(finalPriceText!=null)finalPriceText.setText("Rp -");
         if(originalPriceText!=null)originalPriceText.setVisibility(View.GONE);
@@ -1603,26 +1611,30 @@ class TransShopActivityScreenCore extends CustomerAdaptiveActivity {
         updateShoppingStopButton();
     }
 
-    protected void requestVisibleOsrmRoute() {
-        if (!mapReady || mapView == null || !validCoord(pickupLat, pickupLng) || !validCoord(deliveryLat, deliveryLng)) return;
-        final String routeKey=currentShopQuoteKey();final JSONArray points=new JSONArray();
+    private void drawQuotedRoute() {
+        if (!mapReady || mapView == null || quotedRoute == null
+                || !shopFareGate.hasQuote(currentShopQuoteKey())) return;
+        mapView.setWaypoints(shopWaypoints());
+        mapView.drawRideRoute(quotedRoute);
+    }
+
+    private JSONArray decodeQuotedRoute(JSONArray coordinates) {
+        if (coordinates == null || coordinates.length() < 2 || coordinates.length() > 50000) return null;
+        JSONArray points = new JSONArray();
         try {
-            points.put(new JSONArray().put(pickupLat).put(pickupLng));
-            JSONArray stops=shopWaypoints();
-            for(int i=0;i<stops.length();i++){
-                JSONObject waypoint=stops.optJSONObject(i);
-                if(waypoint==null)return;
-                double lat=waypoint.optDouble("latitude",Double.NaN);
-                double lng=waypoint.optDouble("longitude",Double.NaN);
-                if(!validCoord(lat,lng))return;
+            for (int i = 0; i < coordinates.length(); i++) {
+                JSONArray point = coordinates.getJSONArray(i);
+                double lng = point.getDouble(0);
+                double lat = point.getDouble(1);
+                if (!Double.isFinite(lat) || !Double.isFinite(lng) || Math.abs(lat) > 90 || Math.abs(lng) > 180) return null;
                 points.put(new JSONArray().put(lat).put(lng));
             }
-            points.put(new JSONArray().put(deliveryLat).put(deliveryLng));
-        } catch(org.json.JSONException error) {
-            return;
+        } catch (org.json.JSONException invalid) {
+            return null;
         }
-        featureRuntime.execute(()->{try{JSONArray merged=new JSONArray();for(int i=0;i<points.length()-1;i++){JSONArray a=points.optJSONArray(i),b=points.optJSONArray(i+1);StableRouteEngine.Result route=StableRouteEngine.fetch(a.optDouble(0),a.optDouble(1),b.optDouble(0),b.optDouble(1));for(int j=i==0?0:1;j<route.latLngPoints.length();j++)merged.put(route.latLngPoints.optJSONArray(j));}featureRuntime.post(mainHandler,()->{if(!destroyed&&mapView!=null&&routeKey.equals(currentShopQuoteKey())){mapView.setWaypoints(shopWaypoints());mapView.drawRideRoute(merged);}});}catch(Exception ignored){}},()->{});
+        return points;
     }
+
     protected boolean validCoord(double lat, double lng) {
         return CustomerGeoMath.valid(lat, lng);
     }

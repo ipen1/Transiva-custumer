@@ -2,20 +2,26 @@ package com.transiva.app.customer.presentation;
 
 import android.os.Handler;
 import android.os.Looper;
+import android.os.SystemClock;
+
+import com.transiva.app.TransivaHttpRepository.ServerResponseException;
+import com.transiva.app.TransivaNetworkExecutor;
 
 import com.transiva.app.customer.domain.CustomerDashboardRepository;
 import com.transiva.app.customer.domain.DashboardState;
 
-import android.os.SystemClock;
+import java.io.IOException;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
-import com.transiva.app.TransivaNetworkExecutor;
+import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.TimeoutException;
 
 public final class CustomerDashboardPresenter {
 
     private final CustomerDashboardRepository repository;
     private CustomerDashboardContract.View view;
     private Future<?> currentTask;
-    private volatile long lastSuccessAt;
+    private volatile long lastFinishedAt;
     private static final long MIN_REFRESH_MS = 12000L;
     private final Handler main = new Handler(Looper.getMainLooper());
     private volatile boolean loading;
@@ -37,67 +43,73 @@ public final class CustomerDashboardPresenter {
 
     public void refresh(String username, int userId) {
         long now = SystemClock.elapsedRealtime();
-        if (lastSuccessAt > 0L && now - lastSuccessAt < MIN_REFRESH_MS) return;
+        if (lastFinishedAt > 0L && now - lastFinishedAt < MIN_REFRESH_MS) return;
         request(username, userId, false);
     }
 
     public void refreshAfterCancellation(String username, int userId) {
         cancelLoad();
-        lastSuccessAt = 0L;
+        lastFinishedAt = 0L;
         request(username, userId, false);
     }
 
     private void request(String username, int userId, boolean visibleLoading) {
         if (loading || view == null) return;
-        final long requestGeneration=++generation;
+        final long requestGeneration = ++generation;
         loading = true;
         if (visibleLoading) view.showLoading(true);
 
         try {
-        currentTask = TransivaNetworkExecutor.execute(() -> {
-            try {
-                DashboardState state = repository.load(username, userId);
-                main.post(() -> {
-                    if(requestGeneration!=generation||view==null)return;
-                    loading = false;
-                    lastSuccessAt = SystemClock.elapsedRealtime();
-                    if (view == null) return;
-                    view.showLoading(false);
-                    view.showDashboard(state);
-                });
-            } catch (Exception error) {
-                main.post(() -> {
-                    if(requestGeneration!=generation||view==null)return;
-                    loading = false;
-                    if (view == null) return;
-                    view.showLoading(false);
-                    view.showError("Dashboard gagal dimuat. Periksa koneksi.");
-                });
-            }
-        }, () -> main.post(() -> {
-            if(requestGeneration!=generation||view==null)return;
-            loading = false;
-            if (view != null) { view.showLoading(false); view.showError("Aplikasi sedang sibuk. Coba muat ulang sebentar lagi."); }
-        }));
-        } catch (java.util.concurrent.RejectedExecutionException busy) {
-            loading = false;
-            if (view != null) {
-                view.showLoading(false);
-                view.showError("Aplikasi sedang sibuk. Coba muat ulang sebentar lagi.");
-            }
+            currentTask = TransivaNetworkExecutor.execute(() -> {
+                try {
+                    DashboardState state = repository.load(username, userId);
+                    main.post(() -> complete(requestGeneration, state, null));
+                } catch (Exception error) {
+                    main.post(() -> complete(requestGeneration, null, errorMessage(error)));
+                }
+            }, () -> main.post(() -> complete(requestGeneration, null,
+                    "Aplikasi sedang sibuk.")));
+        } catch (RejectedExecutionException busy) {
+            complete(requestGeneration, null, "Aplikasi sedang sibuk.");
         }
     }
 
+    private void complete(long requestGeneration, DashboardState state, String message) {
+        if (requestGeneration != generation || view == null) return;
+        currentTask = null;
+        loading = false;
+        lastFinishedAt = SystemClock.elapsedRealtime();
+        view.showLoading(false);
+        if (state != null) view.showDashboard(state);
+        else view.showError(message);
+    }
+
+    private String errorMessage(Exception error) {
+        Throwable cause = error instanceof ExecutionException ? error.getCause() : error;
+        if (cause instanceof ServerResponseException) {
+            int status = ((ServerResponseException) cause).status;
+            if (status == 401 || status == 403) return "Akses akun perlu diperiksa.";
+            if (status == 429) return "Server sedang sibuk. Coba beberapa saat lagi.";
+            return "Server belum dapat memuat data beranda.";
+        }
+        if (cause instanceof TimeoutException || cause instanceof java.net.SocketTimeoutException) {
+            return "Respons server terlalu lama.";
+        }
+        if (cause instanceof IOException) return "Koneksi ke server terganggu.";
+        return "Data beranda belum dapat dimuat.";
+    }
+
     public void cancelLoad() {
-        ++generation;Future<?> task=currentTask;currentTask=null;if(task!=null)task.cancel(true);
-        loading=false;if(view!=null)view.showLoading(false);
+        ++generation;
+        Future<?> task = currentTask;
+        currentTask = null;
+        if (task != null) task.cancel(true);
+        loading = false;
+        if (view != null) view.showLoading(false);
     }
     public void destroy() {
         view = null;
         cancelLoad();
-        Future<?> task = currentTask;
-        if (task != null) task.cancel(true);
-        currentTask = null;
         main.removeCallbacksAndMessages(null);
     }
 }

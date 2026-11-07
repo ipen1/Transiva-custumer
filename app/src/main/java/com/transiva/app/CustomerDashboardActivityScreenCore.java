@@ -92,6 +92,8 @@ class CustomerDashboardActivityScreenCore extends CustomerAdaptiveActivity
     protected TextView locationText;
     protected TextView clusterText;
     protected TextView balanceText;
+    private TextView dashboardRetry;
+    private boolean dashboardHasData;
     private PremiumOrderStatusView premiumOrder;
     private TextView dashboardCancel;
     private boolean dashboardCancelBusy;
@@ -228,8 +230,12 @@ class CustomerDashboardActivityScreenCore extends CustomerAdaptiveActivity
         // immediately, then refresh it silently from the network.
         com.transiva.app.customer.domain.DashboardState cached =
                 com.transiva.app.customer.data.DashboardStateCache.get(this);
-        if (cached != null) showDashboard(cached);
-        presenter.load(username, userId);
+        if (cached != null) {
+            showDashboard(cached);
+            presenter.refresh(username, userId);
+        } else {
+            presenter.load(username, userId);
+        }
         loadLocation();
         // Update berjalan setelah Dashboard tampil sehingga startup tidak tertahan jaringan.
         DashboardUpdateCoordinator.check(this);
@@ -377,6 +383,19 @@ class CustomerDashboardActivityScreenCore extends CustomerAdaptiveActivity
         );
 
         buildHeader();
+
+        dashboardRetry = text("", 12, "#075BB8", true);
+        dashboardRetry.setPadding(dp(12), dp(8), dp(12), dp(8));
+        dashboardRetry.setMinHeight(dp(44));
+        dashboardRetry.setGravity(Gravity.CENTER_VERTICAL);
+        dashboardRetry.setBackground(Shape.roundStroke("#F1F6FC", "#CBE4FF", dp(12), 1));
+        dashboardRetry.setVisibility(View.GONE);
+        dashboardRetry.setFocusable(true);
+        dashboardRetry.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);
+        dashboardRetry.setOnClickListener(v -> pullRefresh.requestRefresh());
+        LinearLayout.LayoutParams retryLp = new LinearLayout.LayoutParams(-1, -2);
+        retryLp.bottomMargin = dp(9);
+        content.addView(dashboardRetry, retryLp);
 
         // Dashboard 4.0: urutan dibuat seperti super-app modern dan lebih fokus pada aksi utama.
         // Header sudah memuat identitas, saldo dan royalti dalam satu card responsif.
@@ -553,7 +572,10 @@ class CustomerDashboardActivityScreenCore extends CustomerAdaptiveActivity
 
     protected void renderBalance() {
         if (balanceText == null) return;
-        if (balanceVisible) {
+        if (!dashboardHasData) {
+            boolean failed = dashboardRetry != null && dashboardRetry.getVisibility() == View.VISIBLE;
+            balanceText.setText(failed ? "Saldo belum dimuat" : "Memuat saldo...");
+        } else if (balanceVisible) {
             balanceText.setText(rupiah(currentBalance));
         } else {
             balanceText.setText("Rp••••••");
@@ -2176,6 +2198,7 @@ class CustomerDashboardActivityScreenCore extends CustomerAdaptiveActivity
         orderCard = new FrameLayout(this);
         premiumOrder = new PremiumOrderStatusView(this, true);
         premiumOrder.setAction(v -> openActiveOrder());
+        premiumOrder.bind(null, "Memuat status pesanan…", "Lihat pusat pesanan  ›");
         orderCard.addView(premiumOrder, new FrameLayout.LayoutParams(-1, -2));
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, -2);
         lp.setMargins(0, dp(4), 0, dp(10)); content.addView(orderCard, lp);
@@ -2625,10 +2648,10 @@ class CustomerDashboardActivityScreenCore extends CustomerAdaptiveActivity
             return;
         }
 
-        SessionManager liveSession = new SessionManager(this);
-        String liveId = first(liveSession.getId(), liveSession.getUserId(), "0");
-        if (!liveSession.isLoggedIn() || !Integer.toString(userId).equals(liveId)) return;
-        if(pullRefresh!=null)pullRefresh.finish(true);
+        if (!hasDashboardSession()) return;
+        if (pullRefresh != null) pullRefresh.finish(true);
+        dashboardHasData = true;
+        dashboardRetry.setVisibility(View.GONE);
         currentBalance = state.balance;
         renderBalance();
 
@@ -2692,17 +2715,22 @@ class CustomerDashboardActivityScreenCore extends CustomerAdaptiveActivity
 
     @Override
     public void showError(String message) {
-        if(pullRefresh!=null && pullRefresh.isRefreshing()){pullRefresh.finish(false);return;}
-        // Keep the last successful render; a failed read must not erase the active order.
+        if (pullRefresh != null) pullRefresh.finish(false);
+        if (!hasDashboardSession()) return;
 
-        Toast.makeText(
-                this,
-                first(
-                        message,
-                        "Dashboard gagal dimuat"
-                ),
-                Toast.LENGTH_SHORT
-        ).show();
+        String status = dashboardHasData ? "Data terakhir masih ditampilkan. " : "";
+        dashboardRetry.setText(status + message + "\nKetuk untuk coba lagi");
+        dashboardRetry.setVisibility(View.VISIBLE);
+        if (!dashboardHasData) {
+            renderBalance();
+            premiumOrder.bind(null, "Status pesanan belum dimuat", "Lihat pusat pesanan  ›");
+        }
+    }
+
+    private boolean hasDashboardSession() {
+        SessionManager liveSession = new SessionManager(this);
+        String liveId = first(liveSession.getId(), liveSession.getUserId(), "0");
+        return liveSession.isLoggedIn() && Integer.toString(userId).equals(liveId);
     }
 
     private boolean isActiveOrderText(

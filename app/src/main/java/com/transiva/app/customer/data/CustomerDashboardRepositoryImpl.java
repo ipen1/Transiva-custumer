@@ -3,7 +3,6 @@ package com.transiva.app.customer.data;
 import android.content.Context;
 import android.net.Uri;
 
-import com.transiva.app.CustomerApiClient;
 import com.transiva.app.ApiConfig;
 import com.transiva.app.CustomerResourceConfig;
 import com.transiva.app.TransivaHttpRepository;
@@ -92,12 +91,12 @@ public final class CustomerDashboardRepositoryImpl
 
     private double loadBalance(String username)
             throws Exception {
-        JSONObject json = get(
+        JSONObject json = TransivaHttpRepository.getJson(context,
                 BASE_URL
                         + "server/getBalance.php?username="
                         + Uri.encode(username)
                         + "&_="
-                        + System.currentTimeMillis()
+                        + System.currentTimeMillis(), TIMEOUT
         );
 
         if (!json.optBoolean("success", false) || !json.has("balance"))
@@ -106,8 +105,9 @@ public final class CustomerDashboardRepositoryImpl
     }
 
     private JSONObject loadActiveOrderJson(String username, int userId) throws Exception {
-        JSONObject json = get(BASE_URL + "server/customer_get_active_orders.php?user_id="
-                + userId + "&username=" + Uri.encode(username));
+        JSONObject json = TransivaHttpRepository.getJson(context,
+                BASE_URL + "server/customer_get_active_orders.php?user_id="
+                        + userId + "&username=" + Uri.encode(username), TIMEOUT);
         JSONArray orders = json.optJSONArray("orders");
         if (!json.optBoolean("success", false) || orders == null)
             throw new IllegalStateException("Active orders unavailable");

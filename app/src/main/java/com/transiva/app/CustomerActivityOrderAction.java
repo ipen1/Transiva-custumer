@@ -34,6 +34,11 @@ public final class CustomerActivityOrderAction {
             String username,
             Callback callback
     ) {
+        cancel(activity, order, userId, username, "", callback);
+    }
+
+    static void cancel(Activity activity, JSONObject order, int userId, String username,
+                       String expectedDriver, Callback callback) {
         final CustomerSessionGuard owner = CustomerSessionGuard.capture(activity);
         TransivaNetworkExecutor.execute(() -> {
             try {
@@ -70,6 +75,11 @@ public final class CustomerActivityOrderAction {
                         sourceTable(order)
                 );
 
+                if (!expectedDriver.isEmpty()) {
+                    payload.put("cancel_reason", "driver_requested");
+                    payload.put("expected_driver", expectedDriver);
+                }
+
                 String token = new SessionManager(activity).getToken();
                 if (token == null || token.trim().isEmpty()) {
                     throw new IllegalStateException(
@@ -95,6 +105,7 @@ public final class CustomerActivityOrderAction {
                         );
 
                 activity.runOnUiThread(() -> {
+                    if (!owner.matches(activity) || activity.isFinishing() || activity.isDestroyed()) return;
                     if (success) {
                         recordConfirmedCancellation(activity, Integer.toString(userId), order);
                         callback.onSuccess(message);

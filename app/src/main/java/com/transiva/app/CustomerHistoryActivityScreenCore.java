@@ -887,6 +887,12 @@ class CustomerHistoryActivityScreenCore extends CustomerAdaptiveActivity {
         updateSummary();
         rebuildServiceFilters();
 
+        if (TAB_HISTORY.equals(selectedTab)) {
+            Button reports = outlineButton("Konfirmasi Perjalanan");
+            reports.setOnClickListener(view -> CustomerOfflineOrderReports.open(this));
+            listBox.addView(reports, new LinearLayout.LayoutParams(-1, dp(46)));
+        }
+
         if (loading && allOrders.isEmpty()) {
             addInfoState(
                     "Memuat aktivitas...",

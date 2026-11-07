@@ -83,6 +83,9 @@ class CustomerTripActivityScreenCore extends CustomerAdaptiveActivity {
     protected ProgressBar progressBar;
     protected TextView paymentInfoText;
     protected Button receivedButton, approvePriceButton, rejectPriceButton;
+    private Button reportOfflineButton;
+    private boolean reportOfflineInFlight;
+    private boolean reportOfflineSubmitted;
     private Button shareTripButton;
     private boolean shareBusy;
     private boolean tripLayoutBuilt, foodStatusRouted;
@@ -385,6 +388,9 @@ class CustomerTripActivityScreenCore extends CustomerAdaptiveActivity {
         paymentInfoText.setVisibility(View.GONE);
         card.addView(paymentInfoText, tripRow(6));
         receivedButton = smallButton("✅ Terima Pesanan", "#DCFCE7", "#047857", "#86EFAC"); receivedButton.setVisibility(View.GONE); receivedButton.setOnClickListener(v -> sendCustomerAction("confirm_received")); receivedButton.setMinHeight(dp(50)); LinearLayout.LayoutParams rlp=new LinearLayout.LayoutParams(-1,-2); rlp.setMargins(0,dp(8),0,0); card.addView(receivedButton,rlp);
+        reportOfflineButton = smallButton("Driver meminta saya membatalkan", "#EFF6FF", "#1D4ED8", "#BFDBFE");
+        reportOfflineButton.setVisibility(View.GONE);
+        card.addView(reportOfflineButton, tripRow(6));
         LinearLayout priceActions=new LinearLayout(this); priceActions.setOrientation(LinearLayout.HORIZONTAL); priceActions.setVisibility(View.GONE); priceActions.setTag("price_actions");
         approvePriceButton=smallButton("Setujui Harga", "#DBEAFE", "#1D4ED8", "#93C5FD"); approvePriceButton.setMinHeight(dp(48)); approvePriceButton.setOnClickListener(v->confirmPriceChange()); priceActions.addView(approvePriceButton,new LinearLayout.LayoutParams(0,-2,1));
         rejectPriceButton=smallButton("Tolak", "#FEE2E2", "#B91C1C", "#FCA5A5"); rejectPriceButton.setMinHeight(dp(48)); rejectPriceButton.setOnClickListener(v->sendCustomerAction("reject_price")); LinearLayout.LayoutParams rej=new LinearLayout.LayoutParams(0,-2,1); rej.setMargins(dp(8),0,0,0); priceActions.addView(rejectPriceButton,rej); LinearLayout.LayoutParams palp=new LinearLayout.LayoutParams(-1,-2); palp.setMargins(0,dp(8),0,0); card.addView(priceActions,palp);
@@ -647,6 +653,11 @@ class CustomerTripActivityScreenCore extends CustomerAdaptiveActivity {
 
         agreedServerRoute=order.optJSONObject("server_route");
         updatePaymentControls(order, status);
+        String assignedDriver = firstNonEmpty(order.optString("driver"), order.optString("driver_username"), driver.optString("username"));
+        boolean canReport = !trackingOnly && !assignedDriver.isEmpty() && res.optBoolean("offline_report_available");
+        reportOfflineButton.setVisibility(canReport ? View.VISIBLE : View.GONE);
+        JSONObject reportOrder = order;
+        reportOfflineButton.setOnClickListener(v -> confirmOfflineReport(reportOrder, assignedDriver));
         if (!trackingOnly) saveTripPrefs();
 
         if (hasDriverLocation) {
@@ -667,6 +678,43 @@ class CustomerTripActivityScreenCore extends CustomerAdaptiveActivity {
         }
 
         pushAllMarkersToMap();
+    }
+
+    private void confirmOfflineReport(JSONObject order, String assignedDriver) {
+        if (reportOfflineInFlight) return;
+        new TransivaAlertDialogBuilder(this).setTitle("Batalkan dan laporkan?")
+                .setMessage("Pesanan ini akan dibatalkan dan ditinjau Transiva. Anda bisa memesan driver lain dari Beranda.")
+                .setNegativeButton("Kembali", null)
+                .setPositiveButton("Batalkan dan laporkan", (dialog, which) -> {
+                    if (reportOfflineInFlight) return;
+                    reportOfflineInFlight = true;
+                    reportOfflineButton.setEnabled(false);
+                    SessionManager session = new SessionManager(this);
+                    int customerId;
+                    try {
+                        customerId = Integer.parseInt(session.getUserId());
+                    } catch (NumberFormatException error) {
+                        reportOfflineInFlight = false;
+                        reportOfflineButton.setEnabled(true);
+                        showInfo("Laporan belum tersimpan", "Sesi akun tidak ditemukan. Silakan masuk kembali.");
+                        return;
+                    }
+                    CustomerActivityOrderAction.cancel(this, order, customerId, session.getUsername(), assignedDriver,
+                            new CustomerActivityOrderAction.Callback() {
+                                @Override public void onSuccess(String message) {
+                                    reportOfflineInFlight = false;
+                                    reportOfflineSubmitted = true;
+                                    lastStatus = CustomerOrderState.CANCELED;
+                                    showTripEnd(order);
+                                }
+
+                                @Override public void onError(String message) {
+                                    reportOfflineInFlight = false;
+                                    reportOfflineButton.setEnabled(true);
+                                    if (!isFinishing() && !isDestroyed()) showInfo("Laporan belum tersimpan", message);
+                                }
+                            });
+                }).show();
     }
 
     protected void pushAllMarkersToMap() {
@@ -960,6 +1008,11 @@ class CustomerTripActivityScreenCore extends CustomerAdaptiveActivity {
             panel.addView(finishHint, tripRow(12));
         }
 
+        if (reportOfflineSubmitted) {
+            Button reports = smallButton("Konfirmasi perjalanan", "#EFF6FF", "#1D4ED8", "#BFDBFE");
+            reports.setOnClickListener(v -> CustomerOfflineOrderReports.open(this));
+            panel.addView(reports, tripRow(10));
+        }
         Button home = smallButton("Kembali ke beranda", "#1268D5", "#FFFFFF", "#1268D5");
         home.setMinHeight(dp(48));
         home.setOnClickListener(v -> goHomeAfterFinished());

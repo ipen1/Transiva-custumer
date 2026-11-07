@@ -139,6 +139,13 @@ class CustomerHistoryActivityScreenCore extends CustomerAdaptiveActivity {
 
         mainHandler.removeCallbacks(realtimeRefresh);
 
+        String account = Integer.toString(userId);
+        for (JSONObject order : allOrders) {
+            if (CustomerActivityOrderAction.applyConfirmedStatus(this, account, order)) {
+                renderOrders();
+                break;
+            }
+        }
         if (!loading && listBox != null) {
             loadHistory(true);
         }
@@ -874,6 +881,8 @@ class CustomerHistoryActivityScreenCore extends CustomerAdaptiveActivity {
             return;
         }
 
+        String account = Integer.toString(userId);
+        for (JSONObject order : allOrders) CustomerActivityOrderAction.applyConfirmedStatus(this, account, order);
         listBox.removeAllViews();
         updateSummary();
         rebuildServiceFilters();
@@ -2498,6 +2507,7 @@ class CustomerHistoryActivityScreenCore extends CustomerAdaptiveActivity {
                                 View.GONE
                         );
 
+                        renderOrders();
                         toast(message);
                         loadHistory();
                     }

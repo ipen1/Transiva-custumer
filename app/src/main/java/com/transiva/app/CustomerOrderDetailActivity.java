@@ -71,6 +71,9 @@ public class CustomerOrderDetailActivity extends CustomerAdaptiveActivity {
         // Menangani perubahan tema saat halaman detail masih berada di back stack.
         CustomerAppSettings.apply(this);
         detailVisible=true;
+        if (CustomerActivityOrderAction.applyConfirmedStatus(this, CustomerSessionGuard.capture(this).account, order)) {
+            render();
+        }
         main.removeCallbacks(orderRefresh); main.post(orderRefresh);
     }
 
@@ -142,6 +145,7 @@ public class CustomerOrderDetailActivity extends CustomerAdaptiveActivity {
     }
 
     private void render() {
+        CustomerActivityOrderAction.applyConfirmedStatus(this, CustomerSessionGuard.capture(this).account, order);
         body.removeAllViews();
         String service = first(order.optString("service_name"), order.optString("order_type"), order.optString("service"), "Pesanan Transiva");
         String statusRaw = order.optString("status", "").toLowerCase(Locale.US);

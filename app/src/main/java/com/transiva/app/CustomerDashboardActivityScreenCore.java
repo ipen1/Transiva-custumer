@@ -259,8 +259,14 @@ class CustomerDashboardActivityScreenCore extends CustomerAdaptiveActivity
             dashboardController.onResume();
         }
 
+        boolean canceled = wasDashboardOrderCanceled(activeOrderJson);
+        if (canceled) {
+            renderDashboardOrder(null, "");
+            refreshSmartRecommendation();
+        }
         if (presenter != null) {
-            presenter.refresh(username, userId);
+            if (canceled) presenter.refreshAfterCancellation(username, userId);
+            else presenter.refresh(username, userId);
         }
 
         startPromoAutoSlide();

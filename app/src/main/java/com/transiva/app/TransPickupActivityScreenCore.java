@@ -1,9 +1,6 @@
 package com.transiva.app;
 
 import android.Manifest;
-import android.app.Activity;
-import android.app.AlertDialog;
-import android.content.Context;
 import android.content.ClipData;
 import android.content.ClipboardManager;
 import android.content.SharedPreferences;
@@ -24,7 +21,6 @@ import android.provider.Settings;
 import android.content.Intent;
 import android.view.Gravity;
 import android.view.View;
-import android.view.inputmethod.EditorInfo;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.FrameLayout;
@@ -34,21 +30,12 @@ import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
 
-import androidx.fragment.app.FragmentActivity;
 
 import org.json.JSONObject;
 
-import java.io.BufferedReader;
-import java.io.InputStream;
-import java.io.InputStreamReader;
-import java.io.OutputStream;
-import java.net.HttpURLConnection;
-import java.net.URL;
-import java.nio.charset.StandardCharsets;
 import java.text.NumberFormat;
 import java.util.List;
 import java.util.Locale;
-import java.util.Random;
 class TransPickupActivityScreenCore extends CustomerAdaptiveFragmentActivity {
 
 
@@ -65,18 +52,23 @@ class TransPickupActivityScreenCore extends CustomerAdaptiveFragmentActivity {
     protected FrameLayout page;
     protected LinearLayout root;
     protected LinearLayout bottomSheet;
-    protected final Runnable restoreSheetRunnable = () -> setBottomSheetHidden(false);
+    private ScrollView packageScroll;
+    private LinearLayout checkoutFooter;
+    private Button detailsButton;
+    private boolean detailsOpen;
+    private int locationGeneration;
+    private String pickupAddress = "";
+    private String deliveryAddress = "";
     protected ProgressBar progressBar;
     protected TransivaGoogleMapView mapView;
     protected TextView mapModeText;
     protected Button pickupMapBtn, deliveryMapBtn, confirmPointBtn, gpsMapBtn;
     protected boolean mapReady = false;
     protected String mapSelectionMode = "pickup";
-    protected double mapCenterLat = -0.018137, mapCenterLng = 120.087380;
 
-    protected EditText pickupAddressInput, destinationInput, itemNameInput, itemValueInput, receiverNameInput, receiverPhoneInput, noteInput;
-    protected TextView pickupCoordText, deliveryCoordText, priceText, distanceText, otpText;
-    protected Button bikeBtn, smallBtn, mediumBtn, fragileYesBtn, fragileNoBtn, cashBtn, balanceBtn, calculateBtn, orderBtn;
+    protected EditText itemNameInput, itemValueInput, receiverNameInput, receiverPhoneInput, noteInput;
+    protected TextView priceText, distanceText;
+    protected Button smallBtn, mediumBtn, fragileYesBtn, fragileNoBtn, cashBtn, balanceBtn, orderBtn;
 
     protected String username = "User";
     protected int userId = 0;
@@ -92,6 +84,7 @@ class TransPickupActivityScreenCore extends CustomerAdaptiveFragmentActivity {
     protected String otpCode = "";
     private boolean submittingOrder = false;
     protected LocationManager locationManager;
+    private LocationListener locationListener;
 
     @Override protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -103,6 +96,10 @@ class TransPickupActivityScreenCore extends CustomerAdaptiveFragmentActivity {
         loadSession();
         buildBase();
         buildForm();
+        restoreDraft(savedInstanceState);
+        updateChoices();
+        renderStage();
+        startMap();
     }
 
     protected void loadSession() {
@@ -121,269 +118,227 @@ class TransPickupActivityScreenCore extends CustomerAdaptiveFragmentActivity {
 
     protected void buildBase() {
         page = new FrameLayout(this);
-        page.setBackgroundColor(Color.parseColor("#071426"));
+        page.setBackgroundColor(Color.parseColor("#F3F8FF"));
+        LinearLayout layout = new LinearLayout(this);
+        layout.setOrientation(LinearLayout.VERTICAL);
+        layout.setFocusableInTouchMode(true);
+        page.addView(layout, new FrameLayout.LayoutParams(-1, -1));
 
+        buildMapHeader(layout);
+        FrameLayout viewport = new FrameLayout(this);
+        layout.addView(viewport, new LinearLayout.LayoutParams(-1, 0, 1));
         mapView = new TransivaGoogleMapView(this, TransivaGoogleMapView.Mode.PICKER);
-        page.addView(mapView, new FrameLayout.LayoutParams(-1, -1));
-        mapView.initialize(null, new TransivaGoogleMapView.Listener() {
-            @Override public void onReady(double lat, double lng) {
-                mapReady = true;
-                mapCenterLat = lat;
-                mapCenterLng = lng;
-                mapView.setSelectionMode(mapSelectionMode);
-                loadPickupLocation();
-            }
-
-            @Override public void onCenterChanged(double lat, double lng) {
-                mapCenterLat = lat;
-                mapCenterLng = lng;
-                if (mapModeText != null) {
-                    mapModeText.setText("pickup".equals(mapSelectionMode) ? "Geser pin lalu pilih penjemputan" : "Geser pin lalu pilih pengantaran");
-                }
-            }
+        viewport.addView(mapView, new FrameLayout.LayoutParams(-1, -1));
+        viewport.addOnLayoutChangeListener((v, l, top, r, b, oldL, oldTop, oldR, oldB) -> {
+            if (isCheckout() && (r-l != oldR-oldL || b-top != oldB-oldTop)) fitCheckout();
         });
-        mapView.setGestureListener(new TransivaGoogleMapView.GestureListener() {
-            @Override public void onGestureStart() {
-                mainHandler.removeCallbacks(restoreSheetRunnable);
-                setBottomSheetHidden(true);
-            }
+        gpsMapBtn = outlineButton("⌖");
+        gpsMapBtn.setTextSize(20);
+        FrameLayout.LayoutParams gpsLp = new FrameLayout.LayoutParams(dp(48), dp(48), Gravity.END | Gravity.TOP);
+        gpsLp.setMargins(0, dp(8), dp(10), 0);
+        viewport.addView(gpsMapBtn, gpsLp);
+        gpsMapBtn.setOnClickListener(v -> { if (isCheckout()) fitCheckout(); else loadPickupLocation(); });
 
-            @Override public void onGestureEnd() {
-                mainHandler.removeCallbacks(restoreSheetRunnable);
-                mainHandler.postDelayed(restoreSheetRunnable, 180L);
-            }
-        });
-
-        buildMapHeader();
-        buildBottomSheet();
-
+        buildBottomSheet(layout);
         progressBar = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
         progressBar.setVisibility(View.GONE);
-        FrameLayout.LayoutParams p = new FrameLayout.LayoutParams(dp(52), dp(52));
-        p.gravity = Gravity.CENTER;
-        page.addView(progressBar, p);
+        FrameLayout.LayoutParams loading = new FrameLayout.LayoutParams(-1, dp(3), Gravity.BOTTOM);
+        viewport.addView(progressBar, loading);
 
+        page.addOnLayoutChangeListener((v, l, top, r, b, oldL, oldTop, oldR, oldB) -> {
+            if (b-top == oldB-oldTop) return;
+            android.view.ViewGroup.LayoutParams params = packageScroll.getLayoutParams();
+            int height = Math.min(dp(235), Math.max(dp(105), (b-top) / 3));
+            if (params.height != height) {
+                params.height = height;
+                packageScroll.setLayoutParams(params);
+            }
+        });
         getWindow().setSoftInputMode(android.view.WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
         setContentView(page);
         CustomerAppSettings.apply(this);
     }
 
-
-    protected void buildMapHeader() {
-        LinearLayout header = new LinearLayout(this);
-        header.setOrientation(LinearLayout.VERTICAL);
-        header.setPadding(dp(8), dp(5), dp(8), dp(5));
-        header.setBackground(roundStroke("#F4FFFFFF", "#D7E6F8", dp(18), 1));
-
-        FrameLayout.LayoutParams headerLp = new FrameLayout.LayoutParams(-1, -2);
-        headerLp.gravity = Gravity.TOP;
-        headerLp.setMargins(dp(8), dp(7), dp(8), 0);
-        page.addView(header, headerLp);
-
-        LinearLayout titleRow = new LinearLayout(this);
-        titleRow.setGravity(Gravity.CENTER_VERTICAL);
-        header.addView(titleRow, new LinearLayout.LayoutParams(-1, dp(30)));
-
-        Button back = outlineButton("‹");
-        back.setTextSize(28);
-        back.setPadding(0, 0, 0, dp(3));
-        back.setOnClickListener(v -> finish());
-        titleRow.addView(back, new LinearLayout.LayoutParams(dp(34), dp(30)));
-
-        TextView title = text("TransSend", 18, "#0B3A78", true);
-        title.setPadding(dp(9), 0, 0, 0);
-        titleRow.addView(title, new LinearLayout.LayoutParams(0, -1, 1));
-
-        mapModeText = text("Pilih titik jemput", 11, "#64748B", false);
-        mapModeText.setGravity(Gravity.END | Gravity.CENTER_VERTICAL);
-        titleRow.addView(mapModeText, new LinearLayout.LayoutParams(0, -1, 1.25f));
-
-        // Pemilihan rute dibuat sama seperti TransRide/TransCar.
-        LinearLayout pointRow = new LinearLayout(this);
-        pointRow.setOrientation(LinearLayout.HORIZONTAL);
-        LinearLayout.LayoutParams pointRowLp = new LinearLayout.LayoutParams(-1, dp(52));
-        pointRowLp.setMargins(0, dp(5), 0, 0);
-        header.addView(pointRow, pointRowLp);
-
-        pickupMapBtn = compactMapButton("●  Jemput\nBelum dipilih", "#16A34A");
-        deliveryMapBtn = compactMapButton("●  Tujuan\nBelum dipilih", "#EF4444");
-        pickupMapBtn.setGravity(Gravity.START | Gravity.CENTER_VERTICAL);
-        deliveryMapBtn.setGravity(Gravity.START | Gravity.CENTER_VERTICAL);
-        pickupMapBtn.setPadding(dp(12), 0, dp(8), 0);
-        deliveryMapBtn.setPadding(dp(12), 0, dp(8), 0);
-
-        pointRow.addView(pickupMapBtn, new LinearLayout.LayoutParams(0, -1, 1));
-        LinearLayout.LayoutParams deliveryLp = new LinearLayout.LayoutParams(0, -1, 1);
-        deliveryLp.setMargins(dp(6), 0, 0, 0);
-        pointRow.addView(deliveryMapBtn, deliveryLp);
-
-        pickupMapBtn.setOnClickListener(v -> reopenPointSelection("pickup"));
-        deliveryMapBtn.setOnClickListener(v -> reopenPointSelection("delivery"));
-
-        // Klik tulisan/pin tengah langsung menetapkan titik, lalu otomatis lanjut ke pengantaran.
-        mapView.setCenterActionListener(() -> {
-            // Jangan memakai validLocation() untuk menentukan fungsi tombol.
-            // Saat tombol sudah berubah menjadi mode order, langsung proses order.
-            // Ini mencegah alert tujuan palsu walaupun tujuan sudah dipilih.
-            if ("order".equals(mapSelectionMode)) createPickupOrder();
-            else confirmMapPoint();
+    private void startMap() {
+        mapView.initialize(null, new TransivaGoogleMapView.Listener() {
+            @Override public void onReady(double lat, double lng) {
+                if (pickupScreenClosed) return;
+                mapReady = true;
+                renderStage();
+                if (validCoordinate(pickupLat, pickupLng)) mapView.setPickup(pickupLat, pickupLng, pickupAddress);
+                if (validCoordinate(deliveryLat, deliveryLng)) mapView.setDelivery(deliveryLat, deliveryLng, deliveryAddress);
+                if (isCheckout()) {
+                    fitCheckout();
+                    drawPickupRoute();
+                } else if ("delivery".equals(mapSelectionMode) && validCoordinate(deliveryLat, deliveryLng)) {
+                    mapView.moveTo(deliveryLat, deliveryLng, 17f);
+                } else if (validCoordinate(pickupLat, pickupLng)) {
+                    mapView.moveTo(pickupLat, pickupLng, 17f);
+                } else {
+                    loadPickupLocation();
+                }
+            }
+            @Override public void onCenterChanged(double lat, double lng) { }
         });
 
-        gpsMapBtn = outlineButton("⌖");
-        gpsMapBtn.setTextSize(21);
-        FrameLayout.LayoutParams gpsLp = new FrameLayout.LayoutParams(dp(46), dp(46));
-        gpsLp.gravity = Gravity.END | Gravity.TOP;
-        gpsLp.setMargins(0, dp(126), dp(12), 0);
-        page.addView(gpsMapBtn, gpsLp);
-        gpsMapBtn.setOnClickListener(v -> loadPickupLocation());
-
-        selectMapMode("pickup");
     }
 
-    protected void buildBottomSheet() {
-        LinearLayout sheet = new LinearLayout(this);
-        bottomSheet = sheet;
-        sheet.setOrientation(LinearLayout.VERTICAL);
-        sheet.setPadding(dp(10), dp(4), dp(10), dp(6));
-        sheet.setBackground(roundStroke("#F7FAFF", "#C7DBF2", dp(24), 1));
-        sheet.setElevation(dp(8));
+    private void buildMapHeader(LinearLayout parent) {
+        LinearLayout header = new LinearLayout(this);
+        header.setOrientation(LinearLayout.VERTICAL);
+        header.setPadding(dp(10), dp(3), dp(10), dp(7));
+        header.setBackground(roundStroke("#FFFFFF", "#D7E6F8", dp(16), 1));
+        parent.addView(header, new LinearLayout.LayoutParams(-1, -2));
 
-        FrameLayout.LayoutParams sheetLp = new FrameLayout.LayoutParams(-1, dp(286));
-        sheetLp.gravity = Gravity.BOTTOM;
-        sheetLp.setMargins(dp(7), 0, dp(7), dp(6));
-        page.addView(sheet, sheetLp);
+        LinearLayout titleRow = row();
+        titleRow.setGravity(Gravity.CENTER_VERTICAL);
+        header.addView(titleRow, new LinearLayout.LayoutParams(-1, -2));
+        Button back = outlineButton("‹");
+        back.setTextSize(24);
+        back.setContentDescription("Kembali");
+        back.setOnClickListener(v -> onBackPressed());
+        titleRow.addView(back, new LinearLayout.LayoutParams(dp(48), dp(48)));
+        TextView title = text("TransSend", 19, "#0B3A78", true);
+        title.setPadding(dp(8), 0, dp(5), 0);
+        titleRow.addView(title, new LinearLayout.LayoutParams(0, -2, 1));
 
-        TextView handle = text("━", 24, "#94A3B8", true);
-        handle.setGravity(Gravity.CENTER);
-        sheet.addView(handle, new LinearLayout.LayoutParams(-1, dp(20)));
-        handle.setOnClickListener(v -> toggleSheetSize());
+        mapModeText = text("", 11, "#536B83", true);
+        mapModeText.setGravity(Gravity.END);
+        titleRow.addView(mapModeText, new LinearLayout.LayoutParams(-2, -2));
+        LinearLayout pointRow = row();
+        header.addView(pointRow, new LinearLayout.LayoutParams(-1, -2));
+        pickupMapBtn = choiceButton("", false);
+        deliveryMapBtn = choiceButton("", false);
+        for (Button button : new Button[]{pickupMapBtn, deliveryMapBtn}) {
+            button.setGravity(Gravity.START | Gravity.CENTER_VERTICAL);
+            button.setMaxLines(2);
+            button.setEllipsize(android.text.TextUtils.TruncateAt.END);
+            button.setPadding(dp(8), dp(4), dp(8), dp(4));
+        }
+        addChoice(pointRow, pickupMapBtn, deliveryMapBtn);
+        pickupMapBtn.setOnClickListener(v -> selectMapMode("pickup"));
+        deliveryMapBtn.setOnClickListener(v -> selectMapMode("delivery"));
+    }
 
-        ScrollView scroll = new ScrollView(this);
-        scroll.setFillViewport(false);
-        sheet.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1));
+    private void buildBottomSheet(LinearLayout parent) {
+        bottomSheet = new LinearLayout(this);
+        bottomSheet.setOrientation(LinearLayout.VERTICAL);
+        bottomSheet.setPadding(dp(10), dp(5), dp(10), dp(5));
+        bottomSheet.setBackground(roundStroke("#FFFFFF", "#D7E6F8", dp(16), 1));
+        parent.addView(bottomSheet, new LinearLayout.LayoutParams(-1, -2));
 
+        packageScroll = new ScrollView(this);
+        int height = Math.min(235, Math.max(114, getResources().getConfiguration().screenHeightDp / 3));
+        bottomSheet.addView(packageScroll, new LinearLayout.LayoutParams(-1, dp(height)));
         root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
-        root.setPadding(dp(2), 0, dp(2), dp(8));
-        scroll.addView(root, new ScrollView.LayoutParams(-1, -2));
+        root.setPadding(0, 0, 0, dp(5));
+        packageScroll.addView(root, new ScrollView.LayoutParams(-1, -2));
+
+        confirmPointBtn = primaryButton("Tetapkan titik");
+        confirmPointBtn.setOnClickListener(v -> confirmMapPoint());
+        bottomSheet.addView(confirmPointBtn, new LinearLayout.LayoutParams(-1, -2));
+
+        checkoutFooter = new LinearLayout(this);
+        checkoutFooter.setOrientation(LinearLayout.VERTICAL);
+        bottomSheet.addView(checkoutFooter, new LinearLayout.LayoutParams(-1, -2));
+        buildSummaryCard();
     }
 
-    protected void toggleSheetSize() {
-        if (bottomSheet == null || page == null) return;
-        FrameLayout.LayoutParams lp = (FrameLayout.LayoutParams) bottomSheet.getLayoutParams();
-        int compact = dp(286);
-        int expanded = Math.max(compact, page.getHeight() - dp(150));
-        lp.height = Math.abs(lp.height - compact) < dp(20) ? expanded : compact;
-        bottomSheet.setLayoutParams(lp);
+    private boolean isCheckout() {
+        return "order".equals(mapSelectionMode);
     }
 
-    protected void setBottomSheetHidden(boolean hidden) {
-        if (bottomSheet == null) return;
-        float target = hidden ? bottomSheet.getHeight() - dp(34) : 0f;
-        bottomSheet.animate().cancel();
-        if (hidden) {
-            bottomSheet.setTranslationY(target);
-        } else {
-            bottomSheet.animate().translationY(0f).setDuration(180L).start();
+    private void renderStage() {
+        boolean checkout = isCheckout();
+        boolean pickup = "pickup".equals(mapSelectionMode);
+        mapModeText.setText(checkout ? "03 · Checkout" : pickup ? "01 · Jemput" : "02 · Tujuan");
+        setPointLabel(pickupMapBtn, "Jemput", pickupAddress, !checkout && pickup);
+        setPointLabel(deliveryMapBtn, "Tujuan", deliveryAddress, !checkout && !pickup);
+        confirmPointBtn.setText(pickup ? "Tetapkan titik jemput" : "Tetapkan titik tujuan");
+        confirmPointBtn.setVisibility(checkout ? View.GONE : View.VISIBLE);
+        checkoutFooter.setVisibility(checkout ? View.VISIBLE : View.GONE);
+        packageScroll.setVisibility(checkout && detailsOpen ? View.VISIBLE : View.GONE);
+        detailsButton.setText(detailsOpen ? "Tutup detail" : "Detail paket");
+        gpsMapBtn.setContentDescription(checkout ? "Tampilkan kedua titik" : "Ke lokasi saya");
+        if (checkout) mapView.showOrderAction(false, null);
+        else {
+            mapView.resetPickupDeliveryAnchors();
+            mapView.setSelectionMode(mapSelectionMode);
+            mapView.showCenterPin(true);
+            mapView.hideCenterAction();
         }
+        updateCheckoutButton();
     }
 
-    protected Button compactMapButton(String label, String accent) {
-        Button b = new Button(this);
-        b.setText(label);
-        b.setAllCaps(false);
-        b.setTextSize(12);
-        b.setTypeface(Typeface.DEFAULT_BOLD);
-        b.setTextColor(Color.parseColor("#0B3A78"));
-        b.setBackground(roundStroke("#FFFFFF", accent, dp(14), 1));
-        return b;
+    private void setPointLabel(Button button, String title, String address, boolean selected) {
+        String label = firstNonEmpty(address, "Belum dipilih").replace('\n', ' ');
+        button.setText(title + "\n" + label);
+        button.setContentDescription(title + ", " + label + ". Ketuk untuk ubah titik.");
+        setChoice(button, selected);
     }
 
     protected void selectMapMode(String mode) {
-        mapSelectionMode = "delivery".equals(mode) ? "delivery" : "pickup";
-        boolean pickupMode = "pickup".equals(mapSelectionMode);
-
-        if (mapView != null) {
-            mapView.setSelectionMode(mapSelectionMode);
-            mapView.showCenterPin(true);
+        if (submittingOrder) return;
+        boolean delivery = "delivery".equals(mode);
+        if (delivery && !validCoordinate(pickupLat, pickupLng)) {
+            showInfo("Titik jemput", "Tetapkan titik jemput terlebih dahulu.");
+            return;
         }
-        if (mapModeText != null) {
-            mapModeText.setText(pickupMode ? "Geser pin untuk penjemputan" : "Geser pin untuk pengantaran");
-        }
-        if (pickupMapBtn != null) setChoice(pickupMapBtn, pickupMode);
-        if (deliveryMapBtn != null) setChoice(deliveryMapBtn, !pickupMode);
-
-        double lat = pickupMode ? pickupLat : deliveryLat;
-        double lng = pickupMode ? pickupLng : deliveryLng;
-        if (mapReady && validCoordinate(lat, lng)) {
-            mapView.moveTo(lat, lng, 17f);
-        }
-    }
-
-    protected void reopenPointSelection(String requestedMode) {
-        boolean pickupMode = !"delivery".equals(requestedMode);
-        if (mapView != null) {
-            mapView.showOrderAction(false, null);
-            if (pickupMode) mapView.clearPickup();
-            else mapView.clearDelivery();
-            mapView.clearRoute();
-        }
-
-        if (pickupMode) {
-            pickupLat = 0d;
-            pickupLng = 0d;
-            if (pickupMapBtn != null) pickupMapBtn.setText("●  Jemput\nBelum dipilih");
-            if (pickupCoordText != null) pickupCoordText.setText("📍 Geser peta lalu klik Jemput di lokasi ini");
-        } else {
-            deliveryLat = 0d;
-            deliveryLng = 0d;
-            if (deliveryMapBtn != null) deliveryMapBtn.setText("●  Tujuan\nBelum dipilih");
-            if (deliveryCoordText != null) deliveryCoordText.setText("📍 Geser peta lalu klik Antar ke lokasi ini");
-        }
-
-        pickupFareGate.invalidate();setLoading(false);
-        deliveryFee = 0d;
-        distanceKm = 0d;
-        if (priceText != null) priceText.setText("Ongkir: hitung dulu");
-        if (distanceText != null) distanceText.setText("Jarak: -");
-        if (orderBtn != null) { orderBtn.setEnabled(false); orderBtn.setAlpha(0.55f); }
-        selectMapMode(pickupMode ? "pickup" : "delivery");
+        locationGeneration++;
+        pickupFareGate.invalidate();
+        setLoading(false);
+        mapView.clearRoute();
+        mapSelectionMode = delivery ? "delivery" : "pickup";
+        renderStage();
+        double lat = delivery ? deliveryLat : pickupLat;
+        double lng = delivery ? deliveryLng : pickupLng;
+        if (mapReady && validCoordinate(lat, lng)) mapView.moveTo(lat, lng, 17f);
     }
 
     protected void confirmMapPoint() {
-        if (!validCoordinate(mapCenterLat, mapCenterLng)) {
+        if (!mapReady || isCheckout() || submittingOrder) return;
+        com.google.android.gms.maps.model.LatLng selected = mapView.getCenter();
+        if (!validCoordinate(selected.latitude, selected.longitude)) {
             showInfo("Peta", "Geser peta ke lokasi yang benar terlebih dahulu.");
             return;
         }
-
-        if ("pickup".equals(mapSelectionMode)) {
-            pickupLat = mapCenterLat;
-            pickupLng = mapCenterLng;
-            if (mapView != null) mapView.setPickup(pickupLat, pickupLng, "Lokasi Jemput");
-            if (pickupCoordText != null) {
-                pickupCoordText.setText("📍 " + formatCoordinate(pickupLat, pickupLng));
-            }
-            if (pickupMapBtn != null) pickupMapBtn.setText("●  Jemput\n" + shortCoordinate(pickupLat, pickupLng));
-            reverseGeocode(true, pickupLat, pickupLng);
-            selectMapMode("delivery");
+        boolean pickup = "pickup".equals(mapSelectionMode);
+        String address = formatCoordinate(selected.latitude, selected.longitude);
+        if (pickup) {
+            pickupLat = selected.latitude;
+            pickupLng = selected.longitude;
+            pickupAddress = address;
+            mapView.setPickup(pickupLat, pickupLng, address);
         } else {
-            deliveryLat = mapCenterLat;
-            deliveryLng = mapCenterLng;
-            if (mapView != null) mapView.setDelivery(deliveryLat, deliveryLng, "Lokasi Antar");
-            if (deliveryCoordText != null) {
-                deliveryCoordText.setText("📍 " + formatCoordinate(deliveryLat, deliveryLng));
-            }
-            if (deliveryMapBtn != null) deliveryMapBtn.setText("●  Tujuan\n" + shortCoordinate(deliveryLat, deliveryLng));
-            reverseGeocode(false, deliveryLat, deliveryLng);
-            if (validLocation()) {
-                drawPickupRoute();
-                calculateOngkir();
-                mapSelectionMode = "order";
-                if (mapView != null) mapView.showOrderAction(true, "PESAN SEKARANG");
-                if (mapModeText != null) mapModeText.setText("Rute siap, tekan Pesan Sekarang");
-            }
+            deliveryLat = selected.latitude;
+            deliveryLng = selected.longitude;
+            deliveryAddress = address;
+            mapView.setDelivery(deliveryLat, deliveryLng, address);
         }
-        updateChoices();
+        reverseGeocode(pickup, selected.latitude, selected.longitude);
+        mapView.clearRoute();
+        if (hasRoutePoints()) {
+            openCheckout();
+        } else {
+            selectMapMode("delivery");
+        }
+    }
+
+    private void openCheckout() {
+        locationGeneration++;
+        mapSelectionMode = "order";
+        renderStage();
+        fitCheckout();
+        drawPickupRoute();
+        calculateOngkir();
+    }
+
+    private void fitCheckout() {
+        if (!mapReady || mapView == null || !isCheckout()) return;
+        mapView.post(() -> {
+            if (!pickupScreenClosed && mapView != null && isCheckout()) mapView.fitPickupDeliveryInViewport();
+        });
     }
 
     protected void reverseGeocode(boolean pickup, double lat, double lng) {
@@ -404,36 +359,41 @@ class TransPickupActivityScreenCore extends CustomerAdaptiveFragmentActivity {
             } catch (Exception ignored) {}
 
             final String finalAddress = firstNonEmpty(address, formatCoordinate(lat, lng));
-            mainHandler.post(() -> {
-                if (pickup && pickupAddressInput != null) pickupAddressInput.setText(finalAddress);
-                if (!pickup && destinationInput != null) destinationInput.setText(finalAddress);
-                String compact = finalAddress.length() > 24 ? finalAddress.substring(0, 24) + "…" : finalAddress;
-                if (pickup && pickupMapBtn != null) pickupMapBtn.setText("●  Jemput\n" + compact);
-                if (!pickup && deliveryMapBtn != null) deliveryMapBtn.setText("●  Tujuan\n" + compact);
+            networkScope.post(mainHandler, () -> {
+                if (pickupScreenClosed || (pickup ? lat != pickupLat || lng != pickupLng
+                        : lat != deliveryLat || lng != deliveryLng)) return;
+                if (pickup) {
+                    pickupAddress = finalAddress;
+                    mapView.setPickup(lat, lng, finalAddress);
+                } else {
+                    deliveryAddress = finalAddress;
+                    mapView.setDelivery(lat, lng, finalAddress);
+                }
+                boolean editingPickup = "pickup".equals(mapSelectionMode);
+                setPointLabel(pickupMapBtn, "Jemput", pickupAddress, !isCheckout() && editingPickup);
+                setPointLabel(deliveryMapBtn, "Tujuan", deliveryAddress, !isCheckout() && !editingPickup);
             });
         }, "transpickup-reverse-geocode").start();
     }
 
     protected void drawPickupRoute() {
-        if (mapView == null || !validLocation()) return;
-        networkScope.newThread(() -> {
+        if (!mapReady || !hasRoutePoints()) return;
+        final double fromLat = pickupLat, fromLng = pickupLng, toLat = deliveryLat, toLng = deliveryLng;
+        networkScope.execute(() -> {
             try {
-                StableRouteEngine.Result route = StableRouteEngine.fetch(
-                        pickupLat, pickupLng, deliveryLat, deliveryLng
-                );
-                mainHandler.post(() -> {
-                    if (mapView != null) mapView.drawRideRoute(route.latLngPoints);
+                StableRouteEngine.Result route = StableRouteEngine.fetch(fromLat, fromLng, toLat, toLng);
+                networkScope.post(mainHandler, () -> {
+                    if (mapView != null && isCheckout() && fromLat == pickupLat && fromLng == pickupLng
+                            && toLat == deliveryLat && toLng == deliveryLng) {
+                        mapView.drawOsrmRoute(route.latLngPoints, "driver_accepted");
+                    }
                 });
-            } catch (Exception ignored) {}
-        }, "transpickup-route").start();
+            } catch (Exception ignored) { }
+        });
     }
 
     protected String formatCoordinate(double lat, double lng) {
         return String.format(Locale.US, "%.6f, %.6f", lat, lng);
-    }
-
-    protected String shortCoordinate(double lat, double lng) {
-        return String.format(Locale.US, "%.4f, %.4f", lat, lng);
     }
 
     protected boolean validCoordinate(double lat, double lng) {
@@ -447,57 +407,18 @@ class TransPickupActivityScreenCore extends CustomerAdaptiveFragmentActivity {
         if (!"medium".equals(packageSize)) packageSize = "small";
         root.removeAllViews();
 
-        buildLocationCard();
         buildItemCard();
         buildOptionCard();
         buildPaymentCard();
-        buildSummaryCard();
-    }
-
-    protected void buildLocationCard() {
-        LinearLayout card = card();
-        card.setPadding(dp(14), dp(12), dp(14), dp(12));
-        card.addView(text("Titik Jemput & Antar", 16, "#0B3A78", true));
-
-        pickupAddressInput = edit("Alamat penjemputan");
-        pickupAddressInput.setText("Lokasi saya saat ini");
-        pickupAddressInput.setFocusable(false);
-        pickupAddressInput.setClickable(true);
-        pickupAddressInput.setOnClickListener(v -> reopenPointSelection("pickup"));
-        addInner(card, pickupAddressInput, dp(8));
-
-        pickupCoordText = text("📍 Geser peta dan tetapkan titik jemput", 11, "#64748B", false);
-        pickupCoordText.setPadding(0, dp(5), 0, dp(8));
-        card.addView(pickupCoordText);
-
-        destinationInput = edit("Alamat pengantaran / nama tempat pengantaran");
-        destinationInput.setSingleLine(true);
-        destinationInput.setImeOptions(EditorInfo.IME_ACTION_SEARCH);
-        addInner(card, destinationInput, dp(6));
-
-        deliveryCoordText = text("📍 Geser peta dan tetapkan titik antar", 11, "#64748B", false);
-        deliveryCoordText.setPadding(0, dp(5), 0, dp(8));
-        card.addView(deliveryCoordText);
-
-        destinationInput.setFocusable(false);
-        destinationInput.setClickable(true);
-        destinationInput.setOnClickListener(v -> reopenPointSelection("delivery"));
-        destinationInput.setHint("Alamat pengantaran terisi otomatis dari pin peta");
-
-        // Lokasi sudah ditampilkan pada kartu header peta. Card lama dipertahankan
-        // hanya sebagai penyimpan field internal agar proses order tetap kompatibel,
-        // tetapi tidak lagi ditampilkan kepada pengguna.
-        card.setVisibility(View.GONE);
-        addWithMargin(card, 0, 0, 0, 0);
     }
 
     protected void buildItemCard() {
         LinearLayout card = card();
         card.setPadding(dp(12), dp(10), dp(12), dp(10));
-        card.addView(text("2. Detail Barang", 15, "#0B3A78", true));
-        itemNameInput = edit("Nama barang, contoh: Dokumen / paket baju");
+        card.addView(text("Detail paket", 15, "#0B3A78", true));
+        itemNameInput = edit("Nama barang");
         addInner(card, itemNameInput, dp(6));
-        itemValueInput = edit("Nilai barang, contoh: 50000");
+        itemValueInput = edit("Nilai barang (Rp)");
         itemValueInput.setInputType(android.text.InputType.TYPE_CLASS_NUMBER);
         addInner(card, itemValueInput, dp(6));
         receiverNameInput = edit("Nama penerima");
@@ -505,7 +426,7 @@ class TransPickupActivityScreenCore extends CustomerAdaptiveFragmentActivity {
         receiverPhoneInput = edit("Nomor HP penerima");
         receiverPhoneInput.setInputType(android.text.InputType.TYPE_CLASS_PHONE);
         addInner(card, receiverPhoneInput, dp(6));
-        noteInput = edit("Catatan untuk driver");
+        noteInput = edit("Catatan driver (opsional)");
         noteInput.setSingleLine(false); noteInput.setMinLines(2); noteInput.setMaxLines(3); noteInput.setGravity(Gravity.TOP | Gravity.START);
         addInner(card, noteInput, dp(6));
         noteInput.getLayoutParams().height = dp(62);
@@ -522,15 +443,15 @@ class TransPickupActivityScreenCore extends CustomerAdaptiveFragmentActivity {
         titleRow.setGravity(Gravity.CENTER_VERTICAL);
         TextView title = text("Ukuran Paket", 15, "#0B3A78", true);
         titleRow.addView(title, new LinearLayout.LayoutParams(0, dp(34), 1f));
-        TextView motorOnly = text("🏍 Motor saja", 12, "#0B7CFF", true);
+        TextView motorOnly = text("Khusus motor", 11, "#0B7CFF", true);
         motorOnly.setGravity(Gravity.CENTER);
         motorOnly.setBackground(roundStroke("#EAF4FF", "#B9DAFF", dp(14), 1));
         titleRow.addView(motorOnly, new LinearLayout.LayoutParams(dp(112), dp(32)));
         card.addView(titleRow);
 
         LinearLayout sizeRow = row();
-        smallBtn = choiceButton("📄 Kecil  < 2 kg", true);
-        mediumBtn = choiceButton("📦 Sedang  2–5 kg", false);
+        smallBtn = choiceButton("Kecil · < 2 kg", true);
+        mediumBtn = choiceButton("Sedang · 2–5 kg", false);
         addChoice(sizeRow, smallBtn, mediumBtn);
         LinearLayout.LayoutParams sizeLp = new LinearLayout.LayoutParams(-1, -2);
         sizeLp.setMargins(0, dp(6), 0, 0);
@@ -544,8 +465,8 @@ class TransPickupActivityScreenCore extends CustomerAdaptiveFragmentActivity {
         fragileRow.addView(fragileTitle, new LinearLayout.LayoutParams(0, dp(42), 0.7f));
         fragileNoBtn = choiceButton("Tidak", true);
         fragileYesBtn = choiceButton("Ya", false);
-        fragileRow.addView(fragileNoBtn, new LinearLayout.LayoutParams(0, dp(42), 0.65f));
-        LinearLayout.LayoutParams yesLp = new LinearLayout.LayoutParams(0, dp(42), 0.65f);
+        fragileRow.addView(fragileNoBtn, new LinearLayout.LayoutParams(0, -2, 0.65f));
+        LinearLayout.LayoutParams yesLp = new LinearLayout.LayoutParams(0, -2, 0.65f);
         yesLp.setMargins(dp(6), 0, 0, 0);
         fragileRow.addView(fragileYesBtn, yesLp);
         LinearLayout.LayoutParams fragileLp = new LinearLayout.LayoutParams(-1, -2);
@@ -554,8 +475,6 @@ class TransPickupActivityScreenCore extends CustomerAdaptiveFragmentActivity {
         fragileNoBtn.setOnClickListener(v -> { fragile = false; updateChoices(); });
         fragileYesBtn.setOnClickListener(v -> { fragile = true; updateChoices(); });
 
-        // Kontrak TransSend saat ini motor-only.
-        bikeBtn = null;
         vehicleType = "bike";
         addWithMargin(card, 0, 0, 0, dp(8));
     }
@@ -566,7 +485,7 @@ class TransPickupActivityScreenCore extends CustomerAdaptiveFragmentActivity {
         card.addView(text("Pembayaran", 17, "#0B3A78", true));
         LinearLayout row = row();
         cashBtn = choiceButton("Tunai", true);
-        balanceBtn = choiceButton("Saldo", false);
+        balanceBtn = choiceButton("TransPay", false);
         addChoice(row, cashBtn, balanceBtn);
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, -2); lp.setMargins(0, dp(10), 0, 0);
         card.addView(row, lp);
@@ -576,41 +495,66 @@ class TransPickupActivityScreenCore extends CustomerAdaptiveFragmentActivity {
     }
 
     private void buildSummaryCard() {
-        LinearLayout card = card();
-        card.setPadding(dp(16), dp(14), dp(16), dp(14));
-        card.addView(text("Ringkasan", 17, "#0B3A78", true));
-        distanceText = text("Jarak: -", 13, "#64748B", false); distanceText.setPadding(0, dp(8), 0, 0); card.addView(distanceText);
-        priceText = text("Ongkir: hitung dulu", 22, "#0B3A78", true); priceText.setPadding(0, dp(4), 0, dp(10)); card.addView(priceText);
-        otpCode = "";
-        LinearLayout otpRow = row();
-        otpRow.setGravity(Gravity.CENTER_VERTICAL);
-        otpText = text("OTP penerima dibuat aman oleh server setelah order", 12, "#0B7CFF", true);
-        otpRow.addView(otpText, new LinearLayout.LayoutParams(0, dp(44), 1f));
-        Button copyOtpBtn = outlineButton("Salin");
-        copyOtpBtn.setOnClickListener(v -> copyOtp());
-        otpRow.addView(copyOtpBtn, new LinearLayout.LayoutParams(dp(82), dp(40)));
-        card.addView(otpRow);
-        calculateBtn = outlineButton("Hitung Ongkir");
-        orderBtn = primaryButton("Cari Driver");
-        orderBtn.setEnabled(false); orderBtn.setAlpha(0.55f);
-        card.addView(calculateBtn, new LinearLayout.LayoutParams(-1, dp(50)));
-        LinearLayout.LayoutParams olp = new LinearLayout.LayoutParams(-1, dp(52)); olp.setMargins(0, dp(10), 0, 0);
-        orderBtn.setVisibility(View.GONE);
-        calculateBtn.setOnClickListener(v -> calculateOngkir());
-        orderBtn.setOnClickListener(v -> createPickupOrder());
-        addWithMargin(card, 0, 0, 0, dp(20));
+        LinearLayout summary = row();
+        summary.setGravity(Gravity.CENTER_VERTICAL);
+        LinearLayout fare = new LinearLayout(this);
+        fare.setOrientation(LinearLayout.VERTICAL);
+        priceText = text("Ongkir · —", 16, "#0B3A78", true);
+        distanceText = text("", 11, "#536B83", false);
+        distanceText.setMaxLines(2);
+        distanceText.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        fare.addView(priceText);
+        fare.addView(distanceText);
+        summary.addView(fare, new LinearLayout.LayoutParams(0, -2, 1));
+        detailsButton = outlineButton("Detail paket");
+        detailsButton.setOnClickListener(v -> setDetailsOpen(!detailsOpen));
+        summary.addView(detailsButton, new LinearLayout.LayoutParams(-2, -2));
+        checkoutFooter.addView(summary);
+
+        orderBtn = primaryButton("Kirim paket");
+        orderBtn.setOnClickListener(v -> {
+            String key = currentPickupQuoteKey();
+            if (!pickupFareGate.hasQuote(key)) calculateOngkir();
+            else if (validatePackage()) createPickupOrder();
+        });
+        LinearLayout.LayoutParams buttonLp = new LinearLayout.LayoutParams(-1, -2);
+        buttonLp.topMargin = dp(3);
+        checkoutFooter.addView(orderBtn, buttonLp);
+    }
+
+    private void setDetailsOpen(boolean open) {
+        detailsOpen = open;
+        if (!open) {
+            View focus = getCurrentFocus();
+            if (focus != null) {
+                android.view.inputmethod.InputMethodManager keyboard =
+                        (android.view.inputmethod.InputMethodManager) getSystemService(INPUT_METHOD_SERVICE);
+                if (keyboard != null) keyboard.hideSoftInputFromWindow(focus.getWindowToken(), 0);
+                focus.clearFocus();
+            }
+        }
+        renderStage();
+        fitCheckout();
     }
 
     private void updateChoices() {
-        pickupFareGate.invalidate();setLoading(false);
-        setChoice(smallBtn, "small".equals(packageSize)); setChoice(mediumBtn, "medium".equals(packageSize));
-        setChoice(bikeBtn, true);
-        setChoice(fragileNoBtn, !fragile); setChoice(fragileYesBtn, fragile);
-        setChoice(cashBtn, "cash".equals(paymentMethod)); setChoice(balanceBtn, "balance".equals(paymentMethod));
-        deliveryFee = 0; distanceKm = 0;
-        if (priceText != null) priceText.setText("Ongkir: hitung dulu");
-        if (distanceText != null) distanceText.setText("Jarak: -");
-        if (orderBtn != null) { orderBtn.setEnabled(false); orderBtn.setAlpha(0.55f); }
+        setChoice(smallBtn, "small".equals(packageSize));
+        setChoice(mediumBtn, "medium".equals(packageSize));
+        setChoice(fragileNoBtn, !fragile);
+        setChoice(fragileYesBtn, fragile);
+        setChoice(cashBtn, "cash".equals(paymentMethod));
+        setChoice(balanceBtn, "balance".equals(paymentMethod));
+        if (isCheckout()) calculateOngkir();
+    }
+
+    private void updateCheckoutButton() {
+        String key = currentPickupQuoteKey();
+        boolean pending = pickupFareGate.isPending(key);
+        boolean ready = pickupFareGate.hasQuote(key);
+        orderBtn.setEnabled(!submittingOrder && !pending);
+        orderBtn.setAlpha(orderBtn.isEnabled() ? 1f : .58f);
+        orderBtn.setText(submittingOrder ? "Memproses…" : pending ? "Menghitung ongkir…"
+                : ready ? "Kirim paket" : "Hitung ulang ongkir");
     }
 
     private void setChoice(Button b, boolean active) {
@@ -620,6 +564,8 @@ class TransPickupActivityScreenCore extends CustomerAdaptiveFragmentActivity {
     }
 
     private void loadPickupLocation() {
+        if (pickupScreenClosed || isCheckout()) return;
+        final int request = ++locationGeneration;
         if (checkSelfPermissionSafe(Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED && checkSelfPermissionSafe(Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
             requestPermissions(new String[]{Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION}, REQ_LOCATION);
             return;
@@ -633,81 +579,26 @@ class TransPickupActivityScreenCore extends CustomerAdaptiveFragmentActivity {
             Location best = null;
             try { best = locationManager.getLastKnownLocation(LocationManager.GPS_PROVIDER); } catch (Exception ignored) {}
             if (best == null) try { best = locationManager.getLastKnownLocation(LocationManager.NETWORK_PROVIDER); } catch (Exception ignored) {}
-            if (best != null) setPickupLocation(best);
+            if (best != null) centerOnLocation(best, request);
             String provider = gps ? LocationManager.GPS_PROVIDER : LocationManager.NETWORK_PROVIDER;
-            locationManager.requestSingleUpdate(provider, new LocationListener() {
-                @Override public void onLocationChanged(Location location) { setPickupLocation(location); }
+            if (locationListener != null) locationManager.removeUpdates(locationListener);
+            locationListener = new LocationListener() {
+                @Override public void onLocationChanged(Location location) { centerOnLocation(location, request); }
                 @Override public void onStatusChanged(String provider, int status, Bundle extras) {}
                 @Override public void onProviderEnabled(String provider) {}
                 @Override public void onProviderDisabled(String provider) {}
-            }, Looper.getMainLooper());
+            };
+            locationManager.requestSingleUpdate(provider, locationListener, Looper.getMainLooper());
         } catch (Exception e) { showInfo("Lokasi", "Gagal mengambil lokasi jemput."); }
     }
 
-    private void setPickupLocation(Location loc) {
-        pickupLat = loc.getLatitude();
-        pickupLng = loc.getLongitude();
-        mapCenterLat = pickupLat;
-        mapCenterLng = pickupLng;
-
-        if (pickupCoordText != null) {
-            pickupCoordText.setText("📍 " + formatCoordinate(pickupLat, pickupLng));
+    private void centerOnLocation(Location location, int request) {
+        if (!mapReady || pickupScreenClosed || request != locationGeneration || isCheckout()) return;
+        double lat = location.getLatitude(), lng = location.getLongitude();
+        if (validCoordinate(lat, lng)) {
+            mapView.moveTo(lat, lng, 17f);
+            new SessionManager(this).saveLastLocation(String.valueOf(lat), String.valueOf(lng));
         }
-        if (mapView != null && mapReady) {
-            mapView.setPickup(pickupLat, pickupLng, "Lokasi Jemput");
-            mapView.moveTo(pickupLat, pickupLng, 17f);
-        }
-        try {
-            new SessionManager(this).saveLastLocation(
-                    String.valueOf(pickupLat),
-                    String.valueOf(pickupLng)
-            );
-        } catch (Exception ignored) {}
-
-        reverseGeocode(true, pickupLat, pickupLng);
-        updateChoices();
-    }
-
-    private void geocodeDestination() {
-        String q = destinationInput == null ? "" : destinationInput.getText().toString().trim();
-        if (q.length() < 4) {
-            showInfo("Pengantaran", "Masukkan alamat pengantaran lebih lengkap.");
-            return;
-        }
-
-        setLoading(true);
-        networkScope.newThread(() -> {
-            try {
-                Geocoder geo = new Geocoder(this, new Locale("id", "ID"));
-                List<Address> list = geo.getFromLocationName(q, 1);
-                if (list == null || list.isEmpty()) throw new Exception("Lokasi pengantaran tidak ditemukan.");
-
-                Address a = list.get(0);
-                final double foundLat=a.getLatitude(),foundLng=a.getLongitude();
-                String label = "📍 " + formatCoordinate(foundLat, foundLng);
-                networkScope.post(mainHandler, () -> {
-                    if(pickupScreenClosed || submittingOrder)return;
-                    deliveryLat=foundLat;deliveryLng=foundLng;mapCenterLat=foundLat;mapCenterLng=foundLng;
-                    setLoading(false);
-                    deliveryCoordText.setText(label);
-                    selectMapMode("delivery");
-                    if (mapView != null) {
-                        mapView.setDelivery(deliveryLat, deliveryLng, q);
-                        mapView.moveTo(deliveryLat, deliveryLng, 17f);
-                    }
-                    updateChoices();
-                    if (validLocation()) {
-                        drawPickupRoute();
-                        calculateOngkir();
-                    }
-                });
-            } catch (Exception e) {
-                mainHandler.post(() -> {
-                    setLoading(false);
-                    showInfo("Pengantaran", "Alamat pengantaran belum ditemukan. Coba tulis lebih lengkap.");
-                });
-            }
-        }, "transpickup-geocode").start();
     }
 
     private String currentPickupQuoteKey() {
@@ -715,18 +606,18 @@ class TransPickupActivityScreenCore extends CustomerAdaptiveFragmentActivity {
                 vehicleType,packageSize,fragile?"1":"0",paymentMethod,String.valueOf(userId));
     }
     private boolean isPickupQuoteCurrent(long ticket,String key) {
-        return !pickupScreenClosed && !submittingOrder && pickupFareGate.isCurrent(ticket)
+        return !pickupScreenClosed && !submittingOrder && isCheckout() && pickupFareGate.isCurrent(ticket)
                 && key.equals(currentPickupQuoteKey());
     }
     private void calculateOngkir() {
         if(pickupScreenClosed || submittingOrder)return;
-        pickupFareGate.invalidate();setLoading(false);deliveryFee=0;distanceKm=0;
-        if(distanceText!=null)distanceText.setText("Jarak: -");
-        if(orderBtn!=null){orderBtn.setEnabled(false);orderBtn.setAlpha(0.55f);}
-        if(priceText!=null)priceText.setText("Ongkir: hitung dulu");
-        if(!validLocation())return;
-        final String quoteKey=currentPickupQuoteKey();
+        if (!isCheckout() || !hasRoutePoints()) return;
+        final String quoteKey = currentPickupQuoteKey();
+        if (pickupFareGate.isPending(quoteKey)) return;
         final long quoteTicket=pickupFareGate.begin(quoteKey);
+        deliveryFee=0;distanceKm=0;
+        distanceText.setText("");
+        updateCheckoutButton();
         final double pLat=pickupLat,pLng=pickupLng,dLat=deliveryLat,dLng=deliveryLng;
         final String vehicle=vehicleType,size=packageSize;
         final boolean delicate=fragile;
@@ -747,21 +638,24 @@ class TransPickupActivityScreenCore extends CustomerAdaptiveFragmentActivity {
                 networkScope.post(mainHandler,()->{
                     if(!isPickupQuoteCurrent(quoteTicket,quoteKey)||!pickupFareGate.accept(quoteTicket,quoteKey))return;
                     deliveryFee=quotedFee;distanceKm=quotedDistance;setLoading(false);
-                    distanceText.setText("Jarak: "+String.format(Locale.US,"%.2f",distanceKm)+" km");
+                    distanceText.setText(String.format(new Locale("id", "ID"), "%.2f km", distanceKm)
+                            + ("balance".equals(paymentMethod) ? " · TransPay" : " · Tunai"));
                     priceText.setText("Ongkir: "+rupiah(deliveryFee));
-                    orderBtn.setEnabled(true);orderBtn.setAlpha(1f);
+                    updateCheckoutButton();
                 });
             }catch(Exception e){networkScope.post(mainHandler,()->{
                 if(!isPickupQuoteCurrent(quoteTicket,quoteKey))return;
                 pickupFareGate.reject(quoteTicket);setLoading(false);
-                if(priceText!=null)priceText.setText("Ongkir: hitung dulu");
-                showInfo("Ongkir",e.getMessage());
+                priceText.setText("Ongkir belum tersedia");
+                distanceText.setText(firstNonEmpty(e.getMessage(), "Coba hitung ulang."));
+                updateCheckoutButton();
             });}
         },()->networkScope.post(mainHandler,()->{
             if(!isPickupQuoteCurrent(quoteTicket,quoteKey))return;
             pickupFareGate.reject(quoteTicket);setLoading(false);
-            if(priceText!=null)priceText.setText("Ongkir: hitung dulu");
-            showInfo("Ongkir","Sistem sedang sibuk. Coba hitung ongkir lagi.");
+            priceText.setText("Ongkir belum tersedia");
+            distanceText.setText("Sistem sedang sibuk. Coba lagi.");
+            updateCheckoutButton();
         }));
     }
 
@@ -776,28 +670,43 @@ class TransPickupActivityScreenCore extends CustomerAdaptiveFragmentActivity {
         createPickupOrderAuthorized();
     }
 
+    private boolean validatePackage() {
+        EditText invalid = null;
+        String message = "";
+        if (itemNameInput.getText().toString().trim().length() < 2) {
+            invalid = itemNameInput; message = "Isi nama barang.";
+        } else if (itemValueInput.getText().toString().trim().isEmpty()) {
+            invalid = itemValueInput; message = "Isi nilai barang.";
+        } else if (receiverNameInput.getText().toString().trim().length() < 2) {
+            invalid = receiverNameInput; message = "Isi nama penerima.";
+        } else if (!receiverPhoneInput.getText().toString().trim().matches("\\+?[0-9]{9,15}")) {
+            invalid = receiverPhoneInput; message = "Isi nomor HP penerima yang valid.";
+        }
+        if (invalid == null) return true;
+        setDetailsOpen(true);
+        invalid.setError(message);
+        invalid.requestFocus();
+        Toast.makeText(this, message, Toast.LENGTH_SHORT).show();
+        return false;
+    }
+
     private void createPickupOrderAuthorized() {
         if (submittingOrder) return;
         if (userId <= 0) { showInfo("Login", "User ID tidak ditemukan. Silakan login ulang."); return; }
-        if (!validLocation()) return;
+        if (!isCheckout() || !hasRoutePoints() || !validatePackage()) return;
         String itemName = itemNameInput.getText().toString().trim();
         String receiverName = receiverNameInput.getText().toString().trim();
         String receiverPhone = receiverPhoneInput.getText().toString().trim();
-        if (itemName.length() < 2) { showInfo("Barang", "Nama barang wajib diisi."); return; }
-        if (receiverName.length() < 2 || !receiverPhone.matches("\\+?[0-9]{9,15}")) { showInfo("Penerima", "Nama dan nomor HP penerima wajib diisi."); return; }
-        if (itemValueInput.getText().toString().trim().isEmpty() || parseMoney(itemValueInput.getText().toString()) < 0) {
-            showInfo("Nilai barang", "Masukkan nilai barang yang valid."); return;
-        }
         if (deliveryFee <= 0 || !pickupFareGate.hasQuote(currentPickupQuoteKey())) { if(!pickupFareGate.isPending(currentPickupQuoteKey()))calculateOngkir(); return; }
         final double submittedPickupLat=pickupLat,submittedPickupLng=pickupLng,submittedDeliveryLat=deliveryLat,submittedDeliveryLng=deliveryLng;
-        final String submittedPickupAddress=pickupAddressInput.getText().toString().trim(),submittedDeliveryAddress=destinationInput.getText().toString().trim();
+        final String submittedPickupAddress=pickupAddress,submittedDeliveryAddress=deliveryAddress;
         final String submittedSize=packageSize,submittedVehicle=vehicleType,submittedPayment=paymentMethod,submittedCategory=itemCategory;
         final boolean submittedFragile=fragile;
         final double submittedValue=parseMoney(itemValueInput.getText().toString());
         final String submittedNote=noteInput.getText().toString().trim();
         submittingOrder = true;
         pickupFareGate.invalidate();
-        if (orderBtn != null) orderBtn.setEnabled(false);
+        updateCheckoutButton();
         setLoading(true);
         networkScope.newThread(() -> {
             try {
@@ -813,34 +722,78 @@ class TransPickupActivityScreenCore extends CustomerAdaptiveFragmentActivity {
                 JSONObject res = ReliableOrderClient.create(this, BASE_URL + "server/create_pickup_order.php", p, TIMEOUT_MS);
                 boolean ok = res.optBoolean("success", false);
                 String msg = firstNonEmpty(res.optString("message"), ok ? "Order penjemputan berhasil dibuat" : "Gagal membuat order penjemputan");
-                mainHandler.post(() -> {
+                networkScope.post(mainHandler, () -> {
+                    if (pickupScreenClosed || isFinishing() || isDestroyed()) return;
                     setLoading(false);
-                    if (!ok) { submittingOrder = false; if (orderBtn != null) orderBtn.setEnabled(true); }
+                    if (!ok) { submittingOrder = false; updateCheckoutButton(); }
                     if (ok) {
                         otpCode = res.optString("otp", "").trim();
-                        if (otpText != null) otpText.setText("OTP penerima: " + otpCode);
-                        new TransivaAlertDialogBuilder(this)
-                                .setTitle("Order berhasil")
+                        android.app.AlertDialog receipt = new TransivaAlertDialogBuilder(this)
+                                .setTitle("Paket siap dikirim")
+                                .setCancelable(false)
                                 .setMessage(msg + "\n\nOrder ID: " + res.optString("order_id", "-") + "\nOTP penerima: " + otpCode + "\n\nBerikan OTP hanya setelah paket diterima.")
-                                .setNeutralButton("Salin OTP", (d, w) -> copyOtp())
+                                .setNeutralButton("Salin OTP", null)
                                 .setPositiveButton("Lihat Aktivitas", (d, w) -> { startActivity(new Intent(this, CustomerHistoryActivity.class)); finish(); })
-                                .show();
+                                .create();
+                        receipt.setOnShowListener(dialog -> receipt.getButton(android.app.AlertDialog.BUTTON_NEUTRAL)
+                                .setOnClickListener(v -> copyOtp()));
+                        receipt.show();
                     } else showInfo("Gagal", msg);
                 });
-            } catch (Exception e) { mainHandler.post(() -> { submittingOrder = false; if (orderBtn != null) orderBtn.setEnabled(true); setLoading(false); showInfo("Error", ReliableOrderClient.failureMessage(e)); }); }
+            } catch (Exception e) {
+                networkScope.post(mainHandler, () -> {
+                    if (pickupScreenClosed || isFinishing() || isDestroyed()) return;
+                    submittingOrder = false;
+                    updateCheckoutButton();
+                    setLoading(false);
+                    showInfo("Pengiriman", ReliableOrderClient.failureMessage(e));
+                });
+            }
         }).start();
     }
 
-    private boolean validLocation() {
-        if (!validCoordinate(pickupLat, pickupLng)) {
-            showInfo("Lokasi Jemput", "Titik jemput belum valid.");
-            return false;
-        }
-        if (!validCoordinate(deliveryLat, deliveryLng)) {
-            showInfo("Lokasi Pengantaran", "Titik tujuan belum valid. Pilih kembali pengantaran pada peta.");
-            return false;
-        }
-        return true;
+    private boolean hasRoutePoints() {
+        return validCoordinate(pickupLat, pickupLng) && validCoordinate(deliveryLat, deliveryLng);
+    }
+
+    private void restoreDraft(Bundle state) {
+        if (state == null) return;
+        pickupLat = state.getDouble("sendPickupLat");
+        pickupLng = state.getDouble("sendPickupLng");
+        deliveryLat = state.getDouble("sendDeliveryLat");
+        deliveryLng = state.getDouble("sendDeliveryLng");
+        pickupAddress = state.getString("sendPickupAddress", "");
+        deliveryAddress = state.getString("sendDeliveryAddress", "");
+        mapSelectionMode = state.getString("sendStage", "pickup");
+        detailsOpen = state.getBoolean("sendDetails");
+        itemNameInput.setText(state.getString("sendItem"));
+        itemValueInput.setText(state.getString("sendValue"));
+        receiverNameInput.setText(state.getString("sendName"));
+        receiverPhoneInput.setText(state.getString("sendPhone"));
+        noteInput.setText(state.getString("sendNote"));
+        packageSize = state.getString("sendSize", "small");
+        paymentMethod = state.getString("sendPayment", "cash");
+        fragile = state.getBoolean("sendFragile");
+    }
+
+    @Override protected void onSaveInstanceState(Bundle out) {
+        super.onSaveInstanceState(out);
+        out.putDouble("sendPickupLat", pickupLat);
+        out.putDouble("sendPickupLng", pickupLng);
+        out.putDouble("sendDeliveryLat", deliveryLat);
+        out.putDouble("sendDeliveryLng", deliveryLng);
+        out.putString("sendPickupAddress", pickupAddress);
+        out.putString("sendDeliveryAddress", deliveryAddress);
+        out.putString("sendStage", mapSelectionMode);
+        out.putBoolean("sendDetails", detailsOpen);
+        out.putString("sendItem", itemNameInput.getText().toString());
+        out.putString("sendValue", itemValueInput.getText().toString());
+        out.putString("sendName", receiverNameInput.getText().toString());
+        out.putString("sendPhone", receiverPhoneInput.getText().toString());
+        out.putString("sendNote", noteInput.getText().toString());
+        out.putString("sendSize", packageSize);
+        out.putString("sendPayment", paymentMethod);
+        out.putBoolean("sendFragile", fragile);
     }
 
     private void copyOtp() {
@@ -854,18 +807,9 @@ class TransPickupActivityScreenCore extends CustomerAdaptiveFragmentActivity {
     }
 
     private double parseMoney(String s) { try { return Double.parseDouble(firstNonEmpty(s, "0").replaceAll("[^0-9]", "")); } catch (Exception e) { return 0; } }
-    private String generateOtp() { return String.valueOf(100000 + new Random().nextInt(900000)); }
-
     private JSONObject getJson(String urlText) throws Exception {
         return TransivaHttpRepository.getJson(this, urlText, TIMEOUT_MS);
     }
-
-    private JSONObject postJson(String urlText, JSONObject payload) throws Exception {
-        return TransivaHttpRepository.postJson(this, urlText, payload, TIMEOUT_MS);
-    }
-
-    private String readStream(InputStream is) throws Exception { if (is == null) return "{}"; BufferedReader br = new BufferedReader(new InputStreamReader(is, StandardCharsets.UTF_8)); StringBuilder sb = new StringBuilder(); String line; while ((line = br.readLine()) != null) sb.append(line); br.close(); return sb.toString(); }
-
 
     @Override protected void onStart() {
         super.onStart();
@@ -895,6 +839,9 @@ class TransPickupActivityScreenCore extends CustomerAdaptiveFragmentActivity {
 
     @Override protected void onDestroy() {
         pickupScreenClosed=true;pickupFareGate.invalidate();
+        if (locationManager != null && locationListener != null) {
+            try { locationManager.removeUpdates(locationListener); } catch (RuntimeException ignored) { }
+        }
         networkScope.destroy();
         mainHandler.removeCallbacksAndMessages(null);
         if (mapView != null) {
@@ -904,21 +851,36 @@ class TransPickupActivityScreenCore extends CustomerAdaptiveFragmentActivity {
         super.onDestroy();
     }
 
-    @Override public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) { super.onRequestPermissionsResult(requestCode, permissions, grantResults); if (requestCode == REQ_LOCATION) loadPickupLocation(); }
-    @Override public void onBackPressed() { finish(); }
+    @Override public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        if (requestCode != REQ_LOCATION) return;
+        for (int result : grantResults) {
+            if (result == PackageManager.PERMISSION_GRANTED) {
+                loadPickupLocation();
+                return;
+            }
+        }
+    }
+    @Override public void onBackPressed() {
+        if (submittingOrder) return;
+        if (isCheckout() && detailsOpen) setDetailsOpen(false);
+        else if (!isCheckout() && hasRoutePoints()) openCheckout();
+        else finish();
+    }
 
     private int checkSelfPermissionSafe(String p) { try { if (android.os.Build.VERSION.SDK_INT >= 23) return checkSelfPermission(p); return PackageManager.PERMISSION_GRANTED; } catch (Exception e) { return PackageManager.PERMISSION_DENIED; } }
-    private void buildTopBar(String title, String sub, boolean back) { LinearLayout row = new LinearLayout(this); row.setGravity(Gravity.CENTER_VERTICAL); row.setPadding(0,0,0,dp(16)); if (back) { TextView b = text("‹", 34, "#0B3A78", true); b.setGravity(Gravity.CENTER); b.setBackground(round("#FFFFFF", dp(18))); b.setOnClickListener(v -> finish()); row.addView(b, new LinearLayout.LayoutParams(dp(44), dp(44))); } LinearLayout col = new LinearLayout(this); col.setOrientation(LinearLayout.VERTICAL); col.setPadding(dp(12),0,0,0); col.addView(text(title, 23, "#0B3A78", true)); col.addView(text(sub, 12, "#64748B", false)); row.addView(col, new LinearLayout.LayoutParams(0, -2, 1)); root.addView(row, new LinearLayout.LayoutParams(-1, -2)); }
-    private EditText edit(String hint) { EditText e = new EditText(this); e.setHint(hint); e.setTextSize(14); e.setSingleLine(true); e.setTextColor(Color.parseColor("#0F172A")); e.setHintTextColor(Color.parseColor("#94A3B8")); e.setPadding(dp(14),0,dp(14),0); e.setBackground(roundStroke("#FFFFFF", "#D7E6F8", dp(18), 1)); return e; }
+    private EditText edit(String hint) { EditText e = new EditText(this); e.setHint(hint); e.setTextSize(14); e.setSingleLine(true); e.setTextColor(Color.parseColor("#0F172A")); e.setHintTextColor(Color.parseColor("#94A3B8")); e.setPadding(dp(14),0,dp(14),0); e.setBackground(roundStroke("#FFFFFF", "#D7E6F8", dp(12), 1)); return e; }
     private LinearLayout row() { LinearLayout r = new LinearLayout(this); r.setOrientation(LinearLayout.HORIZONTAL); return r; }
-    private void addChoice(LinearLayout row, Button a, Button b) { row.addView(a, new LinearLayout.LayoutParams(0, dp(58), 1)); LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, dp(58), 1); lp.setMargins(dp(10),0,0,0); row.addView(b, lp); }
+    private void addChoice(LinearLayout row, Button a, Button b) { row.addView(a, new LinearLayout.LayoutParams(0, -2, 1)); LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, -2, 1); lp.setMargins(dp(10),0,0,0); row.addView(b, lp); }
     private void addInner(LinearLayout parent, View v, int top) { LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, dp(48)); lp.setMargins(0, top, 0, 0); parent.addView(v, lp); }
-    private LinearLayout card() { LinearLayout v = new LinearLayout(this); v.setOrientation(LinearLayout.VERTICAL); v.setBackground(roundStroke("#FFFFFF", "#E2ECF8", dp(22), 1)); v.setElevation(dp(2)); return v; }
+    private LinearLayout card() { LinearLayout v = new LinearLayout(this); v.setOrientation(LinearLayout.VERTICAL); v.setBackground(roundStroke("#FFFFFF", "#E2ECF8", dp(14), 1)); return v; }
     private TextView text(String s, int sp, String color, boolean bold) { TextView t = new TextView(this); t.setText(s); t.setTextSize(sp); t.setTextColor(Color.parseColor(color)); if (bold) t.setTypeface(Typeface.DEFAULT_BOLD); return t; }
-    private Button primaryButton(String s) { Button b = new Button(this); b.setText(s); b.setAllCaps(false); b.setTextColor(Color.WHITE); b.setTypeface(Typeface.DEFAULT_BOLD); b.setBackground(roundGradient("#086BFF", "#2EA2FF", dp(18))); return b; }
-    private Button outlineButton(String s) { Button b = new Button(this); b.setText(s); b.setAllCaps(false); b.setTextColor(Color.parseColor("#0B7CFF")); b.setTypeface(Typeface.DEFAULT_BOLD); b.setBackground(roundStroke("#FFFFFF", "#9DCAFF", dp(18), 1)); return b; }
-    private Button choiceButton(String s, boolean active) { Button b = new Button(this); b.setText(s); b.setAllCaps(false); b.setTextSize(12); b.setTypeface(Typeface.DEFAULT_BOLD); setChoice(b, active); return b; }
-    private GradientDrawable round(String color, int radius) { GradientDrawable g = new GradientDrawable(); g.setColor(Color.parseColor(color)); g.setCornerRadius(radius); return g; }
+    private Button primaryButton(String s) { Button b = new Button(this); b.setText(s); b.setTextSize(14); b.setAllCaps(false); b.setMinHeight(dp(48)); b.setMinimumHeight(dp(48));
+        b.setStateListAnimator(null); b.setPadding(dp(10), dp(4), dp(10), dp(4)); b.setTextColor(Color.WHITE); b.setTypeface(Typeface.DEFAULT_BOLD); b.setBackground(roundGradient("#086BFF", "#2EA2FF", dp(18))); return b; }
+    private Button outlineButton(String s) { Button b = new Button(this); b.setText(s); b.setTextSize(12); b.setAllCaps(false); b.setMinHeight(dp(48)); b.setMinimumHeight(dp(48));
+        b.setStateListAnimator(null); b.setPadding(dp(10), dp(4), dp(10), dp(4)); b.setTextColor(Color.parseColor("#0B7CFF")); b.setTypeface(Typeface.DEFAULT_BOLD); b.setBackground(roundStroke("#FFFFFF", "#9DCAFF", dp(18), 1)); return b; }
+    private Button choiceButton(String s, boolean active) { Button b = new Button(this); b.setText(s); b.setAllCaps(false); b.setMinHeight(dp(48)); b.setMinimumHeight(dp(48));
+        b.setStateListAnimator(null); b.setPadding(dp(10), dp(4), dp(10), dp(4)); b.setTextSize(12); b.setTypeface(Typeface.DEFAULT_BOLD); setChoice(b, active); return b; }
     private GradientDrawable roundStroke(String color, String stroke, int radius, int sw) { GradientDrawable g = round(color, radius); g.setStroke(dp(sw), Color.parseColor(stroke)); return g; }
     private GradientDrawable roundGradient(String c1, String c2, int radius) { GradientDrawable g = new GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT, new int[]{Color.parseColor(c1), Color.parseColor(c2)}); g.setCornerRadius(radius); return g; }
     private void addWithMargin(View v, int l, int t, int r, int b) { LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, -2); lp.setMargins(l,t,r,b); root.addView(v, lp); }

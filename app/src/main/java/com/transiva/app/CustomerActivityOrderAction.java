@@ -34,8 +34,12 @@ public final class CustomerActivityOrderAction {
             String username,
             Callback callback
     ) {
+        final CustomerSessionGuard owner = CustomerSessionGuard.capture(activity);
         TransivaNetworkExecutor.execute(() -> {
             try {
+                if (!Integer.toString(userId).equals(owner.account) || !owner.matches(activity)) {
+                    throw new IllegalStateException("Sesi login berubah. Silakan login kembali.");
+                }
                 JSONObject payload =
                         new JSONObject();
 
@@ -92,8 +96,7 @@ public final class CustomerActivityOrderAction {
 
                 activity.runOnUiThread(() -> {
                     if (success) {
-                        com.transiva.app.customer.data.DashboardStateCache.rememberCancellation(
-                                activity, Integer.toString(userId), order);
+                        recordConfirmedCancellation(activity, Integer.toString(userId), order);
                         callback.onSuccess(message);
                     } else {
                         callback.onError(message);
@@ -108,7 +111,33 @@ public final class CustomerActivityOrderAction {
                         )
                 );
             }
-        });
+        }, () -> activity.runOnUiThread(() -> callback.onError("Sistem sedang sibuk. Coba lagi.")));
+    }
+
+    static void recordConfirmedCancellation(android.content.Context context, String account, JSONObject order) {
+        if (!account.equals(CustomerSessionGuard.capture(context).account)) return;
+        String id = first(order.optString("order_id"), order.optString("id_order"), order.optString("id"));
+        if (id.isEmpty()) return;
+        com.transiva.app.customer.data.DashboardStateCache.rememberCancellation(context, account, order);
+        android.content.SharedPreferences prefs = context.getSharedPreferences("transiva", Activity.MODE_PRIVATE);
+        if (id.equals(prefs.getString("active_order_id", ""))) {
+            prefs.edit().remove("active_order_id").remove("active_order_status").remove("active_order_source")
+                    .remove("active_driver_type").remove("active_order_type").remove("active_service_name")
+                    .remove("active_order_price").remove("active_order").remove("order_id").remove("order_status")
+                    .remove("pickup_lat").remove("pickup_lng").remove("delivery_lat").remove("delivery_lng").apply();
+            CustomerRedispatchService.stop(context);
+        }
+        UnifiedLiveOrderCenter.onCancellationRecorded();
+    }
+
+    static boolean applyConfirmedStatus(android.content.Context context, String account, JSONObject order) {
+        String status = CustomerOrderState.normalize(order.optString("status"));
+        if (CustomerOrderState.isEnded(status)
+                || !com.transiva.app.customer.data.DashboardStateCache.wasCanceled(context, account, order)) return false;
+        try {
+            order.put("status", CustomerOrderState.CANCELED);
+            return true;
+        } catch (org.json.JSONException ignored) { return false; }
     }
 
     private static String sourceTable(

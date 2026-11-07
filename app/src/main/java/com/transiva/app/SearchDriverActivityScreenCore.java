@@ -154,6 +154,14 @@ class SearchDriverActivityScreenCore extends CustomerAdaptiveActivity {
         shopOrder = "TransShop".equalsIgnoreCase(requestedOrderType);
 
         buildLayout();
+        JSONObject orderReference = new JSONObject();
+        try { orderReference.put("order_id", activeOrderId); }
+        catch (org.json.JSONException ignored) { }
+        if (CustomerActivityOrderAction.applyConfirmedStatus(
+                this, CustomerSessionGuard.capture(this).account, orderReference)) {
+            openCustomerDashboard();
+            return;
+        }
         getUserLocationThenStart();
     }
 
@@ -1037,8 +1045,18 @@ class SearchDriverActivityScreenCore extends CustomerAdaptiveActivity {
 
 
 
+    private void restoreAfterCancelFailure(CustomerSessionGuard owner, String message) {
+        if (!owner.matches(this) || isFinishing() || isDestroyed()) return;
+        progressBar.setVisibility(View.GONE);
+        isCanceling = false;
+        cancelBtn.setEnabled(true);
+        cancelBtn.setText("Batalkan pesanan");
+        titleText.setText("Mencari Driver...");
+        showInfo("Pembatalan", message);
+        startLoops();
+    }
+
     private void cancelOrder() {
-        CustomerRedispatchService.stop(this);
         if (isCanceling) return;
         isCanceling = true;
         destroyLoopsKeepScreen();
@@ -1047,9 +1065,12 @@ class SearchDriverActivityScreenCore extends CustomerAdaptiveActivity {
         titleText.setText("Membatalkan Order...");
         setSubtitle("Mohon tunggu sebentar");
         progressBar.setVisibility(View.VISIBLE);
+        final CustomerSessionGuard owner = CustomerSessionGuard.capture(this);
+        final String orderId = activeOrderId;
 
         featureRuntime.execute(() -> {
             try {
+                if (!owner.matches(this)) return;
                 String token = new SessionManager(this).getToken();
                 if (token == null || token.trim().isEmpty()) {
                     throw new IllegalStateException(
@@ -1058,7 +1079,7 @@ class SearchDriverActivityScreenCore extends CustomerAdaptiveActivity {
                 }
 
                 JSONObject payload = new JSONObject();
-                payload.put("order_id", activeOrderId);
+                payload.put("order_id", orderId);
                 JSONObject res = postJson(
                         BASE_URL + "server/cancel_order.php",
                         payload,
@@ -1066,32 +1087,24 @@ class SearchDriverActivityScreenCore extends CustomerAdaptiveActivity {
                 );
                 boolean ok = res.optBoolean("success", false);
                 String msg = firstNonEmpty(res.optString("message"), ok ? "Order dibatalkan" : "Order gagal dibatalkan");
+                JSONObject result = res.optJSONObject("order");
+                if (ok) {
+                    JSONObject canceledOrder = result != null ? result : new JSONObject().put("order_id", orderId);
+                    mainHandler.post(() -> CustomerActivityOrderAction.recordConfirmedCancellation(this, owner.account, canceledOrder));
+                }
                 featureRuntime.post(mainHandler, () -> {
+                    if (!owner.matches(this) || isFinishing() || isDestroyed()) return;
                     progressBar.setVisibility(View.GONE);
                     if (ok) {
-                        clearOrderPrefs();
                         openCustomerDashboard();
                     } else {
-                        isCanceling = false;
-                        cancelBtn.setEnabled(true);
-                        cancelBtn.setText("Batalkan pesanan");
-                        titleText.setText("Mencari Driver...");
-                        showInfo("Gagal", msg);
-                        startLoops();
+                        restoreAfterCancelFailure(owner, msg);
                     }
                 });
             } catch (Exception e) {
-                featureRuntime.post(mainHandler, () -> {
-                    progressBar.setVisibility(View.GONE);
-                    isCanceling = false;
-                    cancelBtn.setEnabled(true);
-                    cancelBtn.setText("Batalkan pesanan");
-                    titleText.setText("Mencari Driver...");
-                    showInfo("Koneksi Gagal", "Koneksi gagal saat membatalkan order");
-                    startLoops();
-                });
+                featureRuntime.post(mainHandler, () -> restoreAfterCancelFailure(owner, "Koneksi gagal saat membatalkan order"));
             }
-        });
+        }, () -> featureRuntime.post(mainHandler, () -> restoreAfterCancelFailure(owner, "Sistem sedang sibuk. Coba lagi.")));
     }
 
     private JSONObject postJson(

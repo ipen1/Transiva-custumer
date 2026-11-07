@@ -331,6 +331,10 @@ public final class TransivaGoogleMapView extends FrameLayout implements OnMapRea
         syncPickerMarkers();
     }
 
+    void hideCenterAction() {
+        if (centerAction != null) centerAction.setVisibility(GONE);
+    }
+
     public void showOrderAction(boolean show, String text) {
         pickerVisible = false;
         syncPickerMarkers();
@@ -652,6 +656,34 @@ public final class TransivaGoogleMapView extends FrameLayout implements OnMapRea
                 .build();
         try { googleMap.animateCamera(CameraUpdateFactory.newLatLngBounds(bounds, dp(64))); }
         catch (Exception ignored) {}
+    }
+
+    /** Fits the two package markers inside the measured TransSend viewport. */
+    void fitPickupDeliveryInViewport() {
+        if (!isReady() || pickupMarker == null || deliveryMarker == null) return;
+        int width = getWidth(), height = getHeight();
+        if (width <= 0 || height <= 0) return;
+        LatLng pickup = pickupMarker.getPosition();
+        LatLng delivery = deliveryMarker.getPosition();
+        float[] distance = new float[1];
+        android.location.Location.distanceBetween(pickup.latitude, pickup.longitude,
+                delivery.latitude, delivery.longitude, distance);
+        if (distance[0] < 5f) {
+            boolean pickupOnLeft = pickup.longitude <= delivery.longitude;
+            pickupMarker.setAnchor(pickupOnLeft ? 1f : 0f, 1f);
+            deliveryMarker.setAnchor(pickupOnLeft ? 0f : 1f, 1f);
+            googleMap.moveCamera(CameraUpdateFactory.newLatLngZoom(pickup, 17f));
+            return;
+        }
+        resetPickupDeliveryAnchors();
+        int padding = Math.min(dp(58), Math.min(width, height) / 3);
+        LatLngBounds bounds = new LatLngBounds.Builder().include(pickup).include(delivery).build();
+        googleMap.moveCamera(CameraUpdateFactory.newLatLngBounds(bounds, width, height, padding));
+    }
+
+    void resetPickupDeliveryAnchors() {
+        if (pickupMarker != null) pickupMarker.setAnchor(.5f, 1f);
+        if (deliveryMarker != null) deliveryMarker.setAnchor(.5f, 1f);
     }
 
     public void onStartMap() { try { nativeMapView.onStart(); } catch (Exception ignored) {} }

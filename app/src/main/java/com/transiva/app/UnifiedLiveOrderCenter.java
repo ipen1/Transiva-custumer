@@ -69,7 +69,7 @@ public final class UnifiedLiveOrderCenter {
         if(c==null)return Collections.emptyList();
         CustomerSessionGuard identity=CustomerSessionGuard.capture(c);
         if(!CustomerReadSafetyRules.fresh(identity.account,memoryOwner,memoryAt,System.currentTimeMillis(),CACHE_MAX_AGE_MS))return Collections.emptyList();
-        return new ArrayList<>(memory);
+        return excludeCanceled(c, identity.account, memory);
     }
 
     /** Fetches from server even when local active_order_id is missing. */
@@ -137,6 +137,20 @@ public final class UnifiedLiveOrderCenter {
         }
         MAIN.post(UnifiedLiveOrderCenter::notifyListeners);
     }
+    static void onCancellationRecorded() {
+        MAIN.post(UnifiedLiveOrderCenter::notifyListeners);
+    }
+
+    private static List<Order> excludeCanceled(Context context, String account, List<Order> orders) {
+        List<Order> active = new ArrayList<>(orders.size());
+        for (Order order : orders) {
+            if (!com.transiva.app.customer.data.DashboardStateCache.wasCanceled(context, account, order.raw)) {
+                active.add(order);
+            }
+        }
+        return active;
+    }
+
     private static void notifyListeners(){for(Listener l:LISTENERS)try{l.onOrdersChanged(snapshot());}catch(Exception ignored){}}
     private static void deliver(Context app,CustomerSessionGuard identity,long sequence,Callback cb,List<Order> orders,long saved,boolean cache,Throwable error) {
         MAIN.post(() -> {
@@ -144,8 +158,9 @@ public final class UnifiedLiveOrderCenter {
             if(sequence!=REQUEST.get()){if(cb!=null)cb.onResult(snapshot(),true,new IllegalStateException("Newer request in progress"));return;}
             synchronized(UnifiedLiveOrderCenter.class) {
                 if(!identity.matches(app)||sequence!=REQUEST.get())return;
-                if(!cache)writeCache(app,identity.account,orders,saved);
-                memory=Collections.unmodifiableList(new ArrayList<>(orders));memoryOwner=identity.account;memoryAt=saved;
+                List<Order> current = excludeCanceled(app, identity.account, orders);
+                if(!cache)writeCache(app,identity.account,current,saved);
+                memory=Collections.unmodifiableList(current);memoryOwner=identity.account;memoryAt=saved;
             }
             notifyListeners();if(cb!=null)cb.onResult(snapshot(),cache,error);
         });

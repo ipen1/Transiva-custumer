@@ -25,6 +25,43 @@ public final class DashboardStateCache {
     }
     private DashboardStateCache() {}
 
+    private static String orderId(JSONObject order) {
+        if (order == null) return "";
+        String id = order.optString("order_id", "").trim();
+        return id.isEmpty() ? order.optString("id", "").trim() : id;
+    }
+
+    /** Keep confirmed cancellations out of renders from earlier reads or a restored cache. */
+    public static synchronized void rememberCancellation(Context context, String account, JSONObject order) {
+        String id = orderId(order);
+        if (id.isEmpty() || account.isEmpty() || !account.equals(owner(context))) return;
+        SharedPreferences prefs = context.getSharedPreferences(PREF, Context.MODE_PRIVATE);
+        String key = "canceled_" + account;
+        JSONArray previous = canceledOrders(prefs, key);
+        JSONArray recent = new JSONArray();
+        for (int i = Math.max(0, previous.length() - 19); i < previous.length(); i++) {
+            if (!id.equals(previous.optString(i))) recent.put(previous.optString(i));
+        }
+        recent.put(id);
+        prefs.edit().putString(key, recent.toString()).apply();
+    }
+
+    public static boolean wasCanceled(Context context, String account, JSONObject order) {
+        String id = orderId(order);
+        if (id.isEmpty() || account.isEmpty()) return false;
+        SharedPreferences prefs = context.getSharedPreferences(PREF, Context.MODE_PRIVATE);
+        JSONArray recent = canceledOrders(prefs, "canceled_" + account);
+        for (int i = 0; i < recent.length(); i++) {
+            if (id.equals(recent.optString(i))) return true;
+        }
+        return false;
+    }
+
+    private static JSONArray canceledOrders(SharedPreferences prefs, String key) {
+        try { return new JSONArray(prefs.getString(key, "[]")); }
+        catch (org.json.JSONException invalid) { return new JSONArray(); }
+    }
+
     public static void put(Context context, DashboardState s) {
         if (context != null) put(context, s, owner(context));
     }

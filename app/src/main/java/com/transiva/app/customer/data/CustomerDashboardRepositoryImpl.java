@@ -111,7 +111,13 @@ public final class CustomerDashboardRepositoryImpl
         JSONArray orders = json.optJSONArray("orders");
         if (!json.optBoolean("success", false) || orders == null)
             throw new IllegalStateException("Active orders unavailable");
-        return orders.length() == 0 ? null : orders.optJSONObject(0);
+        for (int i = 0; i < orders.length(); i++) {
+            JSONObject order = orders.optJSONObject(i);
+            if (order != null && !DashboardStateCache.wasCanceled(context, Integer.toString(userId), order)) {
+                return order;
+            }
+        }
+        return null;
     }
 
     private String formatActiveOrder(JSONObject order) {

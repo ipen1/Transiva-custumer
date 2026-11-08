@@ -69,6 +69,8 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
     protected ScrollView foodScroll;
     private FoodVirtualList virtualFood;
 
+    private int expandedToppingMenu;
+    private long toppingSelectionOrder;
     private final java.util.Map<Integer, TextView> menuQuantityViews = new java.util.HashMap<>();
     private final java.util.Map<Integer, java.util.List<KabarMitraUi.Avatar>> merchantAvatars = new java.util.HashMap<>();
     private TextView cartQuantityLabel, cartTotalLabel;
@@ -563,7 +565,7 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
         Runnable open=()->{
             JSONObject store=findRestaurantById(rid);
             if(store==null){store=new JSONObject();try{store.put("id",rid);store.put("name",name);}catch(Exception ignored){}}
-            activeRestaurant=store;cart.clear();menus.clear();menusLoadFinished=false;menuSearchQuery="";showMenuPage();loadMenus(rid);
+            activeRestaurant=store;cart.clear(); expandedToppingMenu=0;menus.clear();menusLoadFinished=false;menuSearchQuery="";showMenuPage();loadMenus(rid);
         };
         if(!cart.isEmpty())new TransivaAlertDialogBuilder(this).setTitle("Pindah toko?").setMessage("Isi keranjang dari toko sebelumnya akan dikosongkan.").setPositiveButton("Pindah toko",(d,w)->open.run()).setNegativeButton("Tetap di sini",null).show();
         else open.run();
@@ -581,7 +583,7 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
             return;
         }
         activeRestaurant = r;
-        cart.clear();
+        cart.clear(); expandedToppingMenu=0;
         menuSearchQuery = item.menuName;
         showMenuPage();
         loadMenus(item.restaurantId);
@@ -610,7 +612,7 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
                 return;
             }
             activeRestaurant = r;
-            cart.clear();
+            cart.clear(); expandedToppingMenu=0;
             menuSearchQuery = "";
             showMenuPage();
             loadMenus(r.optInt("id", 0));
@@ -784,7 +786,7 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
     private void setFoodPadding(int l,int t,int r,int b){if(virtualFood!=null&&virtualFood.isPresented())virtualFood.bottomPadding(l,t,r,b,root);else if(root!=null)root.setPadding(l,t,r,b);}
 
     private void rebindRetainedViews(){
-        menuQuantityViews.clear();merchantAvatars.clear();collectRetainedViews(root);if(virtualFood!=null&&virtualFood.isPresented())collectRetainedViews(virtualFood);updateMerchantAvatars();
+        menuQuantityViews.clear();merchantAvatars.clear();collectRetainedViews(root);if(virtualFood!=null&&virtualFood.isPresented())collectRetainedViews(virtualFood);updateMerchantAvatars();syncToppingCards();
     }
     private void collectRetainedViews(View view){
         Object tag=view.getTag();
@@ -828,27 +830,24 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
         img.setBackground(round("#EAF4FF", dp(14)));
         img.setClipToOutline(true);
         mainRow.addView(img, new LinearLayout.LayoutParams(dp(84), dp(84)));
-        loadImage(img, absoluteUrl(firstNonEmpty(m.optString("image"), "assets/no-image.png")));
+
 
         LinearLayout body = new LinearLayout(this);
         body.setOrientation(LinearLayout.VERTICAL);
         body.setPadding(dp(12), 0, 0, 0);
         mainRow.addView(body, new LinearLayout.LayoutParams(0, -2, 1));
 
-        body.addView(text(firstNonEmpty(m.optString("name"), "Menu"), 16, "#0F172A", true));
+        TextView menuTitle = text(firstNonEmpty(m.optString("name"), "Menu"), 16, "#0F172A", true);
+        body.addView(menuTitle);
         body.addView(text(firstNonEmpty(m.optString("category"), "Menu"), 12, "#94A3B8", false));
 
-        String desc = firstNonEmpty(m.optString("description"), "");
-        if (!desc.isEmpty()) {
-            TextView d = text(desc, 12, "#64748B", false);
-            d.setMaxLines(2);
-            d.setEllipsize(android.text.TextUtils.TruncateAt.END);
-            d.setPadding(0, dp(4), 0, 0);
-            body.addView(d);
-            img.setContentDescription("Lihat detail "+m.optString("name","menu"));
-            img.setOnClickListener(v -> showMenuDescription(m));
-            d.setOnClickListener(v -> showMenuDescription(m));
-        }
+        String desc = m.optString("description","");
+        TextView description = text(desc, 12, "#64748B", false);
+        description.setMaxLines(2);
+        description.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        description.setPadding(0, dp(4), 0, 0);
+        description.setVisibility(desc.isEmpty()?View.GONE:View.VISIBLE);
+        body.addView(description);
 
         boolean merchantDiscount = m.optInt("discount_active",0) == 1 && m.optDouble("discount_percent",0) > 0;
         if (merchantDiscount) {
@@ -891,13 +890,22 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
         }
 
         JSONArray options = m.optJSONArray("options");
-        if (hasSelectableOptions(options)) {
+        JSONArray toppings = bundleToppings(options);
+        if (toppings == null && hasSelectableOptions(options)) {
             TextView opt = text(buildOptionPreview(options), 11, "#7C3AED", true);
             opt.setPadding(0, dp(2), 0, dp(5));
             body.addView(opt);
         }
 
-        if (!active) {
+        if (toppings != null && active) {
+            ToppingDropdown dropdown = new ToppingDropdown(m, toppings, img, menuTitle, description, price);
+            footer.addView(dropdown.toggle, compactFooter ? new LinearLayout.LayoutParams(-1,-2)
+                    : new LinearLayout.LayoutParams(-2,-2));
+            card.addView(dropdown,new LinearLayout.LayoutParams(-1,-2));
+            mainRow.setOnClickListener(v -> dropdown.toggle());
+            img.setOnClickListener(v -> dropdown.toggle());
+            dropdown.bind();
+        } else if (!active) {
             body.addView(text("Tidak tersedia", 12, "#EF4444", true));
         } else {
             LinearLayout qty = new LinearLayout(this);
@@ -930,6 +938,12 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
                     refreshCartUi();
                 }
             });
+        }
+        if (toppings == null || !active) {
+            loadImage(img,absoluteUrl(firstNonEmpty(m.optString("image"),"assets/no-image.png")));
+            img.setContentDescription("Lihat detail "+m.optString("name","menu"));
+            img.setOnClickListener(v -> showMenuDescription(m));
+            description.setOnClickListener(v -> showMenuDescription(m));
         }
         IncrementalLinearRenderer.mark(card,"menu:"+m.optInt("id"),m.toString()+":"+getQty(m.optInt("id")));
         addWithMargin(card, 0, 0, 0, dp(12));
@@ -980,13 +994,6 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
 
     protected void showOptionPicker(JSONObject menu) {
         JSONArray groups = menu.optJSONArray("options");
-        if (groups!=null) for (int i=0;i<groups.length();i++) {
-            JSONObject group=groups.optJSONObject(i);
-            if (group!=null && "bundle_topping".equals(group.optString("type"))) {
-                showBundleToppings(menu,group.optJSONArray("items"),groups);
-                return;
-            }
-        }
         if (!hasSelectableOptions(groups)) {
             addConfiguredItem(menu, new JSONArray(), "", 0);
             refreshCartUi();
@@ -1101,72 +1108,230 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
                 .show();
     }
 
-    private void showBundleToppings(JSONObject menu, JSONArray items, JSONArray groups) {
-        LinearLayout choices = new LinearLayout(this);
-        choices.setOrientation(LinearLayout.VERTICAL);
-        choices.setPadding(dp(16),dp(8),dp(16),dp(8));
-        ScrollView scroll = new ScrollView(this);
-        scroll.addView(choices);
-        android.app.AlertDialog dialog = new TransivaAlertDialogBuilder(this)
-                .setTitle(menu.optString("name","Pilih topping")).setView(scroll)
-                .setNegativeButton("Batal",null).create();
-        addToppingChoice(choices, menu, null, dialog);
-        if (items!=null) for (int i=0;i<items.length();i++) {
-            JSONObject option=items.optJSONObject(i);
-            if (option!=null && option.optLong("display_price")>0) addToppingChoice(choices,menu,option,dialog);
-        }
-        JSONArray legacy=new JSONArray();
+    private JSONArray bundleToppings(JSONArray groups) {
+        if (groups == null) return null;
         for (int i=0;i<groups.length();i++) {
             JSONObject group=groups.optJSONObject(i);
-            if (group!=null && !"bundle_topping".equals(group.optString("type"))) legacy.put(group);
+            JSONArray items=group==null?null:group.optJSONArray("items");
+            if (group!=null && "bundle_topping".equals(group.optString("type")) && items!=null && items.length()>0) return items;
         }
-        if (hasSelectableOptions(legacy)) {
-            Button other=choiceButton("Lihat varian dan tambahan lain",false);
-            other.setOnClickListener(v->{
-                dialog.dismiss();
-                try { showOptionPicker(new JSONObject(menu.toString()).put("options",legacy)); }
-                catch (Exception ignored) { showInfo("Pilihan menu","Pilihan belum dapat dimuat."); }
-            });
-            choices.addView(other);
-        }
-        dialog.show();
+        return null;
     }
 
-    private void addToppingChoice(LinearLayout list, JSONObject menu, JSONObject option, android.app.AlertDialog dialog) {
-        LinearLayout row=card();
-        row.setOrientation(LinearLayout.HORIZONTAL);
-        row.setGravity(Gravity.CENTER_VERTICAL);
-        row.setPadding(dp(8),dp(8),dp(8),dp(8));
-        String name=option==null?"Tanpa topping":option.optString("name");
-        long price=option==null?menu.optLong("price"):option.optLong("display_price");
-        String image=option==null?menu.optString("image"):option.optString("image",menu.optString("image"));
-        ImageView thumbnail=new ImageView(this);
-        thumbnail.setScaleType(ImageView.ScaleType.CENTER_CROP);
-        row.addView(thumbnail,new LinearLayout.LayoutParams(dp(66),dp(66)));
-        loadImage(thumbnail,absoluteUrl(image));
-        LinearLayout words=new LinearLayout(this);
-        words.setOrientation(LinearLayout.VERTICAL);
-        words.setPadding(dp(10),0,0,0);
-        words.addView(text(name,14,"#0F172A",true));
-        String description=option==null?menu.optString("description"):option.optString("description");
-        if (!description.isEmpty()) words.addView(text(description,11,"#64748B",false));
-        words.addView(text(rupiah(price)+" · Tambah",13,"#0B3A78",true));
-        row.addView(words,new LinearLayout.LayoutParams(0,-2,1));
-        row.setFocusable(true);
-        row.setContentDescription(name+", "+rupiah(price)+", tambah ke keranjang");
-        row.setOnClickListener(v->{
+    private void syncToppingCards() {
+        if (currentScreen!=1) return;
+        if (root!=null) syncToppingCards(root);
+        if (virtualFood!=null && virtualFood.isPresented()) syncToppingCards(virtualFood);
+    }
+
+    private void syncToppingCards(View view) {
+        if (view instanceof ToppingDropdown) {
+            ((ToppingDropdown)view).bind();
+        } else if (view instanceof android.view.ViewGroup) {
+            android.view.ViewGroup group=(android.view.ViewGroup)view;
+            for (int i=0;i<group.getChildCount();i++) syncToppingCards(group.getChildAt(i));
+        }
+    }
+
+    private final class ToppingDropdown extends LinearLayout {
+        final JSONObject menu;
+        final JSONArray options;
+        final int id;
+        final Button toggle;
+        final TextView summary, heading, description, price;
+        final ImageView photo;
+        final LinearLayout choices;
+        final List<ToppingRow> rows=new ArrayList<>();
+        String boundPhoto="";
+        boolean populated;
+
+        ToppingDropdown(JSONObject menu, JSONArray options, ImageView photo,
+                        TextView heading, TextView description, TextView price) {
+            super(TransFoodActivityScreenCore.this);
+            this.menu=menu; this.options=options; this.photo=photo;
+            this.heading=heading; this.description=description; this.price=price;
+            id=menu.optInt("id");
+            setOrientation(VERTICAL);
+            toggle=choiceButton("Pilih topping ▾",false);
+            toggle.setTextSize(12);
+            toggle.setMinimumHeight(dp(44));
+            toggle.setMinHeight(dp(44));
+            toggle.setOnClickListener(v->toggle());
+            summary=text("",12,"#0B4B93",true);
+            summary.setPadding(dp(10),dp(8),dp(10),dp(8));
+            summary.setBackground(round("#EAF4FF",dp(12)));
+            summary.setOnClickListener(v->toggle());
+            LinearLayout.LayoutParams summaryLp=new LinearLayout.LayoutParams(-1,-2);
+            summaryLp.topMargin=dp(6);
+            addView(summary,summaryLp);
+            choices=new LinearLayout(TransFoodActivityScreenCore.this);
+            choices.setOrientation(VERTICAL);
+            addView(choices,new LinearLayout.LayoutParams(-1,-2));
+        }
+
+        void toggle() {
+            expandedToppingMenu=expandedToppingMenu==id?0:id;
+            syncToppingCards();
+        }
+
+        void bind() {
+            boolean expanded=expandedToppingMenu==id;
+            if (expanded && !populated) populate();
+            choices.setVisibility(expanded?VISIBLE:GONE);
+            int total=getQty(id);
+            toggle.setText(expanded?"Tutup topping ▴":total>0?"Ubah pilihan ▾":"Pilih topping ▾");
+            toggle.setContentDescription(toggle.getText()+", "+menu.optString("name"));
+            CartItem latest=null;
+            List<String> lines=new ArrayList<>();
+            for (CartItem item:cart) {
+                if (item.id!=id) continue;
+                if (latest==null || item.selectionOrder>latest.selectionOrder) latest=item;
+                lines.add(item.qty+"× "+firstNonEmpty(item.optionText,"Tanpa topping"));
+            }
+            summary.setVisibility(total>0?VISIBLE:GONE);
+            if (total>0) summary.setText("Di keranjang · "+android.text.TextUtils.join("  •  ",lines));
+            String name=firstNonEmpty(menu.optString("name"),"Menu");
+            String photoUrl=menu.optString("image");
+            String detail=menu.optString("description");
+            double shownPrice=menu.optDouble("price",0);
+            if (latest!=null) {
+                photoUrl=firstNonEmpty(latest.image,photoUrl);
+                shownPrice=latest.price;
+                JSONObject option=latest.selectedOptions.optJSONObject(0);
+                if (option!=null && "bundle_topping".equals(option.optString("type"))) {
+                    for (int i=0;i<options.length();i++) {
+                        JSONObject candidate=options.optJSONObject(i);
+                        if (candidate==null || !option.optString("name").equals(candidate.optString("name"))) continue;
+                        detail=candidate.optString("description");
+                        break;
+                    }
+                }
+            }
+            heading.setText(latest==null || latest.optionText.isEmpty()?name:name+" · "+latest.optionText);
+            description.setText(detail);
+            description.setVisibility(detail.isEmpty()?GONE:VISIBLE);
+            price.setText(rupiah(shownPrice)+(latest==null?"":" / porsi"));
+            String resolved=absoluteUrl(firstNonEmpty(photoUrl,"assets/no-image.png"));
+            if (!resolved.equals(boundPhoto)) {
+                boundPhoto=resolved;
+                loadImage(photo,resolved);
+            }
+            boolean canAdd=canAddToppingPortion();
+            for (ToppingRow row:rows) {
+                CartItem line=findCartItem(row.key);
+                int count=line==null?0:line.qty;
+                row.quantity.setText(String.valueOf(count));
+                row.minus.setEnabled(count>0);
+                row.plus.setEnabled(canAdd && count<99);
+            }
+        }
+
+        boolean canAddToppingPortion() {
+            boolean tracked=menu.optInt("track_stock",0)==1 || menu.optBoolean("track_stock");
+            return !tracked || getQty(id)<menu.optInt("stock",0);
+        }
+
+        void populate() {
+            populated=true;
+            TextView label=text("Pilih jumlah per topping",12,"#47647F",true);
+            label.setPadding(0,dp(9),0,dp(3));
+            choices.addView(label);
+            addChoice(null);
+            for (int i=0;i<options.length();i++) {
+                JSONObject option=options.optJSONObject(i);
+                if (option!=null && !option.optString("name").trim().isEmpty() && option.optLong("display_price")>0) addChoice(option);
+            }
+            JSONArray legacy=new JSONArray();
+            JSONArray groups=menu.optJSONArray("options");
+            if (groups!=null) for (int i=0;i<groups.length();i++) {
+                JSONObject group=groups.optJSONObject(i);
+                if (group!=null && !"bundle_topping".equals(group.optString("type"))) legacy.put(group);
+            }
+            if (hasSelectableOptions(legacy)) {
+                Button other=choiceButton("Varian dan tambahan lain",false);
+                other.setOnClickListener(v->{
+                    if (!canAddToppingPortion()) {
+                        showInfo("Stok habis","Jumlah di keranjang sudah mencapai stok menu.");
+                        return;
+                    }
+                    try { showOptionPicker(new JSONObject(menu.toString()).put("options",legacy)); }
+                    catch (org.json.JSONException error) { showInfo("Pilihan menu","Pilihan belum dapat dimuat."); }
+                });
+                choices.addView(other);
+            }
+        }
+
+        void addChoice(JSONObject option) {
+            String name=option==null?"Tanpa topping":option.optString("name");
+            double shown=option==null?menu.optDouble("price",0):option.optDouble("display_price",0);
+            String image=option==null?menu.optString("image"):firstNonEmpty(option.optString("image"),menu.optString("image"));
+            JSONArray selection=new JSONArray();
+            JSONObject display;
             try {
-                JSONArray selected=new JSONArray();
-                if (option!=null) selected.put(new JSONObject().put("type","bundle_topping").put("name",name));
-                JSONObject displayMenu=new JSONObject(menu.toString()).put("price",price).put("image",image);
-                addConfiguredItem(displayMenu,selected,option==null?"":name,0);
+                if (option!=null) selection.put(new JSONObject().put("type","bundle_topping").put("name",name));
+                display=new JSONObject(menu.toString()).put("price",shown).put("image",image);
+            } catch (org.json.JSONException error) { return; }
+            String key=id+"|"+selection.toString();
+
+            LinearLayout row=new LinearLayout(TransFoodActivityScreenCore.this);
+            row.setGravity(Gravity.CENTER_VERTICAL);
+            row.setBackground(round("#F3F7FC",dp(12)));
+            row.setPadding(dp(6),dp(4),dp(6),dp(4));
+            ImageView thumb=new ImageView(TransFoodActivityScreenCore.this);
+            thumb.setBackground(round("#EAF4FF",dp(8)));
+            thumb.setClipToOutline(true);
+            row.addView(thumb,new LinearLayout.LayoutParams(dp(42),dp(42)));
+            loadImage(thumb,absoluteUrl(firstNonEmpty(image,"assets/no-image.png")));
+            LinearLayout words=new LinearLayout(TransFoodActivityScreenCore.this);
+            words.setOrientation(VERTICAL);
+            words.setPadding(dp(7),0,dp(3),0);
+            TextView title=text(name,13,"#0F172A",true);
+            title.setMaxLines(2);
+            title.setEllipsize(android.text.TextUtils.TruncateAt.END);
+            words.addView(title);
+            String detail=option==null?"":option.optString("description");
+            if (!detail.isEmpty()) {
+                TextView subtitle=text(detail,11,"#64748B",false);
+                subtitle.setSingleLine(true);
+                subtitle.setEllipsize(android.text.TextUtils.TruncateAt.END);
+                words.addView(subtitle);
+            }
+            words.addView(text(rupiah(shown),12,"#0B4B93",true));
+            row.addView(words,new LinearLayout.LayoutParams(0,-2,1));
+
+            Button minus=tinyButton("−"), plus=tinyButton("+");
+            minus.setContentDescription("Kurangi "+name);
+            plus.setContentDescription("Tambah "+name);
+            TextView quantity=text("0",14,"#0F172A",true);
+            quantity.setGravity(Gravity.CENTER);
+            row.addView(minus,new LinearLayout.LayoutParams(dp(44),dp(44)));
+            row.addView(quantity,new LinearLayout.LayoutParams(dp(24),dp(44)));
+            row.addView(plus,new LinearLayout.LayoutParams(dp(44),dp(44)));
+            minus.setOnClickListener(v->{
+                CartItem line=findCartItem(key);
+                if (line!=null && --line.qty==0) cart.remove(line);
                 refreshCartUi();
-                dialog.dismiss();
-            } catch (Exception ignored) { showInfo("Topping","Pilihan belum dapat ditambahkan."); }
-        });
-        LinearLayout.LayoutParams params=new LinearLayout.LayoutParams(-1,-2);
-        params.bottomMargin=dp(8);
-        list.addView(row,params);
+            });
+            plus.setOnClickListener(v->{
+                CartItem line=findCartItem(key);
+                if (!canAddToppingPortion() || line!=null && line.qty>=99) return;
+                addConfiguredItem(display,selection,option==null?"":name,0);
+                refreshCartUi();
+            });
+            rows.add(new ToppingRow(key,quantity,minus,plus));
+            LinearLayout.LayoutParams rowLp=new LinearLayout.LayoutParams(-1,-2);
+            rowLp.bottomMargin=dp(4);
+            choices.addView(row,rowLp);
+        }
+    }
+
+    private static final class ToppingRow {
+        final String key;
+        final TextView quantity;
+        final Button minus, plus;
+        ToppingRow(String key, TextView quantity, Button minus, Button plus) {
+            this.key=key; this.quantity=quantity; this.minus=minus; this.plus=plus;
+        }
     }
 
     protected String optionLabel(JSONObject item) {
@@ -1174,11 +1339,15 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
         return firstNonEmpty(item.optString("name"), "Pilihan") + (extra > 0 ? ("  +" + rupiah(extra)) : "");
     }
 
+    private CartItem findCartItem(String key) {
+        for (CartItem item:cart) if (key.equals(item.key)) return item;
+        return null;
+    }
+
     protected void addConfiguredItem(JSONObject menu, JSONArray selectedOptions, String optionText, double optionExtra) {
         int id = menu.optInt("id", 0);
         String key = id + "|" + selectedOptions.toString();
-        CartItem found = null;
-        for (CartItem c : cart) if (key.equals(c.key)) { found = c; break; }
+        CartItem found = findCartItem(key);
         if (found == null) {
             found = new CartItem();
             found.id = id;
@@ -1194,6 +1363,7 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
             cart.add(found);
         }
         found.qty++;
+        found.selectionOrder=++toppingSelectionOrder;
     }
 
     protected void removeOneFromCart(int menuId) {
@@ -1220,6 +1390,7 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
         if(virtualFood!=null)virtualFood.updateQuantities(this::getQty);
         for (java.util.Map.Entry<Integer, TextView> entry : menuQuantityViews.entrySet())
             entry.getValue().setText(String.valueOf(getQty(entry.getKey())));
+        syncToppingCards();
         buildCartBar();
     }
 
@@ -2128,10 +2299,15 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
             return;
         }
 
+        if (currentScreen==1 && expandedToppingMenu!=0) {
+            expandedToppingMenu=0;
+            syncToppingCards();
+            return;
+        }
         if (currentScreen == 1 || activeRestaurant != null) {
             activeRestaurant = null;
             menus.clear();
-            cart.clear();
+            cart.clear(); expandedToppingMenu=0;
             menuSearchQuery = "";
             showRestaurantList();
             return;
@@ -2205,7 +2381,7 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
     }
 
     private static class MenuSearchItem { int restaurantId; int menuId; String restaurantName; String menuName; String category; String description; String image; double price; double originalPrice; double discountPercent; boolean discountActive; long salesCount; double restaurantRating; double restaurantDistanceKm; boolean active; boolean trackStock; int stock; JSONObject restaurant; }
-    private static class CartItem { int id; int restaurantId; String name; double basePrice; double price; int qty; String key; String optionText; String image; JSONArray selectedOptions; }
+    private static class CartItem { int id; int restaurantId; String name; double basePrice; double price; int qty; String key; String optionText; String image; long selectionOrder; JSONArray selectedOptions; }
     private static class OptionSelection { String type; String label; JSONArray items; RadioGroup radioGroup; LinearLayout checkBoxContainer; }
 
 

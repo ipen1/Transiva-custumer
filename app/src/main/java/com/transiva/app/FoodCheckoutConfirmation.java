@@ -7,9 +7,12 @@ import org.json.JSONArray;
 import org.json.JSONObject;
 import java.text.NumberFormat;
 import java.util.Locale;
-import java.util.function.Consumer;
 
 final class FoodCheckoutConfirmation {
+    interface OnConfirmed {
+        void confirm(String fingerprint);
+    }
+
     private FoodCheckoutConfirmation() {}
 
     static JSONObject quote(Activity activity, String url, JSONObject payload, int timeout) throws Exception {
@@ -22,7 +25,7 @@ final class FoodCheckoutConfirmation {
         return quote;
     }
 
-    static void show(Activity activity, JSONObject quote, boolean changed, Consumer<String> confirm, Runnable cancel) {
+    static void show(Activity activity, JSONObject quote, boolean changed, OnConfirmed confirmed, Runnable cancel) {
         if (activity.isFinishing() || activity.isDestroyed()) return;
         StringBuilder summary = new StringBuilder();
         JSONArray items=quote.optJSONArray("items");
@@ -52,7 +55,7 @@ final class FoodCheckoutConfirmation {
                 .setView(scroll)
                 .setNegativeButton("Kembali",(d,w)->cancel.run())
                 .setOnCancelListener(d->cancel.run())
-                .setPositiveButton("Pesan · "+rupiah(total),(d,w)->confirm.accept(quote.optString("fingerprint")))
+                .setPositiveButton("Pesan · "+rupiah(total),(d,w)->confirmed.confirm(quote.optString("fingerprint")))
                 .show();
     }
 

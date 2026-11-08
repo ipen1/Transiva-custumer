@@ -4,52 +4,24 @@ plugins {
     id 'com.google.firebase.crashlytics'
 }
 
+
+// Optional emulator-only native packaging. Release variants keep their existing ABI set.
+def transivaCiRuntimeAbi = providers.gradleProperty('transivaCiRuntimeAbi').orNull
+if (transivaCiRuntimeAbi != null && transivaCiRuntimeAbi != 'x86_64') {
+    throw new GradleException('transivaCiRuntimeAbi only supports the x86_64 CI emulator')
+}
+
 android {
     namespace 'com.transiva.app'
-    flavorDimensions 'distribution'
-
-    productFlavors {
-        direct {
-            dimension 'distribution'
-            buildConfigField 'boolean', 'SELF_UPDATE_APK', 'true'
-        }
-        play {
-            // Required by the enabled Google Play automatic protection.
-            // Direct APK keeps the default minSdk 23.
-            minSdk 24
-            dimension 'distribution'
-            buildConfigField 'boolean', 'SELF_UPDATE_APK', 'false'
-        }
-    }
-
-    buildFeatures {
-        buildConfig true
-    }
-    testBuildType "release"
     compileSdk 36
-    lint {
-        abortOnError true
-        checkReleaseBuilds true
-        // Focus this gate on compatibility with the supported Android minimum.
-        checkOnly 'NewApi'
-        enable 'NewApi'
-        fatal 'NewApi'
-    }
-
-    compileOptions {
-        sourceCompatibility JavaVersion.VERSION_1_8
-        targetCompatibility JavaVersion.VERSION_1_8
-    }
 
     defaultConfig {
-        applicationId 'com.transiva.customer'
-        buildConfigField 'boolean', 'LOCAL_VERIFICATION', project.hasProperty('transivaLocalVerification') ? 'true' : 'false'
-        manifestPlaceholders = [transivaTelemetryEnabled: project.hasProperty('transivaLocalVerification') ? 'false' : 'true']
-        testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner'
-        minSdk 23
+        applicationId 'com.transiva.driver'
+        minSdk 24
         targetSdk 36
-        versionCode 62
-        versionName "2.9.12"
+        versionCode 52
+        versionName '2.9.2'
+        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
     }
 
     signingConfigs {
@@ -62,51 +34,52 @@ android {
         }
     }
 
+    // Google Play App Bundle: Play menghasilkan APK per perangkat/ABI, bukan APK universal 100+ MB.
+    bundle {
+        abi { enableSplit = true }
+        density { enableSplit = true }
+        language { enableSplit = true }
+    }
+
     buildTypes {
         debug {
             debuggable true
+            if (transivaCiRuntimeAbi != null) {
+                ndk { abiFilters transivaCiRuntimeAbi }
+            }
         }
 
         release {
             signingConfig signingConfigs.release
             debuggable false
 
-            // Keep JNI and reflective entry points, optimize the remaining release code.
+            // Every release (local and CI) must be optimized; debug remains unminified.
             minifyEnabled true
             shrinkResources true
-            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
-            // Local verification and smoke builds must not upload mappings to production Firebase.
+            // Keep mapping as a CI artifact. Upload to Firebase is an explicit release-owner action.
             firebaseCrashlytics {
-                mappingFileUploadEnabled = !project.hasProperty('transivaLocalVerification')
+                mappingFileUploadEnabled false
                 nativeSymbolUploadEnabled false
             }
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
     }
 }
 
 dependencies {
     implementation 'androidx.work:work-runtime:2.9.1'
-    // Shared with AndroidJUnitRunner. Keep one ABI in the app and instrumentation APK.
-    implementation 'androidx.tracing:tracing:1.2.0'
-    androidTestImplementation 'androidx.tracing:tracing:1.2.0'
-    androidTestImplementation 'androidx.test:runner:1.6.2'
-    androidTestImplementation 'androidx.test.ext:junit:1.2.1'
-    // Premium Trans Asisten animated mascot (offline Lottie asset)
-    implementation 'com.airbnb.android:lottie:6.6.2'
-
-    // Regression tests for critical customer order/chat state rules.
     testImplementation 'junit:junit:4.13.2'
-    // Real JSON implementation for local JVM tests; Android's mockable jar throws at runtime.
-    testImplementation 'org.json:json:20240303'
+    androidTestImplementation 'androidx.test.ext:junit:1.2.1'
+    androidTestImplementation 'androidx.test:core:1.6.1'
+    androidTestImplementation 'androidx.test:runner:1.6.2'
+    androidTestImplementation 'androidx.test:rules:1.6.1'
+    androidTestImplementation 'androidx.test.espresso:espresso-core:3.6.1'
 
     // Native audio WebRTC (Maven Central)
     implementation 'io.github.webrtc-sdk:android:144.7559.09'
 
-    // API 36-compatible stable release; keep support for the direct flavor's API 23.
-    implementation 'androidx.activity:activity:1.11.0'
-    // Pin the UI dependency supplied transitively by Places instead of using 1.12.0.
-    implementation 'com.google.android.material:material:1.13.0'
-    implementation 'androidx.biometric:biometric:1.1.0'
+    implementation 'androidx.activity:activity:1.9.3'
+    implementation 'androidx.fragment:fragment:1.8.5'
 
     implementation 'androidx.camera:camera-view:1.4.1'
     implementation 'androidx.camera:camera-lifecycle:1.4.1'
@@ -114,18 +87,18 @@ dependencies {
     implementation 'androidx.camera:camera-core:1.4.1'
 
     implementation 'androidx.core:core:1.17.0'
-    implementation 'androidx.recyclerview:recyclerview:1.3.2'
+    implementation 'androidx.biometric:biometric:1.1.0'
     implementation 'androidx.exifinterface:exifinterface:1.3.7'
 
-    // Google Maps native renderer. OSRM remains the routing engine.
+    // Google Maps SDK untuk menu Lokasi Driver.
     implementation 'com.google.android.gms:play-services-maps:20.0.0'
     implementation 'com.google.android.gms:play-services-location:21.3.0'
-    // Smart destination search for TransRide/TransCar. 4.4.1 keeps minSdk 23 compatibility.
-    implementation 'com.google.android.libraries.places:places:4.4.1'
-    implementation 'com.google.android.gms:play-services-auth:21.2.0'
+
+    // Native GPU map renderer. No WebView / Leaflet / JavaScript bridge.
+    implementation 'org.maplibre.gl:android-sdk:13.1.0'
 
     implementation platform('com.google.firebase:firebase-bom:33.7.0')
     implementation 'com.google.firebase:firebase-messaging'
     implementation 'com.google.firebase:firebase-crashlytics'
-    implementation 'com.google.firebase:firebase-analytics'
+    // Firebase Analytics intentionally omitted: Transiva Driver does not use Advertising ID.
 }

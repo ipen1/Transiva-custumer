@@ -77,6 +77,31 @@ public final class ReliableOrderClient {
             }
         }finally{synchronized(ReliableOrderClient.class){IN_FLIGHT.remove(slot);}}
     }
+    static JSONObject recoverPendingFood(Context context,String url,int timeout) throws Exception {
+        Context app=context.getApplicationContext();
+        CustomerTransportSession owner=CustomerTransportSession.capture(context);
+        String user=new SessionManager(app).getUserId();
+        String slot="order:"+user+":create_food_order.php";
+        SharedPreferences prefs=app.getSharedPreferences("transiva_order_attempts",Context.MODE_PRIVATE);
+        String key;
+        synchronized (ReliableOrderClient.class) {
+            key=prefs.getString(slot+":key","");
+            if (key.isEmpty()) return null;
+            if (!IN_FLIGHT.add(slot)) throw new PendingAttemptException("Permintaan order masih diproses.");
+        }
+        try {
+            String resolve=url.substring(0,url.lastIndexOf('/')+1)+"customer_resolve_order_attempt.php?attempt_key="
+                    +java.net.URLEncoder.encode(key,"UTF-8");
+            JSONObject response=TransivaHttpRepository.getJsonOnce(app,resolve,timeout,owner);
+            if (!response.optBoolean("success")) throw new PendingAttemptException("Hasil pesanan sebelumnya belum dapat dipastikan.");
+            if (!response.optBoolean("attempt_found")) return null;
+            JSONObject order=response.optJSONObject("order_response");
+            if (order==null || order.optString("order_id").isEmpty()) throw new PendingAttemptException("Hasil pesanan sebelumnya belum dapat dibaca.");
+            clear(prefs,slot);
+            return order;
+        } finally { synchronized (ReliableOrderClient.class) { IN_FLIGHT.remove(slot); } }
+    }
+
     private static final String PICKUP_URL = "https://transiva.my.id/server/create_pickup_order.php";
 
     private static boolean isPickupSlot(String slot) {

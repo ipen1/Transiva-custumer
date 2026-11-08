@@ -980,6 +980,13 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
 
     protected void showOptionPicker(JSONObject menu) {
         JSONArray groups = menu.optJSONArray("options");
+        if (groups!=null) for (int i=0;i<groups.length();i++) {
+            JSONObject group=groups.optJSONObject(i);
+            if (group!=null && "bundle_topping".equals(group.optString("type"))) {
+                showBundleToppings(menu,group.optJSONArray("items"),groups);
+                return;
+            }
+        }
         if (!hasSelectableOptions(groups)) {
             addConfiguredItem(menu, new JSONArray(), "", 0);
             refreshCartUi();
@@ -1094,6 +1101,74 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
                 .show();
     }
 
+    private void showBundleToppings(JSONObject menu, JSONArray items, JSONArray groups) {
+        LinearLayout choices = new LinearLayout(this);
+        choices.setOrientation(LinearLayout.VERTICAL);
+        choices.setPadding(dp(16),dp(8),dp(16),dp(8));
+        ScrollView scroll = new ScrollView(this);
+        scroll.addView(choices);
+        android.app.AlertDialog dialog = new TransivaAlertDialogBuilder(this)
+                .setTitle(menu.optString("name","Pilih topping")).setView(scroll)
+                .setNegativeButton("Batal",null).create();
+        addToppingChoice(choices, menu, null, dialog);
+        if (items!=null) for (int i=0;i<items.length();i++) {
+            JSONObject option=items.optJSONObject(i);
+            if (option!=null && option.optLong("display_price")>0) addToppingChoice(choices,menu,option,dialog);
+        }
+        JSONArray legacy=new JSONArray();
+        for (int i=0;i<groups.length();i++) {
+            JSONObject group=groups.optJSONObject(i);
+            if (group!=null && !"bundle_topping".equals(group.optString("type"))) legacy.put(group);
+        }
+        if (hasSelectableOptions(legacy)) {
+            Button other=choiceButton("Lihat varian dan tambahan lain",false);
+            other.setOnClickListener(v->{
+                dialog.dismiss();
+                try { showOptionPicker(new JSONObject(menu.toString()).put("options",legacy)); }
+                catch (Exception ignored) { showInfo("Pilihan menu","Pilihan belum dapat dimuat."); }
+            });
+            choices.addView(other);
+        }
+        dialog.show();
+    }
+
+    private void addToppingChoice(LinearLayout list, JSONObject menu, JSONObject option, android.app.AlertDialog dialog) {
+        LinearLayout row=card();
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setPadding(dp(8),dp(8),dp(8),dp(8));
+        String name=option==null?"Tanpa topping":option.optString("name");
+        long price=option==null?menu.optLong("price"):option.optLong("display_price");
+        String image=option==null?menu.optString("image"):option.optString("image",menu.optString("image"));
+        ImageView thumbnail=new ImageView(this);
+        thumbnail.setScaleType(ImageView.ScaleType.CENTER_CROP);
+        row.addView(thumbnail,new LinearLayout.LayoutParams(dp(66),dp(66)));
+        loadImage(thumbnail,absoluteUrl(image));
+        LinearLayout words=new LinearLayout(this);
+        words.setOrientation(LinearLayout.VERTICAL);
+        words.setPadding(dp(10),0,0,0);
+        words.addView(text(name,14,"#0F172A",true));
+        String description=option==null?menu.optString("description"):option.optString("description");
+        if (!description.isEmpty()) words.addView(text(description,11,"#64748B",false));
+        words.addView(text(rupiah(price)+" · Tambah",13,"#0B3A78",true));
+        row.addView(words,new LinearLayout.LayoutParams(0,-2,1));
+        row.setFocusable(true);
+        row.setContentDescription(name+", "+rupiah(price)+", tambah ke keranjang");
+        row.setOnClickListener(v->{
+            try {
+                JSONArray selected=new JSONArray();
+                if (option!=null) selected.put(new JSONObject().put("type","bundle_topping").put("name",name));
+                JSONObject displayMenu=new JSONObject(menu.toString()).put("price",price).put("image",image);
+                addConfiguredItem(displayMenu,selected,option==null?"":name,0);
+                refreshCartUi();
+                dialog.dismiss();
+            } catch (Exception ignored) { showInfo("Topping","Pilihan belum dapat ditambahkan."); }
+        });
+        LinearLayout.LayoutParams params=new LinearLayout.LayoutParams(-1,-2);
+        params.bottomMargin=dp(8);
+        list.addView(row,params);
+    }
+
     protected String optionLabel(JSONObject item) {
         double extra = item.optDouble("price", 0);
         return firstNonEmpty(item.optString("name"), "Pilihan") + (extra > 0 ? ("  +" + rupiah(extra)) : "");
@@ -1114,6 +1189,7 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
             found.qty = 0;
             found.key = key;
             found.optionText = optionText;
+            found.image = menu.optString("image");
             found.selectedOptions = selectedOptions;
             cart.add(found);
         }
@@ -1220,6 +1296,14 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
         if(activeRestaurant.optInt("is_open",1)!=1)items.addView(text(firstNonEmpty(activeRestaurant.optString("availability_reason"),"Merchant sedang tutup"),12,"#EF4444",true));
         for(CartItem item:cart){
             LinearLayout row=new LinearLayout(this);row.setGravity(Gravity.CENTER_VERTICAL);row.setPadding(0,dp(10),0,dp(4));
+            if (item.image!=null && !item.image.isEmpty()) {
+                ImageView thumbnail=new ImageView(this);
+                thumbnail.setScaleType(ImageView.ScaleType.CENTER_CROP);
+                LinearLayout.LayoutParams picture=new LinearLayout.LayoutParams(dp(42),dp(42));
+                picture.rightMargin=dp(8);
+                row.addView(thumbnail,picture);
+                loadImage(thumbnail,absoluteUrl(item.image));
+            }
             LinearLayout words=new LinearLayout(this);words.setOrientation(LinearLayout.VERTICAL);words.setPadding(0,0,dp(8),0);
             words.addView(text(item.name,14,"#0F172A",true));
             if(item.optionText!=null&&!item.optionText.isEmpty())words.addView(text(item.optionText,11,"#64748B",false));
@@ -1667,25 +1751,86 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
             }
             payload.put("items", items);
         }catch(Exception invalid){showInfo("Pesanan","Rincian pesanan belum siap. Silakan coba lagi.");return;}
-        foodOrderSubmitting=true;if(checkoutSubmitButton!=null)checkoutSubmitButton.setEnabled(false);
+        requestFoodConfirmation(payload, null);
+    }
+
+    private void requestFoodConfirmation(JSONObject payload, JSONObject updatedQuote) {
+        if (currentScreen!=2 || isFinishing() || isDestroyed()) return;
+        foodOrderSubmitting=true;
+        if (checkoutSubmitButton!=null) checkoutSubmitButton.setEnabled(false);
+        if (updatedQuote!=null) {
+            presentFoodQuote(payload,updatedQuote,true);
+            return;
+        }
         setLoading(true);
-        java.util.concurrent.Future<?> submission=featureRuntime.execute(() -> {
+        featureRuntime.execute(() -> {
             try {
-                JSONObject res = ReliableOrderClient.create(this, BASE_URL + "server/create_food_order.php", payload, TIMEOUT_MS);
-                boolean ok = res.optBoolean("success", false);
-                String msg = firstNonEmpty(res.optString("message"), ok ? "Pesanan berhasil dibuat" : "Gagal membuat pesanan");
-                featureRuntime.post(mainHandler, () -> {
-                    foodOrderSubmitting=false;restoreCheckoutSubmit();
+                String url=BASE_URL+"server/create_food_order.php";
+                JSONObject recovered=ReliableOrderClient.recoverPendingFood(this,url,TIMEOUT_MS);
+                if (recovered!=null) {
+                    featureRuntime.post(mainHandler,()->{
+                        finishFoodSubmission();
+                        if(currentScreen==2) showFoodOrderSuccess(recovered.optString("order_id"),0);
+                    });
+                    return;
+                }
+                JSONObject quote=FoodCheckoutConfirmation.quote(this,url,payload,TIMEOUT_MS);
+                featureRuntime.post(mainHandler,()->{
                     setLoading(false);
-                    if (ok) {
-                        showFoodOrderSuccess(res.optString("order_id", ""), 0);
-                    } else showInfo("Gagal", msg);
+                    if(currentScreen==2) presentFoodQuote(payload,quote,quote.optLong("total")!=lastFoodQuote
+                            || quote.optLong("food_total")!=Math.round(foodTotal())
+                            || quote.optLong("delivery_fee")!=Math.round(standardFee));
+                    else finishFoodSubmission();
                 });
-            } catch (Exception e) {
-                featureRuntime.post(mainHandler, () -> { foodOrderSubmitting=false;restoreCheckoutSubmit(); setLoading(false); showInfo("Error", ReliableOrderClient.failureMessage(e)); });
+            } catch (Exception error) {
+                featureRuntime.post(mainHandler,()->foodSubmissionError(error));
             }
-        },()->featureRuntime.post(mainHandler,()->{foodOrderSubmitting=false;restoreCheckoutSubmit();setLoading(false);showInfo("Coba lagi","Sistem sedang sibuk. Silakan coba lagi sebentar.");}));
-        if(submission==null){foodOrderSubmitting=false;restoreCheckoutSubmit();setLoading(false);showInfo("Coba lagi","Sistem sedang sibuk. Silakan coba lagi sebentar.");}
+        },()->featureRuntime.post(mainHandler,()->foodSubmissionError(new IllegalStateException("Sistem sedang sibuk. Coba lagi."))));
+    }
+
+    private void presentFoodQuote(JSONObject payload,JSONObject quote,boolean changed) {
+        FoodCheckoutConfirmation.show(this,quote,changed, fingerprint->{
+            try {
+                JSONObject confirmed=new JSONObject(payload.toString()).put("expected_quote",fingerprint);
+                submitConfirmedFood(confirmed);
+            } catch (Exception error) { foodSubmissionError(error); }
+        },this::finishFoodSubmission);
+    }
+
+    private void submitConfirmedFood(JSONObject payload) {
+        setLoading(true);
+        featureRuntime.execute(() -> {
+            try {
+                JSONObject response=ReliableOrderClient.create(this,BASE_URL+"server/create_food_order.php",payload,TIMEOUT_MS);
+                featureRuntime.post(mainHandler,()->{
+                    finishFoodSubmission();
+                    if(currentScreen!=2) return;
+                    if(response.optBoolean("success")) {
+                        showFoodOrderSuccess(response.optString("order_id"),0);
+                        return;
+                    }
+                    JSONObject next=response.optJSONObject("quote");
+                    if ("FOOD_QUOTE_CHANGED".equals(response.optString("code")) && next!=null) {
+                        requestFoodConfirmation(payload,next);
+                        return;
+                    }
+                    showInfo("Gagal",response.optString("message","Pesanan belum dibuat."));
+                });
+            } catch (Exception error) {
+                featureRuntime.post(mainHandler,()->foodSubmissionError(error));
+            }
+        },()->featureRuntime.post(mainHandler,()->foodSubmissionError(new IllegalStateException("Sistem sedang sibuk. Coba lagi."))));
+    }
+
+    private void finishFoodSubmission() {
+        foodOrderSubmitting=false;
+        restoreCheckoutSubmit();
+        setLoading(false);
+    }
+
+    private void foodSubmissionError(Exception error) {
+        finishFoodSubmission();
+        if(currentScreen==2) showInfo("Pesanan",ReliableOrderClient.failureMessage(error));
     }
 
     private void restoreCheckoutSubmit(){if(checkoutSubmitButton!=null)checkoutSubmitButton.setEnabled(activeRestaurant!=null&&activeRestaurant.optInt("is_open",1)==1);}
@@ -2060,7 +2205,7 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
     }
 
     private static class MenuSearchItem { int restaurantId; int menuId; String restaurantName; String menuName; String category; String description; String image; double price; double originalPrice; double discountPercent; boolean discountActive; long salesCount; double restaurantRating; double restaurantDistanceKm; boolean active; boolean trackStock; int stock; JSONObject restaurant; }
-    private static class CartItem { int id; int restaurantId; String name; double basePrice; double price; int qty; String key; String optionText; JSONArray selectedOptions; }
+    private static class CartItem { int id; int restaurantId; String name; double basePrice; double price; int qty; String key; String optionText; String image; JSONArray selectedOptions; }
     private static class OptionSelection { String type; String label; JSONArray items; RadioGroup radioGroup; LinearLayout checkBoxContainer; }
 
 

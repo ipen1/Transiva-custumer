@@ -46,6 +46,8 @@ class RepeatFoodOrderActivityScreenCore extends CustomerAdaptiveFragmentActivity
     protected final Map<Integer, JSONObject> menuMap =
             new LinkedHashMap<>();
 
+    private final Map<Integer, JSONObject> repeatLines = new LinkedHashMap<>();
+
     protected final Map<Integer, Integer> quantities =
             new LinkedHashMap<>();
 
@@ -405,6 +407,7 @@ class RepeatFoodOrderActivityScreenCore extends CustomerAdaptiveFragmentActivity
 
     protected void restoreMenus(JSONArray menus) {
         menuMap.clear();
+        repeatLines.clear();
         quantities.clear();
         menuBox.removeAllViews();
 
@@ -462,8 +465,16 @@ class RepeatFoodOrderActivityScreenCore extends CustomerAdaptiveFragmentActivity
                 continue;
             }
 
-            quantities.put(menuId, qty);
-            addMenuCard(current);
+            JSONObject line = restoreFoodLine(current,old);
+            if (line == null) {
+                addUnavailableCard(old);
+                unavailable++;
+                continue;
+            }
+            int row = i+1;
+            repeatLines.put(row,line);
+            quantities.put(row,qty);
+            addMenuCard(line,row);
             restored++;
         }
 
@@ -487,11 +498,51 @@ class RepeatFoodOrderActivityScreenCore extends CustomerAdaptiveFragmentActivity
 
 
 
-    protected void addMenuCard(
-            JSONObject menu
-    ) {
-        int menuId = menu.optInt("id", 0);
+    private JSONObject restoreFoodLine(JSONObject menu, JSONObject old) {
+        try {
+            JSONObject row=new JSONObject(menu.toString());
+            JSONArray choices=old.optJSONArray("selected_options");
+            if (choices==null) return row;
+            JSONArray groups=menu.optJSONArray("options");
+            JSONArray selected=new JSONArray();
+            java.util.ArrayList<String> names=new java.util.ArrayList<>();
+            double price=menu.optDouble("price");
+            String photo=menu.optString("image");
+            for (int i=0;i<choices.length();i++) {
+                JSONObject oldChoice=choices.optJSONObject(i);
+                if (oldChoice==null) continue;
+                String type=oldChoice.optString("type","option");
+                String name=oldChoice.optString("name");
+                JSONObject option=findFoodOption(groups,type,name);
+                if (option==null) return null;
+                if ("bundle_topping".equals(type)) {
+                    price=option.getDouble("display_price");
+                    photo=option.optString("image",photo);
+                } else price+=option.optDouble("price",0);
+                selected.put(new JSONObject().put("type",type).put("name",option.optString("name")));
+                names.add(option.optString("name"));
+            }
+            return row.put("selected_options",selected).put("price",price).put("image",photo)
+                    .put("name",menu.optString("name")+(names.isEmpty()?"":" · "+android.text.TextUtils.join(", ",names)));
+        } catch (Exception error) { return null; }
+    }
 
+    private JSONObject findFoodOption(JSONArray groups,String type,String name) {
+        if (groups==null) return null;
+        for (int i=0;i<groups.length();i++) {
+            JSONObject group=groups.optJSONObject(i);
+            if (group==null || !type.equalsIgnoreCase(group.optString("type","option"))) continue;
+            JSONArray items=group.optJSONArray("items");
+            if (items==null) continue;
+            for (int j=0;j<items.length();j++) {
+                JSONObject item=items.optJSONObject(j);
+                if (item!=null && name.equalsIgnoreCase(item.optString("name"))) return item;
+            }
+        }
+        return null;
+    }
+
+    protected void addMenuCard(JSONObject menu, int menuId) {
         LinearLayout card =
                 new LinearLayout(this);
 
@@ -714,7 +765,7 @@ class RepeatFoodOrderActivityScreenCore extends CustomerAdaptiveFragmentActivity
             }
 
             JSONObject menu =
-                    menuMap.get(entry.getKey());
+                    repeatLines.get(entry.getKey());
 
             if (menu != null) {
                 total +=
@@ -738,18 +789,12 @@ class RepeatFoodOrderActivityScreenCore extends CustomerAdaptiveFragmentActivity
             return;
         }
 
-        new TransivaAlertDialogBuilder(this)
-                .setTitle("Konfirmasi Pesan Lagi")
-                .setMessage(
-                        "Harga makanan dan ongkir akan dihitung kembali."
-                )
-                .setNegativeButton("Batal", null)
-                .setPositiveButton(
-                        "Buat Order",
-                        (dialog, which) ->
-                                submitFoodOrder(items)
-                )
-                .show();
+        if (submitting || userId<=0) return;
+        try {
+            JSONObject payload=new JSONObject().put("user_id",userId).put("restaurant_id",data.restaurantId)
+                    .put("delivery_mode",data.deliveryMode).put("payment_method",paymentMethod).put("items",items);
+            loadFoodQuote(payload);
+        } catch (Exception error) { toast("Rincian pesanan belum siap."); }
     }
 
     protected JSONArray selectedItems() {
@@ -761,24 +806,14 @@ class RepeatFoodOrderActivityScreenCore extends CustomerAdaptiveFragmentActivity
                 continue;
             }
 
-            JSONObject item = new JSONObject();
-
+            JSONObject line=repeatLines.get(entry.getKey());
+            if (line==null) continue;
+            JSONObject item=new JSONObject();
             try {
-                item.put(
-                        "id",
-                        entry.getKey()
-                );
-
-                item.put(
-                        "menu_id",
-                        entry.getKey()
-                );
-
-                item.put(
-                        "qty",
-                        entry.getValue()
-                );
-
+                item.put("id",line.optInt("id"));
+                item.put("qty",entry.getValue());
+                JSONArray options=line.optJSONArray("selected_options");
+                if (options!=null) item.put("selected_options",options);
                 result.put(item);
             } catch (Exception ignored) {
             }
@@ -787,127 +822,75 @@ class RepeatFoodOrderActivityScreenCore extends CustomerAdaptiveFragmentActivity
         return result;
     }
 
-    protected void submitFoodOrder(
-            JSONArray items
-    ) {
-        if ("balance".equals(paymentMethod) && BiometricSecurityManager.isEnabled(this)) {
-            BiometricSecurityManager.authenticate(this, "Otorisasi Transiva Pay", "Konfirmasi biometrik sebelum membayar pesanan ini.", new BiometricSecurityManager.Callback() {
-                @Override public void onSuccess() { submitFoodOrderAuthorized(items); }
-                @Override public void onUnavailable(String message) { toast(message); }
-            });
-            return;
-        }
-        submitFoodOrderAuthorized(items);
-    }
-
-    protected void submitFoodOrderAuthorized(
-            JSONArray items
-    ) {
-        if (submitting) {
-            return;
-        }
-
-        if (userId <= 0) {
-            toast("Sesi pengguna tidak ditemukan");
-            return;
-        }
-
-        submitting = true;
-        loading.setVisibility(ProgressBar.VISIBLE);
-
+    private void loadFoodQuote(JSONObject payload) {
+        setFoodSubmitting(true);
         networkScope.newThread(() -> {
             try {
-                JSONObject payload =
-                        new JSONObject();
-
-                payload.put("user_id", userId);
-
-                payload.put(
-                        "restaurant_id",
-                        data.restaurantId
-                );
-
-                payload.put(
-                        "delivery_mode",
-                        data.deliveryMode
-                );
-
-                payload.put(
-                        "payment_method",
-                        paymentMethod
-                );
-
-                payload.put("items", items);
-
-                JSONObject response =
-                        RepeatOrderApi.post(
-                                CREATE_FOOD_URL,
-                                payload
-                        );
-
-                if (
-                        !response.optBoolean(
-                                "success",
-                                false
-                        )
-                ) {
-                    throw new IllegalStateException(
-                            response.optString(
-                                    "message",
-                                    "Order gagal"
-                            )
-                    );
-                }
-
-                runOnUiThread(() -> {
-                    submitting = false;
-                    loading.setVisibility(
-                            ProgressBar.GONE
-                    );
-
-                    new TransivaAlertDialogBuilder(this)
-                            .setTitle("Order Berhasil")
-                            .setMessage(
-                                    response.optString(
-                                            "message",
-                                            "Pesanan makanan berhasil dibuat"
-                                    )
-                            )
-                            .setCancelable(false)
-                            .setPositiveButton(
-                                    "Lihat Aktivitas",
-                                    (dialog, which) -> {
-                                        Intent intent =
-                                                new Intent(
-                                                        this,
-                                                        CustomerHistoryActivity.class
-                                                );
-
-                                        intent.addFlags(
-                                                Intent.FLAG_ACTIVITY_CLEAR_TOP
-                                        );
-
-                                        startActivity(intent);
-                                        finish();
-                                    }
-                            )
-                            .show();
+                JSONObject recovered=ReliableOrderClient.recoverPendingFood(this,CREATE_FOOD_URL,25_000);
+                JSONObject quote=recovered==null?FoodCheckoutConfirmation.quote(this,CREATE_FOOD_URL,payload,25_000):null;
+                runOnUiThread(()->{
+                    loading.setVisibility(ProgressBar.GONE);
+                    if (recovered!=null) showFoodReceipt(recovered);
+                    else presentFoodQuote(payload,quote,false);
                 });
-
-            } catch (Exception error) {
-                runOnUiThread(() -> {
-                    submitting = false;
-                    loading.setVisibility(
-                            ProgressBar.GONE
-                    );
-
-                    toast(
-                            "Order gagal: "
-                                    + error.getMessage()
-                    );
-                });
-            }
+            } catch (Exception error) { runOnUiThread(()->failFoodOrder(error)); }
         }).start();
+    }
+
+    private void presentFoodQuote(JSONObject payload, JSONObject quote, boolean changed) {
+        FoodCheckoutConfirmation.show(this,quote,changed,fingerprint->{
+            try {
+                JSONObject confirmed=new JSONObject(payload.toString()).put("expected_quote",fingerprint);
+                if ("balance".equals(confirmed.optString("payment_method")) && BiometricSecurityManager.isEnabled(this)) {
+                    setFoodSubmitting(false);
+                    BiometricSecurityManager.authenticate(this,"Otorisasi Transiva Pay",
+                            "Konfirmasi biometrik sebelum membayar pesanan ini.",new BiometricSecurityManager.Callback() {
+                        @Override public void onSuccess() { submitConfirmedFood(confirmed); }
+                        @Override public void onUnavailable(String message) { setFoodSubmitting(false); toast(message); }
+                    });
+                } else submitConfirmedFood(confirmed);
+            } catch (Exception error) { failFoodOrder(error); }
+        },()->setFoodSubmitting(false));
+    }
+
+    private void submitConfirmedFood(JSONObject payload) {
+        setFoodSubmitting(true);
+        networkScope.newThread(()->{
+            try {
+                JSONObject response=RepeatOrderApi.post(CREATE_FOOD_URL,payload);
+                runOnUiThread(()->{
+                    setFoodSubmitting(false);
+                    if (response.optBoolean("success")) showFoodReceipt(response);
+                    else if ("FOOD_QUOTE_CHANGED".equals(response.optString("code")) && response.optJSONObject("quote")!=null) {
+                        submitting=true;
+                        presentFoodQuote(payload,response.optJSONObject("quote"),true);
+                    } else toast(response.optString("message","Pesanan belum dibuat."));
+                });
+            } catch (Exception error) { runOnUiThread(()->failFoodOrder(error)); }
+        }).start();
+    }
+
+    private void setFoodSubmitting(boolean value) {
+        submitting=value;
+        loading.setVisibility(value?ProgressBar.VISIBLE:ProgressBar.GONE);
+    }
+
+    private void failFoodOrder(Exception error) {
+        setFoodSubmitting(false);
+        toast(ReliableOrderClient.failureMessage(error));
+    }
+
+    private void showFoodReceipt(JSONObject response) {
+        setFoodSubmitting(false);
+        if (isFinishing() || isDestroyed()) return;
+        new TransivaAlertDialogBuilder(this).setTitle("Order Berhasil")
+                .setMessage(response.optString("message","Pesanan makanan berhasil dibuat."))
+                .setCancelable(false)
+                .setPositiveButton("Lihat Aktivitas",(dialog,which)->{
+                    Intent intent=new Intent(this,CustomerHistoryActivity.class).addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP);
+                    startActivity(intent);
+                    finish();
+                }).show();
     }
 
     protected void showFatal(String message) {

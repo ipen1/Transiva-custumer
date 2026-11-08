@@ -16,8 +16,7 @@ import java.util.Locale;
  * - Mendukung markLoggedOut(String)
  * - Mendukung forceLogout(String)
  *
- * Jadi aman untuk LoginActivity, SplashActivity, NativeSessionGuard,
- * BootReceiver, FCM, dan Service lama.
+ * Dipakai oleh login, splash, PIN, FCM, dan session customer native.
  */
 public class SessionManager {
 
@@ -74,9 +73,6 @@ public class SessionManager {
      * session.saveUser(user);
      */
     public boolean saveUser(JSONObject user) {
-        synchronized(SessionManager.class){return saveUserLocked(user);}
-    }
-    private boolean saveUserLocked(JSONObject user) {
         try {
             JSONObject clean = normalizeUser(user);
 
@@ -86,14 +82,6 @@ public class SessionManager {
             }
 
             String role = clean.optString("role", "customer");
-            String secureToken = clean.optString("token", "");
-            if (secureToken.isEmpty() && clean.optString("id", "").equals(prefs.getString("id", ""))) secureToken=getToken();
-            if (secureToken.isEmpty() || !SecureTokenStore.put(appContext, secureToken)) throw new IllegalStateException("AUTH_ENCRYPT_FAILED");
-            clean.remove("token");
-            clean.remove("access_token");
-            clean.remove("auth_token");
-            clean.remove("api_token");
-            clean.remove("session_token");
 
             SharedPreferences.Editor e = prefs.edit();
 
@@ -106,8 +94,9 @@ public class SessionManager {
             e.putString("session_message", "Session aktif");
             e.putString("native_session_message", "Session aktif");
 
-            e.putString("raw_user", TokenJsonSanitizer.clean(clean).toString());
-            e.putString("raw_session", TokenJsonSanitizer.clean(clean).toString());
+            String safeSessionJson = sanitizedSessionJson(clean);
+            e.putString("raw_user", safeSessionJson);
+            e.putString("raw_session", safeSessionJson);
 
             e.putString("id", clean.optString("id", ""));
             e.putString("user_id", clean.optString("user_id", ""));
@@ -115,7 +104,36 @@ public class SessionManager {
             e.putString("name", clean.optString("name", ""));
             e.putString("role", role);
             e.putString("phone", clean.optString("phone", ""));
-            e.remove("token");
+            // Keep delivery data across partial profile/dashboard payloads, but never across accounts.
+            String incomingId = clean.optString("id", clean.optString("user_id", ""));
+            String previousId = prefs.getString("id", "");
+            boolean sameAccount = !incomingId.isEmpty() && incomingId.equals(previousId);
+            String delivery = clean.has("delivery_address") && !clean.isNull("delivery_address")
+                    ? clean.optString("delivery_address", "").trim()
+                    : (sameAccount ? prefs.getString("delivery_address", "") : "");
+            e.putString("delivery_address", delivery);
+            e.putString("delivery_owner_id", incomingId);
+            if (clean.has("delivery_lat")) e.putString("delivery_lat", clean.optString("delivery_lat", ""));
+            else if (!sameAccount) e.remove("delivery_lat");
+            if (clean.has("delivery_lng")) e.putString("delivery_lng", clean.optString("delivery_lng", ""));
+            else if (!sameAccount) e.remove("delivery_lng");
+
+            // Respons profile/dashboard tidak selalu membawa token. Jangan pernah
+            // menghapus Bearer token aktif hanya karena field token tidak ada/kosong.
+            String previousChatToken = getToken();
+            String tokenToSave = firstNonEmpty(
+                    clean.optString("token", ""),
+                    sameAccount ? getToken() : ""
+            );
+            if (tokenToSave.isEmpty()) throw new IllegalStateException("AUTH_TOKEN_MISSING");
+            if (!tokenToSave.isEmpty()) {
+                // Authentication secret is encrypted with Android Keystore.
+                // Keep no new plaintext token in the normal session preferences.
+                if (!SecureTokenStore.put(appContext, tokenToSave)) {
+                    throw new IllegalStateException("AUTH_ENCRYPT_FAILED");
+                }
+                e.remove("token").remove("access_token").remove("auth_token").remove("api_token").remove("session_token");
+            }
             e.putString("restaurant_id", clean.optString("restaurant_id", ""));
             e.putString("balance", clean.optString("balance", "0"));
             e.putString("driver_type", clean.optString("driver_type", "bike"));
@@ -134,6 +152,9 @@ public class SessionManager {
 
             e.apply();
 
+            CustomerChatNoticeState.begin(appContext, incomingId, tokenToSave,
+                    !sameAccount || !tokenToSave.equals(previousChatToken));
+            if (!sameAccount) UnifiedLiveOrderCenter.clear(appContext);
             syncLegacyFlagsAfterLogin(role);
 
             return true;
@@ -175,7 +196,7 @@ public class SessionManager {
                 return false;
             }
 
-            return isKnownRole(role);
+            return role.equals("customer");
 
         } catch (Exception e) {
             return false;
@@ -183,21 +204,11 @@ public class SessionManager {
     }
 
     public boolean canRunNativeServices() {
-        if (!isLoggedIn()) {
-            return false;
-        }
-
-        String role = normalizeRole(getRole());
-
-        return role.equals("driver")
-                || role.equals("merchant")
-                || role.equals("admin")
-                || role.equals("wisata");
+        return false;
     }
 
     public boolean canRunDriverLocation() {
-        return isLoggedIn()
-                && normalizeRole(getRole()).equals("driver");
+        return false;
     }
 
     public void touchSession() {
@@ -223,19 +234,19 @@ public class SessionManager {
     }
 
     /**
-     * Method kompatibel untuk NativeSessionGuard lama:
-     * sessionManager.markLoggedOut(reason);
+     * Menandai session customer sebagai logout dengan alasan tertentu.
      */
     public void markLoggedOut(String reason) {
         forceLogout(reason);
     }
 
     public void forceLogout(String reason) {
-        synchronized(SessionManager.class){forceLogoutLocked(reason);}
-    }
-    private void forceLogoutLocked(String reason) {
-        DriverGuardianManager.invalidate(appContext);
         try {
+            UnifiedLiveOrderCenter.clear(appContext);
+            CustomerChatNotificationPoller.stop();
+            CustomerProfileCache.clear(appContext);
+            appContext.getSharedPreferences("delivery_address_gate_v2",Context.MODE_PRIVATE).edit().clear().apply();
+            SecureTokenStore.clear(appContext);
             String fcmToken = prefs.getString("fcm_token", "");
             long fcmSavedAt = prefs.getLong("fcm_token_saved_at", 0L);
 
@@ -259,14 +270,10 @@ public class SessionManager {
 
             e.apply();
 
-            SecureTokenStore.clear(appContext);
-            DriverChatNotificationPoller.stop();
-            DriverServiceController.stopAll(appContext);
             clearLegacyOnlineFlags();
             TransivaSession.logout(appContext, safe(reason));
 
-        } catch (Exception e) {
-            TransivaDiagnostics.error(appContext,"session","CLEAR_SESSION_FAILED",e);
+        } catch (Exception ignored) {
         }
     }
 
@@ -286,6 +293,9 @@ public class SessionManager {
             obj.put("name", getName());
             obj.put("role", getRole());
             obj.put("phone", getPhone());
+            obj.put("delivery_address", get("delivery_address"));
+            obj.put("delivery_lat", get("delivery_lat"));
+            obj.put("delivery_lng", get("delivery_lng"));
             obj.put("token", getToken());
             obj.put("restaurant_id", getRestaurantId());
             obj.put("balance", getBalance());
@@ -337,7 +347,7 @@ public class SessionManager {
 
         /*
          * Login driver tidak boleh langsung dianggap ONLINE.
-         * Status online hanya diaktifkan dari DriverDashboardActivity
+         * Field kompatibilitas backend tetap disimpan sebagai status nonaktif
          * setelah pengguna menekan tombol ONLINE dan izin lokasi tersedia.
          */
         boolean merchantOnline = role.equals("merchant")
@@ -362,7 +372,100 @@ public class SessionManager {
     }
 
     private JSONObject normalizeUser(JSONObject user) throws Exception {
-        return SessionUserNormalizer.normalize(user);
+        JSONObject out = new JSONObject(
+                user == null ? "{}" : user.toString()
+        );
+
+        String id = firstNonEmpty(
+                out.optString("id", ""),
+                out.optString("user_id", ""),
+                out.optString("uid", "")
+        );
+
+        String username = firstNonEmpty(
+                out.optString("username", ""),
+                out.optString("user_name", ""),
+                out.optString("name", "")
+        );
+
+        String name = firstNonEmpty(
+                out.optString("name", ""),
+                out.optString("full_name", ""),
+                username
+        );
+
+        String role = normalizeRole(firstNonEmpty(
+                out.optString("role", ""),
+                out.optString("user_role", ""),
+                "customer"
+        ));
+
+        JSONObject nestedProfile = out.optJSONObject("driver_profile");
+        if (nestedProfile == null) nestedProfile = out.optJSONObject("profile");
+        if (nestedProfile == null) nestedProfile = new JSONObject();
+
+        String driverType = firstNonEmpty(
+                out.optString("driver_type", ""),
+                nestedProfile.optString("driver_type", ""),
+                "bike"
+        ).toLowerCase(Locale.US);
+
+        if (!driverType.equals("car")) {
+            driverType = "bike";
+        }
+
+        out.put("id", id);
+        out.put("user_id", firstNonEmpty(
+                out.optString("user_id", ""),
+                id
+        ));
+        out.put("username", username);
+        out.put("name", name);
+        out.put("role", role);
+        out.put("driver_type", driverType);
+
+        if (!out.has("phone")) {
+            out.put("phone", "");
+        }
+
+        String token = firstNonEmpty(
+                out.optString("token", ""),
+                out.optString("access_token", ""),
+                out.optString("auth_token", ""),
+                out.optString("api_token", ""),
+                out.optString("session_token", "")
+        );
+        out.put("token", token);
+
+        if (!out.has("restaurant_id")) {
+            out.put("restaurant_id", "");
+        }
+
+        if (!out.has("balance")) {
+            out.put("balance", "0");
+        }
+
+        if (!out.has("photo")) {
+            out.put("photo", out.optString("driver_photo", ""));
+        }
+
+        if (!out.has("driver_photo") || safe(out.optString("driver_photo", "")).isEmpty()) {
+            out.put("driver_photo", firstNonEmpty(
+                    nestedProfile.optString("driver_photo", ""),
+                    nestedProfile.optString("profile_photo", ""),
+                    out.optString("photo", "")
+            ));
+        }
+        if (!out.has("plate") || safe(out.optString("plate", "")).isEmpty()) {
+            out.put("plate", nestedProfile.optString("plate", ""));
+        }
+        if (!out.has("verification_status") || safe(out.optString("verification_status", "")).isEmpty()) {
+            out.put("verification_status", nestedProfile.optString("verification_status", ""));
+        }
+        if (!out.has("is_online")) out.put("is_online", nestedProfile.opt("is_online"));
+        if (!out.has("is_busy")) out.put("is_busy", nestedProfile.opt("is_busy"));
+
+        return out;
     }
 
     /**
@@ -395,8 +498,7 @@ public class SessionManager {
             }
             e.putLong("driver_profile_synced_at", System.currentTimeMillis());
             e.apply();
-        } catch (Exception e) {
-            TransivaDiagnostics.error(appContext,"session","DRIVER_RUNTIME_SYNC_FAILED",e);
+        } catch (Exception ignored) {
         }
     }
 
@@ -420,7 +522,7 @@ public class SessionManager {
             return false;
         }
 
-        return isKnownRole(role);
+        return role.equals("customer");
     }
 
     private boolean isKnownRole(String roleValue) {
@@ -434,15 +536,71 @@ public class SessionManager {
     }
 
     public String normalizeRole(String roleValue) {
-        return SessionUserNormalizer.normalizeRole(roleValue);
+        if (roleValue == null) {
+            return "";
+        }
+
+        String role = roleValue.trim().toLowerCase(Locale.US);
+
+        if (role.equals("user")
+                || role.equals("pelanggan")
+                || role.equals("costumer")
+                || role.equals("customer")) {
+            return "customer";
+        }
+
+        if (role.equals("driver")
+                || role.equals("kurir")
+                || role.equals("ojek")
+                || role.equals("rider")) {
+            return "driver";
+        }
+
+        if (role.equals("merchant")
+                || role.equals("merchen")
+                || role.equals("resto")
+                || role.equals("restaurant")
+                || role.equals("penjual")) {
+            return "merchant";
+        }
+
+        if (role.equals("admin")
+                || role.equals("administrator")
+                || role.equals("owner")
+                || role.equals("superadmin")) {
+            return "admin";
+        }
+
+        if (role.equals("wisata")
+                || role.equals("wisataowner")
+                || role.equals("wisata_owner")
+                || role.equals("owner_wisata")) {
+            return "wisata";
+        }
+
+        return role;
     }
 
     private String firstNonEmpty(String... values) {
-        return SessionUserNormalizer.firstNonEmpty(values);
+        if (values == null) {
+            return "";
+        }
+
+        for (String value : values) {
+            String clean = safe(value).trim();
+
+            if (!clean.isEmpty()
+                    && !clean.equalsIgnoreCase("null")
+                    && !clean.equalsIgnoreCase("undefined")) {
+                return clean;
+            }
+        }
+
+        return "";
     }
 
     private String safe(String value) {
-        return SessionUserNormalizer.safe(value);
+        return value == null ? "" : value;
     }
 
     public String getId() {
@@ -471,8 +629,17 @@ public class SessionManager {
         return prefs.getString("phone", "");
     }
 
+    public Context getAppContext() {
+        return appContext;
+    }
+
     public String getToken() {
         return SecureTokenStore.get(appContext);
+    }
+
+
+    private String sanitizedSessionJson(JSONObject source) {
+        return TokenJsonSanitizer.clean(source).toString();
     }
 
 
@@ -497,21 +664,11 @@ public class SessionManager {
         return prefs.getString("driver_photo", "");
     }
 
-    void observe(SharedPreferences.OnSharedPreferenceChangeListener listener) {
-        prefs.registerOnSharedPreferenceChangeListener(listener);
-    }
-
-    void stopObserving(SharedPreferences.OnSharedPreferenceChangeListener listener) {
-        prefs.unregisterOnSharedPreferenceChangeListener(listener);
-    }
-
     public void put(String key, String value) {
         if (key == null || key.trim().isEmpty()) {
             return;
         }
 
-        if (("current_order_id".equals(key)||"current_order_source".equals(key)) && !safe(value).equals(get(key))
-                || "driver_server_online".equals(key) && !"1".equals(safe(value))) DriverGuardianManager.invalidate(appContext);
         prefs.edit()
                 .putString(key, safe(value))
                 .apply();
@@ -530,7 +687,6 @@ public class SessionManager {
             return;
         }
 
-        if("current_order_id".equals(key)||"current_order_source".equals(key))DriverGuardianManager.invalidate(appContext);
         prefs.edit()
                 .remove(key)
                 .apply();
@@ -574,5 +730,4 @@ public class SessionManager {
     public String getLastLocationString() {
         return getLastLocationJson().toString();
     }
-    public Context getContext() { return appContext; }
 }

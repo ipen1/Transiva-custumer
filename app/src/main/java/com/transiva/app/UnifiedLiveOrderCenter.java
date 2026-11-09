@@ -58,7 +58,12 @@ public final class UnifiedLiveOrderCenter {
             createdAt = this.raw.optString("created_at", "");
         }
         public boolean hasDriver() { return CustomerOrderState.hasDriver(status); }
-        public String title() { return first(serviceName, readableService(type), "Pesanan Transiva"); }
+        public String title() {
+            String service = first(serviceName, readableService(type), "Pesanan Transiva");
+            if (!type.toLowerCase(java.util.Locale.ROOT).contains("food")) return service;
+            String restaurant = first(raw.optString("restaurant_name"), raw.optString("pickup_address"));
+            return restaurant.isEmpty() ? service : service + " · " + restaurant;
+        }
         public String statusLabel() { return OrderStatusPresentation.label(status, type); }
     }
 

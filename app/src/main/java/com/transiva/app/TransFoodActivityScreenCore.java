@@ -1,5 +1,8 @@
 package com.transiva.app;
 
+import com.transiva.app.FoodCartStore.Cart;
+import com.transiva.app.FoodCartStore.CartItem;
+
 import android.app.Activity;
 import android.app.AlertDialog;
 import android.graphics.Color;
@@ -53,14 +56,24 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
 
     protected final List<JSONObject> restaurants = new ArrayList<>();
     protected final List<JSONObject> menus = new ArrayList<>();
-    protected final List<CartItem> cart = new ArrayList<>();
+    private List<CartItem> cart = new ArrayList<>();
+    private FoodCartStore cartStore;
+    private Cart activeCart;
+    private Button savedCartButton;
+    private JSONObject cartOriginRestaurant;
+    private String cartOriginSearch = "";
+    private boolean checkoutFromCarts, menuFromCarts;
+    private boolean refreshCheckoutRestaurant;
+    private int checkoutRestaurantId;
+    private String splitCartDraft = "";
+    private String defaultVoucherCode = "";
     protected final List<MenuSearchItem> allMenuSearchItems = new ArrayList<>();
     protected JSONObject activeRestaurant;
     protected String menuSearchQuery = "";
     protected String homeSearchQuery = "";
     protected LinearLayout homeResultsBox;
     protected Runnable homeSearchRunnable;
-    protected int currentScreen = 0; // 0=home, 1=detail menu, 2=checkout
+    protected int currentScreen = 0; // 0=home, 1=menu, 2=checkout, 3=success, 4=saved carts
     protected String homeMode = "nearby";
     protected volatile boolean restaurantsLoadFinished = false;
     protected boolean restaurantsLoading = false;
@@ -99,6 +112,7 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
     private final java.util.Set<Integer> favoriteMerchantIds=new java.util.HashSet<>();
     private final java.util.Set<Integer> favoriteMenuIds=new java.util.HashSet<>();
     private String successOrderId="";
+    private boolean successWasRecovered;
     private long successDashboardAt;
     private final Runnable dashboardAfterFood=()->returnToDashboard();
 
@@ -128,7 +142,6 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
         super.onCreate(savedInstanceState);
         registerCustomBackNavigation();
         if(!DeliveryAddressGate.valid(this)){DeliveryAddressGate.showUnavailable(this,"TransFood");DeliveryAddressGate.require(this,"TransFood");return;}
-        splitBillManager = new SplitBillManager(this, (key,size,ready) -> { if(currentScreen==2) renderCheckout(); });
         try {
             CustomerWindowPolicy.status(getWindow(), Color.WHITE);
             CustomerWindowPolicy.navigation(getWindow(), Color.WHITE);
@@ -141,23 +154,29 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
             }
         } catch (Exception ignored) {}
         loadSession();
-        if(getIntent()!=null)voucherCode=firstNonEmpty(getIntent().getStringExtra("royalty_voucher_code"),"");
+        cartStore = new FoodCartStore(this, userId);
+        if(getIntent()!=null)defaultVoucherCode=firstNonEmpty(getIntent().getStringExtra("royalty_voucher_code"),"");
+        voucherCode=defaultVoucherCode;
         if (getIntent() != null) homeSearchQuery = firstNonEmpty(getIntent().getStringExtra("global_search_query"), "");
         buildBase();
         if(savedInstanceState!=null && !savedInstanceState.getString("food_success_order_id", "").isEmpty()) {
+            successWasRecovered = savedInstanceState.getBoolean("food_success_recovered");
             showFoodOrderSuccess(savedInstanceState.getString("food_success_order_id"), savedInstanceState.getLong("food_success_due"));
             return;
         }
         CustomerBestOffer.load(this, "TransFood", offer -> featureRuntime.post(mainHandler, () -> {
             if (offer != null && (voucherCode == null || voucherCode.trim().isEmpty())) {
                 String code = offer.optString("promo_code", "").trim();
-                if (!code.isEmpty()) voucherCode = code;
+                if (!code.isEmpty()) {
+                    defaultVoucherCode = code;
+                    if (currentScreen != 2) voucherCode = code;
+                }
             }
         }));
         int storyRid=getIntent()==null?0:getIntent().getIntExtra("story_restaurant_id",0);
         if(storyRid>0){
             try{activeRestaurant=new JSONObject();activeRestaurant.put("id",storyRid);activeRestaurant.put("name",getIntent().getStringExtra("story_restaurant_name"));}catch(Exception ignored){}
-            showMenuPage();loadMenus(storyRid);
+            selectRestaurant(activeRestaurant);showMenuPage();loadMenus(storyRid);
         }else{showRestaurantList();loadRestaurants(true);}
     }
 
@@ -222,7 +241,7 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
         clearStickyCartBar();
         root.removeAllViews();
         merchantAvatars.clear();
-        activeRestaurant = null;
+        selectRestaurant(null);
         buildTopBar("Transfood", "Makan enak, dekat denganmu", true);
         addDeliveryLocationRow();
         addHomeSearchBar();
@@ -560,16 +579,38 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
         return popularity + rating + distance + newest + discount;
     }
 
+    private JSONObject restaurantForCart(int rid, String name) {
+        JSONObject store = findRestaurantById(rid);
+        if (store != null) return store;
+        JSONObject placeholder = new JSONObject();
+        try { placeholder.put("id", rid).put("name", name); }
+        catch (org.json.JSONException impossible) { throw new IllegalStateException(impossible); }
+        return placeholder;
+    }
+
+    private void selectRestaurant(JSONObject restaurant) {
+        int previous = activeCart == null ? 0 : activeCart.restaurantId;
+        int next = restaurant == null ? 0 : restaurant.optInt("id");
+        if (previous != next) expandedToppingMenu = 0;
+        activeRestaurant = restaurant;
+        loadActiveCart();
+    }
+
+    private void loadActiveCart() {
+        int rid = activeRestaurant == null ? 0 : activeRestaurant.optInt("id");
+        activeCart = rid > 0 ? cartStore.get(rid) : null;
+        cart = activeCart == null ? new ArrayList<>() : activeCart.items;
+        for (CartItem line : cart) toppingSelectionOrder = Math.max(toppingSelectionOrder, line.selectionOrder);
+    }
+
     void openStoryMerchant(int rid,String name){
-        if(rid<=0||currentScreen==3)return;
-        if(activeRestaurant!=null&&activeRestaurant.optInt("id")==rid){menuSearchQuery="";showMenuPage();loadMenus(rid,true);return;}
-        Runnable open=()->{
-            JSONObject store=findRestaurantById(rid);
-            if(store==null){store=new JSONObject();try{store.put("id",rid);store.put("name",name);}catch(Exception ignored){}}
-            activeRestaurant=store;cart.clear(); expandedToppingMenu=0;menus.clear();menusLoadFinished=false;menuSearchQuery="";showMenuPage();loadMenus(rid);
-        };
-        if(!cart.isEmpty())new TransivaAlertDialogBuilder(this).setTitle("Pindah toko?").setMessage("Isi keranjang dari toko sebelumnya akan dikosongkan.").setPositiveButton("Pindah toko",(d,w)->open.run()).setNegativeButton("Tetap di sini",null).show();
-        else open.run();
+        if (rid <= 0 || currentScreen >= 2 || foodOrderSubmitting) return;
+        JSONObject store = activeRestaurant != null && activeRestaurant.optInt("id") == rid
+                ? activeRestaurant : restaurantForCart(rid, name);
+        selectRestaurant(store);
+        menuSearchQuery = "";
+        showMenuPage();
+        loadMenus(rid,true);
     }
 
     protected void openRestaurantFromSearch(MenuSearchItem item) {
@@ -583,8 +624,7 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
             showInfo("Merchant Tutup", "Merchant sedang tidak menerima orderan.");
             return;
         }
-        activeRestaurant = r;
-        cart.clear(); expandedToppingMenu=0;
+        selectRestaurant(r);
         menuSearchQuery = item.menuName;
         showMenuPage();
         loadMenus(item.restaurantId);
@@ -612,8 +652,7 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
                 showInfo("Merchant Tutup", "Merchant sedang tidak menerima orderan.");
                 return;
             }
-            activeRestaurant = r;
-            cart.clear(); expandedToppingMenu=0;
+            selectRestaurant(r);
             menuSearchQuery = "";
             showMenuPage();
             loadMenus(r.optInt("id", 0));
@@ -1347,21 +1386,24 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
 
     protected void addConfiguredItem(JSONObject menu, JSONArray selectedOptions, String optionText, double optionExtra) {
         int id = menu.optInt("id", 0);
+        if (activeCart == null || id <= 0 || menu.optInt("restaurant_id", activeCart.restaurantId) != activeCart.restaurantId) return;
         String key = id + "|" + selectedOptions.toString();
         CartItem found = findCartItem(key);
         if (found == null) {
             found = new CartItem();
             found.id = id;
-            found.restaurantId = menu.optInt("restaurant_id", activeRestaurant.optInt("id", 0));
             found.name = firstNonEmpty(menu.optString("name"), "Menu");
-            found.basePrice = menu.optDouble("price", 0);
-            found.price = found.basePrice + Math.max(0, optionExtra);
+            found.price = menu.optDouble("price", 0) + Math.max(0, optionExtra);
             found.qty = 0;
             found.key = key;
             found.optionText = optionText;
             found.image = menu.optString("image");
             found.selectedOptions = selectedOptions;
             cart.add(found);
+        }
+        if (found.qty >= 99) {
+            showInfo("Jumlah maksimum", "Satu pilihan menu bisa dipesan maksimal 99 porsi.");
+            return;
         }
         found.qty++;
         found.selectionOrder=++toppingSelectionOrder;
@@ -1388,6 +1430,14 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
     }
 
     protected void refreshCartUi() {
+        if (activeCart != null) {
+            activeCart.name = firstNonEmpty(activeRestaurant.optString("name"), activeCart.name, "Toko");
+            if (!cartStore.save(activeCart)) {
+                loadActiveCart();
+                showInfo("Keranjang", "Perubahan belum tersimpan. Silakan coba lagi.");
+            }
+        }
+        updateCartButton();
         if(virtualFood!=null)virtualFood.updateQuantities(this::getQty);
         for (java.util.Map.Entry<Integer, TextView> entry : menuQuantityViews.entrySet())
             entry.getValue().setText(String.valueOf(getQty(entry.getKey())));
@@ -1431,14 +1481,31 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
     }
 
     protected void showCheckout() {
+        if (activeCart == null || cart.isEmpty() || foodOrderSubmitting) return;
+        if (checkoutRestaurantId != activeCart.restaurantId) {
+            checkoutRestaurantId = activeCart.restaurantId;
+            deliveryMode = "standard";
+            paymentMethod = "cash";
+            voucherCode = defaultVoucherCode;
+        }
+        if (!activeCart.draftId.equals(splitCartDraft)) {
+            if (splitBillManager != null) splitBillManager.dispose();
+            splitCartDraft = activeCart.draftId;
+            splitBillManager = new SplitBillManager(this, (key,size,ready) -> {
+                if (currentScreen == 2 && !foodOrderSubmitting) renderCheckout();
+            }, userId + ".food." + splitCartDraft + ".");
+            if (splitBillManager.groupSize() > 1) paymentMethod = "balance";
+        }
+        royaltyPreviewKey = "";
         leaveVirtualFood();
         ++menuLoadGeneration;featureRuntime.cancel("food-menus");featureRuntime.cancel("food-social");menusRequestLoading=false;
         currentScreen = 2;
         voucherDraft=voucherCode;voucherExpanded=false;
         clearStickyCartBar();
         root.removeAllViews();
-        buildTopBar("Checkout", "Cek pesanan dan pilih pengantaran", true);
+        buildTopBar("Checkout", "Satu pesanan untuk toko ini", true);
         addStatus("Menghitung ongkir...");
+        if (foodScroll != null) foodScroll.scrollTo(0, 0);
         calculateOngkirThenRender();
     }
 
@@ -1514,17 +1581,22 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
         LinearLayout pay=checkoutCard();pay.addView(text("Pembayaran",14,"#0F172A",true));
         LinearLayout payments=new LinearLayout(this);payments.setPadding(0,dp(8),0,0);
         Button cash=checkoutChoice("Tunai","cash".equals(paymentMethod));Button balance=checkoutChoice("Transiva Pay","balance".equals(paymentMethod));
-        cash.setOnClickListener(v->{paymentMethod="cash";renderCheckout();});balance.setOnClickListener(v->{paymentMethod="balance";renderCheckout();});
+        cash.setOnClickListener(v -> {
+            paymentMethod = "cash";
+            if (splitBillManager != null && splitBillManager.groupSize() > 1) splitBillManager.clear();
+            else renderCheckout();
+        });
+        balance.setOnClickListener(v->{paymentMethod="balance";renderCheckout();});
         addCheckoutPair(payments,cash,balance,48);pay.addView(payments);
         if("balance".equals(paymentMethod)){
             Button split=choiceButton(splitBillManager!=null&&splitBillManager.groupSize()>1?(splitBillManager.ready()?"✓ Split Bill ":"Menunggu Split Bill ")+splitBillManager.groupSize()+" orang":"Split Bill · Bayar bersama",false);
-            split.setTextSize(12);split.setOnClickListener(v->showFoodSplitDialog());LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-1,dp(44));lp.topMargin=dp(6);pay.addView(split,lp);
-        }else if(splitBillManager!=null&&splitBillManager.groupSize()>1)splitBillManager.clear();
+            split.setTextSize(12);split.setEnabled(checkoutQuoteReady && activeRestaurant.optInt("is_open", 1) == 1);split.setOnClickListener(v->showFoodSplitDialog());LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-1,dp(44));lp.topMargin=dp(6);pay.addView(split,lp);
+        }
         addWithMargin(pay,0,0,0,dp(10));
 
         LinearLayout total=checkoutCard();total.addView(text("Rincian pembayaran",14,"#0F172A",true));
         double grossTotal=foodTotal()+standardFee;
-        String previewKey=voucherCode+":"+Math.round(grossTotal)+":"+standardFee;
+        String previewKey=checkoutQuoteGeneration+":"+voucherCode+":"+Math.round(grossTotal)+":"+standardFee;
         if(!previewKey.equals(royaltyPreviewKey)){royaltyPreviewKey=previewKey;royaltyVoucherDiscount=0;royaltyVoucherNote=voucherCode.isEmpty()?"":"Memeriksa potongan voucher…";final String expected=previewKey;
             if(!voucherCode.isEmpty())RoyaltyVoucherPicker.preview(this,voucherCode,(int)Math.round(grossTotal),(int)Math.round(standardFee),(discount,note)->{if(!expected.equals(royaltyPreviewKey)||currentScreen!=2)return;royaltyVoucherDiscount=discount;royaltyVoucherNote=note;renderCheckout();});}
         double afterVoucher=Math.max(0,grossTotal-royaltyVoucherDiscount);
@@ -1554,8 +1626,8 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
         bar.setOrientation(narrow?LinearLayout.VERTICAL:LinearLayout.HORIZONTAL);
         LinearLayout words=new LinearLayout(this);words.setOrientation(LinearLayout.VERTICAL);words.addView(text("Total bayar",11,"#64748B",false));words.addView(text(rupiah(amount),20,"#0F172A",true));
         bar.addView(words,narrow?new LinearLayout.LayoutParams(-1,-2):new LinearLayout.LayoutParams(0,-2,1));
-        boolean accepting=activeRestaurant.optInt("is_open",1)==1;
-        Button order=primaryButton(!checkoutQuoteReady?"Coba hitung ongkir":accepting?"Buat Pesanan":"Toko sedang tutup");checkoutSubmitButton=order;order.setTextSize(14);order.setEnabled(accepting&&!foodOrderSubmitting);order.setAlpha(accepting?1f:.55f);order.setOnClickListener(v->{if(checkoutQuoteReady)createFoodOrder();else calculateOngkirThenRender();});
+        boolean accepting=refreshCheckoutRestaurant || activeRestaurant.optInt("is_open",1)==1;
+        Button order=primaryButton(!accepting?"Toko sedang tutup":!checkoutQuoteReady?"Coba hitung ongkir":"Buat Pesanan");checkoutSubmitButton=order;order.setTextSize(14);order.setEnabled(accepting&&!foodOrderSubmitting);order.setAlpha(accepting?1f:.55f);order.setOnClickListener(v->{if(checkoutQuoteReady)createFoodOrder();else calculateOngkirThenRender();});
         LinearLayout.LayoutParams olp=new LinearLayout.LayoutParams(narrow?-1:dp(150),dp(48));if(narrow)olp.topMargin=dp(8);else olp.leftMargin=dp(8);bar.addView(order,olp);
         FrameLayout.LayoutParams lp=new FrameLayout.LayoutParams(-1,-2,Gravity.BOTTOM);lp.setMargins(dp(12),0,dp(12),dp(10));page.addView(bar,lp);stickyCartBar=bar;
         bar.addOnLayoutChangeListener((v,l,t,r,b,ol,ot,or,ob)->{if(stickyCartBar==bar&&currentScreen==2)setFoodPadding(dp(16),dp(18),dp(16),bar.getHeight()+dp(28));});
@@ -1870,9 +1942,30 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
         if(currentScreen!=2||activeRestaurant==null)return;
         final int quoteGeneration=++checkoutQuoteGeneration,restaurantId=activeRestaurant.optInt("id");
         final String quoteMode=deliveryMode;
-        checkoutQuoteReady=false;clearStickyCartBar();setLoading(true);
+        final boolean checkRestaurant=refreshCheckoutRestaurant;
+        checkoutQuoteReady=false;
+        deliveryFee=standardFee=hematFee=distanceKm=0;
+        clearStickyCartBar();setLoading(true);
         java.util.concurrent.Future<?> task=featureRuntime.execute(() -> {
             try {
+                if (checkRestaurant) {
+                    JSONObject catalog = TransivaHttpRepository.getJsonFresh(this, BASE_URL
+                            + "server/get_food_menus.php?restaurant_id=" + restaurantId + "&limit=1", TIMEOUT_MS);
+                    JSONObject restaurant = catalog.optJSONObject("restaurant");
+                    if (!catalog.optBoolean("success") || restaurant == null || restaurant.optInt("id") != restaurantId)
+                        throw new IllegalStateException("Toko belum dapat diperiksa.");
+                    boolean closed = restaurant.optInt("is_open", 1) != 1;
+                    featureRuntime.post(mainHandler, () -> {
+                        if (quoteGeneration != checkoutQuoteGeneration || currentScreen != 2) return;
+                        activeRestaurant = restaurant;
+                        refreshCheckoutRestaurant = false;
+                        if (closed) {
+                            setLoading(false);
+                            renderCheckout();
+                        }
+                    });
+                    if (closed) return;
+                }
                 String url=BASE_URL+"server/calculateOngkir.php?service_type=Transbike&restaurant_id="+restaurantId+"&user_id="+userId+"&delivery_mode="+Uri.encode(quoteMode)+"&v="+System.currentTimeMillis();
                 JSONObject res=getJson(url);
                 if(!res.optBoolean("success",false))throw new Exception(firstNonEmpty(res.optString("message"),"Gagal menghitung ongkir"));
@@ -1894,7 +1987,7 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
     }
 
     protected void createFoodOrder() {
-        if(foodOrderSubmitting || currentScreen==3)return;
+        if(foodOrderSubmitting || currentScreen!=2)return;
         if(!checkoutQuoteReady){calculateOngkirThenRender();return;}
         if (userId <= 0) { showInfo("Login", "User ID tidak ditemukan. Silakan login ulang."); return; }
         if (activeRestaurant == null || activeRestaurant.optInt("id", 0) <= 0) { showInfo("Gagal", "Merchant tidak valid."); return; }
@@ -1918,6 +2011,7 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
                 JSONObject o = new JSONObject();
                 o.put("id", c.id);
                 o.put("qty", c.qty);
+                o.put("_cart_line_id", c.lineId);
                 o.put("selected_options", c.selectedOptions == null ? new JSONArray() : c.selectedOptions);
                 items.put(o);
             }
@@ -1942,7 +2036,7 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
                 if (recovered!=null) {
                     featureRuntime.post(mainHandler,()->{
                         finishFoodSubmission();
-                        if(currentScreen==2) showFoodOrderSuccess(recovered.optString("order_id"),0);
+                        if(currentScreen==2) completeCartCheckout(recovered);
                     });
                     return;
                 }
@@ -1978,7 +2072,7 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
                     finishFoodSubmission();
                     if(currentScreen!=2) return;
                     if(response.optBoolean("success")) {
-                        showFoodOrderSuccess(response.optString("order_id"),0);
+                        completeCartCheckout(response);
                         return;
                     }
                     JSONObject next=response.optJSONObject("quote");
@@ -2002,10 +2096,31 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
 
     private void foodSubmissionError(Exception error) {
         finishFoodSubmission();
-        if(currentScreen==2) showInfo("Pesanan",ReliableOrderClient.failureMessage(error));
+        if (currentScreen != 2) return;
+        if (error instanceof ReliableOrderClient.FoodCartChangedException) {
+            handleBack();
+            loadActiveCart();
+            updateCartButton();
+            if (currentScreen == 1) renderMenus();
+            showInfo("Keranjang", error.getMessage());
+            return;
+        }
+        String message = error instanceof IllegalStateException ? error.getMessage() : ReliableOrderClient.failureMessage(error);
+        showInfo("Pesanan", firstNonEmpty(message, "Pesanan belum dapat diproses."));
     }
 
     private void restoreCheckoutSubmit(){if(checkoutSubmitButton!=null)checkoutSubmitButton.setEnabled(activeRestaurant!=null&&activeRestaurant.optInt("is_open",1)==1);}
+
+    private void completeCartCheckout(JSONObject receipt) {
+        if (splitBillManager != null && activeCart != null
+                && receipt.optInt("restaurant_id") == activeCart.restaurantId) {
+            currentScreen = 3;
+            splitBillManager.clear();
+        }
+        loadActiveCart();
+        successWasRecovered = receipt.optBoolean("recovered_attempt");
+        showFoodOrderSuccess(receipt.optString("order_id"),0);
+    }
 
     private void showFoodOrderSuccess(String orderId,long due){
         leaveVirtualFood();
@@ -2017,12 +2132,34 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
         leaveVirtualFood();clearStickyCartBar();setLoading(false);root.removeAllViews();
         root.setGravity(Gravity.CENTER);root.setPadding(dp(24),dp(20),dp(24),dp(24));
         FoodOrderSuccessView celebration=new FoodOrderSuccessView(this);root.addView(celebration,new LinearLayout.LayoutParams(-1,dp(230)));
-        TextView title=text("Pesanan terkirim!",24,"#0B3A78",true);title.setGravity(Gravity.CENTER);root.addView(title,new LinearLayout.LayoutParams(-1,-2));
-        TextView subtitle=text("Pesananmu sudah tercatat. Tunggu konfirmasi toko, ya.",14,"#64748B",false);subtitle.setGravity(Gravity.CENTER);subtitle.setPadding(0,dp(10),0,dp(8));root.addView(subtitle,new LinearLayout.LayoutParams(-1,-2));
+        TextView title=text(successWasRecovered ? "Pesanan sebelumnya ditemukan" : "Pesanan terkirim!",24,"#0B3A78",true);title.setGravity(Gravity.CENTER);root.addView(title,new LinearLayout.LayoutParams(-1,-2));
+        TextView subtitle=text(successWasRecovered ? "Pesanan ini sudah tercatat. Lihat statusnya di bawah."
+                : "Pesananmu sudah tercatat. Tunggu konfirmasi toko, ya.",14,"#64748B",false);subtitle.setGravity(Gravity.CENTER);subtitle.setPadding(0,dp(10),0,dp(8));root.addView(subtitle,new LinearLayout.LayoutParams(-1,-2));
         if(!orderId.isEmpty()){TextView receipt=text(orderId,11,"#64748B",false);receipt.setGravity(Gravity.CENTER);root.addView(receipt);}
-        TextView hint=text("Pantau pesanan di Aktivitas · Kembali ke beranda sebentar lagi",11,"#64748B",false);hint.setGravity(Gravity.CENTER);hint.setPadding(0,dp(16),0,dp(12));root.addView(hint,new LinearLayout.LayoutParams(-1,-2));
-        Button home=primaryButton("Ke beranda");home.setOnClickListener(v->returnToDashboard());root.addView(home,new LinearLayout.LayoutParams(-1,dp(46)));
-        mainHandler.postDelayed(dashboardAfterFood,Math.max(0,successDashboardAt-android.os.SystemClock.elapsedRealtime()));
+        boolean moreCarts = !cartStore.all().isEmpty();
+        TextView hint=text(moreCarts ? "Pantau pesanan ini di Aktivitas. Isi keranjang lainnya masih tersimpan."
+                : "Pantau pesanan di Aktivitas · Kembali ke beranda sebentar lagi",11,"#64748B",false);
+        hint.setGravity(Gravity.CENTER);hint.setPadding(0,dp(16),0,dp(12));root.addView(hint,new LinearLayout.LayoutParams(-1,-2));
+        if (moreCarts) {
+            Button continueCart = primaryButton("Lanjut ke keranjang");
+            continueCart.setOnClickListener(v -> {
+                checkoutFromCarts = false;
+                menuFromCarts = false;
+                openSavedCarts();
+                mainHandler.post(storyExpiryTick);
+                mainHandler.postDelayed(realtimeFoodRefresh, CustomerPerformanceManager.pollingBackground(this, 30000L));
+            });
+            root.addView(continueCart, new LinearLayout.LayoutParams(-1,dp(46)));
+        }
+        if (!orderId.isEmpty()) {
+            Button track = choiceButton("Pantau pesanan ini", false);
+            track.setOnClickListener(v -> startActivity(new android.content.Intent(this, CustomerFoodOrderStatusActivity.class)
+                    .putExtra("order_id", orderId)));
+            root.addView(track, new LinearLayout.LayoutParams(-1,dp(46)));
+        }
+        Button home=moreCarts ? choiceButton("Ke beranda", false) : primaryButton("Ke beranda");
+        home.setOnClickListener(v->returnToDashboard());root.addView(home,new LinearLayout.LayoutParams(-1,dp(46)));
+        if (!moreCarts) mainHandler.postDelayed(dashboardAfterFood,Math.max(0,successDashboardAt-android.os.SystemClock.elapsedRealtime()));
     }
     private void returnToDashboard(){
         if(isFinishing()||currentScreen!=3)return;
@@ -2033,7 +2170,7 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
     }
     @Override protected void onSaveInstanceState(Bundle out){
         super.onSaveInstanceState(out);
-        if(currentScreen==3){out.putString("food_success_order_id",successOrderId);out.putLong("food_success_due",successDashboardAt);}
+        if(currentScreen==3){out.putString("food_success_order_id",successOrderId);out.putLong("food_success_due",successDashboardAt);out.putBoolean("food_success_recovered",successWasRecovered);}
     }
 
     protected void mergeFoodSocial(JSONObject social) {
@@ -2271,6 +2408,100 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
     private double foodTotal() { double t = 0; for (CartItem c : cart) t += c.price * c.qty; return t; }
     private boolean hasRestoLocation() { return activeRestaurant != null && activeRestaurant.optString("latitude").length() > 0 && activeRestaurant.optString("longitude").length() > 0; }
 
+    private void updateCartButton() {
+        if (savedCartButton == null) return;
+        int count = 0;
+        for (Cart draft : cartStore.all()) count += draft.quantity();
+        savedCartButton.setText(count > 0 ? "Keranjang (" + count + ")" : "Keranjang");
+    }
+
+    private void openSavedCarts() {
+        if (foodOrderSubmitting) return;
+        if (!menuFromCarts) {
+            cartOriginRestaurant = currentScreen == 1 ? activeRestaurant : null;
+            cartOriginSearch = menuSearchQuery;
+        }
+        showSavedCarts();
+    }
+
+    private void showSavedCarts() {
+        leaveVirtualFood();
+        ++menuLoadGeneration;
+        featureRuntime.cancel("food-menus");
+        featureRuntime.cancel("food-social");
+        menusRequestLoading = false;
+        renderedMenuRid = 0;
+        currentScreen = 4;
+        menuFromCarts = false;
+        selectRestaurant(null);
+        clearStickyCartBar();
+        setLoading(false);
+        foodScroll.setFillViewport(false);
+        root.setGravity(Gravity.TOP);
+        root.removeAllViews();
+        buildTopBar("Keranjang", "Pesanan diproses per toko", true);
+        foodScroll.scrollTo(0, 0);
+        renderSavedCarts();
+    }
+
+    private void renderSavedCarts() {
+        root.removeViews(1, Math.max(0, root.getChildCount() - 1));
+        List<Cart> drafts = cartStore.all();
+        if (drafts.isEmpty()) {
+            addStatus("Keranjang masih kosong. Pilih makanan atau minuman dari toko favoritmu.");
+            return;
+        }
+        for (Cart draft : drafts) {
+            LinearLayout store = checkoutCard();
+            store.addView(text(firstNonEmpty(draft.name, "Toko"), 17, "#0F172A", true));
+            store.addView(text(draft.quantity() + " item · " + rupiah(draft.subtotal()) + " sebelum ongkir",
+                    12, "#64748B", false));
+            for (CartItem line : draft.items) {
+                LinearLayout row = new LinearLayout(this);
+                row.setGravity(Gravity.CENTER_VERTICAL);
+                TextView label = text(line.qty + " × " + line.name
+                        + (line.optionText.isEmpty() ? "" : " · " + line.optionText), 14, "#0F172A", false);
+                row.addView(label, new LinearLayout.LayoutParams(0, -2, 1));
+                Button minus = tinyButton("−");
+                minus.setContentDescription("Kurangi " + line.name
+                        + (line.optionText.isEmpty() ? "" : " " + line.optionText));
+                minus.setOnClickListener(v -> {
+                    if (--line.qty == 0) draft.items.remove(line);
+                    if (!cartStore.save(draft)) showInfo("Keranjang", "Perubahan belum tersimpan. Silakan coba lagi.");
+                    renderSavedCarts();
+                });
+                row.addView(minus, new LinearLayout.LayoutParams(dp(44), dp(44)));
+                store.addView(row);
+            }
+            Button edit = choiceButton("Ubah menu", false);
+            edit.setOnClickListener(v -> {
+                selectRestaurant(restaurantForCart(draft.restaurantId, draft.name));
+                menuSearchQuery = "";
+                menuFromCarts = true;
+                showMenuPage();
+                loadMenus(draft.restaurantId, true);
+            });
+            Button order = primaryButton("Pesan dari toko ini");
+            order.setTextSize(13);
+            order.setPadding(dp(6), 0, dp(6), 0);
+            order.setOnClickListener(v -> {
+                selectRestaurant(restaurantForCart(draft.restaurantId, draft.name));
+                if (cart.isEmpty()) {
+                    showSavedCarts();
+                    return;
+                }
+                checkoutFromCarts = true;
+                refreshCheckoutRestaurant = true;
+                showCheckout();
+            });
+            LinearLayout actions = new LinearLayout(this);
+            actions.setPadding(0, dp(8), 0, 0);
+            addCheckoutPair(actions, edit, order, 48);
+            store.addView(actions);
+            addWithMargin(store,0,0,0,dp(12));
+        }
+    }
+
     private void buildTopBar(String title, String sub, boolean back) {
         LinearLayout row = new LinearLayout(this);
         row.setGravity(Gravity.CENTER_VERTICAL);
@@ -2288,6 +2519,14 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
         col.addView(text(title, 23, "#0B3A78", true));
         if (sub != null && sub.length() > 0) col.addView(text(sub, 12, "#64748B", false));
         row.addView(col, new LinearLayout.LayoutParams(0, -2, 1));
+        savedCartButton = null;
+        if (currentScreen == 0 || currentScreen == 1) {
+            savedCartButton = choiceButton("Keranjang", false);
+            savedCartButton.setTextSize(12);
+            savedCartButton.setOnClickListener(v -> openSavedCarts());
+            row.addView(savedCartButton, new LinearLayout.LayoutParams(-2, dp(44)));
+            updateCartButton();
+        }
         root.addView(row, new LinearLayout.LayoutParams(-1, -2));
     }
 
@@ -2296,7 +2535,29 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
         if(currentScreen==3){returnToDashboard();return;}
         if (currentScreen == 2) {
             checkoutQuoteGeneration++;setLoading(false);
-            showMenuPage();
+            refreshCheckoutRestaurant = false;
+            if (checkoutFromCarts) {
+                checkoutFromCarts = false;
+                showSavedCarts();
+            } else {
+                showMenuPage();
+                if (!menusLoadFinished && activeRestaurant != null) loadMenus(activeRestaurant.optInt("id"), true);
+            }
+            return;
+        }
+
+        if (currentScreen == 4) {
+            JSONObject origin = cartOriginRestaurant;
+            cartOriginRestaurant = null;
+            if (origin != null) {
+                selectRestaurant(origin);
+                menuSearchQuery = cartOriginSearch;
+                showMenuPage();
+                loadMenus(origin.optInt("id"), true);
+                return;
+            }
+            showRestaurantList();
+            if (!restaurantsLoadFinished) loadRestaurants(true);
             return;
         }
 
@@ -2305,10 +2566,13 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
             syncToppingCards();
             return;
         }
+        if (currentScreen == 1 && menuFromCarts) {
+            showSavedCarts();
+            return;
+        }
         if (currentScreen == 1 || activeRestaurant != null) {
-            activeRestaurant = null;
             menus.clear();
-            cart.clear(); expandedToppingMenu=0;
+            expandedToppingMenu=0;
             menuSearchQuery = "";
             showRestaurantList();
             if (!restaurantsLoadFinished) loadRestaurants(true);
@@ -2383,7 +2647,6 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
     }
 
     private static class MenuSearchItem { int restaurantId; int menuId; String restaurantName; String menuName; String category; String description; String image; double price; double originalPrice; double discountPercent; boolean discountActive; long salesCount; double restaurantRating; double restaurantDistanceKm; boolean active; boolean trackStock; int stock; JSONObject restaurant; }
-    private static class CartItem { int id; int restaurantId; String name; double basePrice; double price; int qty; String key; String optionText; String image; long selectionOrder; JSONArray selectedOptions; }
     private static class OptionSelection { String type; String label; JSONArray items; RadioGroup radioGroup; LinearLayout checkBoxContainer; }
 
 
@@ -2391,8 +2654,12 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
     @Override
     protected void onResume() {
         super.onResume();
+        if (userId > 0 && !String.valueOf(userId).equals(CustomerSessionGuard.capture(this).account)) {
+            finish();
+            return;
+        }
         featureRuntime.onResume();
-        if(currentScreen==3){mainHandler.removeCallbacks(dashboardAfterFood);mainHandler.postDelayed(dashboardAfterFood,Math.max(0,successDashboardAt-android.os.SystemClock.elapsedRealtime()));return;}
+        if(currentScreen==3){mainHandler.removeCallbacks(dashboardAfterFood);if(cartStore.all().isEmpty())mainHandler.postDelayed(dashboardAfterFood,Math.max(0,successDashboardAt-android.os.SystemClock.elapsedRealtime()));return;}
         mainHandler.removeCallbacks(storyExpiryTick);
         mainHandler.post(storyExpiryTick);
         if(restaurantsLoadFinished||activeRestaurant!=null)refreshMerchantStories();
@@ -2401,7 +2668,12 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
         if(editingCheckoutAddress){editingCheckoutAddress=false;if(currentScreen==2){clearStickyCartBar();root.removeViews(1,Math.max(0,root.getChildCount()-1));addStatus("Memperbarui alamat dan ongkir…");calculateOngkirThenRender();}}
         catalogRefreshEpoch=System.currentTimeMillis();
         if(currentScreen==0&&root!=null){showRestaurantList();loadRestaurants(false);loadMenuSearch(homeSearchQuery);}
-        else if(currentScreen==1&&activeRestaurant!=null)loadMenus(activeRestaurant.optInt("id"),menus.isEmpty());
+        else if(currentScreen==1&&activeRestaurant!=null){
+            loadActiveCart();
+            updateCartButton();
+            if (menusLoadFinished) renderMenus();
+            loadMenus(activeRestaurant.optInt("id"),menus.isEmpty());
+        } else if(currentScreen==4) renderSavedCarts();
         mainHandler.removeCallbacks(realtimeFoodRefresh);
         mainHandler.postDelayed(realtimeFoodRefresh, CustomerPerformanceManager.pollingBackground(this, 30000L));
     }
@@ -2423,6 +2695,7 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
 
     @Override
     protected void onDestroy() {
+        if (splitBillManager != null) splitBillManager.dispose();
         if(virtualFood!=null)virtualFood.dispose();
         featureRuntime.destroy();
         try { mainHandler.removeCallbacksAndMessages(null); } catch (Exception ignored) {}

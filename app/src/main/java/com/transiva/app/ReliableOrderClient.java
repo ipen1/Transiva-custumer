@@ -13,6 +13,9 @@ public final class ReliableOrderClient {
     public static final class PendingAttemptException extends Exception {
         PendingAttemptException(String message) { super(message); }
     }
+    static final class FoodCartChangedException extends Exception {
+        FoodCartChangedException() { super("Isi keranjang berubah. Periksa kembali sebelum memesan."); }
+    }
     private ReliableOrderClient() {}
 
     public static JSONObject create(Context context, String url, JSONObject input, int timeout) throws Exception {
@@ -43,19 +46,24 @@ public final class ReliableOrderClient {
                 if(resolution.optBoolean("attempt_found")){
                     JSONObject original=resolution.optJSONObject("order_response");
                     if(original==null)throw new PendingAttemptException("Hasil pesanan sebelumnya belum dapat dibaca.");
-                    saveOutcome(prefs,slot,original);original.put("recovered_attempt",true);original.put("message","Hasil pesanan sebelumnya dipulihkan. Periksa Aktivitas sebelum membuat pesanan baru.");return original;
+                    saveOutcome(prefs,slot,user,original);original.put("recovered_attempt",true);original.put("message","Hasil pesanan sebelumnya dipulihkan. Periksa Aktivitas sebelum membuat pesanan baru.");return original;
                 }
                 // Server acquired the same attempt lock and confirmed it has no committed receipt.
                 key="";
             }
-            if(key.isEmpty())key="ORD-"+UUID.randomUUID();
-            if(!prefs.edit().putString(slot+":payload",canonical).putString(slot+":key",key).commit())
-                throw new PendingAttemptException("Percobaan order belum dapat disimpan di perangkat.");
+            boolean newAttempt = key.isEmpty();
+            if (newAttempt) key = "ORD-" + UUID.randomUUID();
+            synchronized (FoodCartStore.class) {
+                if (newAttempt && slot.endsWith(":create_food_order.php") && !FoodCartStore.matchesDraft(prefs, user, body))
+                    throw new FoodCartChangedException();
+                if (!prefs.edit().putString(slot+":payload",canonical).putString(slot+":key",key).commit())
+                    throw new PendingAttemptException("Percobaan order belum dapat disimpan di perangkat.");
+            }
             if(!user.equals(new SessionManager(app).getUserId()))throw new InterruptedException("Account changed");
             body.put("id",key);body.put("user_id",user);
             try {
                 JSONObject result=TransivaHttpRepository.postJsonIdempotent(app,url,body,timeout,key);
-                saveOutcome(prefs,slot,result);return result;
+                saveOutcome(prefs,slot,user,result);return result;
             } catch (Exception error) {
                 if (definitelyRejected(error)) { clear(prefs,slot); throw error; }
                 // A missing HTTP acknowledgement may still have committed: resolve the SAME key.
@@ -69,7 +77,7 @@ public final class ReliableOrderClient {
                         JSONObject receipt=found.optJSONObject("order_response");
                         if(found.optBoolean("success") && found.optBoolean("attempt_found") && receipt!=null
                                 && user.equals(new SessionManager(app).getUserId())) {
-                            saveOutcome(prefs,slot,receipt);receipt.put("recovered_attempt",true);return receipt;
+                            saveOutcome(prefs,slot,user,receipt);receipt.put("recovered_attempt",true);return receipt;
                         }
                     } catch(Exception ignored) { /* Preserve the key until its outcome is known. */ }
                 }
@@ -96,8 +104,10 @@ public final class ReliableOrderClient {
             if (!response.optBoolean("success")) throw new PendingAttemptException("Hasil pesanan sebelumnya belum dapat dipastikan.");
             if (!response.optBoolean("attempt_found")) return null;
             JSONObject order=response.optJSONObject("order_response");
-            if (order==null || order.optString("order_id").isEmpty()) throw new PendingAttemptException("Hasil pesanan sebelumnya belum dapat dibaca.");
-            clear(prefs,slot);
+            if (order==null || !order.optBoolean("success") || order.optString("order_id").isEmpty()) throw new PendingAttemptException("Hasil pesanan sebelumnya belum dapat dibaca.");
+            owner.check(app);
+            saveOutcome(prefs,slot,user,order);
+            order.put("recovered_attempt",true);
             return order;
         } finally { synchronized (ReliableOrderClient.class) { IN_FLIGHT.remove(slot); } }
     }
@@ -108,7 +118,24 @@ public final class ReliableOrderClient {
         return slot.endsWith(":create_pickup_order.php");
     }
 
-    private static void saveOutcome(SharedPreferences prefs, String slot, JSONObject result) throws Exception {
+    private static void saveOutcome(SharedPreferences prefs, String slot, String user, JSONObject result) throws Exception {
+        if (slot.endsWith(":create_food_order.php") && result.optBoolean("success")) {
+            if (result.optString("order_id").isEmpty()) throw new PendingAttemptException(
+                    "Bukti pesanan belum lengkap. Periksa Aktivitas sebelum mencoba lagi.");
+            synchronized (FoodCartStore.class) {
+                String saved = prefs.getString(slot + ":payload", "");
+                SharedPreferences.Editor edit = prefs.edit().remove(slot + ":payload").remove(slot + ":key");
+                if (!saved.isEmpty()) {
+                    JSONObject payload = new JSONObject(saved);
+                    // Older servers may omit the merchant from a recovered receipt.
+                    if (!result.has("restaurant_id")) result.put("restaurant_id", payload.optInt("restaurant_id"));
+                    FoodCartStore.consume(prefs, edit, user, payload);
+                }
+                if (!edit.commit()) throw new PendingAttemptException(
+                        "Pesanan tercatat. Periksa Aktivitas untuk melihat pesananmu.");
+            }
+            return;
+        }
         if (!isPickupSlot(slot) || !result.optBoolean("success")) {
             clear(prefs, slot);
             return;
@@ -181,7 +208,7 @@ public final class ReliableOrderClient {
             if (receipt != null && !receipt.optString("order_id").equals(original.optString("order_id"))) {
                 throw new PendingAttemptException("Hasil pengiriman belum cocok. Periksa Aktivitas.");
             }
-            if (receipt == null) saveOutcome(prefs, slot, original);
+            if (receipt == null) saveOutcome(prefs, slot, "", original);
             return original;
         } finally {
             synchronized (ReliableOrderClient.class) { IN_FLIGHT.remove(slot); }

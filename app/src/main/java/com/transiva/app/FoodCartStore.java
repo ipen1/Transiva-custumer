@@ -28,6 +28,7 @@ final class FoodCartStore {
         final int restaurantId;
         final List<CartItem> items = new ArrayList<>();
         String name = "";
+        String photo = "";
         String draftId = UUID.randomUUID().toString();
         private String snapshot = "";
 
@@ -38,6 +39,7 @@ final class FoodCartStore {
             try {
                 JSONObject saved = new JSONObject(snapshot);
                 name = saved.optString("name");
+                photo = saved.optString("photo");
                 draftId = saved.optString("draft_id", draftId);
                 JSONArray lines = saved.getJSONArray("items");
                 for (int i = 0; i < lines.length(); i++) {
@@ -82,7 +84,7 @@ final class FoodCartStore {
                         .put("image", line.image).put("selection_order", line.selectionOrder)
                         .put("selected_options", line.selectedOptions).put("line_id", line.lineId));
             }
-            return new JSONObject().put("name", name).put("draft_id", draftId).put("items", rows).toString();
+            return new JSONObject().put("name", name).put("photo", photo).put("draft_id", draftId).put("items", rows).toString();
         }
     }
 

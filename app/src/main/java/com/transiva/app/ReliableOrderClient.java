@@ -46,7 +46,7 @@ public final class ReliableOrderClient {
                 if(resolution.optBoolean("attempt_found")){
                     JSONObject original=resolution.optJSONObject("order_response");
                     if(original==null)throw new PendingAttemptException("Hasil pesanan sebelumnya belum dapat dibaca.");
-                    saveOutcome(prefs,slot,user,original);original.put("recovered_attempt",true);original.put("message","Hasil pesanan sebelumnya dipulihkan. Periksa Aktivitas sebelum membuat pesanan baru.");return original;
+                    saveOutcome(prefs,slot,user,original);original.put("recovered_attempt",true);original.put("recovered_previous_attempt",true);original.put("message","Hasil pesanan sebelumnya dipulihkan. Periksa Aktivitas sebelum membuat pesanan baru.");return original;
                 }
                 // Server acquired the same attempt lock and confirmed it has no committed receipt.
                 key="";

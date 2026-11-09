@@ -65,7 +65,7 @@
         android:supportsRtl="true"
         android:theme="@style/AppTheme"
         android:usesCleartextTraffic="false">
-        <activity android:name=".CustomerFoodOrderStatusActivity" android:exported="false" android:theme="@style/AppTheme" />
+        <activity android:name=".CustomerFoodOrderStatusActivity" android:enableOnBackInvokedCallback="true" android:exported="false" android:theme="@style/AppTheme" />
         <activity android:name=".FcmRegistrationDiagnosticsActivity" android:exported="false" />
         <meta-data android:name="firebase_crashlytics_collection_enabled" android:value="${transivaTelemetryEnabled}" />
         <meta-data android:name="firebase_analytics_collection_enabled" android:value="${transivaTelemetryEnabled}" />
@@ -133,6 +133,7 @@
 
         <activity android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|uiMode"
             android:name=".PinActivity"
+            android:enableOnBackInvokedCallback="true"
             android:exported="false"
            
             android:theme="@style/AppTheme" />
@@ -146,6 +147,7 @@
 
         <activity android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|uiMode"
             android:name=".LoginActivity"
+            android:enableOnBackInvokedCallback="true"
             android:exported="false"
            
             android:theme="@style/AppTheme"
@@ -153,6 +155,7 @@
 
         <activity android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|uiMode"
             android:name=".RegisterActivity"
+            android:enableOnBackInvokedCallback="true"
             android:exported="false"
            
             android:theme="@style/AppTheme"
@@ -189,6 +192,7 @@
 
         <activity android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|uiMode"
             android:name=".UpdateDownloadActivity"
+            android:enableOnBackInvokedCallback="true"
             android:exported="false"
            
             android:theme="@style/AppTheme" />
@@ -273,6 +277,7 @@
 
         <activity android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|uiMode"
             android:name=".TransRideActivity"
+            android:enableOnBackInvokedCallback="true"
             android:exported="false"
            
             android:theme="@style/AppTheme"
@@ -280,6 +285,7 @@
 
         <activity android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|uiMode"
             android:name=".PassengerCarActivity"
+            android:enableOnBackInvokedCallback="true"
             android:exported="false"
            
             android:theme="@style/AppTheme"
@@ -287,12 +293,14 @@
 
         <activity android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|uiMode"
             android:name=".TransFoodActivity"
+            android:enableOnBackInvokedCallback="true"
             android:exported="false"
            
             android:theme="@style/AppTheme" />
 
         <activity android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|uiMode"
             android:name=".TranstourActivity"
+            android:enableOnBackInvokedCallback="true"
            
             android:exported="false"
             android:theme="@style/AppTheme" />
@@ -316,6 +324,7 @@
 
         <activity android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|uiMode"
             android:name=".CustomerTripActivity"
+            android:enableOnBackInvokedCallback="true"
             android:exported="true"
            
             android:theme="@style/AppTheme">
@@ -349,6 +358,7 @@
 
         <activity android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|uiMode"
             android:name=".TransPickupActivity"
+            android:enableOnBackInvokedCallback="true"
             android:exported="false"
            
             android:theme="@style/AppTheme"

@@ -67,7 +67,7 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
     private static final int COMBINED_CHECKOUT = 5;
     private static final int COMBINED_RESULT = 6;
     private FoodCombinedCheckout.Plan combinedPlan;
-    private String combinedPayment = "cash";
+    private String combinedPayment = "cash", combinedSessionId = "";
     private String combinedQuoteError = "";
     private int combinedGeneration;
     private boolean combinedQuoting, editingCombinedAddress;
@@ -555,6 +555,7 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
             View placeholder=new View(this);IncrementalLinearRenderer.mark(placeholder,key,fingerprint);addWithMarginTo(parent,placeholder,0,0,0,dp(10));return;
         }
         LinearLayout card = card();
+        card.setBackground(foodBlueCard());
         card.setOrientation(LinearLayout.HORIZONTAL);
         card.setPadding(dp(10), dp(10), dp(10), dp(10));
         card.setClickable(true);
@@ -562,7 +563,8 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
 
         ImageView img = new ImageView(this);
         img.setScaleType(ImageView.ScaleType.CENTER_CROP);
-        img.setBackgroundColor(Color.parseColor("#EAF4FF"));
+        img.setBackground(round("#EAF4FF",dp(12)));
+        img.setClipToOutline(true);
         card.addView(img, new LinearLayout.LayoutParams(dp(76), dp(76)));
         loadImage(img, absoluteUrl(firstNonEmpty(item.image, "assets/no-image.png")));
 
@@ -572,7 +574,7 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
         card.addView(body, new LinearLayout.LayoutParams(0, -2, 1));
 
         body.addView(text(firstNonEmpty(item.menuName, "Menu"), 16, "#0F172A", true));
-        TextView owner = text("Milik merchant: " + firstNonEmpty(item.restaurantName, "Merchant") + " • " + Math.max(0,(int)Math.round(item.restaurantDistanceKm)) + " km", 12, "#64748B", false);
+        TextView owner = text(firstNonEmpty(item.restaurantName, "Merchant") + " • " + Math.max(0,(int)Math.round(item.restaurantDistanceKm)) + " km", 12, "#64748B", false);
         owner.setPadding(0, dp(3), 0, 0);
         body.addView(owner);
         if (item.discountActive) { TextView old=text(rupiah(item.originalPrice),11,"#94A3B8",false);old.setPaintFlags(old.getPaintFlags()|Paint.STRIKE_THRU_TEXT_FLAG);body.addView(old);body.addView(text("🏷️ -"+String.format(Locale.US,"%.0f%%",item.discountPercent)+" merchant",11,"#C2410C",true)); }
@@ -691,11 +693,32 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
             loadMenus(r.optInt("id", 0));
         });
 
-        KabarMitraUi.Avatar profile = merchantAvatar(r, 76);
-        LinearLayout.LayoutParams profileLp = new LinearLayout.LayoutParams(dp(76), dp(76));
-        profileLp.gravity = Gravity.CENTER_HORIZONTAL;
-        profileLp.topMargin = dp(12);
-        card.addView(profile, profileLp);
+        FrameLayout portrait = new FrameLayout(this);
+        ImageView backdrop = new ImageView(this) {
+            @Override public void setImageBitmap(android.graphics.Bitmap bitmap) {
+                if (bitmap != null && android.os.Build.VERSION.SDK_INT < 31) {
+                    bitmap = android.graphics.Bitmap.createScaledBitmap(
+                            android.graphics.Bitmap.createScaledBitmap(bitmap, 12, 8, true), 144, 96, true);
+                }
+                super.setImageBitmap(bitmap);
+            }
+        };
+        backdrop.setScaleType(ImageView.ScaleType.CENTER_CROP);
+        backdrop.setBackgroundColor(Color.parseColor("#BBD9F5"));
+        if (android.os.Build.VERSION.SDK_INT >= 31) {
+            backdrop.setRenderEffect(android.graphics.RenderEffect.createBlurEffect(
+                    dp(11), dp(11), android.graphics.Shader.TileMode.CLAMP));
+        }
+        portrait.addView(backdrop, new FrameLayout.LayoutParams(-1, dp(66)));
+        loadImage(backdrop, firstNonEmpty(r.optString("banner"), "assets/default-food.png"));
+        View veil = new View(this);
+        veil.setBackground(roundGradient("#006FAFDD", "#446FAFDD", 0));
+        portrait.addView(veil, new FrameLayout.LayoutParams(-1, dp(66)));
+        KabarMitraUi.Avatar profile = merchantAvatar(r, 70);
+        FrameLayout.LayoutParams profileLp = new FrameLayout.LayoutParams(dp(70), dp(70), Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL);
+        portrait.addView(profile, profileLp);
+        card.addView(portrait, new LinearLayout.LayoutParams(-1, dp(93)));
+        card.setClipToOutline(true);
 
         LinearLayout body = new LinearLayout(this);
         body.setOrientation(LinearLayout.VERTICAL);
@@ -890,6 +913,7 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
         if (trackStock && stock <= 0) active = false;
 
         LinearLayout card = card();
+        card.setBackground(foodBlueCard());
         card.setOrientation(LinearLayout.VERTICAL);
         card.setPadding(dp(12), dp(12), dp(12), dp(12));
         LinearLayout mainRow = new LinearLayout(this);
@@ -2773,9 +2797,11 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
     }
 
     private void openCombinedCheckout() {
-        if (userId <= 0 || cartStore.selectedCarts().isEmpty()) return;
+        List<Cart> drafts = cartStore.selectedCarts();
+        if (userId <= 0 || drafts.isEmpty()) return;
         currentScreen = COMBINED_CHECKOUT;
-        combinedPayment = "cash";
+        combinedSessionId = FoodCombinedCheckout.sessionId(this, userId, drafts);
+        combinedPayment = FoodCombinedCheckout.payment(this, userId);
         buildTopBar("Checkout", "Ringkasan pilihanmu", true);
         foodScroll.scrollTo(0, 0);
         quoteCombinedCheckout();
@@ -2786,6 +2812,8 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
         if (drafts.isEmpty()) { showSavedCarts(); return; }
         int generation = ++combinedGeneration;
         String payment = combinedPayment;
+        combinedSessionId = FoodCombinedCheckout.sessionId(this, userId, drafts);
+        String sessionId = combinedSessionId;
         combinedPlan = null;
         combinedQuoteError = "";
         combinedQuoting = true;
@@ -2802,7 +2830,7 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
                     });
                     return;
                 }
-                FoodCombinedCheckout.Plan plan = FoodCombinedCheckout.quote(this, userId, drafts, payment);
+                FoodCombinedCheckout.Plan plan = FoodCombinedCheckout.quote(this, userId, drafts, payment, sessionId);
                 featureRuntime.post(mainHandler, () -> finishCombinedQuote(generation, plan, ""));
             } catch (Exception error) {
                 String message = error instanceof IllegalStateException ? error.getMessage()
@@ -2893,6 +2921,7 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
     private void chooseCombinedPayment(String payment) {
         if (payment.equals(combinedPayment) || foodOrderSubmitting) return;
         combinedPayment = payment;
+        FoodCombinedCheckout.savePayment(this, userId, payment);
         quoteCombinedCheckout();
     }
 
@@ -2920,7 +2949,8 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
         removeConfirmedDraftItems(result.recoveredReceipt);
         if (!result.recoveredPrevious && expected > 0 && result.orderIds.size() == expected) {
             successWasRecovered = false;
-            showFoodOrderSuccess(result.orderIds, 0);
+            List<String> receipts = FoodCombinedCheckout.confirmed(this, userId, combinedSessionId, true);
+            showFoodOrderSuccess(receipts.isEmpty() ? result.orderIds : receipts, 0);
             return;
         }
         currentScreen = COMBINED_RESULT;
@@ -2947,7 +2977,17 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
         summary.addView(text("Periksa Aktivitas bila hasil pesanan belum pasti. Item yang belum terkonfirmasi masih dapat diperiksa lewat Keranjang.", 12, "#64748B", false));
         addWithMargin(summary, 0, 0, 0, dp(10));
 
-        Button cartButton = primaryButton("Kembali ke keranjang");
+        if (!cartStore.selectedCarts().isEmpty()) {
+            Button resume = primaryButton("Lanjut checkout yang tersisa");
+            resume.setOnClickListener(v -> {
+                currentScreen = COMBINED_CHECKOUT;
+                buildTopBar("Checkout", "Ringkasan pilihan yang tersisa", true);
+                foodScroll.scrollTo(0, 0);
+                quoteCombinedCheckout();
+            });
+            addWithMargin(resume, 0, 0, 0, dp(8));
+        }
+        Button cartButton = checkoutChoice("Kembali ke keranjang", false);
         cartButton.setOnClickListener(v -> showSavedCarts());
         addWithMargin(cartButton, 0, 0, 0, dp(10));
         Button orders = checkoutChoice("Lihat pesanan aktif", false);
@@ -3096,6 +3136,14 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
         return b;
     }
     private Button choiceButton(String s, boolean active) { Button b = new Button(this); b.setText(s); b.setAllCaps(false); b.setTextColor(Color.parseColor(active ? "#FFFFFF" : "#0B3A78")); b.setTypeface(Typeface.DEFAULT, Typeface.BOLD); b.setBackground(roundStroke(active ? "#0B7CFF" : "#FFFFFF", active ? "#0B7CFF" : "#D7E6F8", dp(18), 1)); return b; }
+
+    private GradientDrawable foodBlueCard() {
+        boolean dark = CustomerAppSettings.isDarkMode(this);
+        GradientDrawable shade = roundGradient(dark ? "#182B42" : "#FFFFFF",
+                dark ? "#203C57" : "#DCEEFF", dp(19));
+        shade.setStroke(dp(1), Color.parseColor(dark ? "#385775" : "#D8E9F8"));
+        return shade;
+    }
 
     private GradientDrawable round(String color, int radius) { GradientDrawable g = new GradientDrawable(); g.setColor(Color.parseColor(color)); g.setCornerRadius(radius); return g; }
     private GradientDrawable roundStroke(String color, String stroke, int radius, int sw) { GradientDrawable g = round(color, radius); g.setStroke(dp(sw), Color.parseColor(stroke)); return g; }

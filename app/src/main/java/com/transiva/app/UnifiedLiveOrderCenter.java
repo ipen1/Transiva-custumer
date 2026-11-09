@@ -53,7 +53,9 @@ public final class UnifiedLiveOrderCenter {
             status = CustomerOrderState.normalize(this.raw.optString("status"));
             source = first(this.raw.optString("source"), this.raw.optString("_transiva_table"), "orders");
             type = first(this.raw.optString("order_type"), this.raw.optString("service_type"));
-            serviceName = first(this.raw.optString("service_name"), this.raw.optString("service_type"), readableService(type));
+            String normalizedService = readableService(type);
+            serviceName = "TransShop".equals(normalizedService) ? normalizedService
+                    : first(this.raw.optString("service_name"), this.raw.optString("service_type"), normalizedService);
             driverType = normalizeDriverType(first(this.raw.optString("driver_type"), this.raw.optString("vehicle_type"), type));
             createdAt = this.raw.optString("created_at", "");
         }
@@ -182,6 +184,6 @@ public final class UnifiedLiveOrderCenter {
         return result;
     }
     private static String normalizeDriverType(String s){String n=s==null?"":s.toLowerCase();return(n.contains("car")||n.contains("mobil"))?"car":"motor";}
-    private static String readableService(String s){String n=s==null?"":s.toLowerCase();if(n.contains("food"))return"TransFood";if(n.contains("pickup")||n.contains("send"))return"TransSend";if(n.contains("car")||n.contains("mobil"))return"TransCar";return"TransRide";}
+    private static String readableService(String s){String n=s==null?"":s.toLowerCase();if(n.contains("food"))return"TransFood";if(n.contains("shop")||n.contains("mart"))return"TransShop";if(n.contains("pickup")||n.contains("send"))return"TransSend";if(n.contains("car")||n.contains("mobil"))return"TransCar";return"TransRide";}
     private static String first(String...v){if(v!=null)for(String x:v)if(x!=null&&!x.trim().isEmpty()&&!"null".equalsIgnoreCase(x.trim()))return x.trim();return"";}
 }

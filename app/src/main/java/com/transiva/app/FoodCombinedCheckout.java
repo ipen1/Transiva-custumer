@@ -1,6 +1,8 @@
 package com.transiva.app;
 
 import android.app.Activity;
+import android.content.Context;
+import android.content.SharedPreferences;
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
@@ -25,6 +27,7 @@ final class FoodCombinedCheckout {
 
     static final class Plan {
         final List<StoreQuote> stores = new ArrayList<>();
+        String sessionId = "";
         String address = "";
         String destination = "";
         long food, delivery, total;
@@ -39,6 +42,66 @@ final class FoodCombinedCheckout {
     }
 
     private FoodCombinedCheckout() {}
+
+    private static final String PREFS = "transiva_order_attempts";
+
+    private static String sessionKey(String user) { return "food_combined:" + user + ":"; }
+
+    static String sessionId(Context context, int user, List<FoodCartStore.Cart> carts) {
+        SharedPreferences prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
+        String prefix = sessionKey(String.valueOf(user));
+        java.util.Set<String> selected = new java.util.HashSet<>();
+        for (FoodCartStore.Cart cart : carts) for (FoodCartStore.CartItem item : cart.items) selected.add(item.lineId);
+        synchronized (FoodCartStore.class) {
+            String id = prefs.getString(prefix + "id", "");
+            java.util.Set<String> scope = prefs.getStringSet(prefix + "scope", java.util.Collections.emptySet());
+            if (!id.isEmpty() && scope.containsAll(selected)) return id;
+            id = java.util.UUID.randomUUID().toString();
+            prefs.edit().putString(prefix + "id", id).putStringSet(prefix + "scope", selected)
+                    .remove(prefix + "receipts").remove(prefix + "payment").apply();
+            return id;
+        }
+    }
+
+    static String payment(Context context, int user) {
+        return context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+                .getString(sessionKey(String.valueOf(user)) + "payment", "cash");
+    }
+
+    static void savePayment(Context context, int user, String payment) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+                .putString(sessionKey(String.valueOf(user)) + "payment", payment).apply();
+    }
+
+    static void appendReceipt(SharedPreferences prefs, SharedPreferences.Editor edit, String user,
+                              JSONObject payload, JSONObject receipt) throws JSONException {
+        String prefix = sessionKey(user);
+        String id = payload.optString("checkout_session_id");
+        if (id.isEmpty() || !id.equals(prefs.getString(prefix + "id", ""))) return;
+        JSONArray ids;
+        try { ids = new JSONArray(prefs.getString(prefix + "receipts", "[]")); }
+        catch (JSONException invalid) { ids = new JSONArray(); }
+        String order = receipt.getString("order_id");
+        for (int i = 0; i < ids.length(); i++) if (order.equals(ids.optString(i))) return;
+        ids.put(order);
+        edit.putString(prefix + "receipts", ids.toString());
+    }
+
+    static List<String> confirmed(Context context, int user, String id, boolean finish) {
+        SharedPreferences prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
+        String prefix = sessionKey(String.valueOf(user));
+        List<String> result = new ArrayList<>();
+        synchronized (FoodCartStore.class) {
+            if (id.isEmpty() || !id.equals(prefs.getString(prefix + "id", ""))) return result;
+            try {
+                JSONArray ids = new JSONArray(prefs.getString(prefix + "receipts", "[]"));
+                for (int i = 0; i < ids.length(); i++) result.add(ids.optString(i));
+            } catch (JSONException ignored) {}
+            if (finish) prefs.edit().remove(prefix + "id").remove(prefix + "receipts")
+                    .remove(prefix + "scope").remove(prefix + "payment").apply();
+        }
+        return result;
+    }
 
     static JSONArray items(List<FoodCartStore.CartItem> cart, boolean savedCart) throws JSONException {
         JSONArray items = new JSONArray();
@@ -55,13 +118,14 @@ final class FoodCombinedCheckout {
         return ReliableOrderClient.recoverPendingFood(activity, ORDER_URL, TIMEOUT);
     }
 
-    static Plan quote(Activity activity, int user, List<FoodCartStore.Cart> carts, String payment) throws Exception {
+    static Plan quote(Activity activity, int user, List<FoodCartStore.Cart> carts, String payment, String sessionId) throws Exception {
         Plan plan = new Plan();
+        plan.sessionId = sessionId;
         for (FoodCartStore.Cart cart : carts) {
             if (Thread.currentThread().isInterrupted()) throw new InterruptedException();
             JSONObject payload = new JSONObject().put("user_id", user).put("restaurant_id", cart.restaurantId)
                     .put("delivery_mode", "standard").put("payment_method", payment)
-                    .put("combined_checkout", true).put("items", items(cart.items, true));
+                    .put("combined_checkout", true).put("checkout_session_id", sessionId).put("items", items(cart.items, true));
             JSONObject quote;
             try {
                 quote = FoodCheckoutConfirmation.quote(activity, ORDER_URL, payload, TIMEOUT);

@@ -147,6 +147,7 @@ public final class ReliableOrderClient {
                         result.put("_direct_food_items", payload.optJSONArray("items"));
                     }
                     FoodCartStore.consume(prefs, edit, user, payload);
+                    FoodCombinedCheckout.appendReceipt(prefs, edit, user, payload, result);
                 }
                 if (!edit.commit()) throw new PendingAttemptException(
                         "Pesanan tercatat. Periksa Aktivitas untuk melihat pesananmu.");

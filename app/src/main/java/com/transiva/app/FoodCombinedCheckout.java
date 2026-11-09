@@ -35,16 +35,18 @@ final class FoodCombinedCheckout {
         long total;
         String problem = "";
         boolean recoveredPrevious;
+        JSONObject recoveredReceipt;
     }
 
     private FoodCombinedCheckout() {}
 
-    static JSONArray items(List<FoodCartStore.CartItem> cart) throws JSONException {
+    static JSONArray items(List<FoodCartStore.CartItem> cart, boolean savedCart) throws JSONException {
         JSONArray items = new JSONArray();
         for (FoodCartStore.CartItem line : cart) {
-            items.put(new JSONObject().put("id", line.id).put("qty", line.qty)
-                    .put("_cart_line_id", line.lineId).put("selected_options",
-                            line.selectedOptions == null ? new JSONArray() : line.selectedOptions));
+            JSONObject item = new JSONObject().put("id", line.id).put("qty", line.qty)
+                    .put("selected_options", line.selectedOptions == null ? new JSONArray() : line.selectedOptions);
+            item.put(savedCart ? "_cart_line_id" : "_draft_line_id", line.lineId);
+            items.put(item);
         }
         return items;
     }
@@ -59,7 +61,7 @@ final class FoodCombinedCheckout {
             if (Thread.currentThread().isInterrupted()) throw new InterruptedException();
             JSONObject payload = new JSONObject().put("user_id", user).put("restaurant_id", cart.restaurantId)
                     .put("delivery_mode", "standard").put("payment_method", payment)
-                    .put("combined_checkout", true).put("items", items(cart.items));
+                    .put("combined_checkout", true).put("items", items(cart.items, true));
             JSONObject quote;
             try {
                 quote = FoodCheckoutConfirmation.quote(activity, ORDER_URL, payload, TIMEOUT);
@@ -117,6 +119,7 @@ final class FoodCombinedCheckout {
                 if (receipt.optBoolean("recovered_previous_attempt")) {
                     result.orderIds.add(receipt.getString("order_id"));
                     result.recoveredPrevious = true;
+                    result.recoveredReceipt = receipt;
                     break;
                 }
                 if (!receipt.optBoolean("success")) {
@@ -141,6 +144,7 @@ final class FoodCombinedCheckout {
     static Result recovered(JSONObject receipt) {
         Result result = new Result();
         result.recoveredPrevious = true;
+        result.recoveredReceipt = receipt;
         result.orderIds.add(receipt.optString("order_id"));
         return result;
     }

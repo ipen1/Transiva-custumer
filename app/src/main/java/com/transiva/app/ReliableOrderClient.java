@@ -85,6 +85,19 @@ public final class ReliableOrderClient {
             }
         }finally{synchronized(ReliableOrderClient.class){IN_FLIGHT.remove(slot);}}
     }
+    static boolean hasPendingFoodDraft(Context context, String draftId) {
+        String user = new SessionManager(context).getUserId();
+        String slot = "order:" + user + ":create_food_order.php";
+        SharedPreferences prefs = context.getSharedPreferences("transiva_order_attempts", Context.MODE_PRIVATE);
+        if (prefs.getString(slot + ":key", "").isEmpty()) return false;
+        try {
+            JSONObject payload = new JSONObject(prefs.getString(slot + ":payload", "{}"));
+            return draftId.equals(payload.optString("_direct_food_draft"));
+        } catch (org.json.JSONException invalid) {
+            return true;
+        }
+    }
+
     static JSONObject recoverPendingFood(Context context,String url,int timeout) throws Exception {
         Context app=context.getApplicationContext();
         CustomerTransportSession owner=CustomerTransportSession.capture(context);
@@ -129,6 +142,10 @@ public final class ReliableOrderClient {
                     JSONObject payload = new JSONObject(saved);
                     // Older servers may omit the merchant from a recovered receipt.
                     if (!result.has("restaurant_id")) result.put("restaurant_id", payload.optInt("restaurant_id"));
+                    if (payload.has("_direct_food_draft")) {
+                        result.put("_direct_food_draft", payload.optString("_direct_food_draft"));
+                        result.put("_direct_food_items", payload.optJSONArray("items"));
+                    }
                     FoodCartStore.consume(prefs, edit, user, payload);
                 }
                 if (!edit.commit()) throw new PendingAttemptException(

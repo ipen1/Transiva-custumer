@@ -49,6 +49,7 @@ final class FoodCartStore {
                     CartItem line = new CartItem(row.optString("line_id"));
                     line.id = row.optInt("id");
                     line.qty = row.optInt("qty");
+                    line.selected = row.optBoolean("selected", true);
                     line.price = row.optDouble("price", 0);
                     line.name = row.optString("name", "Menu");
                     line.optionText = row.optString("option_text");
@@ -76,12 +77,21 @@ final class FoodCartStore {
             return total;
         }
 
+        Cart selectedOnly() {
+            Cart selected = new Cart(restaurantId, "");
+            selected.name = name;
+            selected.photo = photo;
+            selected.draftId = draftId;
+            for (CartItem line : items) if (line.selected) selected.items.add(line);
+            return selected;
+        }
+
         private String serialize() throws JSONException {
             JSONArray rows = new JSONArray();
             for (CartItem line : items) {
                 rows.put(new JSONObject().put("id", line.id).put("qty", line.qty)
                         .put("price", line.price).put("name", line.name).put("option_text", line.optionText)
-                        .put("image", line.image).put("selection_order", line.selectionOrder)
+                        .put("selected", line.selected).put("image", line.image).put("selection_order", line.selectionOrder)
                         .put("selected_options", line.selectedOptions).put("line_id", line.lineId));
             }
             return new JSONObject().put("name", name).put("photo", photo).put("draft_id", draftId).put("items", rows).toString();
@@ -91,6 +101,7 @@ final class FoodCartStore {
     static final class CartItem {
         final String lineId;
         int id, qty;
+        boolean selected = true;
         String name, key, optionText, image;
         double price;
         long selectionOrder;
@@ -121,23 +132,67 @@ final class FoodCartStore {
     }
 
     boolean save(Cart cart) {
-        if (prefix.isEmpty() || cart.restaurantId <= 0) return false;
-        String key = prefix + cart.restaurantId;
+        return saveAll(java.util.Collections.singletonList(cart));
+    }
+
+    boolean saveAll(List<Cart> carts) {
+        if (prefix.isEmpty()) return false;
         synchronized (FoodCartStore.class) {
-            if (!cart.snapshot.equals(prefs.getString(key, ""))) return false;
+            List<String> snapshots = new ArrayList<>();
+            SharedPreferences.Editor edit = prefs.edit();
             try {
-                String next = cart.items.isEmpty() ? "" : cart.serialize();
-                SharedPreferences.Editor edit = prefs.edit();
-                if (next.isEmpty()) edit.remove(key);
-                else edit.putString(key, next);
-                // SharedPreferences publishes the edit in memory before scheduling its disk write.
-                edit.apply();
-                cart.snapshot = next;
-                if (next.isEmpty()) cart.draftId = UUID.randomUUID().toString();
-                return true;
+                for (Cart cart : carts) {
+                    String key = prefix + cart.restaurantId;
+                    if (cart.restaurantId <= 0 || !cart.snapshot.equals(prefs.getString(key, ""))) return false;
+                    String next = cart.items.isEmpty() ? "" : cart.serialize();
+                    if (next.isEmpty()) edit.remove(key);
+                    else edit.putString(key, next);
+                    snapshots.add(next);
+                }
             } catch (JSONException invalid) {
                 return false;
             }
+            edit.apply();
+            for (int i = 0; i < carts.size(); i++) {
+                Cart cart = carts.get(i);
+                cart.snapshot = snapshots.get(i);
+                if (cart.snapshot.isEmpty()) cart.draftId = UUID.randomUUID().toString();
+            }
+            return true;
+        }
+    }
+
+    List<Cart> selectedCarts() {
+        List<Cart> selected = new ArrayList<>();
+        for (Cart cart : all()) {
+            Cart subset = cart.selectedOnly();
+            if (!subset.items.isEmpty()) selected.add(subset);
+        }
+        return selected;
+    }
+
+    boolean addDraft(Cart draft) {
+        synchronized (FoodCartStore.class) {
+            Cart saved = get(draft.restaurantId);
+            saved.name = draft.name;
+            if (!draft.photo.isEmpty()) saved.photo = draft.photo;
+            for (CartItem pending : draft.items) {
+                CartItem existing = null;
+                for (CartItem line : saved.items) {
+                    if (pending.key.equals(line.key)) { existing = line; break; }
+                }
+                if (existing == null) {
+                    saved.items.add(pending);
+                    continue;
+                }
+                if (existing.qty + pending.qty > 99) return false;
+                existing.qty += pending.qty;
+                existing.price = pending.price;
+                existing.image = pending.image;
+                existing.selectionOrder = pending.selectionOrder;
+                existing.selected = true;
+            }
+            return save(saved);
         }
     }
 

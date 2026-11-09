@@ -86,6 +86,7 @@ public class UpdateDownloadActivity extends CustomerAdaptiveActivity {
 
     @Override protected void onCreate(Bundle state) {
         super.onCreate(state);
+        registerCustomBackNavigation();
         forcedMode = getIntent().getBooleanExtra(EXTRA_FORCE, false);
         autoStart = getIntent().getBooleanExtra(EXTRA_AUTO_START, false);
         dark = false; // Source colors stay light; the shared theme engine renders both modes.

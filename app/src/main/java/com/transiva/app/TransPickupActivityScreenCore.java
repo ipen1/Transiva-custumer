@@ -93,6 +93,7 @@ class TransPickupActivityScreenCore extends CustomerAdaptiveFragmentActivity {
 
     @Override protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        registerCustomBackNavigation(this::handleBack);
         try {
             CustomerWindowPolicy.status(getWindow(), Color.parseColor("#071426"));
             CustomerWindowPolicy.navigation(getWindow(), Color.parseColor("#071426"));
@@ -213,7 +214,7 @@ class TransPickupActivityScreenCore extends CustomerAdaptiveFragmentActivity {
         Button back = outlineButton("‹");
         back.setTextSize(24);
         back.setContentDescription("Kembali");
-        back.setOnClickListener(v -> onBackPressed());
+        back.setOnClickListener(v -> handleBack());
         titleRow.addView(back, new LinearLayout.LayoutParams(dp(48), dp(48)));
         TextView title = text("TransSend", 19, "#0B3A78", true);
         title.setPadding(dp(8), 0, dp(5), 0);
@@ -987,16 +988,19 @@ class TransPickupActivityScreenCore extends CustomerAdaptiveFragmentActivity {
             }
         }
     }
-    @Override public void onBackPressed() {
-        if (recoveryScreen && !submittingOrder) {
+    private boolean handleBack() {
+        if (submittingOrder) return true;
+        if (recoveryScreen) {
             startActivity(new Intent(this, CustomerDashboardActivity.class));
             finish();
-            return;
+        } else if (isCheckout() && detailsOpen) {
+            setDetailsOpen(false);
+        } else if (!isCheckout() && hasRoutePoints()) {
+            openCheckout();
+        } else {
+            finish();
         }
-        if (submittingOrder) return;
-        if (isCheckout() && detailsOpen) setDetailsOpen(false);
-        else if (!isCheckout() && hasRoutePoints()) openCheckout();
-        else finish();
+        return true;
     }
 
     private int checkSelfPermissionSafe(String p) { try { if (android.os.Build.VERSION.SDK_INT >= 23) return checkSelfPermission(p); return PackageManager.PERMISSION_GRANTED; } catch (Exception e) { return PackageManager.PERMISSION_DENIED; } }

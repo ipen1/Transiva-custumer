@@ -36,6 +36,7 @@ public class RegisterActivity extends CustomerAdaptiveActivity {
 
     @Override protected void onCreate(Bundle saved){
         super.onCreate(saved);
+        registerCustomBackNavigation();
         CustomerWindowPolicy.status(getWindow(), Color.rgb(5,23,50));CustomerWindowPolicy.navigation(getWindow(), Color.rgb(14,66,139));CustomerWindowPolicy.appearance(getWindow(), 0);
         build();referral.setText(CustomerReferralLinkStore.pending(this));CustomerResponsiveUi.apply(this);
         restoring=true;

@@ -26,7 +26,7 @@ public class CustomerFoodOrderStatusActivity extends CustomerAdaptiveActivity {
         if(countdown!=null)countdown.setText("Kembali ke beranda dalam "+Math.max(1,(remaining+999)/1000)+" detik");
         if(remaining<=0){home();return;}handler.postDelayed(this,200);
     }};
-    @Override protected void onCreate(Bundle state){super.onCreate(state);if(state!=null)remaining=Math.max(1000,Math.min(8000,state.getLong("remaining",8000)));readIntent();}
+    @Override protected void onCreate(Bundle state){super.onCreate(state);registerCustomBackNavigation();if(state!=null)remaining=Math.max(1000,Math.min(8000,state.getLong("remaining",8000)));readIntent();}
     @Override protected void onNewIntent(Intent intent){super.onNewIntent(intent);setIntent(intent);generation++;handler.removeCallbacksAndMessages(null);inFlight=false;routed=false;rendered=false;terminal=false;signature="";remaining=8000;readIntent();if(foreground){fetch();startTick();}}
     private void readIntent(){
         orderId=FoodOrderDecision.first(getIntent().getStringExtra("order_id"));

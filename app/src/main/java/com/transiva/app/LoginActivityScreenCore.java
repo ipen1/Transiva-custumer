@@ -95,6 +95,7 @@ class LoginActivityScreenCore extends CustomerAdaptiveFragmentActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        registerCustomBackNavigation(this::handleBack);
 
         try {
             CustomerWindowPolicy.status(getWindow(), 
@@ -1164,7 +1165,18 @@ class LoginActivityScreenCore extends CustomerAdaptiveFragmentActivity {
     }
     private void runAuthNetwork(Runnable work){authScope.execute(work,()->postAuth(()->{setLoading(false);showMessage("Antrean jaringan penuh. Coba kembali sebentar lagi.",false);}));}
     private void postAuth(Runnable result){authScope.post(mainHandler,()->{if(!isFinishing()&&authSessionToken.equals(safe(new SessionManager(this).getToken())))result.run();});}
-    @Override public void onBackPressed(){if(previewRequest!=null){cancelLoginPreview();setLoading(false);return;}if(loginStep==1&&!loading)returnToUsername();else super.onBackPressed();}
+    private boolean handleBack() {
+        if (previewRequest != null) {
+            cancelLoginPreview();
+            setLoading(false);
+            return true;
+        }
+        if (loginStep == 1 && !loading) {
+            returnToUsername();
+            return true;
+        }
+        return false;
+    }
     @Override protected void onSaveInstanceState(Bundle state){state.putString("login_username",usernameInput.getText().toString());state.putInt("login_step",loginStep);super.onSaveInstanceState(state);}
     @Override protected void onDestroy(){if(loginAvatar!=null){loginAvatar.setTag(new Object());loginAvatar.setImageDrawable(null);}if(googleSignupLookup!=null)googleSignupLookup.cancel();cancelLoginPreview();authScope.destroy();mainHandler.removeCallbacksAndMessages(null);super.onDestroy();}
     private static String safe(String v) { return v == null ? "" : v; }

@@ -69,6 +69,8 @@ class PinActivityScreenCore extends CustomerAdaptiveFragmentActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        // Keep the PIN gate in place on Back. Sign-out is available through "Keluar akun".
+        registerCustomBackNavigation(() -> true);
 
         try {
             CustomerWindowPolicy.status(getWindow(), Color.parseColor("#081423"));
@@ -85,12 +87,6 @@ class PinActivityScreenCore extends CustomerAdaptiveFragmentActivity {
 
         setContentView(buildScreen());
         checkPinStatus();
-    }
-
-    @Override
-    public void onBackPressed() {
-        // PIN gate tidak boleh dilewati dengan tombol Back.
-        // Pengguna tetap bisa keluar akun melalui tombol "Keluar akun".
     }
 
     protected View buildScreen() {

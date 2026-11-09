@@ -8,6 +8,8 @@ import android.os.*;
 import android.view.*;
 import android.view.animation.DecelerateInterpolator;
 import android.widget.*;
+import androidx.activity.ComponentDialog;
+import androidx.activity.OnBackPressedCallback;
 import org.json.*;
 import java.util.*;
 
@@ -19,7 +21,7 @@ final class FoodStoryViewer {
     final Handler handler=new Handler(Looper.getMainLooper());
     final FoodStoryPlayback playback=new FoodStoryPlayback();
     final long serverTime,anchor=SystemClock.elapsedRealtime();
-    Dialog dialog;
+    ComponentDialog dialog;
     FrameLayout root,media;
     ImageView photo,backdrop;
     KabarMitraUi.Avatar avatar;
@@ -48,7 +50,7 @@ final class FoodStoryViewer {
     TextView control(String s,String description){TextView v=label(s,20,true);v.setGravity(Gravity.CENTER);v.setContentDescription(description);return v;}
     void open(){
         if(items.isEmpty()||a.isFinishing()||a.isDestroyed())return;
-        dialog=new Dialog(a);dialog.requestWindowFeature(Window.FEATURE_NO_TITLE);
+        dialog=new ComponentDialog(a);dialog.requestWindowFeature(Window.FEATURE_NO_TITLE);
         root=new FrameLayout(a);root.setBackgroundColor(0xFF071221);root.setFitsSystemWindows(false);CustomerAppSettings.preserveArtwork(root);
         media=new FrameLayout(a);root.addView(media,new FrameLayout.LayoutParams(-1,-1));
         backdrop=new ImageView(a);backdrop.setScaleType(ImageView.ScaleType.CENTER_CROP);backdrop.setAlpha(.22f);media.addView(backdrop,new FrameLayout.LayoutParams(-1,-1));
@@ -82,7 +84,11 @@ final class FoodStoryViewer {
         next=control("›","Story berikutnya");next.setOnClickListener(v->move(1));actions.addView(next,new LinearLayout.LayoutParams(dp(44),dp(44)));bottom.addView(actions);
         root.addView(bottom,new FrameLayout.LayoutParams(-1,-2,Gravity.BOTTOM));
         dialog.setContentView(root);
-        dialog.setOnKeyListener((d,key,event)->{if(key==KeyEvent.KEYCODE_BACK){if(event.getAction()==KeyEvent.ACTION_UP)close(null);return true;}return false;});
+        dialog.getOnBackPressedDispatcher().addCallback(new OnBackPressedCallback(true) {
+            @Override public void handleOnBackPressed() {
+                close(null);
+            }
+        });
         Application.ActivityLifecycleCallbacks lifecycle=new Application.ActivityLifecycleCallbacks(){
             public void onActivityCreated(Activity x,Bundle b){}public void onActivityStarted(Activity x){}public void onActivitySaveInstanceState(Activity x,Bundle b){}
             public void onActivityResumed(Activity x){if(x==a){background=false;pause();}}

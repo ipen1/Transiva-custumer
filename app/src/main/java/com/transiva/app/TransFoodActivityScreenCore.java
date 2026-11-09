@@ -126,6 +126,7 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        registerCustomBackNavigation();
         if(!DeliveryAddressGate.valid(this)){DeliveryAddressGate.showUnavailable(this,"TransFood");DeliveryAddressGate.require(this,"TransFood");return;}
         splitBillManager = new SplitBillManager(this, (key,size,ready) -> { if(currentScreen==2) renderCheckout(); });
         try {
@@ -2310,6 +2311,7 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
             cart.clear(); expandedToppingMenu=0;
             menuSearchQuery = "";
             showRestaurantList();
+            if (!restaurantsLoadFinished) loadRestaurants(true);
             return;
         }
 

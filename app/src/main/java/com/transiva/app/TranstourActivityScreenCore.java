@@ -88,6 +88,7 @@ class TranstourActivityScreenCore extends CustomerAdaptiveActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        registerCustomBackNavigation();
         try {
             CustomerWindowPolicy.status(getWindow(), Color.WHITE);
             CustomerWindowPolicy.navigation(getWindow(), Color.WHITE);

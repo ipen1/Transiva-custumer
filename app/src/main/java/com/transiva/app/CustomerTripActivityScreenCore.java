@@ -141,6 +141,7 @@ class CustomerTripActivityScreenCore extends CustomerAdaptiveActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        registerCustomBackNavigation();
 
         try {
             CustomerWindowPolicy.status(getWindow(), Color.parseColor("#071426"));

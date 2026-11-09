@@ -99,3 +99,28 @@
 -keep class com.transiva.app.CustomerWindowPolicy {
     public static void install(android.view.Window);
 }
+
+# FoodCartStoreTest calls these members from the separate release test APK.
+-keep class com.transiva.app.FoodCartStore {
+    <init>(android.content.Context, int);
+    com.transiva.app.FoodCartStore$Cart get(int);
+    java.util.List all();
+    boolean save(com.transiva.app.FoodCartStore$Cart);
+    static boolean matchesDraft(android.content.SharedPreferences, java.lang.String, org.json.JSONObject);
+    static void consume(android.content.SharedPreferences, android.content.SharedPreferences$Editor, java.lang.String, org.json.JSONObject);
+}
+-keep class com.transiva.app.FoodCartStore$Cart {
+    java.util.List items;
+    java.lang.String name;
+    int quantity();
+}
+-keep class com.transiva.app.FoodCartStore$CartItem {
+    <init>();
+    java.lang.String lineId;
+    int id;
+    int qty;
+    java.lang.String name;
+    java.lang.String optionText;
+    org.json.JSONArray selectedOptions;
+    double price;
+}

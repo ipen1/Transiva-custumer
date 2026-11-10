@@ -24,6 +24,7 @@ public final class CustomerActivityOrderAction {
 
     public interface Callback {
         void onSuccess(String message);
+        default void onRequested(String message) { onSuccess(message); }
         void onError(String message);
     }
 
@@ -75,6 +76,7 @@ public final class CustomerActivityOrderAction {
                         sourceTable(order)
                 );
 
+                payload.put("food_cancel_request_supported", true);
                 if (!expectedDriver.isEmpty()) {
                     payload.put("cancel_reason", "driver_requested");
                     payload.put("expected_driver", expectedDriver);
@@ -107,8 +109,14 @@ public final class CustomerActivityOrderAction {
                 activity.runOnUiThread(() -> {
                     if (!owner.matches(activity) || activity.isFinishing() || activity.isDestroyed()) return;
                     if (success) {
-                        recordConfirmedCancellation(activity, Integer.toString(userId), order);
-                        callback.onSuccess(message);
+                        if (response.optBoolean("cancel_requested", false)) {
+                            try { order.put("food_cancel_request", response.optJSONObject("food_cancel_request")); }
+                            catch (org.json.JSONException ignored) {}
+                            callback.onRequested(message);
+                        } else {
+                            recordConfirmedCancellation(activity, Integer.toString(userId), order);
+                            callback.onSuccess(message);
+                        }
                     } else {
                         callback.onError(message);
                     }
@@ -123,6 +131,28 @@ public final class CustomerActivityOrderAction {
                 );
             }
         }, () -> activity.runOnUiThread(() -> callback.onError("Sistem sedang sibuk. Coba lagi.")));
+    }
+
+    static String foodCancellationState(JSONObject order) {
+        JSONObject request = order.optJSONObject("food_cancel_request");
+        if (request == null) {
+            try { request = new JSONObject(order.optString("note")).optJSONObject("food_cancel_request"); }
+            catch (org.json.JSONException ignored) {}
+        }
+        return request == null ? "" : request.optString("state");
+    }
+
+    static boolean mayRequestFoodCancellation(JSONObject order) {
+        String type = first(order.optString("order_type"), order.optString("service_type"));
+        if (!("food".equalsIgnoreCase(type) || "transfood".equalsIgnoreCase(type)
+                || order.optString("order_id").startsWith("FOOD-"))) return false;
+        if (!first(order.optString("picked_up_at")).isEmpty()) return false;
+        switch (first(order.optString("global_status"), order.optString("status")).toLowerCase(java.util.Locale.US)) {
+            case "merchant_accepted": case "preparing": case "ready": case "merchant_preparing":
+            case "merchant_ready": case "driver_accepted": case "taken": case "accepted": case "arrived_pickup":
+                return true;
+            default: return false;
+        }
     }
 
     static void recordConfirmedCancellation(android.content.Context context, String account, JSONObject order) {

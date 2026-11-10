@@ -1516,8 +1516,12 @@ class CustomerHistoryActivityScreenCore extends CustomerAdaptiveActivity {
                 );
 
                 actions.addView(track, trackLp);
-            } else if (canCustomerCancel(status)) {
-                Button cancel = dangerButton("Batalkan");
+            }
+            boolean foodRequest = CustomerActivityOrderAction.mayRequestFoodCancellation(order);
+            String cancelState = CustomerActivityOrderAction.foodCancellationState(order);
+            if ((foodRequest && cancelState.isEmpty()) ||
+                    (!foodRequest && !canTrackOrder(status) && canCustomerCancel(status))) {
+                Button cancel = dangerButton(foodRequest ? "Ajukan batal" : "Batalkan");
 
                 cancel.setOnClickListener(
                         view -> confirmCancelOrder(order)
@@ -1538,6 +1542,15 @@ class CustomerHistoryActivityScreenCore extends CustomerAdaptiveActivity {
                 );
 
                 actions.addView(cancel, cancelLp);
+            }
+
+            if (foodRequest && ("pending".equals(cancelState) || "declined".equals(cancelState))) {
+                TextView notice = new TextView(this);
+                notice.setText("pending".equals(cancelState)
+                        ? "Pengajuan batal dikirim · Menunggu keputusan toko"
+                        : "Pengajuan batal ditolak toko · Pesanan dilanjutkan");
+                notice.setPadding(dp(8), dp(8), dp(8), dp(8));
+                card.addView(notice);
             }
 
             if (showReceive) {
@@ -2471,17 +2484,19 @@ class CustomerHistoryActivityScreenCore extends CustomerAdaptiveActivity {
             return;
         }
 
+        boolean foodRequest = CustomerActivityOrderAction.mayRequestFoodCancellation(order);
         new TransivaAlertDialogBuilder(this)
-                .setTitle("Batalkan Pesanan")
+                .setTitle(foodRequest ? "Ajukan Pembatalan" : "Batalkan Pesanan")
                 .setMessage(
-                        "Pesanan dapat dibatalkan selama belum diambil driver. Lanjutkan pembatalan?"
+                        foodRequest ? "Pengajuan dikirim ke toko. Pesanan tetap aktif sampai toko menyetujuinya sebelum pickup."
+                                : "Pesanan dapat dibatalkan selama belum diambil driver. Lanjutkan pembatalan?"
                 )
                 .setNegativeButton(
                         "Kembali",
                         null
                 )
                 .setPositiveButton(
-                        "Batalkan",
+                        foodRequest ? "Kirim pengajuan" : "Batalkan",
                         (dialog, which) ->
                                 cancelOrder(order)
                 )

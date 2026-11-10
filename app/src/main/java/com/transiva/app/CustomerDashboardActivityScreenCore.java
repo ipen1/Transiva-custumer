@@ -2221,28 +2221,36 @@ class CustomerDashboardActivityScreenCore extends CustomerAdaptiveActivity
 
     private void renderDashboardCancel() {
         if (dashboardCancel == null) return;
+        boolean foodRequest = activeOrderJson != null && CustomerActivityOrderAction.mayRequestFoodCancellation(activeOrderJson);
+        String state = foodRequest ? CustomerActivityOrderAction.foodCancellationState(activeOrderJson) : "";
         boolean allowed = activeOrderJson != null
-                && CustomerHistoryPolicy.canCustomerCancel(activeOrderJson.optString("status"));
+                && (foodRequest || CustomerHistoryPolicy.canCustomerCancel(activeOrderJson.optString("status")));
         dashboardCancel.setVisibility(allowed ? View.VISIBLE : View.GONE);
-        dashboardCancel.setEnabled(!dashboardCancelBusy);
+        dashboardCancel.setEnabled(!dashboardCancelBusy && state.isEmpty());
         dashboardCancel.setAlpha(dashboardCancelBusy ? .6f : 1f);
-        dashboardCancel.setText(dashboardCancelBusy ? "Membatalkan…" : "Batalkan pesanan");
+        if (dashboardCancelBusy) dashboardCancel.setText("Memproses…");
+        else if ("pending".equals(state)) dashboardCancel.setText("Menunggu keputusan toko");
+        else if ("declined".equals(state)) dashboardCancel.setText("Pengajuan ditolak toko");
+        else dashboardCancel.setText(foodRequest ? "Ajukan pembatalan" : "Batalkan pesanan");
     }
 
     private void confirmDashboardCancel() {
-        if (dashboardCancelBusy || activeOrderJson == null
-                || !CustomerHistoryPolicy.canCustomerCancel(activeOrderJson.optString("status"))) return;
+        if (dashboardCancelBusy || activeOrderJson == null) return;
         final JSONObject order = activeOrderJson;
+        final boolean foodRequest = CustomerActivityOrderAction.mayRequestFoodCancellation(order);
+        if (foodRequest ? !CustomerActivityOrderAction.foodCancellationState(order).isEmpty()
+                : !CustomerHistoryPolicy.canCustomerCancel(order.optString("status"))) return;
         if (first(order.optString("order_id"), order.optString("id"), "").isEmpty()) {
             Toast.makeText(this, "ID order tidak ditemukan", Toast.LENGTH_SHORT).show();
             return;
         }
         final String sessionToken = new SessionManager(this).getToken();
         new TransivaAlertDialogBuilder(this)
-                .setTitle("Batalkan Pesanan")
-                .setMessage("Pesanan dapat dibatalkan selama belum diambil driver. Lanjutkan pembatalan?")
+                .setTitle(foodRequest ? "Ajukan Pembatalan" : "Batalkan Pesanan")
+                .setMessage(foodRequest ? "Pesanan tetap aktif sampai toko menyetujui pengajuan sebelum pickup."
+                        : "Pesanan dapat dibatalkan selama belum diambil driver. Lanjutkan pembatalan?")
                 .setNegativeButton("Kembali", null)
-                .setPositiveButton("Batalkan", (dialog, which) -> {
+                .setPositiveButton(foodRequest ? "Kirim pengajuan" : "Batalkan", (dialog, which) -> {
                     if (dashboardCancelBusy || isFinishing() || isDestroyed()
                             || !java.util.Objects.equals(sessionToken, new SessionManager(this).getToken())) return;
                     dashboardCancelBusy = true;
@@ -2265,6 +2273,7 @@ class CustomerDashboardActivityScreenCore extends CustomerAdaptiveActivity
                                 else presenter.refresh(username, userId);
                             }
                         }
+                        @Override public void onRequested(String message) { complete(message, false); }
                         @Override public void onSuccess(String message) { complete(message, true); }
                         @Override public void onError(String message) { complete(message, false); }
                     });

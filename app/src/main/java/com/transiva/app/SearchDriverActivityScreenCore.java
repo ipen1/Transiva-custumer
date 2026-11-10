@@ -1080,22 +1080,24 @@ class SearchDriverActivityScreenCore extends CustomerAdaptiveActivity {
 
                 JSONObject payload = new JSONObject();
                 payload.put("order_id", orderId);
+                payload.put("food_cancel_request_supported", true);
                 JSONObject res = postJson(
                         BASE_URL + "server/cancel_order.php",
                         payload,
                         token.trim()
                 );
                 boolean ok = res.optBoolean("success", false);
+                boolean canceled = ok && !res.optBoolean("cancel_requested", false);
                 String msg = firstNonEmpty(res.optString("message"), ok ? "Order dibatalkan" : "Order gagal dibatalkan");
                 JSONObject result = res.optJSONObject("order");
-                if (ok) {
+                if (canceled) {
                     JSONObject canceledOrder = result != null ? result : new JSONObject().put("order_id", orderId);
                     mainHandler.post(() -> CustomerActivityOrderAction.recordConfirmedCancellation(this, owner.account, canceledOrder));
                 }
                 featureRuntime.post(mainHandler, () -> {
                     if (!owner.matches(this) || isFinishing() || isDestroyed()) return;
                     progressBar.setVisibility(View.GONE);
-                    if (ok) {
+                    if (canceled) {
                         openCustomerDashboard();
                     } else {
                         restoreAfterCancelFailure(owner, msg);

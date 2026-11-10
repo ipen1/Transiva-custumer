@@ -89,7 +89,7 @@ public class CustomerFoodOrderStatusActivity extends CustomerAdaptiveActivity {
         TextView body=text(FoodOrderDecision.rejected(res)?merchant+" belum bisa menerima pesananmu.":"Pesanan ini sudah dibatalkan dan tidak dilanjutkan.",15,false);body.setPadding(0,dp(10),0,dp(12));root.addView(body);
         String reason=FoodOrderDecision.reason(res);
         if(!reason.isEmpty()){
-            LinearLayout reasonBox=new LinearLayout(this);reasonBox.setOrientation(LinearLayout.VERTICAL);reasonBox.setPadding(dp(16),dp(12),dp(16),dp(12));GradientDrawable bg=new GradientDrawable();bg.setColor(CustomerAppSettings.isDarkMode(this)?0xFF172B43:0xFFE8F2FE);bg.setCornerRadius(dp(16));reasonBox.setBackground(bg);reasonBox.addView(text("Alasan dari toko",11,false));TextView exact=text(reason,15,true);exact.setPadding(0,dp(5),0,0);reasonBox.addView(exact);root.addView(reasonBox,new LinearLayout.LayoutParams(-1,-2));
+            LinearLayout reasonBox=new LinearLayout(this);reasonBox.setOrientation(LinearLayout.VERTICAL);reasonBox.setPadding(dp(16),dp(12),dp(16),dp(12));GradientDrawable bg=new GradientDrawable();bg.setColor(CustomerAppSettings.isDarkMode(this)?0xFF172B43:0xFFE8F2FE);bg.setCornerRadius(dp(16));reasonBox.setBackground(bg);reasonBox.addView(text(FoodOrderDecision.rejected(res)?"Alasan dari toko":"Alasan pembatalan",11,false));TextView exact=text(reason,15,true);exact.setPadding(0,dp(5),0,0);reasonBox.addView(exact);root.addView(reasonBox,new LinearLayout.LayoutParams(-1,-2));
         }
         TextView help=text("Pesanan ini tidak dilanjutkan ke pengantaran. Kamu bisa memilih toko lain atau melihat rinciannya di Aktivitas.",13,false);help.setPadding(0,dp(12),0,dp(6));root.addView(help);
         String payment=verified?FoodOrderDecision.paymentMessage(res):"";if(!payment.isEmpty()){TextView pay=text(payment,12,false);pay.setPadding(0,dp(6),0,dp(8));root.addView(pay);}
@@ -99,8 +99,12 @@ public class CustomerFoodOrderStatusActivity extends CustomerAdaptiveActivity {
     }
     private void showWaiting(JSONObject res){
         String merchantStatus=FoodOrderDecision.value(FoodOrderDecision.order(res),"merchant_status");boolean preparing="preparing".equals(merchantStatus)||"ready".equals(merchantStatus)||"merchant_accepted".equals(FoodOrderDecision.status(res));
-        String next="waiting:"+preparing+":"+merchantStatus;if(next.equals(signature))return;signature=next;shell();root.addView(new FoodOrderDecisionView(this,"waiting"),new LinearLayout.LayoutParams(-1,dp(190)));
-        root.addView(text(preparing?"Pesananmu sedang diproses":"Menunggu konfirmasi toko",24,true));TextView copy=text(preparing?"Toko sudah menerima pesananmu. Informasi driver akan muncul setelah ada driver yang menerima pesanan.":"Toko sedang memeriksa pesananmu. Kabar terbaru akan muncul di sini dan melalui notifikasi.",15,false);copy.setPadding(0,dp(12),0,dp(16));root.addView(copy);button("Ke beranda",this::home,true);
+        String cancelState=CustomerActivityOrderAction.foodCancellationState(FoodOrderDecision.order(res));
+        String next="waiting:"+preparing+":"+merchantStatus+":"+cancelState;if(next.equals(signature))return;signature=next;shell();root.addView(new FoodOrderDecisionView(this,"waiting"),new LinearLayout.LayoutParams(-1,dp(190)));
+        root.addView(text(preparing?"Pesananmu sedang diproses":"Menunggu konfirmasi toko",24,true));TextView copy=text(preparing?"Toko sudah menerima pesananmu. Informasi driver akan muncul setelah ada driver yang menerima pesanan.":"Toko sedang memeriksa pesananmu. Kabar terbaru akan muncul di sini dan melalui notifikasi.",15,false);copy.setPadding(0,dp(12),0,dp(16));root.addView(copy);
+        if ("pending".equals(cancelState)) root.addView(text("Pengajuan pembatalan menunggu keputusan toko.",14,true));
+        else if ("declined".equals(cancelState)) root.addView(text("Pengajuan pembatalan ditolak. Pesanan dilanjutkan.",14,true));
+        button("Ke beranda",this::home,true);
     }
     private void clearMatchingOrder(){
         SharedPreferences prefs=getSharedPreferences("transiva",MODE_PRIVATE);if(!orderId.equals(prefs.getString("active_order_id","")))return;

@@ -2312,9 +2312,18 @@ class CustomerChatRoomActivityScreenCore extends CustomerAdaptiveActivity {
         ).show();
     }
 
+    private final android.content.BroadcastReceiver chatPushRefresh = new android.content.BroadcastReceiver() {
+        @Override public void onReceive(android.content.Context context, android.content.Intent intent) {
+            if (FreshChatPush.sameRoom(roomId, intent.getStringExtra("room_id"))) loadMessages(false);
+        }
+    };
+
     @Override
     protected void onResume() {
         super.onResume();
+        androidx.core.content.ContextCompat.registerReceiver(this, chatPushRefresh,
+                new android.content.IntentFilter(FreshChatPush.ACTION_ROOM_CHANGED),
+                androidx.core.content.ContextCompat.RECEIVER_NOT_EXPORTED);
         if (chatStability != null) chatStability.onResume();
         featureRuntime.onResume();
         chatVisible = true;
@@ -2336,6 +2345,7 @@ class CustomerChatRoomActivityScreenCore extends CustomerAdaptiveActivity {
 
     @Override
     protected void onPause() {
+        unregisterReceiver(chatPushRefresh);
         if (stickerDialog != null) { stickerDialog.dismiss(); stickerDialog = null; }
         if (chatStability != null) chatStability.onPause();
         chatVisible = false;

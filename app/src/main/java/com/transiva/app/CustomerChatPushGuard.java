@@ -5,7 +5,7 @@ import java.net.URLEncoder;
 import java.util.Map;
 import org.json.JSONObject;
 
-/** Data-only chat pushes are hints; the authenticated server decides whether to alert. */
+/** Reuse fresh server checks. Older pushes are authenticated and checked again. */
 final class CustomerChatPushGuard {
     private CustomerChatPushGuard() {}
 
@@ -26,6 +26,11 @@ final class CustomerChatPushGuard {
             long boundary = CustomerChatNoticeState.boundary(c, user);
             CustomerTransportSession owner = CustomerTransportSession.capture(c);
             int age = CustomerChatNoticeState.maxAge(boundary);
+            String room = value(data, "room_id");
+            if (FreshChatPush.verified(data, user, "customer", FcmTokenCoordinator.hash(s.getToken()))
+                    && Long.parseLong(value(data, "chat_created_epoch")) > boundary / 1000L) {
+                return owner.matches(c) && acceptRoom(c, user, boundary, id, room);
+            }
             String url = "https://transiva.my.id/server/customer_chat_notification_status.php?chat_id=" + id
                     + "&max_age_seconds=" + age
                     + "&room_id=" + enc(value(data, "room_id"))
@@ -35,13 +40,18 @@ final class CustomerChatPushGuard {
             JSONObject result = TransivaHttpRepository.getJsonOnce(c, url, 5000, owner);
             return owner.matches(c) && result != null && result.optBoolean("success", false)
                     && result.optBoolean("eligible", false) && result.optInt("chat_id", 0) == id
-                    && CustomerChatNoticeState.claim(c, user, boundary, id)
-                    && !CustomerChatNotificationPoller.isOpenRoom(value(data, "room_id"));
+                    && acceptRoom(c, user, boundary, id, room);
         } catch (Exception unavailable) {
             // No alert on an unverifiable hint. Foreground polling can recover the message.
             return false;
         }
     }
+    private static boolean acceptRoom(Context c, String user, long boundary, int id, String room) {
+        FreshChatPush.refreshRoom(c, room);
+        return CustomerChatNoticeState.claim(c, user, boundary, id)
+                && !CustomerChatNotificationPoller.isOpenRoom(room);
+    }
+
     private static String enc(String v) throws Exception { return URLEncoder.encode(v, "UTF-8"); }
     private static String value(Map<String, String> d, String key) {
         String v = d == null ? null : d.get(key); return v == null ? "" : v.trim();

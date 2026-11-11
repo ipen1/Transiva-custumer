@@ -172,6 +172,7 @@ class CustomerChatRoomActivityScreenCore extends CustomerAdaptiveActivity {
     protected String roomId = "";
     protected String participantName = "";
     private String participantPhoto = "";
+    private final OrderChatStyle chatStyle = new OrderChatStyle(this);
     protected String orderType = "";
     protected String orderStatus = "";
 
@@ -376,9 +377,7 @@ class CustomerChatRoomActivityScreenCore extends CustomerAdaptiveActivity {
     protected View buildScreen() {
         FrameLayout page = new FrameLayout(this);
 
-        page.setBackgroundColor(
-                Color.parseColor("#F4F8FD")
-        );
+        chatStyle.backdrop(page);
 
         LinearLayout root =
                 new LinearLayout(this);
@@ -404,10 +403,10 @@ class CustomerChatRoomActivityScreenCore extends CustomerAdaptiveActivity {
 
         header.setGravity(Gravity.CENTER_VERTICAL);
         header.setPadding(
-                dp(10),
-                dp(9),
-                dp(10),
-                dp(9)
+                dp(5),
+                dp(6),
+                dp(5),
+                dp(6)
         );
 
         header.setBackground(
@@ -434,6 +433,7 @@ class CustomerChatRoomActivityScreenCore extends CustomerAdaptiveActivity {
                 )
         );
 
+        chatStyle.addAvatar(header,participantName,participantPhoto);
         LinearLayout titleBox =
                 new LinearLayout(this);
 
@@ -510,12 +510,14 @@ class CustomerChatRoomActivityScreenCore extends CustomerAdaptiveActivity {
             callButton.setBackground(round("#EAF4FF", 15));
             LinearLayout.LayoutParams callLp =
                     new LinearLayout.LayoutParams(dp(46), dp(46));
-            callLp.setMargins(dp(7), 0, 0, 0);
+            callLp.setMargins(dp(2), 0, 0, 0);
             header.addView(callButton, callLp);
             callButton.setOnClickListener(v -> callDriver());
-            TextView videoButton=text("📹",22,"#0B7CFF",true);videoButton.setGravity(Gravity.CENTER);videoButton.setContentDescription("Video Call");videoButton.setBackground(round("#EAF4FF",15));LinearLayout.LayoutParams videoLp=new LinearLayout.LayoutParams(dp(42),dp(42));videoLp.setMargins(dp(6),0,0,0);header.addView(videoButton,videoLp);videoButton.setOnClickListener(v->openRoomCall(true));
+            TextView videoButton=text("📹",22,"#0B7CFF",true);videoButton.setGravity(Gravity.CENTER);videoButton.setContentDescription("Video Call");videoButton.setBackground(round("#EAF4FF",15));LinearLayout.LayoutParams videoLp=new LinearLayout.LayoutParams(dp(42),dp(42));videoLp.setMargins(dp(2),0,0,0);header.addView(videoButton,videoLp);videoButton.setOnClickListener(v->openRoomCall(true));
         }
 
+        chatStyle.overflow(header,this::openSearch,
+                query -> CustomerMessageApi.get(chatExtrasEndpoint()+query,chatRequests.session()),null);
         root.addView(header);
         root.addView(new ActiveCallBanner(this),new LinearLayout.LayoutParams(-1,-2));
 
@@ -523,12 +525,6 @@ class CustomerChatRoomActivityScreenCore extends CustomerAdaptiveActivity {
         chatTools.setGravity(Gravity.CENTER_VERTICAL);
         chatTools.setPadding(dp(2), dp(5), dp(2), 0);
         chatTools.addView(orderLabel, new LinearLayout.LayoutParams(-2, -2));
-        Button search = compactChatTool("Cari pesan", false);
-        search.setContentDescription("Cari dalam percakapan");
-        search.setOnClickListener(v -> openSearch());
-        LinearLayout.LayoutParams searchLp = new LinearLayout.LayoutParams(0, dp(44), 1);
-        searchLp.setMargins(dp(6), 0, 0, 0);
-        chatTools.addView(search, searchLp);
         root.addView(chatTools, new LinearLayout.LayoutParams(-1, -2));
         olderMessagesButton=compactChatTool("Muat pesan sebelumnya", false);
         olderMessagesButton.setText("Muat pesan sebelumnya");olderMessagesButton.setVisibility(View.GONE);
@@ -1417,7 +1413,7 @@ class CustomerChatRoomActivityScreenCore extends CustomerAdaptiveActivity {
             try {
                 String endpoint=GET_CHAT_URL+"?room_id="+URLEncoder.encode(roomId,"UTF-8")
                         +"&source="+URLEncoder.encode(orderSource,"UTF-8")+"&order_id="+URLEncoder.encode(orderId,"UTF-8")
-                        +"&order_db_id="+URLEncoder.encode(orderDbId,"UTF-8")+"&page_mode="+mode+"&limit=60"
+                        +"&order_db_id="+URLEncoder.encode(orderDbId,"UTF-8")+"&chat_ui=1&page_mode="+mode+"&limit=60"
                         +("older".equals(mode)?"&before_id=":"&last_id=")+cursor+"&receipt_ids="+receipts;
                 JSONObject response=CustomerMessageApi.get(endpoint,chatRequests.session());
                 chatRequests.post(mainHandler,() -> {
@@ -1435,13 +1431,7 @@ class CustomerChatRoomActivityScreenCore extends CustomerAdaptiveActivity {
             statusText.setText("Antrean penuh. Coba kembali sebentar lagi.");
         }));
     }
-    private String receiptIdQuery() {
-        StringBuilder ids=new StringBuilder();
-        for(int i=Math.max(0,receiptViews.size()-100);i<receiptViews.size();i++) {
-            if(ids.length()>0)ids.append(',');ids.append(receiptViews.keyAt(i));
-        }
-        return ids.toString();
-    }
+    private String receiptIdQuery() { return OrderChatStyle.receiptIds(receiptViews); }
 
     protected void handleResponse(
             JSONObject response,
@@ -1521,11 +1511,19 @@ class CustomerChatRoomActivityScreenCore extends CustomerAdaptiveActivity {
             return;
         }
 
+        JSONObject peer=response.optJSONObject("peer_profile");
+        if(peer!=null){
+            participantName=first(peer.optString("name"),participantName);
+            participantPhoto=first(peer.optString("photo"),participantPhoto);
+            participantText.setText(participantName);
+        }
+        chatStyle.profile(response,participantName,participantPhoto);
         boolean older="older".equals(response.optString("page_mode"));
         int oldHeight=messagesBox.getHeight(),oldScroll=messagesScroll.getScrollY();
         boolean nearBottom=oldHeight-oldScroll-messagesScroll.getHeight()<dp(100);
-        if(reset){messagesBox.removeAllViews();messageViews.clear();receiptViews.clear();displayedMessageIds.clear();lastId=0;oldestId=0;}
-        if(!reset&&displayedMessageIds.isEmpty()&&array.length()>0)messagesBox.removeAllViews();
+        if(reset){messagesBox.removeAllViews();chatStyle.reset();messageViews.clear();receiptViews.clear();displayedMessageIds.clear();lastId=0;oldestId=0;}
+        if(!reset&&displayedMessageIds.isEmpty()&&array.length()>0&&messagesBox.getChildCount()==1
+                &&messagesBox.getChildAt(0) instanceof TextView)messagesBox.removeAllViews();
         boolean added=false;int insertion=0;
         for(int i=0;i<array.length();i++) {
             JSONObject message=array.optJSONObject(i);if(message==null)continue;
@@ -1538,7 +1536,8 @@ class CustomerChatRoomActivityScreenCore extends CustomerAdaptiveActivity {
         }
         JSONArray receipts=response.optJSONArray("receipt_updates");
         if(receipts!=null)for(int i=0;i<receipts.length();i++){JSONObject item=receipts.optJSONObject(i);if(item!=null)updateReceipt(item);}
-        if(reset&&array.length()==0)addSystemMessage("Belum ada pesan pada percakapan ini.");
+        added=chatStyle.mergeCalls(messagesBox,response)||added;
+        if(reset&&messagesBox.getChildCount()==0)addSystemMessage("Belum ada pesan pada percakapan ini.");
         if(reset||older)hasOlderMessages=response.optBoolean("has_more_older",false);
         olderMessagesButton.setVisibility(hasOlderMessages?View.VISIBLE:View.GONE);
         firstLoad=false;
@@ -1782,35 +1781,21 @@ class CustomerChatRoomActivityScreenCore extends CustomerAdaptiveActivity {
                     mine ? "#FFFFFF" : "#0F172A",
                     false
             );
-            bubble.setPadding(dp(13), dp(9), dp(13), dp(9));
+            bubble.setTextSize(14);
             bubble.setMaxWidth((int)(
                     getResources().getDisplayMetrics().widthPixels * 0.75
             ));
-            bubble.setBackground(
-                    mine
-                            ? gradient("#086BFF", "#2EA2FF", 17)
-                            : roundStroke("#FFFFFF", "#D7E6F8", 17, 1)
-            );
             wrapper.addView(
                     bubble,
                     new LinearLayout.LayoutParams(-2, -2)
             );
         }
 
-        String time = CustomerChatRoomFormatter.formatTime(message.optString("created_at", ""));
-        if (!time.isEmpty()) {
-            String receipt = mine
-                    ? (message.optInt("is_read", message.optString("read_at", "").trim().isEmpty() ? 0 : 1) == 0
-                    ? "  ✓ Terkirim" : "  ✓✓ Dibaca")
-                    : "";
-            TextView timestamp = text(time + receipt, 9, "#94A3B8", false);
-            timestamp.setPadding(dp(7), dp(2), dp(7), 0);
-            wrapper.addView(
-                    timestamp,
-                    new LinearLayout.LayoutParams(-2, -2)
-            );
-            if (mine) receiptViews.put(message.optInt("id", 0), timestamp);
-        }
+        TextView timestamp = text("",10,"#64748B",false);
+        chatStyle.receipt(timestamp,message,mine);
+        chatStyle.appendMeta(wrapper,timestamp);
+        if(mine)receiptViews.put(message.optInt("id",0),timestamp);
+        chatStyle.decorate(wrapper,message,mine);
 
         messageViews.put(message.optInt("id"),wrapper);
         if (animate) animateMessage(wrapper, mine);
@@ -1824,14 +1809,7 @@ class CustomerChatRoomActivityScreenCore extends CustomerAdaptiveActivity {
         String sender = CustomerMessageStatus.normalize(message.optString("sender_type", ""));
         if (!"customer".equals(sender)) return;
 
-        String time = CustomerChatRoomFormatter.formatTime(message.optString("created_at", ""));
-        boolean read = message.optInt("is_read", message.optString("read_at", "").trim().isEmpty() ? 0 : 1) == 1;
-        String next = time + (read ? "  ✓✓ Dibaca" : "  ✓ Terkirim");
-        if (!next.contentEquals(receipt.getText())) {
-            receipt.setText(next);
-            receipt.setAlpha(0.35f);
-            receipt.animate().alpha(1f).setDuration(220).start();
-        }
+        chatStyle.receipt(receipt,message,true);
     }
 
     protected void animateMessage(View view, boolean mine) {
@@ -2136,6 +2114,11 @@ class CustomerChatRoomActivityScreenCore extends CustomerAdaptiveActivity {
         ScrollView scroll=new ScrollView(this);LinearLayout results=new LinearLayout(this);results.setOrientation(LinearLayout.VERTICAL);scroll.addView(results);body.addView(scroll,new LinearLayout.LayoutParams(-1,dp(280)));
         android.app.AlertDialog dialog=new TransivaAlertDialogBuilder(this).setTitle("Pencarian percakapan").setView(body).setPositiveButton("Tutup",null).create();dialog.show();
         find.setOnClickListener(v->{String term=query.getText().toString().trim();if(term.length()<2){query.setError("Minimal 2 karakter");return;}results.removeAllViews();searchPage(term,0,results,dialog);});
+    }
+    private String chatExtrasEndpoint() throws Exception {
+        return GET_CHAT_URL+"?chat_ui=1&room_id="+URLEncoder.encode(roomId,"UTF-8")
+                +"&order_id="+URLEncoder.encode(orderId,"UTF-8")+"&order_db_id="+URLEncoder.encode(orderDbId,"UTF-8")
+                +"&source="+URLEncoder.encode(orderSource,"UTF-8");
     }
     private String searchEndpoint() throws Exception {return ApiConfig.server("search_chat.php")+"?room_id="+URLEncoder.encode(roomId,"UTF-8")+"&source="+URLEncoder.encode(orderSource,"UTF-8")+"&order_id="+URLEncoder.encode(orderId,"UTF-8")+"&order_db_id="+URLEncoder.encode(orderDbId,"UTF-8");}
     private void searchPage(String term,int before,LinearLayout results,android.app.AlertDialog dialog){

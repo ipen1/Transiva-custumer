@@ -320,6 +320,7 @@ public final class CustomerChatNotificationPoller {
                     notificationId,
                     builder.build()
             );
+            ChatNotificationAck.postedFromPoll(context,message,CHANNEL_ID);
         }
     }
 

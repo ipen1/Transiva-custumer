@@ -415,7 +415,7 @@ public class TransivaFirebaseService extends FirebaseMessagingService {
         }
         try {
             NotificationManagerCompat.from(this).notify(requestCode,builder.build());
-            if (isChat(type)) traceChatPush(data, "POSTED");
+            if (isChat(type)) {traceChatPush(data, "POSTED"); ChatNotificationAck.posted(this,data,channelId);}
         } catch (RuntimeException unavailable) {
             try {
                 NotificationCompat.Builder fallback=new NotificationCompat.Builder(this,channelId)
@@ -423,7 +423,7 @@ public class TransivaFirebaseService extends FirebaseMessagingService {
                     .setContentText(first(body,"Notifikasi baru")).setContentIntent(pendingIntent)
                     .setPriority(priorityForType(type)).setAutoCancel(true);
                 NotificationManagerCompat.from(this).notify(requestCode,fallback.build());
-                if (isChat(type)) traceChatPush(data, "POSTED");
+                if (isChat(type)) {traceChatPush(data, "POSTED"); ChatNotificationAck.posted(this,data,channelId);}
             } catch (RuntimeException failed) {
                 if (isChat(type)) traceChatPush(data, "POST_FAILED");
                 android.util.Log.w("TransivaNotification", "Notification unavailable", failed);

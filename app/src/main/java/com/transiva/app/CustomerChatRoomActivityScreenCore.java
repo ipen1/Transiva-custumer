@@ -147,21 +147,21 @@ class CustomerChatRoomActivityScreenCore extends CustomerAdaptiveActivity {
     }
     private void retryPendingMessage() { CustomerPendingMessageCenter.open(this); }
     private void resetSendControls() {
-        sending=false;sendButton.setEnabled(!readOnly&&!uploading&&!sending);sendButton.setText(readOnly?"Selesai":"Kirim");
+        sending=false;
+        syncComposer();
         retryMessageButton.setEnabled(true);
     }
     private void rejectMedia() {
         uploading=false;progress.setVisibility(loading?View.VISIBLE:View.GONE);
-        attachButton.setEnabled(!readOnly);sendButton.setEnabled(!readOnly&&!sending);voiceButton.setEnabled(!readOnly);
-        voiceButton.setText("🎙");toast("Antrean penuh. Coba kirim kembali.");
+        syncComposer();
+        toast("Antrean penuh. Coba kirim kembali.");
     }
     protected LinearLayout messagesBox;
     protected ScrollView messagesScroll;
     protected TextView participantText;
     protected TextView statusText;
     protected EditText input;
-    protected Button sendButton;
-    protected Button attachButton;
+    private ChatRoomChrome chatChrome;
     protected Button voiceButton;
     protected ProgressBar progress;
     protected LinearLayout inputCard;
@@ -351,6 +351,7 @@ class CustomerChatRoomActivityScreenCore extends CustomerAdaptiveActivity {
 
     protected void callDriver() {openRoomCall(false);}
     private void openRoomCall(boolean video) {
+        if (readOnly) return;
         if (orderId == null || orderId.trim().isEmpty()) {
             Toast.makeText(this, "Order tidak valid", Toast.LENGTH_SHORT).show();
             return;
@@ -378,6 +379,7 @@ class CustomerChatRoomActivityScreenCore extends CustomerAdaptiveActivity {
         FrameLayout page = new FrameLayout(this);
 
         chatStyle.backdrop(page);
+        chatChrome = new ChatRoomChrome(this, CustomerAppSettings.isDarkMode(this));
 
         LinearLayout root =
                 new LinearLayout(this);
@@ -398,143 +400,43 @@ class CustomerChatRoomActivityScreenCore extends CustomerAdaptiveActivity {
                 new FrameLayout.LayoutParams(-1, -1)
         );
 
-        LinearLayout header =
-                new LinearLayout(this);
-
-        header.setGravity(Gravity.CENTER_VERTICAL);
-        header.setPadding(
-                dp(5),
-                dp(6),
-                dp(5),
-                dp(6)
-        );
-
-        header.setBackground(
-                roundStroke(
-                        "#FFFFFF",
-                        "#DCE8F6",
-                        18,
-                        1
-                )
-        );
-
-        TextView back = text("←", 24, "#0B7CFF", true);
-        back.setGravity(Gravity.CENTER);
-        back.setIncludeFontPadding(false);
-        back.setPadding(0, 0, 0, dp(1));
-        back.setBackground(round("#EAF4FF", 15));
-        back.setOnClickListener(view -> finish());
-
-        header.addView(
-                back,
-                new LinearLayout.LayoutParams(
-                        dp(46),
-                        dp(46)
-                )
-        );
+        LinearLayout header = new LinearLayout(this);
+        chatChrome.styleBar(header);
+        chatChrome.addHeaderAction(header, "back", "Kembali").setOnClickListener(v -> finish());
 
         chatStyle.addAvatar(header,participantName,participantPhoto);
-        LinearLayout titleBox =
-                new LinearLayout(this);
-
-        titleBox.setOrientation(
-                LinearLayout.VERTICAL
-        );
-
-        titleBox.setPadding(
-                dp(10),
-                0,
-                0,
-                0
-        );
-
-        participantText = text(
-                participantName,
-                16,
-                "#0B3A78",
-                true
-        );
-
+        LinearLayout titleBox = new LinearLayout(this);
+        titleBox.setOrientation(LinearLayout.VERTICAL);
+        titleBox.setPaddingRelative(dp(8), 0, dp(2), 0);
+        participantText = text(participantName, 16, "#0F172A", true);
+        participantText.setTextColor(chatChrome.textColor());
         participantText.setSingleLine(true);
         participantText.setEllipsize(android.text.TextUtils.TruncateAt.END);
         titleBox.addView(participantText);
 
-        statusText = text(
-                readOnly
-                        ? "Riwayat percakapan"
-                        : "Menghubungkan chat...",
-                10,
-                readOnly
-                        ? "#8495A8"
-                        : "#0B7CFF",
-                true
-        );
-
+        statusText = text(readOnly ? "Riwayat percakapan" : "Menghubungkan chat…", 11, "#64748B", false);
+        statusText.setTextColor(chatChrome.secondaryColor());
         statusText.setMaxLines(2);
         statusText.setEllipsize(android.text.TextUtils.TruncateAt.END);
         titleBox.addView(statusText);
-
-        header.addView(
-                titleBox,
-                new LinearLayout.LayoutParams(
-                        0,
-                        -2,
-                        1
-                )
-        );
-
-        TextView orderLabel = text(
-                CustomerChatRoomFormatter.serviceName(orderType),
-                10,
-                "#0B7CFF",
-                true
-        );
-
-        orderLabel.setPadding(
-                dp(9),
-                dp(5),
-                dp(9),
-                dp(5)
-        );
-
-        orderLabel.setBackground(
-                round("#EAF4FF", 12)
-        );
-
-        // Service badge joins the tools row, leaving more room for the participant name.
+        header.addView(titleBox, new LinearLayout.LayoutParams(0, -2, 1f));
 
         if (!readOnly) {
-            TextView callButton = text("☎", 22, "#0B7CFF", true);
-            callButton.setGravity(Gravity.CENTER);
-            callButton.setContentDescription("Telepon driver");
-            callButton.setBackground(round("#EAF4FF", 15));
-            LinearLayout.LayoutParams callLp =
-                    new LinearLayout.LayoutParams(dp(46), dp(46));
-            callLp.setMargins(dp(2), 0, 0, 0);
-            header.addView(callButton, callLp);
-            callButton.setOnClickListener(v -> callDriver());
-            TextView videoButton=text("📹",22,"#0B7CFF",true);videoButton.setGravity(Gravity.CENTER);videoButton.setContentDescription("Video Call");videoButton.setBackground(round("#EAF4FF",15));LinearLayout.LayoutParams videoLp=new LinearLayout.LayoutParams(dp(42),dp(42));videoLp.setMargins(dp(2),0,0,0);header.addView(videoButton,videoLp);videoButton.setOnClickListener(v->openRoomCall(true));
+            chatChrome.addCallActions(header, this::callDriver, () -> openRoomCall(true));
         }
 
-        chatStyle.overflow(header,this::openSearch,
+        chatStyle.overflow(chatChrome.addHeaderAction(header, "more", "Opsi percakapan"),this::openSearch,
                 query -> CustomerMessageApi.get(chatExtrasEndpoint()+query,chatRequests.session()),null);
         root.addView(header);
         root.addView(new ActiveCallBanner(this),new LinearLayout.LayoutParams(-1,-2));
 
-        LinearLayout chatTools = new LinearLayout(this);
-        chatTools.setGravity(Gravity.CENTER_VERTICAL);
-        chatTools.setPadding(dp(2), dp(5), dp(2), 0);
-        chatTools.addView(orderLabel, new LinearLayout.LayoutParams(-2, -2));
-        root.addView(chatTools, new LinearLayout.LayoutParams(-1, -2));
         olderMessagesButton=compactChatTool("Muat pesan sebelumnya", false);
         olderMessagesButton.setText("Muat pesan sebelumnya");olderMessagesButton.setVisibility(View.GONE);
         olderMessagesButton.setOnClickListener(v -> loadOlderMessages());root.addView(olderMessagesButton,new LinearLayout.LayoutParams(-1,-2));
         retryMessageButton = compactChatTool("Tertunda", true);
         retryMessageButton.setVisibility(View.GONE);
         retryMessageButton.setOnClickListener(v -> retryPendingMessage());
-        LinearLayout.LayoutParams retryLp = new LinearLayout.LayoutParams(0, dp(44), 1);
-        retryLp.setMargins(dp(6), 0, 0, 0);
-        chatTools.addView(retryMessageButton, retryLp);
+        root.addView(retryMessageButton, new LinearLayout.LayoutParams(-1, dp(44)));
         messagesScroll = new ScrollView(this);
         messagesScroll.setFillViewport(true);
 
@@ -576,118 +478,26 @@ class CustomerChatRoomActivityScreenCore extends CustomerAdaptiveActivity {
                 )
         );
 
-        root.addView(TraviSivaStickers.launcher(this, () -> {
-            if (readOnly || sending || uploading) return;
-            android.view.inputmethod.InputMethodManager keyboard = (android.view.inputmethod.InputMethodManager)getSystemService(INPUT_METHOD_SERVICE);
-            if (keyboard != null) keyboard.hideSoftInputFromWindow(input.getWindowToken(), 0);
-            stickerDialog = TraviSivaStickers.show(this, this::sendSticker);
-        }), new LinearLayout.LayoutParams(-1, dp(46)));
-
         inputCard = new LinearLayout(this);
-        inputCard.setGravity(Gravity.CENTER_VERTICAL);
-        inputCard.setPadding(
-                dp(9),
-                dp(7),
-                dp(9),
-                dp(7)
-        );
-
-        inputCard.setBackground(
-                roundStroke(
-                        "#FFFFFF",
-                        "#D7E6F8",
-                        20,
-                        1
-                )
-        );
-
-        inputCard.setElevation(dp(5));
-
-        attachButton = new Button(this);
-        attachButton.setText("+");
-        attachButton.setAllCaps(false);
-        attachButton.setTextSize(22);
-        attachButton.setTextColor(Color.parseColor("#0B7CFF"));
-        attachButton.setPadding(0, 0, 0, 0);
-        attachButton.setBackground(round("#EAF4FF", 15));
-        attachButton.setOnClickListener(view -> showAttachmentMenu());
-
-        inputCard.addView(
-                attachButton,
-                new LinearLayout.LayoutParams(dp(44), -1)
-        );
+        chatChrome.styleComposer(inputCard);
+        chatChrome.addAttachment(inputCard).setOnClickListener(v -> showAttachmentMenu());
 
         input = new EditText(this);
-        input.setSingleLine(false);
+        input.setInputType(InputType.TYPE_CLASS_TEXT
+                | InputType.TYPE_TEXT_FLAG_CAP_SENTENCES | InputType.TYPE_TEXT_FLAG_MULTI_LINE);
         input.setMaxLines(3);
-        input.setTextSize(13);
-        input.setTextColor(
-                Color.parseColor("#0F172A")
-        );
-
-        input.setHintTextColor(
-                Color.parseColor("#94A3B8")
-        );
-
-        input.setHint("Ketik pesan...");
-        input.setInputType(
-                InputType.TYPE_CLASS_TEXT
-                        | InputType.TYPE_TEXT_FLAG_CAP_SENTENCES
-                        | InputType.TYPE_TEXT_FLAG_MULTI_LINE
-        );
-
-        input.setImeOptions(
-                EditorInfo.IME_ACTION_SEND
-        );
-
-        input.setPadding(
-                dp(13),
-                0,
-                dp(13),
-                0
-        );
-
-        input.setBackground(
-                roundStroke(
-                        "#F8FBFF",
-                        "#D8E4F2",
-                        16,
-                        1
-                )
-        );
-
-        LinearLayout.LayoutParams inputLp =
-                new LinearLayout.LayoutParams(0, -1, 1);
-        inputLp.setMargins(dp(7), 0, 0, 0);
-        inputCard.addView(input, inputLp);
-
-        sendButton = primaryButton("Kirim");
-
-        LinearLayout.LayoutParams sendLp =
-                new LinearLayout.LayoutParams(
-                        dp(74),
-                        -1
-                );
-
-        sendLp.setMargins(dp(7), 0, 0, 0);
-        inputCard.addView(sendButton, sendLp);
-
-        voiceButton = new Button(this);
-        voiceButton.setText("🎙");
-        voiceButton.setTextSize(18);
-        voiceButton.setAllCaps(false);
-        voiceButton.setPadding(0, 0, 0, 0);
-        voiceButton.setTextColor(Color.parseColor("#0B7CFF"));
-        voiceButton.setBackground(round("#EAF4FF", 15));
-        LinearLayout.LayoutParams voiceLp = new LinearLayout.LayoutParams(dp(48), -1);
-        voiceLp.setMargins(dp(7), 0, 0, 0);
-        inputCard.addView(voiceButton, voiceLp);
+        input.setImeOptions(EditorInfo.IME_ACTION_SEND);
+        input.setHint("Ketik pesan…");
+        chatChrome.addDraft(inputCard, input);
+        chatChrome.addDraftActions(inputCard);
+        voiceButton = chatChrome.voiceButton();
         setupVoiceRecorder();
+        chatChrome.setComposerAvailable(!readOnly);
 
-        sendButton.setOnClickListener(
-                view -> { view.performHapticFeedback(android.view.HapticFeedbackConstants.VIRTUAL_KEY); sendMessage(); }
-        );
-
+        chatChrome.sendButton().setOnClickListener(v -> {
+            v.performHapticFeedback(android.view.HapticFeedbackConstants.VIRTUAL_KEY);
+            sendMessage();
+        });
         input.setOnEditorActionListener(
                 (view, actionId, event) -> {
                     boolean enter =
@@ -710,13 +520,7 @@ class CustomerChatRoomActivityScreenCore extends CustomerAdaptiveActivity {
                 }
         );
 
-        root.addView(
-                inputCard,
-                new LinearLayout.LayoutParams(
-                        -1,
-                        dp(62)
-                )
-        );
+        root.addView(inputCard, new LinearLayout.LayoutParams(-1, -2));
 
         progress = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
         progress.setVisibility(View.GONE);
@@ -734,18 +538,27 @@ class CustomerChatRoomActivityScreenCore extends CustomerAdaptiveActivity {
     }
 
     protected void showAttachmentMenu() {
-        if (readOnly || uploading) return;
+        if (readOnly || uploading || sending || chatChrome.isRecording()) return;
 
         new TransivaAlertDialogBuilder(this)
-                .setTitle("Kirim Foto")
+                .setTitle("Lampiran")
                 .setItems(
-                        new String[]{"Ambil Foto", "Pilih dari Galeri"},
+                        new String[]{"Ambil foto", "Pilih dari galeri", "Stiker Travi & Siva"},
                         (dialog, which) -> {
                             if (which == 0) openCamera();
-                            else openGallery();
+                            else if (which == 1) openGallery();
+                            else openStickerPicker();
                         }
                 )
                 .show();
+    }
+
+    private void openStickerPicker() {
+        if (readOnly || sending || uploading || chatChrome.isRecording()) return;
+        android.view.inputmethod.InputMethodManager keyboard =
+                (android.view.inputmethod.InputMethodManager) getSystemService(INPUT_METHOD_SERVICE);
+        if (keyboard != null) keyboard.hideSoftInputFromWindow(input.getWindowToken(), 0);
+        stickerDialog = TraviSivaStickers.show(this, this::sendSticker);
     }
 
     protected void openCamera() {
@@ -919,8 +732,7 @@ class CustomerChatRoomActivityScreenCore extends CustomerAdaptiveActivity {
 
         uploading = true;
         progress.setVisibility(View.VISIBLE);
-        attachButton.setEnabled(false);
-        sendButton.setEnabled(false);
+        syncComposer();
 
         chatRequests.execute("media",() -> {
             try {
@@ -940,8 +752,7 @@ class CustomerChatRoomActivityScreenCore extends CustomerAdaptiveActivity {
                 chatRequests.post(mainHandler,() -> {
                     uploading = false;
                     progress.setVisibility(View.GONE);
-                    attachButton.setEnabled(!readOnly);
-                    sendButton.setEnabled(!readOnly&&!uploading&&!sending);
+                    syncComposer();
 
                     showMessage(
                             "Foto gagal diproses",
@@ -969,8 +780,7 @@ class CustomerChatRoomActivityScreenCore extends CustomerAdaptiveActivity {
 
         uploading = true;
         progress.setVisibility(View.VISIBLE);
-        attachButton.setEnabled(false);
-        sendButton.setEnabled(false);
+        syncComposer();
 
         chatRequests.execute("media",() -> {
             java.io.File file =
@@ -995,8 +805,7 @@ class CustomerChatRoomActivityScreenCore extends CustomerAdaptiveActivity {
                 chatRequests.post(mainHandler,() -> {
                     uploading = false;
                     progress.setVisibility(View.GONE);
-                    attachButton.setEnabled(!readOnly);
-                    sendButton.setEnabled(!readOnly&&!uploading&&!sending);
+                    syncComposer();
 
                     showMessage(
                             "Foto gagal diproses",
@@ -1017,7 +826,8 @@ class CustomerChatRoomActivityScreenCore extends CustomerAdaptiveActivity {
 
     protected void uploadPhoto(ChatImageProcessor.ImagePayload payload) {
         if(uploading||readOnly||payload==null)return;
-        uploading=true;attachButton.setEnabled(false);sendButton.setEnabled(false);
+        uploading=true;
+        syncComposer();
         chatRequests.execute("media",()->{
             try{
                 CustomerPendingChatStore store=new CustomerPendingChatStore(this,chatRequests.session());
@@ -1027,7 +837,14 @@ class CustomerChatRoomActivityScreenCore extends CustomerAdaptiveActivity {
             }catch(Exception e){chatRequests.post(mainHandler,()->{rejectMediaControls();refreshPendingMessage();toast(first(e.getMessage(),"Foto belum terkonfirmasi. Buka pesan tertunda."));});}
         },()->chatRequests.post(mainHandler,()->{rejectMedia();}));
     }
-    private void rejectMediaControls(){uploading=false;attachButton.setEnabled(!readOnly);sendButton.setEnabled(!readOnly&&!sending);voiceButton.setEnabled(!readOnly);voiceButton.setText("🎙");}
+    private void rejectMediaControls() {
+        uploading = false;
+        syncComposer();
+    }
+
+    private void syncComposer() {
+        chatChrome.setComposerAvailable(!readOnly && !sending && !uploading);
+    }
 
 
     protected void refreshMessagesAfterUpload(
@@ -1338,13 +1155,8 @@ class CustomerChatRoomActivityScreenCore extends CustomerAdaptiveActivity {
                     "Percakapan ini hanya dapat dibaca"
             );
 
-            attachButton.setEnabled(false);
-            attachButton.setAlpha(0.45f);
-            if (voiceButton != null) { voiceButton.setEnabled(false); voiceButton.setAlpha(0.45f); }
-
-            sendButton.setEnabled(false);
-            sendButton.setText("Selesai");
-            sendButton.setAlpha(0.55f);
+            syncComposer();
+            chatChrome.hideCallActions();
 
             statusText.setText(
                     "Order selesai • riwayat hanya baca"
@@ -1356,16 +1168,21 @@ class CustomerChatRoomActivityScreenCore extends CustomerAdaptiveActivity {
         ChatVoiceNote.attachRecorder(this, voiceButton, REQUEST_AUDIO_PERMISSION, new ChatVoiceNote.Listener() {
             @Override public void onState(String text, boolean recording, boolean cancelArmed) {
                 statusText.setText(text);
-                voiceButton.setText(cancelArmed ? "✕" : (recording ? "●" : "🎙"));
+                chatChrome.setRecording(recording, cancelArmed);
             }
             @Override public void onReady(File file, long durationMs) { uploadVoiceNote(file, durationMs); }
-            @Override public void onError(String message) { toast(message); voiceButton.setText("🎙"); }
+            @Override public void onError(String message) { toast(message); chatChrome.setRecording(false, false); }
         });
     }
 
     protected void uploadVoiceNote(File file,long durationMs) {
-        if(readOnly||uploading||file==null)return;
-        uploading=true;voiceButton.setEnabled(false);
+        if (file == null) return;
+        if (readOnly || uploading || sending) {
+            file.delete();
+            return;
+        }
+        uploading = true;
+        syncComposer();
         chatRequests.execute("media",()->{
             boolean saved=false;
             try{
@@ -1458,13 +1275,8 @@ class CustomerChatRoomActivityScreenCore extends CustomerAdaptiveActivity {
                     refreshRunnable
             );
         } else {
-            statusText.setText(
-                    CustomerMessageStatus
-                            .orderLabel(
-                                    orderStatus,
-                                    orderType
-                            )
-            );
+            statusText.setText(CustomerChatRoomFormatter.serviceName(orderType) + " · "
+                    + CustomerMessageStatus.orderLabel(orderStatus, orderType));
         }
 
         JSONObject driver =
@@ -1669,7 +1481,7 @@ class CustomerChatRoomActivityScreenCore extends CustomerAdaptiveActivity {
 
         LinearLayout.LayoutParams wrapperLp =
                 new LinearLayout.LayoutParams(-1, -2);
-        wrapperLp.setMargins(0, dp(4), 0, dp(4));
+        wrapperLp.setMargins(0, dp(3), 0, dp(3));
         messagesBox.addView(wrapper, wrapperLp);
 
         if (content.startsWith(TraviSivaStickers.PREFIX)) {
@@ -1782,6 +1594,7 @@ class CustomerChatRoomActivityScreenCore extends CustomerAdaptiveActivity {
                     false
             );
             bubble.setTextSize(14);
+            bubble.setTextColor(mine ? Color.WHITE : chatChrome.textColor());
             bubble.setMaxWidth((int)(
                     getResources().getDisplayMetrics().widthPixels * 0.75
             ));
@@ -2028,7 +1841,7 @@ class CustomerChatRoomActivityScreenCore extends CustomerAdaptiveActivity {
     private void sendMessage() { sendChatContent(input.getText().toString().trim(), true); }
     protected void sendSticker(String wire) { sendChatContent(wire, false); }
     private void sendChatContent(String message, boolean clearDraft) {
-        if (readOnly || sending || uploading || !chatRequests.current()) return;
+        if (readOnly || sending || uploading || chatChrome.isRecording() || !chatRequests.current()) return;
 
         if (message.isEmpty()) return;
 
@@ -2042,8 +1855,7 @@ class CustomerChatRoomActivityScreenCore extends CustomerAdaptiveActivity {
         }
 
         sending = true;
-        sendButton.setEnabled(false);
-        sendButton.setText("...");
+        syncComposer();
         final String originalMessage = message;
         final PendingText pending = addPendingText(originalMessage);
         if (clearDraft) input.setText("");
@@ -2062,14 +1874,12 @@ class CustomerChatRoomActivityScreenCore extends CustomerAdaptiveActivity {
                     refreshPendingMessage();
                     if (response.optBoolean("success", false)) {
                         sending = false;
-                        sendButton.setEnabled(!readOnly&&!uploading&&!sending);
-                        sendButton.setText("Kirim");
+                        syncComposer();
                         if (pending != null) messagesBox.removeView(pending.root);
                         loadMessages(false);
                     } else {
                         sending = false;
-                        sendButton.setEnabled(!readOnly&&!uploading&&!sending);
-                        sendButton.setText("Kirim");
+                        syncComposer();
 
                         if (pending != null) {
                             messagesBox.removeView(pending.root);
@@ -2097,8 +1907,7 @@ class CustomerChatRoomActivityScreenCore extends CustomerAdaptiveActivity {
                 chatRequests.post(mainHandler,() -> {
                     refreshPendingMessage();
                     sending = false;
-                    sendButton.setEnabled(!readOnly&&!uploading&&!sending);
-                    sendButton.setText("Kirim");
+                    syncComposer();
                     if (pending != null) messagesBox.removeView(pending.root);
                     if(error instanceof ChatNotSavedException && input.length()==0){input.setText(originalMessage);input.setSelection(input.length());}
                     showMessage("Pesan belum terkirim", reason, false);

@@ -57,6 +57,6 @@ public class ChatRuntimeCheck{
  check(!CustomerApiClient.last.getInstanceFollowRedirects(),"chat transport never forwards bearer through redirects");
  System.out.println("PASS "+checks+" chat runtime scenarios");
  }}''')
- files=list(p.rglob('*.java'))+[src/(n+'.java') for n in ['CustomerChatRequestGate','CustomerChatSendJournal','CustomerSessionGuard','CustomerReadSafetyRules','NetworkSafetyRules','OrderPayloadFingerprint','CustomerMessageApi','BoundedResponseReader']]
+ files=list(p.rglob('*.java'))+[src/(n+'.java') for n in ['CustomerChatRequestGate','CustomerChatSendJournal','CustomerSessionGuard','CustomerReadSafetyRules','NetworkSafetyRules','OrderPayloadFingerprint','CustomerMessageApi','ChatMediaMultipart','BoundedResponseReader']]
  subprocess.run([os.getenv('JAVAC_BIN','javac'),'-cp',os.environ['JSON_JAR'],'-d',str(p/'classes'),*map(str,files)],check=True)
  subprocess.run(['java','-cp',str(p/'classes')+os.pathsep+os.environ['JSON_JAR'],'com.transiva.app.ChatRuntimeCheck'],check=True)

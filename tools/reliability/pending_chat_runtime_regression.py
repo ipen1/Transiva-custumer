@@ -19,7 +19,11 @@ class CustomerMessageApi{
  static boolean offline,wrongAck;static int writes;static Map<String,JSONObject> receipts=new HashMap<>();
  static JSONObject get(String url,CustomerSessionGuard s)throws Exception{if(offline)throw new java.io.IOException("offline");String id=java.net.URLDecoder.decode(url.substring(url.indexOf("operation_id=")+13),"UTF-8");JSONObject receipt=receipts.get(id);return receipt==null?new JSONObject().put("success",false).put("operation_state","not_found"):new JSONObject(receipt.toString());}
  static JSONObject post(String url,JSONObject op,CustomerSessionGuard s)throws Exception{if(offline)throw new java.io.IOException("offline");String id=op.getString("client_message_id");JSONObject ack=new JSONObject().put("success",true).put("client_message_id",wrongAck?"unrelated":id);receipts.put(id,ack);writes++;return ack;}
- static JSONObject uploadPendingMedia(String url,JSONObject op,byte[] preview,byte[] media,CustomerSessionGuard s)throws Exception{if(media.length==0)throw new AssertionError("empty media");return post(url,op,s);}
+ static JSONObject uploadPendingMedia(String url,JSONObject op,byte[] preview,byte[] media,CustomerSessionGuard s,ChatMediaMultipart.Progress progress)throws Exception{
+  if(media.length==0)throw new AssertionError("empty media");
+  if(progress!=null)progress.update(95);
+  return post(url,op,s);
+ }
 }
 ''')
  put('com/transiva/app/PendingRuntimeCheck.java',r'''package com.transiva.app;
@@ -37,7 +41,7 @@ public class PendingRuntimeCheck{
  SessionManager.account="2";CustomerPendingChatStore other=new CustomerPendingChatStore(context,CustomerSessionGuard.capture(context));check(other.list().isEmpty(),"other account cannot enumerate pending operations");failed=false;try{store.dispatch(text);}catch(Exception expected){failed=true;}check(failed&&CustomerMessageApi.writes==0,"old session cannot send pending operations as new account");SessionManager.account="1";
  CustomerMessageApi.wrongAck=true;failed=false;try{store.dispatch(text);}catch(Exception expected){failed=true;}check(failed&&store.list().size()==3,"unrelated server acknowledgment never clears pending message");CustomerMessageApi.wrongAck=false;CustomerMessageApi.receipts.clear();
  CustomerMessageApi.receipts.put(id,new JSONObject().put("success",true).put("client_message_id",id));int writes=CustomerMessageApi.writes;store.dispatch(text);check(CustomerMessageApi.writes==writes&&store.list().size()==2,"lost response is resolved by read-only status without resending");
- store.dispatch(image);check(!store.attachment(image).exists()&&store.list().size()==1,"confirmed photo clears metadata and copied attachment");store.dispatch(voice);check(store.list().isEmpty(),"confirmed voice clears pending operation");
+ int[] progress={0};store.dispatch(image,percent->progress[0]=percent);check(progress[0]==95,"photo dispatch forwards upload progress");check(!store.attachment(image).exists()&&store.list().size()==1,"confirmed photo clears metadata and copied attachment");store.dispatch(voice);check(store.list().isEmpty(),"confirmed voice clears pending operation");
  JSONObject duplicate=store.enqueue(base("original"),"text",null,null,0);check(!duplicate.getString("client_message_id").equals(id),"new intentional identical text gets a fresh operation ID");
  Looper.markMain(true);failed=false;try{new CustomerPendingChatStore(context,session);}catch(Exception expected){failed=true;}Looper.markMain(false);check(failed,"pending I/O is rejected on main thread");
  java.io.File bad=new java.io.File(System.getProperty("queue.root"),"limit");try(java.io.FileOutputStream out=new java.io.FileOutputStream(bad)){out.write(new byte[100]);}failed=false;try{CustomerPendingChatStore.read(bad,50);}catch(Exception expected){failed=true;}check(failed,"attachment reader enforces byte limit");
@@ -45,6 +49,6 @@ public class PendingRuntimeCheck{
  }
 }
 ''')
- classes=p/'classes';files=list(p.rglob('*.java'))+[src/(name+'.java') for name in ['CustomerPendingChatStore','CustomerSessionGuard','CustomerReadSafetyRules','NetworkSafetyRules']]
+ classes=p/'classes';files=list(p.rglob('*.java'))+[src/(name+'.java') for name in ['CustomerPendingChatStore','ChatMediaMultipart','CustomerSessionGuard','CustomerReadSafetyRules','NetworkSafetyRules']]
  subprocess.run([os.getenv('JAVAC_BIN','javac'),'-cp',os.environ['JSON_JAR'],'-d',str(classes),*map(str,files)],check=True)
  subprocess.run(['java','-Dqueue.root='+str(p/'pending-files'),'-cp',str(classes)+os.pathsep+os.environ['JSON_JAR'],'com.transiva.app.PendingRuntimeCheck'],check=True)

@@ -22,7 +22,7 @@ import org.json.JSONArray;
 import org.json.JSONObject;
 import java.net.URLEncoder;
 import java.util.ArrayList;
-import java.util.Comparator;
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.Set;
 import java.util.concurrent.ArrayBlockingQueue;
@@ -170,9 +170,14 @@ final class OrderChatStyle {
                 if (first<0) first=i;
                 rows.add(child);
             }
-            rows.sort(Comparator.comparing((View row)->((Item)row.getTag()).time)
-                    .thenComparingLong(row->((Item)row.getTag()).callId)
-                    .thenComparingInt(row->((Item)row.getTag()).messageId));
+            Collections.sort(rows, (left, right) -> {
+                Item firstItem = (Item) left.getTag();
+                Item secondItem = (Item) right.getTag();
+                int order = firstItem.time.compareTo(secondItem.time);
+                if (order != 0) return order;
+                order = Long.compare(firstItem.callId, secondItem.callId);
+                return order != 0 ? order : Integer.compare(firstItem.messageId, secondItem.messageId);
+            });
             for (int i=0; i<rows.size(); i++) {
                 View row=rows.get(i);
                 int index=first+i;

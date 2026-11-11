@@ -27,7 +27,7 @@ jobs:
       - name: Verify backend test source fingerprints
         run: python3 tools/reliability/verify_sources.py
       - name: Install PHP database extension
-        run: sudo apt-get update && sudo apt-get install -y php-cli php-mysql php-mbstring php-sqlite3 libandroid-json-java
+        run: bash tools/ci/install_ubuntu_packages.sh php-cli php-mysql php-mbstring php-sqlite3 libandroid-json-java
       - name: Gate voucher schedules, previews, zero payments and refunds
         env:
           TEST_DB_HOST: 127.0.0.1

@@ -40,7 +40,7 @@ jobs:
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
-          sudo apt-get update && sudo apt-get install -y coturn
+          bash tools/ci/install_ubuntu_packages.sh coturn
           HOST_IP=$(hostname -I | awk '{print $1}')
           TURN_PASSWORD=$(openssl rand -hex 12)
           echo "TURN_HOST=$HOST_IP" >> "$GITHUB_ENV"

@@ -3,7 +3,7 @@
 from pathlib import Path
 import subprocess,tempfile,json,os,shutil
 root=Path(__file__).resolve().parent;src=root.parents[1]/'app/src/main/java/com/transiva/app'
-for suite,classes,main in [('http',['TransivaHttpRepository','CustomerApiClient','NetworkSafetyRules','CustomerTransportSession','CustomerLoadingCoordinator','CustomerRequestCancellation','CustomerReadCachePolicy'],'HttpSessionProbe'),('poller',['CustomerChatNotificationPoller','CustomerChatNoticeState','CustomerChatPushGuard','CustomerChatPreviewFormatter','NetworkSafetyRules','CustomerTransportSession'],'PollerProbe')]:
+for suite,classes,main in [('http',['TransivaHttpRepository','CustomerApiClient','NetworkSafetyRules','CustomerTransportSession','CustomerLoadingCoordinator','CustomerRequestCancellation','CustomerReadCachePolicy'],'HttpSessionProbe'),('poller',['CustomerChatNotificationPoller','CustomerChatNoticeState','CustomerChatPushGuard','FreshChatPush','CustomerChatPreviewFormatter','NetworkSafetyRules','CustomerTransportSession'],'PollerProbe')]:
  with tempfile.TemporaryDirectory(prefix='transiva-session-') as d:
   p=Path(d)
   for name,text in json.loads((root/'session-fixtures'/f'{suite}.json').read_text()).items():

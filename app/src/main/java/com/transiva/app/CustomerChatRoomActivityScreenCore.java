@@ -201,7 +201,6 @@ class CustomerChatRoomActivityScreenCore extends CustomerAdaptiveActivity {
     protected Uri cameraPhotoUri;
     protected File cameraPhotoFile;
     protected boolean cameraUsesMediaStore;
-    protected long pendingPhotoSequence;
 
     protected final Runnable refreshRunnable =
             new Runnable() {
@@ -543,22 +542,22 @@ class CustomerChatRoomActivityScreenCore extends CustomerAdaptiveActivity {
         new TransivaAlertDialogBuilder(this)
                 .setTitle("Lampiran")
                 .setItems(
-                        new String[]{"Ambil foto", "Pilih dari galeri", "Stiker Travi & Siva"},
+                        new String[]{"Ambil foto", "Pilih dari galeri", "Stiker", "Toko Stiker"},
                         (dialog, which) -> {
                             if (which == 0) openCamera();
                             else if (which == 1) openGallery();
-                            else openStickerPicker();
+                            else openStickerPicker(which == 3);
                         }
                 )
                 .show();
     }
 
-    private void openStickerPicker() {
+    private void openStickerPicker(boolean store) {
         if (readOnly || sending || uploading || chatChrome.isRecording()) return;
         android.view.inputmethod.InputMethodManager keyboard =
                 (android.view.inputmethod.InputMethodManager) getSystemService(INPUT_METHOD_SERVICE);
         if (keyboard != null) keyboard.hideSoftInputFromWindow(input.getWindowToken(), 0);
-        stickerDialog = TraviSivaStickers.show(this, this::sendSticker);
+        stickerDialog = StickerPackDialog.show(this, store, this::sendSticker);
     }
 
     protected void openCamera() {
@@ -722,121 +721,83 @@ class CustomerChatRoomActivityScreenCore extends CustomerAdaptiveActivity {
         }
     }
 
-    protected void processSelectedPhoto(
-            Uri sourceUri,
-            boolean fromCamera
-    ) {
-        if (sourceUri == null || uploading) {
-            return;
-        }
-
-        uploading = true;
-        progress.setVisibility(View.VISIBLE);
-        syncComposer();
-
-        chatRequests.execute("media",() -> {
-            try {
-                ChatImageProcessor.ImagePayload payload =
-                        ChatImageProcessor.fromUri(
-                                getContentResolver(),
-                                sourceUri
-                        );
-
-                chatRequests.post(mainHandler,() -> {
-                    uploading = false;
-                    progress.setVisibility(View.GONE);
-                    uploadPhoto(payload);
-                });
-
-            } catch (Exception error) {
-                chatRequests.post(mainHandler,() -> {
-                    uploading = false;
-                    progress.setVisibility(View.GONE);
-                    syncComposer();
-
-                    showMessage(
-                            "Foto gagal diproses",
-                            first(
-                                    error.getMessage(),
-                                    "Foto tidak dapat dibaca."
-                            ),
-                            false
-                    );
-                });
-            }
-        }, () -> chatRequests.post(mainHandler,() -> {rejectMedia();}));
+    protected void processSelectedPhoto(Uri uri, boolean fromCamera) {
+        if (uri == null) return;
+        preparePhoto(preview -> ChatImageProcessor.fromUri(getContentResolver(), uri, preview));
     }
 
-    protected void processCameraFile(
-            String filePath
-    ) {
-        if (
-                filePath == null
-                        || filePath.trim().isEmpty()
-                        || uploading
-        ) {
-            return;
-        }
+    protected void processCameraFile(String path) {
+        if (path == null || path.trim().isEmpty()) return;
+        java.io.File file = new java.io.File(path);
+        preparePhoto(preview -> {
+            try { return ChatImageProcessor.fromFile(file, preview); }
+            finally { file.delete(); }
+        });
+    }
 
+    private interface PhotoSource {
+        ChatImageProcessor.ImagePayload read(ChatImageProcessor.Preview preview) throws Exception;
+    }
+
+    private void preparePhoto(PhotoSource source) {
+        if (readOnly || uploading || sending || chatChrome.isRecording()) return;
+        ChatPhotoTile tile = new ChatPhotoTile(this);
+        messagesBox.addView(tile);
+        scrollBottom();
         uploading = true;
-        progress.setVisibility(View.VISIBLE);
         syncComposer();
-
-        chatRequests.execute("media",() -> {
-            java.io.File file =
-                    new java.io.File(filePath);
-
+        chatRequests.execute("media", () -> {
+            boolean saved = false;
             try {
-                ChatImageProcessor.ImagePayload payload =
-                        ChatImageProcessor.fromFile(file);
-
-                chatRequests.post(mainHandler,() -> {
-                    uploading = false;
-                    progress.setVisibility(View.GONE);
-                    uploadPhoto(payload);
-
-                    try {
-                        file.delete();
-                    } catch (Exception ignored) {
+                ChatImageProcessor.ImagePayload payload = source.read(bitmap ->
+                        chatRequests.post(mainHandler, () -> tile.thumbnail(bitmap)));
+                CustomerPendingChatStore store = new CustomerPendingChatStore(this, chatRequests.session());
+                JSONObject operation = store.enqueue(chatPayload(), "image", payload.previewWebp, payload.hdJpeg, 0);
+                saved = true;
+                JSONObject response = store.dispatch(operation, percent ->
+                        chatRequests.post(mainHandler, () -> tile.progress(percent)));
+                chatRequests.post(mainHandler, () -> {
+                    finishPhoto();
+                    int id = response.optInt("id", response.optJSONObject("chat") == null
+                            ? 0 : response.optJSONObject("chat").optInt("id"));
+                    if (response.optBoolean("success") && id > 0) {
+                        tile.confirmed(id);
+                        if (displayedMessageIds.contains(id)) ChatPhotoTile.reconcile(messagesBox, id);
+                        else loadMessages(false);
+                    } else if (response.optBoolean("success")) {
+                        messagesBox.removeView(tile);
+                        loadMessages(false);
+                    } else {
+                        tile.failed("Foto tertunda · ketuk untuk buka", () -> openPendingPhoto(tile));
+                        toast(response.optString("message", "Foto tersimpan sebagai pesan tertunda"));
                     }
                 });
-
-            } catch (Exception error) {
-                chatRequests.post(mainHandler,() -> {
-                    uploading = false;
-                    progress.setVisibility(View.GONE);
-                    syncComposer();
-
-                    showMessage(
-                            "Foto gagal diproses",
-                            first(
-                                    error.getMessage(),
-                                    "Foto kamera tidak dapat dibaca."
-                            ),
-                            false
-                    );
+            } catch (Exception failure) {
+                boolean pending = saved;
+                chatRequests.post(mainHandler, () -> {
+                    finishPhoto();
+                    tile.failed(pending ? "Foto tertunda · ketuk untuk buka" : "Foto gagal disiapkan",
+                            pending ? () -> openPendingPhoto(tile) : null);
+                    toast(first(failure.getMessage(), "Foto belum terkirim."));
                 });
             }
-        }, () -> chatRequests.post(mainHandler,() -> {rejectMedia();}));
+        }, () -> chatRequests.post(mainHandler, () -> {
+            finishPhoto();
+            tile.failed("Antrean penuh · pilih foto kembali", null);
+        }));
     }
 
-
-
-
-
-    protected void uploadPhoto(ChatImageProcessor.ImagePayload payload) {
-        if(uploading||readOnly||payload==null)return;
-        uploading=true;
-        syncComposer();
-        chatRequests.execute("media",()->{
-            try{
-                CustomerPendingChatStore store=new CustomerPendingChatStore(this,chatRequests.session());
-                JSONObject operation=store.enqueue(chatPayload(),"image",payload.previewWebp,payload.hdJpeg,0);
-                JSONObject response=store.dispatch(operation);
-                chatRequests.post(mainHandler,()->{rejectMediaControls();refreshPendingMessage();if(response.optBoolean("success"))loadMessages(false);else toast(response.optString("message","Foto tersimpan sebagai pesan tertunda"));cleanupCameraFile();});
-            }catch(Exception e){chatRequests.post(mainHandler,()->{rejectMediaControls();refreshPendingMessage();toast(first(e.getMessage(),"Foto belum terkonfirmasi. Buka pesan tertunda."));});}
-        },()->chatRequests.post(mainHandler,()->{rejectMedia();}));
+    private void openPendingPhoto(ChatPhotoTile tile) {
+        messagesBox.removeView(tile);
+        retryPendingMessage();
     }
+
+    private void finishPhoto() {
+        rejectMediaControls();
+        refreshPendingMessage();
+        cleanupCameraFile();
+    }
+
     private void rejectMediaControls() {
         uploading = false;
         syncComposer();
@@ -846,265 +807,6 @@ class CustomerChatRoomActivityScreenCore extends CustomerAdaptiveActivity {
         chatChrome.setComposerAvailable(!readOnly && !sending && !uploading);
     }
 
-
-    protected void refreshMessagesAfterUpload(
-            PendingPhotoBubble pendingBubble,
-            int attempt
-    ) {
-        if (destroyed) {
-            return;
-        }
-
-        if (loading && attempt < 12) {
-            chatRequests.postDelayed(mainHandler,
-                    () -> refreshMessagesAfterUpload(
-                            pendingBubble,
-                            attempt + 1
-                    ),
-                    350
-            );
-
-            return;
-        }
-
-        if (pendingBubble.root.getParent() != null) {
-            messagesBox.removeView(
-                    pendingBubble.root
-            );
-        }
-
-        loadMessages(false);
-
-        /*
-         * Fallback kedua. Ini mengatasi kondisi last_id server baru belum
-         * terbaca pada request pertama setelah upload.
-         */
-        chatRequests.postDelayed(mainHandler,
-                () -> {
-                    if (!loading) {
-                        loadMessages(false);
-                    }
-                },
-                1100
-        );
-    }
-
-    protected PendingPhotoBubble addPendingPhotoBubble(
-            ChatImageProcessor.ImagePayload payload
-    ) {
-        pendingPhotoSequence++;
-
-        LinearLayout wrapper =
-                new LinearLayout(this);
-
-        wrapper.setOrientation(
-                LinearLayout.VERTICAL
-        );
-
-        wrapper.setGravity(Gravity.RIGHT);
-
-        LinearLayout.LayoutParams wrapperLp =
-                new LinearLayout.LayoutParams(
-                        -1,
-                        -2
-                );
-
-        wrapperLp.setMargins(
-                0,
-                dp(4),
-                0,
-                dp(4)
-        );
-
-        FrameLayout imageFrame =
-                new FrameLayout(this);
-
-        imageFrame.setBackground(
-                round("#EAF1FA", 16)
-        );
-
-        ImageView preview =
-                new ImageView(this);
-
-        preview.setScaleType(
-                ImageView.ScaleType.CENTER_CROP
-        );
-
-        Bitmap previewBitmap =
-                BitmapFactory.decodeByteArray(
-                        payload.previewWebp,
-                        0,
-                        payload.previewWebp.length
-                );
-
-        if (previewBitmap != null) {
-            preview.setImageBitmap(
-                    previewBitmap
-            );
-        }
-
-        imageFrame.addView(
-                preview,
-                new FrameLayout.LayoutParams(
-                        -1,
-                        -1
-                )
-        );
-
-        FrameLayout loadingLayer =
-                new FrameLayout(this);
-
-        loadingLayer.setBackgroundColor(
-                Color.argb(
-                        70,
-                        0,
-                        0,
-                        0
-                )
-        );
-
-        ProgressBar spinner =
-                new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
-
-        spinner.setIndeterminate(true);
-
-        FrameLayout.LayoutParams spinnerLp =
-                new FrameLayout.LayoutParams(
-                        dp(42),
-                        dp(42)
-                );
-
-        spinnerLp.gravity = Gravity.CENTER;
-
-        loadingLayer.addView(
-                spinner,
-                spinnerLp
-        );
-
-        imageFrame.addView(
-                loadingLayer,
-                new FrameLayout.LayoutParams(
-                        -1,
-                        -1
-                )
-        );
-
-        wrapper.addView(
-                imageFrame,
-                new LinearLayout.LayoutParams(
-                        dp(220),
-                        dp(165)
-                )
-        );
-
-        TextView state = text(
-                "Mengirim foto…",
-                9,
-                "#64748B",
-                true
-        );
-
-        state.setGravity(Gravity.RIGHT);
-        state.setPadding(
-                dp(7),
-                dp(3),
-                dp(7),
-                0
-        );
-
-        wrapper.addView(
-                state,
-                new LinearLayout.LayoutParams(
-                        -2,
-                        -2
-                )
-        );
-
-        messagesBox.addView(
-                wrapper,
-                wrapperLp
-        );
-
-        return new PendingPhotoBubble(
-                wrapper,
-                loadingLayer,
-                state
-        );
-    }
-
-
-
-    protected final class PendingPhotoBubble {
-
-        final LinearLayout root;
-        final FrameLayout loadingLayer;
-        final TextView state;
-
-        PendingPhotoBubble(
-                LinearLayout root,
-                FrameLayout loadingLayer,
-                TextView state
-        ) {
-            this.root = root;
-            this.loadingLayer = loadingLayer;
-            this.state = state;
-        }
-
-        void markSuccess() {
-            loadingLayer.setVisibility(
-                    View.GONE
-            );
-
-            state.setText(
-                    "Terkirim • memuat chat…"
-            );
-
-            state.setTextColor(
-                    Color.parseColor("#0B7CFF")
-            );
-        }
-
-        void markFailed(String message) {
-            loadingLayer.removeAllViews();
-
-            TextView failed = text(
-                    "!",
-                    22,
-                    "#FFFFFF",
-                    true
-            );
-
-            failed.setGravity(Gravity.CENTER);
-
-            loadingLayer.setBackgroundColor(
-                    Color.argb(
-                            145,
-                            190,
-                            38,
-                            38
-                    )
-            );
-
-            loadingLayer.addView(
-                    failed,
-                    new FrameLayout.LayoutParams(
-                            -1,
-                            -1
-                    )
-            );
-
-            state.setText(
-                    first(
-                            message,
-                            "Foto gagal dikirim"
-                    )
-            );
-
-            state.setTextColor(
-                    Color.parseColor("#C23636")
-            );
-        }
-    }
 
     protected void cleanupCameraFile() {
         try {
@@ -1333,13 +1035,14 @@ class CustomerChatRoomActivityScreenCore extends CustomerAdaptiveActivity {
         boolean older="older".equals(response.optString("page_mode"));
         int oldHeight=messagesBox.getHeight(),oldScroll=messagesScroll.getScrollY();
         boolean nearBottom=oldHeight-oldScroll-messagesScroll.getHeight()<dp(100);
-        if(reset){messagesBox.removeAllViews();chatStyle.reset();messageViews.clear();receiptViews.clear();displayedMessageIds.clear();lastId=0;oldestId=0;}
+        if(reset){ChatPhotoTile.clearServerRows(messagesBox);chatStyle.reset();messageViews.clear();receiptViews.clear();displayedMessageIds.clear();lastId=0;oldestId=0;}
         if(!reset&&displayedMessageIds.isEmpty()&&array.length()>0&&messagesBox.getChildCount()==1
                 &&messagesBox.getChildAt(0) instanceof TextView)messagesBox.removeAllViews();
         boolean added=false;int insertion=0;
         for(int i=0;i<array.length();i++) {
             JSONObject message=array.optJSONObject(i);if(message==null)continue;
             int id=message.optInt("id");if(id<=0)continue;
+            ChatPhotoTile.reconcile(messagesBox, id);
             if(!displayedMessageIds.add(id)){updateReceipt(message);continue;}
             lastId=Math.max(lastId,id);oldestId=oldestId==0?id:Math.min(oldestId,id);
             int count=messagesBox.getChildCount();addBubble(message,!reset&&!older);
@@ -1527,23 +1230,8 @@ class CustomerChatRoomActivityScreenCore extends CustomerAdaptiveActivity {
                 hdUrl = previewUrl;
             }
 
-            ImageView image = new ImageView(this);
-
-            image.setScaleType(
-                    ImageView.ScaleType.CENTER_CROP
-            );
-
-            image.setBackground(
-                    round("#EAF1FA", 16)
-            );
-
-            wrapper.addView(
-                    image,
-                    new LinearLayout.LayoutParams(
-                            dp(220),
-                            dp(165)
-                    )
-            );
+            ImageView image = ChatPhotoTile.image(this);
+            wrapper.addView(image, ChatPhotoTile.imageSize(this));
 
             loadRemoteImage(
                     image,
@@ -1552,10 +1240,11 @@ class CustomerChatRoomActivityScreenCore extends CustomerAdaptiveActivity {
 
             TextView hdHint = text(
                     "Ketuk untuk lihat HD",
-                    9,
-                    "#0B7CFF",
+                    10,
+                    mine ? "#D9EBFF" : "#64748B",
                     true
             );
+            hdHint.setTextColor(mine ? 0xffd9ebff : chatChrome.secondaryColor());
 
             hdHint.setPadding(
                     dp(7),

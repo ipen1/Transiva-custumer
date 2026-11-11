@@ -55,7 +55,9 @@ final class CustomerPendingChatStore {
         Collections.sort(result,(a,b)->Long.compare(a.optLong("queued_at"),b.optLong("queued_at")));return result;
     }}
     File attachment(JSONObject op)throws Exception {return file(op.getString("client_message_id"),"image".equals(op.optString("kind"))?".preview":".media");}
-    JSONObject dispatch(JSONObject op)throws Exception {
+    JSONObject dispatch(JSONObject op)throws Exception { return dispatch(op, null); }
+
+    JSONObject dispatch(JSONObject op, ChatMediaMultipart.Progress progress)throws Exception {
         if(!session.matches(app))throw new IOException("Sesi berubah");
         String id=op.getString("client_message_id"),kind=op.optString("kind","text");JSONObject response;
         boolean attempted;
@@ -67,8 +69,8 @@ final class CustomerPendingChatStore {
         response=attempted?CustomerMessageApi.get(ApiConfig.server("chat_operation_status.php")+"?operation_id="+java.net.URLEncoder.encode(id,"UTF-8"),session):new JSONObject().put("success",false).put("operation_state","not_found");
         if(!response.optBoolean("success")&&!"not_found".equals(response.optString("operation_state")))throw new IOException(response.optString("message","Status pesan belum tersedia"));
         if(!response.optBoolean("success")){
-        if("image".equals(kind))response=CustomerMessageApi.uploadPendingMedia(ApiConfig.server("upload_chat_image.php"),op,read(file(id,".preview"),2*1024*1024),read(file(id,".media"),8*1024*1024),session);
-        else if("voice".equals(kind))response=CustomerMessageApi.uploadPendingMedia(ApiConfig.server("upload_chat_voice.php"),op,null,read(file(id,".media"),12*1024*1024),session);
+        if("image".equals(kind))response=CustomerMessageApi.uploadPendingMedia(ApiConfig.server("upload_chat_image.php"),op,read(file(id,".preview"),2*1024*1024),read(file(id,".media"),8*1024*1024),session,progress);
+        else if("voice".equals(kind))response=CustomerMessageApi.uploadPendingMedia(ApiConfig.server("upload_chat_voice.php"),op,null,read(file(id,".media"),12*1024*1024),session,null);
         else response=CustomerMessageApi.post(ApiConfig.server("sendChat.php"),op,session);
         }
         if(response.optBoolean("success")){

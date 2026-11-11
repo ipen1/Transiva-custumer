@@ -115,7 +115,7 @@ public class TransivaCallUiActivity extends CustomerAdaptiveActivity {
     }
     private void bindIdentity(String peer,String photo){
         if(!peer.equals(boundName)){boundName=peer;name.setText(peer);avatar.name(peer);}
-        String url=ImageUrlResolver.resolve(photo);
+        String url=CallPeerIdentity.photoUrl(photo);
         if(!url.equals(boundPhoto)){boundPhoto=url;RemoteImageLoader.loadCenterCrop(avatar,url,0);}
     }
     private void resizeChrome(){

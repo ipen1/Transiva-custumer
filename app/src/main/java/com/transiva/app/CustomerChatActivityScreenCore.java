@@ -600,7 +600,7 @@ class CustomerChatActivityScreenCore extends CustomerAdaptiveActivity {
         final CustomerCancelableRead request=new CustomerCancelableRead(this);conversationRead=request;
         request.start(() -> {
             try {
-                JSONObject response=request.read(CONVERSATIONS_URL+"?user_id="+userId+"&_="+System.currentTimeMillis(),null,20000);
+                JSONObject response=request.read(CONVERSATIONS_URL+"?chat_profiles=1&user_id="+userId+"&_="+System.currentTimeMillis(),null,20000);
                 JSONArray array=response.optJSONArray("conversations");
                 if(!response.optBoolean("success",false)||array==null)throw new IllegalStateException("Data belum dapat diperbarui");
                 List<JSONObject> fresh=new ArrayList<>();for(int i=0;i<array.length();i++){JSONObject item=array.optJSONObject(i);if(item!=null)fresh.add(item);}
@@ -873,6 +873,16 @@ class CustomerChatActivityScreenCore extends CustomerAdaptiveActivity {
                                 )
                         )
                 );
+
+        String photoUrl = CallPeerIdentity.photoUrl(item.optString("participant_photo"));
+        if (!photoUrl.isEmpty()) {
+            CallVisuals.Avatar avatar = new CallVisuals.Avatar(this);
+            avatar.name(participant);
+            iconFrame.setBackground(null);
+            iconFrame.removeView(icon);
+            iconFrame.addView(avatar, new FrameLayout.LayoutParams(-1, -1));
+            RemoteImageLoader.loadCenterCrop(avatar, photoUrl, 0);
+        }
 
         TextView participantView =
                 text(
@@ -1360,6 +1370,7 @@ class CustomerChatActivityScreenCore extends CustomerAdaptiveActivity {
 
         intent.putExtra("order_db_id", first(item.optString("order_db_id"), item.optString("id")));
         intent.putExtra("order_source", item.optString("source", "orders"));
+        intent.putExtra("participant_photo", item.optString("participant_photo"));
 
         intent.putExtra(
                 "driver_name",

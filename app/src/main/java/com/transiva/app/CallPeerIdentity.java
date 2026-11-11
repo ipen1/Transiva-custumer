@@ -15,6 +15,14 @@ final class CallPeerIdentity {
         return first(peer.optString("profile_photo"), peer.optString("driver_photo"),
                 peer.optString("photo_url"), peer.optString("avatar_url"), peer.optString("photo"));
     }
+    static String photoUrl(String raw) {
+        String value = first(raw).replace('\\', '/');
+        while (value.startsWith("./")) value = value.substring(2);
+        if (value.startsWith("//")) return "";
+        if (value.startsWith("/")) value = value.substring(1);
+        if (value.startsWith("uploads/drivers/")) return ApiConfig.server(value);
+        return ImageUrlResolver.resolve(value);
+    }
     static String initials(String name) {
         String value = first(name, "Transiva");
         String[] words = value.split("\\s+");

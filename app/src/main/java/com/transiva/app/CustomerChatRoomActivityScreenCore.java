@@ -1471,7 +1471,7 @@ class CustomerChatRoomActivityScreenCore extends CustomerAdaptiveActivity {
                 response.optJSONObject("driver");
 
         if (driver != null) {
-            participantPhoto = CallPeerIdentity.photo(driver);
+            participantPhoto = CallPeerIdentity.first(CallPeerIdentity.photo(driver), participantPhoto);
             String serverName = first(
                     driver.optString("name"),
                     driver.optString("username"),

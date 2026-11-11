@@ -16,6 +16,14 @@ public class CallPeerIdentityTest {
         assertEquals("profile.webp",CallPeerIdentity.photo(new JSONObject()
                 .put("profile_photo","profile.webp").put("driver_photo","driver.webp")));
     }
+    @Test public void driverPhotoUsesTheServerUploadPath() {
+        String url = "https://transiva.my.id/server/uploads/drivers/avatar.webp";
+        assertEquals(url, CallPeerIdentity.photoUrl("uploads/drivers/avatar.webp"));
+        assertEquals(url, CallPeerIdentity.photoUrl("./server/uploads/drivers/avatar.webp"));
+        assertEquals(url, CallPeerIdentity.photoUrl("/uploads/drivers/avatar.webp"));
+        assertEquals(url, CallPeerIdentity.photoUrl(url));
+        assertEquals("", CallPeerIdentity.photoUrl("null"));
+    }
     @Test public void initialsSupportWhitespaceSingleNameAndUnicode() {
         assertEquals("CA",CallPeerIdentity.initials("  Citra   Ayu  "));
         assertEquals("A",CallPeerIdentity.initials("angeline"));

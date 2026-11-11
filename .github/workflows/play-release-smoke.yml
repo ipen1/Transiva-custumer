@@ -46,13 +46,15 @@ jobs:
           TURN_PASSWORD=$(openssl rand -hex 12)
           echo "::add-mask::$TURN_PASSWORD"
 
+          # Coturn 4.18 leaves DTLS and the admin CLI disabled unless explicitly enabled.
           docker run --detach --name transiva-release-turn --network host \
-            --entrypoint /usr/bin/turnserver docker.io/coturn/coturn:4.18.0 \
+            --entrypoint /usr/bin/turnserver \
+            docker.io/coturn/coturn:4.18.0@sha256:bbefd3e1fdfdc0d58770fe01b581fd8b00d9f3a5580d00acb77cf719a6bc78e3 \
             -n -a -f --realm=transiva-ci --user="ci:$TURN_PASSWORD" \
             --listening-ip="$HOST_IP" --relay-ip="$HOST_IP" --external-ip="$HOST_IP" \
-            --min-port=49160 --max-port=49200 --no-tls --no-dtls --no-cli \
+            --min-port=49160 --max-port=49200 --no-tls \
             --allow-loopback-peers --no-multicast-peers --pidfile=/tmp/transiva-turn.pid --log-file=stdout
-          python3 - "$HOST_IP" <<'PYTHON'
+          if ! python3 - "$HOST_IP" <<'PYTHON'
           import os
           import socket
           import struct
@@ -78,6 +80,11 @@ jobs:
                       time.sleep(0.25)
           sys.exit("Coturn did not answer the UDP readiness probe")
           PYTHON
+          then
+            docker inspect --format 'Coturn container: {{.State.Status}} (exit {{.State.ExitCode}})' transiva-release-turn || true
+            docker logs --tail 40 transiva-release-turn 2>&1 || true
+            exit 1
+          fi
           echo "TURN_HOST=$HOST_IP" >> "$GITHUB_ENV"
           echo "TURN_PASSWORD=$TURN_PASSWORD" >> "$GITHUB_ENV"
       - name: Real release UI, paired media, network, PiP, lock and performance gates

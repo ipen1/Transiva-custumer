@@ -26,8 +26,25 @@ jobs:
       - uses: actions/checkout@v6
       - name: Verify backend test source fingerprints
         run: python3 tools/reliability/verify_sources.py
-      - name: Install PHP database extension
-        run: bash tools/ci/install_ubuntu_packages.sh php-cli php-mysql php-mbstring php-sqlite3 libandroid-json-java
+      - name: Verify bundled PHP and prepare JSON fixture library
+        run: |
+          set -euo pipefail
+          php --version
+          php -r '
+          $required = ["mysqli", "mbstring", "sqlite3"];
+          $missing = array_filter($required, static fn($extension) => !extension_loaded($extension));
+          if ($missing || !function_exists("mysqli_stmt_get_result")) {
+              fwrite(STDERR, "Runner PHP requires mysqli/mysqlnd, mbstring and sqlite3. Missing: " . implode(", ", $missing) . PHP_EOL);
+              exit(1);
+          }'
+          json_jar="$RUNNER_TEMP/transiva-backend-json-20240303.jar"
+          json_path="maven2/org/json/json/20240303/json-20240303.jar"
+          curl --fail --silent --show-error --location --retry 2 --connect-timeout 10 --max-time 45 \
+            "https://repo.maven.apache.org/$json_path" --output "$json_jar" ||
+            curl --fail --silent --show-error --location --retry 2 --connect-timeout 10 --max-time 45 \
+              "https://repo1.maven.org/$json_path" --output "$json_jar"
+          echo "3cf6cd6892e32e2b4c1c39e0f52f5248a2f5b37646fdfbb79a66b46b618414ed  $json_jar" | sha256sum --check --strict
+          echo "JSON_JAR=$json_jar" >> "$GITHUB_ENV"
       - name: Gate voucher schedules, previews, zero payments and refunds
         env:
           TEST_DB_HOST: 127.0.0.1
@@ -39,8 +56,6 @@ jobs:
           set -euo pipefail
           python3 tools/reliability/voucher_ci_regression.py 2>&1 | tee voucher-ci.log
       - name: Gate loading coordinator and referral cash v2
-        env:
-          JSON_JAR: /usr/share/java/com.android.json.jar
         run: |
           set -euo pipefail
           python3 tools/reliability/loading_referral_regression.py

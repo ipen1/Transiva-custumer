@@ -35,18 +35,51 @@ jobs:
           python3 tools/reliability/paired_gate_selftest.py
           python3 tools/reliability/performance_gate_selftest.py
           gradle --stop
-      - name: Enable emulator acceleration and isolated TURN relay
+      - name: Enable emulator acceleration and start isolated TURN relay
         run: |
+          set -euo pipefail
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
-          bash tools/ci/install_ubuntu_packages.sh coturn
-          HOST_IP=$(hostname -I | awk '{print $1}')
+          HOST_IP=$(ip -4 route get 1.1.1.1 | awk '{for (i = 1; i < NF; i++) if ($i == "src") { print $(i + 1); exit }}')
+          test -n "$HOST_IP"
           TURN_PASSWORD=$(openssl rand -hex 12)
+          echo "::add-mask::$TURN_PASSWORD"
+
+          docker run --detach --name transiva-release-turn --network host \
+            --entrypoint /usr/bin/turnserver docker.io/coturn/coturn:4.18.0 \
+            -n -a -f --realm=transiva-ci --user="ci:$TURN_PASSWORD" \
+            --listening-ip="$HOST_IP" --relay-ip="$HOST_IP" --external-ip="$HOST_IP" \
+            --min-port=49160 --max-port=49200 --no-tls --no-dtls --no-cli \
+            --allow-loopback-peers --no-multicast-peers --pidfile=/tmp/transiva-turn.pid --log-file=stdout
+          python3 - "$HOST_IP" <<'PYTHON'
+          import os
+          import socket
+          import struct
+          import sys
+          import time
+
+          transaction = os.urandom(12)
+          cookie = 0x2112A442
+          request = struct.pack("!HHI12s", 0x0001, 0, cookie, transaction)
+          with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as udp:
+              udp.connect((sys.argv[1], 3478))
+              udp.settimeout(1)
+              for _ in range(20):
+                  try:
+                      udp.send(request)
+                      response = udp.recv(1024)
+                      if len(response) >= 20:
+                          kind, _, magic, reply_id = struct.unpack("!HHI12s", response[:20])
+                          if (kind, magic, reply_id) == (0x0101, cookie, transaction):
+                              sys.exit(0)
+                  except OSError:
+                      # A container can exist briefly before its UDP socket is ready.
+                      time.sleep(0.25)
+          sys.exit("Coturn did not answer the UDP readiness probe")
+          PYTHON
           echo "TURN_HOST=$HOST_IP" >> "$GITHUB_ENV"
           echo "TURN_PASSWORD=$TURN_PASSWORD" >> "$GITHUB_ENV"
-          sudo systemctl stop coturn || true
-          turnserver -n -a -f --realm=transiva-ci --user="ci:$TURN_PASSWORD" --listening-ip="$HOST_IP" --relay-ip="$HOST_IP" --external-ip="$HOST_IP" --min-port=49160 --max-port=49200 --no-tls --no-dtls --no-cli --allow-loopback-peers --no-multicast-peers > turn-ci.log 2>&1 &
       - name: Real release UI, paired media, network, PiP, lock and performance gates
         uses: reactivecircus/android-emulator-runner@v2
         env:
@@ -80,6 +113,13 @@ jobs:
             adb -s emulator-5556 logcat -c
             adb -s emulator-5556 logcat -v threadtime > device-diagnostics/peer-logcat.txt 2>&1 &
             python3 tools/reliability/paired_release_gate.py --caller emulator-5554 --callee emulator-5556 --turn "turn:$TURN_HOST:3478?transport=udp" --turn-password "$TURN_PASSWORD" --output paired-release.json
+      - name: Collect TURN logs and stop relay
+        if: always()
+        run: |
+          if docker container inspect transiva-release-turn >/dev/null 2>&1; then
+            docker logs transiva-release-turn > turn-ci.log 2>&1 || true
+            docker rm -f transiva-release-turn
+          fi
       - name: Upload device and performance reports
         if: always()
         uses: actions/upload-artifact@v6
@@ -93,5 +133,6 @@ jobs:
             paired-release.json
             release-performance.json
             peer-emulator.log
+            turn-ci.log
             device-diagnostics/
           if-no-files-found: warn

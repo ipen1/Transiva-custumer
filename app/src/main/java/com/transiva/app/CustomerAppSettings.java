@@ -33,6 +33,7 @@ public final class CustomerAppSettings {
     private static final WeakHashMap<View,Snapshot> VIEWS=new WeakHashMap<>();
     private static final WeakHashMap<View,Watcher> ROOTS=new WeakHashMap<>();
     private static final WeakHashMap<View,Boolean> ARTWORK=new WeakHashMap<>();
+    private static final WeakHashMap<View,Boolean> OWN_PALETTE=new WeakHashMap<>();
     private static boolean installed;
     private CustomerAppSettings(){}
     private static SharedPreferences prefs(Context c){return c.getApplicationContext().getSharedPreferences(PREF,Context.MODE_PRIVATE);}
@@ -61,6 +62,8 @@ public final class CustomerAppSettings {
         setThemeMode(context,dark?"dark":"light");
     }
     public static void preserveArtwork(View view){if(view!=null)ARTWORK.put(view,true);}
+    // The view supplies its own theme colors. Its children can still use the app palette.
+    static void preservePalette(View view){OWN_PALETTE.put(view,true);}
     public static void install(Application app){
         if(installed)return;installed=true;
         app.registerComponentCallbacks(new android.content.ComponentCallbacks(){
@@ -135,6 +138,20 @@ public final class CustomerAppSettings {
     private static void paint(View v,boolean dark,int depth,int inherited){
         if(v instanceof ThemeAware)((ThemeAware)v).onCustomerThemeChanged(dark);
         if(Boolean.TRUE.equals(ARTWORK.get(v)))return;
+        if(OWN_PALETTE.containsKey(v)){
+            if(v instanceof ViewGroup){
+                Snapshot s=VIEWS.get(v);
+                if(s==null){s=new Snapshot();VIEWS.put(v,s);}
+                Drawable background=v.getBackground();
+                if(!s.ready || background!=s.applied.get()){
+                    s.sample=CustomerThemeDrawable.sample(background);
+                    s.applied=new WeakReference<>(background);
+                    s.ready=true;
+                }
+                paintChildren((ViewGroup)v,dark,depth,CustomerThemeColors.composite(s.sample,inherited));
+            }
+            return;
+        }
         Snapshot s=VIEWS.get(v);if(s==null){s=new Snapshot();VIEWS.put(v,s);}
         Drawable current=v.getBackground();boolean changed=!s.ready||current!=s.applied.get(), mode=!s.ready||s.dark!=dark;
         if(changed)s.original=CustomerThemeDrawable.copy(current);
@@ -183,6 +200,10 @@ public final class CustomerAppSettings {
                 s.lastProgress=p.getProgressTintList();s.lastIndeterminate=p.getIndeterminateTintList();}
         }
         s.bgContext=background;s.dark=dark;s.ready=true;
-        if(v instanceof ViewGroup){ViewGroup g=(ViewGroup)v;for(int i=0;i<g.getChildCount();i++)paint(g.getChildAt(i),dark,depth+1,background);}
+        if(v instanceof ViewGroup)paintChildren((ViewGroup)v,dark,depth,background);
+    }
+
+    private static void paintChildren(ViewGroup group,boolean dark,int depth,int background){
+        for(int i=0;i<group.getChildCount();i++)paint(group.getChildAt(i),dark,depth+1,background);
     }
 }

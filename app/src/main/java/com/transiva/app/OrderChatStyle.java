@@ -24,7 +24,9 @@ import java.net.URLEncoder;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashSet;
+import java.util.Map;
 import java.util.Set;
+import java.util.WeakHashMap;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
@@ -38,13 +40,36 @@ final class OrderChatStyle {
     private CallVisuals.Avatar avatar;
     private String photo = "";
 
+    interface PalettePaint<T extends View> { void paint(T view); }
+
+    // Removed message rows must be collectible even while the room stays open.
+    private final WeakHashMap<View, PalettePaint<View>> themedViews = new WeakHashMap<>();
+    private boolean dark;
+
     OrderChatStyle(Activity activity) { this.activity = activity; }
-    private boolean dark() { return CustomerAppSettings.isDarkMode(activity); }
+
+    boolean dark() { return dark; }
+
+    void applyTheme(boolean dark) {
+        if (this.dark == dark) return;
+        this.dark = dark;
+        for (Map.Entry<View, PalettePaint<View>> entry : themedViews.entrySet()) {
+            View view = entry.getKey();
+            if (view != null) entry.getValue().paint(view);
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    <T extends View> void theme(T view, PalettePaint<T> paint) {
+        CustomerAppSettings.preservePalette(view);
+        themedViews.put(view, target -> paint.paint((T) target));
+        paint.paint(view);
+    }
     private int dp(int n) { return Math.round(n * activity.getResources().getDisplayMetrics().density); }
 
     void backdrop(View view) {
-        view.setBackground(gradient(dark() ? 0xff0a1427 : 0xffedf5ff,
-                dark() ? 0xff14243d : 0xfff5f8fc, 0));
+        theme(view, page -> page.setBackground(gradient(dark() ? 0xff0a1427 : 0xffedf5ff,
+                dark() ? 0xff14243d : 0xfff5f8fc, 0)));
     }
 
     void addAvatar(LinearLayout header, String name, String initialPhoto) {
@@ -85,7 +110,7 @@ final class OrderChatStyle {
             text.setSpan(new ForegroundColorSpan(read ? 0xff62eeff : 0xffdae4f0),
                     time.length(), text.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
         }
-        view.setTextColor(mine ? 0xffe1ebfa : dark() ? 0xffbbc6d4 : 0xff516078);
+        theme(view, receipt -> receipt.setTextColor(mine ? 0xffe1ebfa : dark() ? 0xffbbc6d4 : 0xff516078));
         view.setText(text);
         view.setTag(read);
         view.setContentDescription(time + (!mine ? "" : read ? " Dibaca" : delivered ? " Diterima" : " Terkirim"));
@@ -95,7 +120,7 @@ final class OrderChatStyle {
         LinearLayout bubble = new LinearLayout(activity);
         bubble.setOrientation(LinearLayout.VERTICAL);
         bubble.setPadding(dp(10), dp(6), dp(10), dp(5));
-        bubble.setBackground(bubbleFill(mine));
+        theme(bubble, view -> view.setBackground(bubbleFill(mine)));
         while (wrapper.getChildCount() > 0) {
             View child = wrapper.getChildAt(0);
             android.view.ViewGroup.LayoutParams previous = child.getLayoutParams();
@@ -190,25 +215,24 @@ final class OrderChatStyle {
         LinearLayout card = new LinearLayout(activity);
         card.setGravity(Gravity.CENTER_VERTICAL);
         card.setPadding(dp(11), dp(9), dp(12), dp(8));
-        GradientDrawable fill = bubbleFill(mine);
-        fill.setStroke(dp(1), mine ? 0x669acbff : dark() ? 0xff465669 : 0xffccd6e2);
-        card.setBackground(fill);
+        theme(card, view -> {
+            GradientDrawable fill = bubbleFill(mine);
+            fill.setStroke(dp(1), mine ? 0x669acbff : dark() ? 0xff465669 : 0xffccd6e2);
+            view.setBackground(fill);
+        });
         int viewport = box.getWidth();
         if (viewport == 0) viewport = activity.getResources().getDisplayMetrics().widthPixels - dp(24);
         int available = viewport - box.getPaddingLeft() - box.getPaddingRight();
         row.addView(card, new LinearLayout.LayoutParams(Math.min(dp(258), Math.max(1, available - dp(20))), -2));
 
-        int accent = unanswered ? (mine || dark() ? 0xffffb9b0 : 0xff922d28)
-                : (mine || dark() ? 0xffbddeff : 0xff214d83);
-        int secondary = mine ? 0xffe0edff : dark() ? 0xffd0dbe8 : 0xff3f5268;
         LinearLayout badge = new LinearLayout(activity);
         badge.setOrientation(LinearLayout.VERTICAL);
         badge.setGravity(Gravity.CENTER);
-        badge.setBackground(gradient(mine || dark() ? 0xff193452 : 0xffdceaff,
-                mine || dark() ? 0xff11243b : 0xffc9dcf3, 21));
+        theme(badge, view -> view.setBackground(gradient(mine || dark() ? 0xff193452 : 0xffdceaff,
+                mine || dark() ? 0xff11243b : 0xffc9dcf3, 21)));
         badge.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS);
-        addCallGlyph(badge, video ? "video" : "phone", accent, 18);
-        addCallGlyph(badge, mine ? "call_out" : "call_in", accent, 12);
+        addCallGlyph(badge, video ? "video" : "phone", mine, unanswered, 18);
+        addCallGlyph(badge, mine ? "call_out" : "call_in", mine, unanswered, 12);
         card.addView(badge, new LinearLayout.LayoutParams(dp(40), dp(40)));
 
         LinearLayout info = new LinearLayout(activity);
@@ -218,20 +242,32 @@ final class OrderChatStyle {
         card.addView(info, infoParams);
         info.addView(label(callTitle(call), 14, mine, true));
         TextView detail = label(callDetail(call), 12, mine, false);
-        detail.setTextColor(unanswered ? accent : secondary);
+        theme(detail, view -> view.setTextColor(unanswered ? callAccent(mine, true) : callSecondary(mine)));
         info.addView(detail);
         TextView timestamp = label(time(call.optString("created_at")), 10, mine, false);
-        timestamp.setTextColor(secondary);
+        theme(timestamp, view -> view.setTextColor(callSecondary(mine)));
         appendMeta(info, timestamp);
         return row;
     }
 
-    private void addCallGlyph(LinearLayout badge, String kind, int color, int size) {
+    private int callAccent(boolean mine, boolean unanswered) {
+        return unanswered ? (mine || dark() ? 0xffffb9b0 : 0xff922d28)
+                : (mine || dark() ? 0xffbddeff : 0xff214d83);
+    }
+
+    private int callSecondary(boolean mine) {
+        return mine ? 0xffe0edff : dark() ? 0xffd0dbe8 : 0xff3f5268;
+    }
+
+    private void addCallGlyph(LinearLayout badge, String kind, boolean mine, boolean unanswered, int size) {
         CallVisuals.Icon icon = new CallVisuals.Icon(kind, false);
-        icon.setColorFilter(color, android.graphics.PorterDuff.Mode.SRC_IN);
         android.widget.ImageView glyph = new android.widget.ImageView(activity);
         glyph.setScaleType(android.widget.ImageView.ScaleType.FIT_CENTER);
         glyph.setImageDrawable(icon);
+        theme(glyph, view -> {
+            view.getDrawable().setColorFilter(callAccent(mine, unanswered), android.graphics.PorterDuff.Mode.SRC_IN);
+            view.invalidate();
+        });
         badge.addView(glyph, new LinearLayout.LayoutParams(dp(size), dp(size)));
     }
 
@@ -352,7 +388,7 @@ final class OrderChatStyle {
 
     private TextView label(String value,int size,boolean mine,boolean bold){
         TextView view=new TextView(activity);view.setText(value);view.setTextSize(size);
-        view.setTextColor(mine?Color.WHITE:dark()?0xfff0f4fb:0xff162337);
+        theme(view, label -> label.setTextColor(mine ? Color.WHITE : dark() ? 0xfff0f4fb : 0xff162337));
         if(bold)view.setTypeface(Typeface.DEFAULT_BOLD);
         return view;
     }

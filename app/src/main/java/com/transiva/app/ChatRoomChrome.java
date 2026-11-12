@@ -6,7 +6,6 @@ import android.graphics.Canvas;
 import android.graphics.PorterDuff;
 import android.graphics.drawable.Drawable;
 import android.graphics.drawable.GradientDrawable;
-import android.graphics.drawable.InsetDrawable;
 import android.graphics.drawable.RippleDrawable;
 import android.text.Editable;
 import android.text.TextWatcher;
@@ -20,7 +19,7 @@ import android.widget.LinearLayout;
 /** Visual controls and draft/recording state shared by the two order chat screens. */
 final class ChatRoomChrome {
     private final Context context;
-    private final boolean dark;
+    private final OrderChatStyle style;
     private EditText draft;
     private Action attach;
     private Action send;
@@ -30,18 +29,18 @@ final class ChatRoomChrome {
     private boolean available;
     private boolean recording;
 
-    ChatRoomChrome(Context context, boolean dark) {
+    ChatRoomChrome(Context context, OrderChatStyle style) {
         this.context = context;
-        this.dark = dark;
+        this.style = style;
     }
 
     private int dp(int value) {
         return Math.round(value * context.getResources().getDisplayMetrics().density);
     }
 
-    int textColor() { return dark ? 0xfff4f7ff : 0xff172844; }
+    int textColor() { return style.dark() ? 0xfff4f7ff : 0xff172844; }
 
-    int secondaryColor() { return dark ? 0xffbbcadd : 0xff50627d; }
+    int secondaryColor() { return style.dark() ? 0xffbbcadd : 0xff50627d; }
 
     private GradientDrawable surface(int top, int bottom, int radius, int stroke) {
         GradientDrawable drawable = new GradientDrawable(GradientDrawable.Orientation.TL_BR,
@@ -54,28 +53,26 @@ final class ChatRoomChrome {
     void styleBar(LinearLayout bar) {
         bar.setGravity(Gravity.CENTER_VERTICAL);
         bar.setPadding(dp(3), dp(5), dp(3), dp(5));
-        bar.setBackground(surface(dark ? 0xff122238 : 0xfff9fcff,
-                dark ? 0xff101c30 : 0xffeef5ff, 16, dark ? 0xff253650 : 0xffdce7f5));
+        style.theme(bar, view -> view.setBackground(surface(style.dark() ? 0xff122238 : 0xfff9fcff,
+                style.dark() ? 0xff101c30 : 0xffeef5ff, 16, style.dark() ? 0xff253650 : 0xffdce7f5)));
     }
 
     Button addHeaderAction(LinearLayout header, String icon, String description) {
         Action button = new Action(icon, description, textColor());
-        button.setBackground(new RippleDrawable(ColorStateList.valueOf(dark ? 0x26c1dcff : 0x1a1264d4),
-                null, surface(0xffffffff, 0xffffffff, 14, 0)));
+        style.theme(button, view -> {
+            view.setIconColor(textColor());
+            view.setBackground(new RippleDrawable(ColorStateList.valueOf(style.dark() ? 0x26c1dcff : 0x1a1264d4),
+                    null, surface(0xffffffff, 0xffffffff, 14, 0)));
+        });
         header.addView(button, new LinearLayout.LayoutParams(dp(44), dp(48)));
         return button;
     }
 
     void addCallActions(LinearLayout header, Runnable call, Runnable video) {
-        voiceCall = addCallAction(header, "phone", "Panggilan suara", call);
-        videoCall = addCallAction(header, "video", "Panggilan video", video);
-    }
-
-    private Button addCallAction(LinearLayout header, String icon, String description, Runnable click) {
-        Button button = new CallAction(icon, description);
-        button.setOnClickListener(v -> click.run());
-        header.addView(button, new LinearLayout.LayoutParams(dp(44), dp(48)));
-        return button;
+        voiceCall = addHeaderAction(header, "phone", "Panggilan suara");
+        voiceCall.setOnClickListener(v -> call.run());
+        videoCall = addHeaderAction(header, "video", "Panggilan video");
+        videoCall.setOnClickListener(v -> video.run());
     }
 
     void hideCallActions() {
@@ -87,27 +84,32 @@ final class ChatRoomChrome {
     void styleComposer(LinearLayout composer) {
         composer.setGravity(Gravity.CENTER_VERTICAL);
         composer.setPadding(dp(5), dp(5), dp(5), dp(5));
-        composer.setBackground(surface(dark ? 0xff101e33 : 0xfff9fcff,
-                dark ? 0xff0b1729 : 0xffeef5ff, 16, dark ? 0xff253650 : 0xffdce7f5));
+        style.theme(composer, view -> view.setBackground(surface(style.dark() ? 0xff101e33 : 0xfff9fcff,
+                style.dark() ? 0xff0b1729 : 0xffeef5ff, 16, style.dark() ? 0xff253650 : 0xffdce7f5)));
     }
 
     Button addAttachment(LinearLayout composer) {
-        attach = new Action("plus", "Lampiran dan stiker", dark ? 0xff9bcbff : 0xff1357a8);
-        attach.setBackground(buttonSurface(false));
+        attach = new Action("plus", "Lampiran dan stiker", style.dark() ? 0xff9bcbff : 0xff1357a8);
+        style.theme(attach, view -> {
+            view.setIconColor(style.dark() ? 0xff9bcbff : 0xff1357a8);
+            view.setBackground(buttonSurface(false));
+        });
         composer.addView(attach, new LinearLayout.LayoutParams(dp(48), dp(48)));
         return attach;
     }
 
     void addDraft(LinearLayout composer, EditText field) {
         draft = field;
-        draft.setTextColor(textColor());
-        draft.setHintTextColor(secondaryColor());
         draft.setTextSize(14);
         draft.setGravity(Gravity.CENTER_VERTICAL);
         draft.setMinHeight(dp(48));
         draft.setPadding(dp(13), dp(6), dp(13), dp(6));
-        draft.setBackground(surface(dark ? 0xff111e30 : 0xffffffff,
-                dark ? 0xff0f1a2a : 0xfff9fbff, 16, dark ? 0xff344861 : 0xffcfdded));
+        style.theme(draft, view -> {
+            view.setTextColor(textColor());
+            view.setHintTextColor(style.dark() ? 0xff8499b2 : secondaryColor());
+            view.setBackground(surface(style.dark() ? 0xff111e30 : 0xffffffff,
+                    style.dark() ? 0xff0f1a2a : 0xfff9fbff, 16, style.dark() ? 0xff344861 : 0xffcfdded));
+        });
         LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(0, -2, 1f);
         params.setMarginStart(dp(7));
         composer.addView(draft, params);
@@ -122,6 +124,8 @@ final class ChatRoomChrome {
         send = new Action("send", "Kirim pesan", 0xffffffff);
         voice.setBackground(buttonSurface(true));
         send.setBackground(buttonSurface(true));
+        CustomerAppSettings.preservePalette(voice);
+        CustomerAppSettings.preservePalette(send);
         slot.addView(voice, new FrameLayout.LayoutParams(-1, -1));
         slot.addView(send, new FrameLayout.LayoutParams(-1, -1));
         draft.addTextChangedListener(new TextWatcher() {
@@ -170,12 +174,12 @@ final class ChatRoomChrome {
 
     private Drawable buttonSurface(boolean primary) {
         GradientDrawable fill = primary ? surface(0xff087dff, 0xff0958c9, 16, 0)
-                : surface(dark ? 0xff1c304a : 0xffe6f1ff,
-                        dark ? 0xff15273e : 0xffdbeaff, 16, 0);
+                : surface(style.dark() ? 0xff1c304a : 0xffe6f1ff,
+                        style.dark() ? 0xff15273e : 0xffdbeaff, 16, 0);
         return new RippleDrawable(ColorStateList.valueOf(primary ? 0x45ffffff : 0x3078b9ff), fill, null);
     }
 
-    private class Action extends Button {
+    private final class Action extends Button {
         private int color;
         private Drawable glyph;
 
@@ -210,32 +214,6 @@ final class ChatRoomChrome {
             int top = (getHeight() - edge) / 2;
             glyph.setBounds(left, top, left + edge, top + edge);
             glyph.draw(canvas);
-        }
-    }
-
-    private final class CallAction extends Action implements CustomerAppSettings.ThemeAware {
-        private boolean currentDark;
-
-        CallAction(String icon, String description) {
-            super(icon, description, textColor());
-            CustomerAppSettings.preserveArtwork(this);
-            if (android.os.Build.VERSION.SDK_INT >= 29) setForceDarkAllowed(false);
-            applyCallTheme(CustomerAppSettings.isDarkMode(context));
-        }
-
-        @Override public void onCustomerThemeChanged(boolean darkMode) {
-            if (currentDark != darkMode) applyCallTheme(darkMode);
-        }
-
-        private void applyCallTheme(boolean darkMode) {
-            currentDark = darkMode;
-            setIconColor(darkMode ? 0xffeaf4ff : 0xff174980);
-            GradientDrawable fill = surface(darkMode ? 0xff23405e : 0xfff0f7ff,
-                    darkMode ? 0xff172d46 : 0xffdcecff, 13,
-                    darkMode ? 0xff456684 : 0xffb5cce6);
-            RippleDrawable ripple = new RippleDrawable(
-                    ColorStateList.valueOf(darkMode ? 0x32c1dcff : 0x2217569d), fill, null);
-            setBackground(new InsetDrawable(ripple, dp(2), dp(4), dp(2), dp(4)));
         }
     }
 }

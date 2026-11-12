@@ -374,11 +374,22 @@ class CustomerChatRoomActivityScreenCore extends CustomerAdaptiveActivity {
 
 
 
-    protected View buildScreen() {
-        FrameLayout page = new FrameLayout(this);
+    private final class ChatPage extends FrameLayout implements CustomerAppSettings.ThemeAware {
+        ChatPage() {
+            super(CustomerChatRoomActivityScreenCore.this);
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) setForceDarkAllowed(false);
+        }
 
+        @Override public void onCustomerThemeChanged(boolean dark) {
+            chatStyle.applyTheme(dark);
+        }
+    }
+
+    protected View buildScreen() {
+        FrameLayout page = new ChatPage();
+        chatStyle.applyTheme(CustomerAppSettings.isDarkMode(this));
         chatStyle.backdrop(page);
-        chatChrome = new ChatRoomChrome(this, CustomerAppSettings.isDarkMode(this));
+        chatChrome = new ChatRoomChrome(this, chatStyle);
 
         LinearLayout root =
                 new LinearLayout(this);
@@ -408,13 +419,13 @@ class CustomerChatRoomActivityScreenCore extends CustomerAdaptiveActivity {
         titleBox.setOrientation(LinearLayout.VERTICAL);
         titleBox.setPaddingRelative(dp(8), 0, dp(2), 0);
         participantText = text(participantName, 16, "#0F172A", true);
-        participantText.setTextColor(chatChrome.textColor());
+        chatStyle.theme(participantText, view -> view.setTextColor(chatChrome.textColor()));
         participantText.setSingleLine(true);
         participantText.setEllipsize(android.text.TextUtils.TruncateAt.END);
         titleBox.addView(participantText);
 
         statusText = text(readOnly ? "Riwayat percakapan" : "Menghubungkan chat…", 11, "#64748B", false);
-        statusText.setTextColor(chatChrome.secondaryColor());
+        chatStyle.theme(statusText, view -> view.setTextColor(chatChrome.secondaryColor()));
         statusText.setMaxLines(2);
         statusText.setEllipsize(android.text.TextUtils.TruncateAt.END);
         titleBox.addView(statusText);
@@ -1244,7 +1255,7 @@ class CustomerChatRoomActivityScreenCore extends CustomerAdaptiveActivity {
                     mine ? "#D9EBFF" : "#64748B",
                     true
             );
-            hdHint.setTextColor(mine ? 0xffd9ebff : chatChrome.secondaryColor());
+            chatStyle.theme(hdHint, view -> view.setTextColor(mine ? 0xffd9ebff : chatChrome.secondaryColor()));
 
             hdHint.setPadding(
                     dp(7),
@@ -1283,7 +1294,7 @@ class CustomerChatRoomActivityScreenCore extends CustomerAdaptiveActivity {
                     false
             );
             bubble.setTextSize(14);
-            bubble.setTextColor(mine ? Color.WHITE : chatChrome.textColor());
+            chatStyle.theme(bubble, view -> view.setTextColor(mine ? Color.WHITE : chatChrome.textColor()));
             bubble.setMaxWidth((int)(
                     getResources().getDisplayMetrics().widthPixels * 0.75
             ));
@@ -1486,43 +1497,12 @@ class CustomerChatRoomActivityScreenCore extends CustomerAdaptiveActivity {
         RemoteImageLoader.loadPreserveScale(zoomImage, fixed, android.R.drawable.ic_menu_report_image);
     }
 
-    protected void addSystemMessage(
-            String value
-    ) {
-        TextView message = text(
-                value,
-                10,
-                "#718096",
-                false
-        );
-
+    protected void addSystemMessage(String value) {
+        TextView message = text(value, 11, "#64748B", false);
         message.setGravity(Gravity.CENTER);
-        message.setPadding(
-                dp(10),
-                dp(8),
-                dp(10),
-                dp(8)
-        );
-
-        message.setBackground(
-                round("#EAF1FA", 13)
-        );
-
-        LinearLayout.LayoutParams lp =
-                new LinearLayout.LayoutParams(
-                        -2,
-                        -2
-                );
-
-        lp.gravity = Gravity.CENTER;
-        lp.setMargins(
-                0,
-                dp(10),
-                0,
-                dp(10)
-        );
-
-        messagesBox.addView(message, lp);
+        message.setPadding(dp(12), dp(10), dp(12), dp(10));
+        chatStyle.theme(message, view -> view.setTextColor(chatStyle.dark() ? 0xffeef5ff : 0xff64748b));
+        messagesBox.addView(message);
     }
 
 

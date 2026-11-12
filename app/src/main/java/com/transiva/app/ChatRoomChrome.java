@@ -6,6 +6,7 @@ import android.graphics.Canvas;
 import android.graphics.PorterDuff;
 import android.graphics.drawable.Drawable;
 import android.graphics.drawable.GradientDrawable;
+import android.graphics.drawable.InsetDrawable;
 import android.graphics.drawable.RippleDrawable;
 import android.text.Editable;
 import android.text.TextWatcher;
@@ -66,10 +67,15 @@ final class ChatRoomChrome {
     }
 
     void addCallActions(LinearLayout header, Runnable call, Runnable video) {
-        voiceCall = addHeaderAction(header, "phone", "Panggilan suara");
-        voiceCall.setOnClickListener(v -> call.run());
-        videoCall = addHeaderAction(header, "video", "Panggilan video");
-        videoCall.setOnClickListener(v -> video.run());
+        voiceCall = addCallAction(header, "phone", "Panggilan suara", call);
+        videoCall = addCallAction(header, "video", "Panggilan video", video);
+    }
+
+    private Button addCallAction(LinearLayout header, String icon, String description, Runnable click) {
+        Button button = new CallAction(icon, description);
+        button.setOnClickListener(v -> click.run());
+        header.addView(button, new LinearLayout.LayoutParams(dp(44), dp(48)));
+        return button;
     }
 
     void hideCallActions() {
@@ -169,8 +175,8 @@ final class ChatRoomChrome {
         return new RippleDrawable(ColorStateList.valueOf(primary ? 0x45ffffff : 0x3078b9ff), fill, null);
     }
 
-    private final class Action extends Button {
-        private final int color;
+    private class Action extends Button {
+        private int color;
         private Drawable glyph;
 
         Action(String icon, String description, int color) {
@@ -188,6 +194,11 @@ final class ChatRoomChrome {
 
         void setIcon(String icon) {
             glyph = new CallVisuals.Icon(icon, false);
+            setIconColor(color);
+        }
+
+        void setIconColor(int color) {
+            this.color = color;
             glyph.setColorFilter(color, PorterDuff.Mode.SRC_IN);
             invalidate();
         }
@@ -199,6 +210,32 @@ final class ChatRoomChrome {
             int top = (getHeight() - edge) / 2;
             glyph.setBounds(left, top, left + edge, top + edge);
             glyph.draw(canvas);
+        }
+    }
+
+    private final class CallAction extends Action implements CustomerAppSettings.ThemeAware {
+        private boolean currentDark;
+
+        CallAction(String icon, String description) {
+            super(icon, description, textColor());
+            CustomerAppSettings.preserveArtwork(this);
+            if (android.os.Build.VERSION.SDK_INT >= 29) setForceDarkAllowed(false);
+            applyCallTheme(CustomerAppSettings.isDarkMode(context));
+        }
+
+        @Override public void onCustomerThemeChanged(boolean darkMode) {
+            if (currentDark != darkMode) applyCallTheme(darkMode);
+        }
+
+        private void applyCallTheme(boolean darkMode) {
+            currentDark = darkMode;
+            setIconColor(darkMode ? 0xffeaf4ff : 0xff174980);
+            GradientDrawable fill = surface(darkMode ? 0xff23405e : 0xfff0f7ff,
+                    darkMode ? 0xff172d46 : 0xffdcecff, 13,
+                    darkMode ? 0xff456684 : 0xffb5cce6);
+            RippleDrawable ripple = new RippleDrawable(
+                    ColorStateList.valueOf(darkMode ? 0x32c1dcff : 0x2217569d), fill, null);
+            setBackground(new InsetDrawable(ripple, dp(2), dp(4), dp(2), dp(4)));
         }
     }
 }

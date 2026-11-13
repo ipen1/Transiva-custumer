@@ -2000,7 +2000,7 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
     private View checkoutSetting(int icon, String label, String value, Runnable action) {
         LinearLayout row = new LinearLayout(this);
         row.setGravity(Gravity.CENTER_VERTICAL);
-        row.setMinHeight(dp(44));
+        row.setMinimumHeight(dp(44));
         row.setPadding(0, dp(4), 0, dp(4));
         row.setBackground(checkoutRipple(null));
         if (icon != 0) {

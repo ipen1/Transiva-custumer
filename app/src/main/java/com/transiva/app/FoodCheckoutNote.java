@@ -45,37 +45,65 @@ final class FoodCheckoutNote extends LinearLayout {
         addView(preview, new LayoutParams(-1, -2));
         updatePreview();
 
-        edit.setOnClickListener(v -> {
-            LinearLayout form = new LinearLayout(activity);
-            form.setOrientation(VERTICAL);
-            form.setPadding(dp(20), dp(8), dp(20), dp(8));
-            form.addView(RepeatOrderUi.text(activity,
-                    "Merchant dan driver akan melihat catatan ini. Maksimal 300 karakter.",
-                    13, "#475569", false));
-            EditText input = new EditText(activity);
-            input.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_MULTI_LINE
-                    | InputType.TYPE_TEXT_FLAG_CAP_SENTENCES);
-            input.setGravity(Gravity.TOP | Gravity.START);
-            input.setMinLines(3);
-            input.setMaxLines(5);
-            input.setFilters(new InputFilter[]{FoodCheckoutNote::limitLength});
-            input.setTextSize(15);
-            input.setHint(EXAMPLE);
-            input.setText(this.value);
-            input.setSelection(input.length());
-            form.addView(input, new LayoutParams(-1, -2));
+        edit.setOnClickListener(v -> showEditor(activity, "Catatan pesanan", EXAMPLE, this.value, note -> {
+            this.value = note;
+            onSaved.save(note);
+            updatePreview();
+        }));
+    }
 
-            new TransivaAlertDialogBuilder(activity)
-                    .setTitle("Catatan pesanan")
-                    .setView(form)
-                    .setNegativeButton("Batal", null)
-                    .setPositiveButton("Simpan", (dialog, which) -> {
-                        this.value = clean(input.getText().toString());
-                        onSaved.save(this.value);
-                        updatePreview();
-                    })
-                    .show();
-        });
+    static Button itemButton(Activity activity, String menuName, String note, OnSaved onSaved) {
+        Button button = RepeatOrderUi.outline(activity, "", 10);
+        button.setMinHeight(0);
+        button.setMinimumHeight(0);
+        button.setMinWidth(0);
+        button.setMinimumWidth(0);
+        button.setPadding(CustomerUiPrimitives.dp(activity, 6), 0, CustomerUiPrimitives.dp(activity, 6), 0);
+        updateItemButton(button, menuName, note);
+        button.setTag(note);
+        button.setOnClickListener(v -> showEditor(activity, "Catatan · " + menuName,
+                "Misalnya, tanpa es atau saus dipisah.", (String) button.getTag(), value -> {
+                    onSaved.save(value);
+                    button.setTag(value);
+                    updateItemButton(button, menuName, value);
+                }));
+        return button;
+    }
+
+    private static void updateItemButton(Button button, String menuName, String note) {
+        String action = note.isEmpty() ? "Tambah catatan" : "Ubah catatan";
+        button.setText(action);
+        button.setContentDescription(action + " untuk " + menuName);
+    }
+
+    private static void showEditor(Activity activity, String title, String hint, String note, OnSaved onSaved) {
+        LinearLayout form = new LinearLayout(activity);
+        form.setOrientation(VERTICAL);
+        int side = CustomerUiPrimitives.dp(activity, 20);
+        int top = CustomerUiPrimitives.dp(activity, 8);
+        form.setPadding(side, top, side, top);
+        form.addView(RepeatOrderUi.text(activity,
+                "Merchant dan driver akan melihat catatan ini. Maksimal 300 karakter.",
+                13, "#475569", false));
+        EditText input = new EditText(activity);
+        input.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_MULTI_LINE
+                | InputType.TYPE_TEXT_FLAG_CAP_SENTENCES);
+        input.setGravity(Gravity.TOP | Gravity.START);
+        input.setMinLines(3);
+        input.setMaxLines(5);
+        input.setFilters(new InputFilter[]{FoodCheckoutNote::limitLength});
+        input.setTextSize(15);
+        input.setHint(hint);
+        input.setText(note);
+        input.setSelection(input.length());
+        form.addView(input, new LayoutParams(-1, -2));
+
+        new TransivaAlertDialogBuilder(activity)
+                .setTitle(title)
+                .setView(form)
+                .setNegativeButton("Batal", null)
+                .setPositiveButton("Simpan", (dialog, which) -> onSaved.save(clean(input.getText().toString())))
+                .show();
     }
 
     @Override public void setEnabled(boolean enabled) {

@@ -36,6 +36,8 @@ final class FoodCheckoutConfirmation {
             summary.append(item.optInt("qty")).append(" × ").append(item.optString("name"));
             if (!option.isEmpty()) summary.append(" · ").append(option);
             summary.append("  ").append(rupiah(item.optLong("subtotal"))).append('\n');
+            String itemNote = item.optString("note");
+            if (!itemNote.isEmpty()) summary.append("Catatan menu: ").append(itemNote).append('\n');
         }
         if (!note.isEmpty()) summary.append("\nCatatan pesanan\n").append(note).append('\n');
         summary.append("\nSubtotal  ").append(rupiah(quote.optLong("food_total")))

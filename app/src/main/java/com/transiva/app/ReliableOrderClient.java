@@ -85,6 +85,12 @@ public final class ReliableOrderClient {
             }
         }finally{synchronized(ReliableOrderClient.class){IN_FLIGHT.remove(slot);}}
     }
+    static boolean hasPendingFoodOrder(Context context) {
+        String user = new SessionManager(context).getUserId();
+        SharedPreferences prefs = context.getSharedPreferences("transiva_order_attempts", Context.MODE_PRIVATE);
+        return !prefs.getString("order:" + user + ":create_food_order.php:key", "").isEmpty();
+    }
+
     static boolean hasPendingFoodDraft(Context context, String draftId) {
         String user = new SessionManager(context).getUserId();
         String slot = "order:" + user + ":create_food_order.php";

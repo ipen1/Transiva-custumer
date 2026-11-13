@@ -56,6 +56,8 @@ class RepeatFoodOrderActivityScreenCore extends CustomerAdaptiveFragmentActivity
     protected boolean submitting;
     private String customerNote = "";
     private FoodCheckoutNote noteField;
+    private final Bundle itemNotes = new Bundle();
+    private final java.util.List<Button> itemNoteButtons = new java.util.ArrayList<>();
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -72,6 +74,8 @@ class RepeatFoodOrderActivityScreenCore extends CustomerAdaptiveFragmentActivity
         loadSession();
         if (savedInstanceState != null && savedInstanceState.getInt("food_note_user") == userId) {
             customerNote = savedInstanceState.getString("food_checkout_note", "");
+            Bundle savedNotes = savedInstanceState.getBundle("food_item_notes");
+            if (savedNotes != null) itemNotes.putAll(savedNotes);
         }
         setContentView(buildScreen());
         loadRestaurantMenus();
@@ -81,6 +85,7 @@ class RepeatFoodOrderActivityScreenCore extends CustomerAdaptiveFragmentActivity
         super.onSaveInstanceState(out);
         out.putInt("food_note_user", userId);
         out.putString("food_checkout_note", customerNote);
+        out.putBundle("food_item_notes", itemNotes);
     }
 
     protected void loadSession() {
@@ -421,6 +426,7 @@ class RepeatFoodOrderActivityScreenCore extends CustomerAdaptiveFragmentActivity
     protected void restoreMenus(JSONArray menus) {
         menuMap.clear();
         repeatLines.clear();
+        itemNoteButtons.clear();
         quantities.clear();
         menuBox.removeAllViews();
 
@@ -629,6 +635,23 @@ class RepeatFoodOrderActivityScreenCore extends CustomerAdaptiveFragmentActivity
                 )
         );
 
+        String noteKey = String.valueOf(menuId);
+        TextView notePreview = RepeatOrderUi.text(this, itemNotes.getString(noteKey, ""), 12, "#475569", false);
+        notePreview.setMaxLines(3);
+        notePreview.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        notePreview.setVisibility(notePreview.length() == 0 ? TextView.GONE : TextView.VISIBLE);
+        Button itemNote = FoodCheckoutNote.itemButton(this, menu.optString("name", "Menu"),
+                itemNotes.getString(noteKey, ""), value -> {
+                    if (value.isEmpty()) itemNotes.remove(noteKey);
+                    else itemNotes.putString(noteKey, value);
+                    notePreview.setText(value);
+                    notePreview.setVisibility(value.isEmpty() ? TextView.GONE : TextView.VISIBLE);
+                });
+        itemNote.setEnabled(!submitting);
+        itemNoteButtons.add(itemNote);
+        info.addView(itemNote, new LinearLayout.LayoutParams(-2, dp(44)));
+        info.addView(notePreview);
+
         card.addView(
                 info,
                 new LinearLayout.LayoutParams(0, -2, 1)
@@ -658,6 +681,7 @@ class RepeatFoodOrderActivityScreenCore extends CustomerAdaptiveFragmentActivity
         Button plus = miniButton("+");
 
         minus.setOnClickListener(v -> {
+            if (submitting) return;
             int value = Math.max(
                     0,
                     CustomerApi23Compat.getOrDefault(quantities,
@@ -672,11 +696,8 @@ class RepeatFoodOrderActivityScreenCore extends CustomerAdaptiveFragmentActivity
         });
 
         plus.setOnClickListener(v -> {
-            int value =
-                    CustomerApi23Compat.getOrDefault(quantities,
-                            menuId,
-                            0
-                    ) + 1;
+            if (submitting) return;
+            int value = Math.min(99, CustomerApi23Compat.getOrDefault(quantities, menuId, 0) + 1);
 
             quantities.put(menuId, value);
             count.setText(String.valueOf(value));
@@ -828,6 +849,8 @@ class RepeatFoodOrderActivityScreenCore extends CustomerAdaptiveFragmentActivity
                 item.put("qty",entry.getValue());
                 JSONArray options=line.optJSONArray("selected_options");
                 if (options!=null) item.put("selected_options",options);
+                String note = itemNotes.getString(String.valueOf(entry.getKey()), "");
+                if (!note.isEmpty()) item.put("note", note);
                 result.put(item);
             } catch (Exception ignored) {
             }
@@ -887,6 +910,7 @@ class RepeatFoodOrderActivityScreenCore extends CustomerAdaptiveFragmentActivity
     private void setFoodSubmitting(boolean value) {
         submitting=value;
         noteField.setEnabled(!value);
+        for (Button itemNote : itemNoteButtons) itemNote.setEnabled(!value);
         loading.setVisibility(value?ProgressBar.VISIBLE:ProgressBar.GONE);
     }
 

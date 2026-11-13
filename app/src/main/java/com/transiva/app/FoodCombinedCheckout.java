@@ -110,6 +110,7 @@ final class FoodCombinedCheckout {
             JSONObject item = new JSONObject().put("id", line.id).put("qty", line.qty)
                     .put("selected_options", line.selectedOptions == null ? new JSONArray() : line.selectedOptions);
             item.put(savedCart ? "_cart_line_id" : "_draft_line_id", line.lineId);
+            if (!line.note.isEmpty()) item.put("note", line.note);
             items.put(item);
         }
         return items;
@@ -154,7 +155,7 @@ final class FoodCombinedCheckout {
         return plan;
     }
 
-    static Result submit(Activity activity, Plan plan, Map<Integer, String> notes) {
+    static Result submit(Activity activity, Plan plan, Map<Integer, String> notes, Map<String, String> itemNotes) {
         Result result = new Result();
         if (plan.stores.isEmpty()) return result;
         try {
@@ -181,6 +182,14 @@ final class FoodCombinedCheckout {
             if (Thread.currentThread().isInterrupted()) break;
             try {
                 JSONObject payload = new JSONObject(store.payload.toString());
+                JSONArray rows = payload.getJSONArray("items");
+                for (int i = 0; i < rows.length(); i++) {
+                    JSONObject row = rows.getJSONObject(i);
+                    String note = itemNotes.get(row.getString("_cart_line_id"));
+                    if (note == null) throw new ReliableOrderClient.FoodCartChangedException();
+                    if (note.isEmpty()) row.remove("note");
+                    else row.put("note", note);
+                }
                 FoodCheckoutNote.addTo(payload, notes.get(store.cart.restaurantId));
                 JSONObject receipt = ReliableOrderClient.create(activity, ORDER_URL, payload, TIMEOUT);
                 if (receipt.optBoolean("recovered_previous_attempt")) {

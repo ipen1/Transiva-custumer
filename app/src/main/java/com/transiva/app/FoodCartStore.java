@@ -16,10 +16,12 @@ final class FoodCartStore {
     private static final String PREFS = "transiva_order_attempts";
     private final SharedPreferences prefs;
     private final String prefix;
+    private final String orderSlot;
 
     FoodCartStore(Context context, int userId) {
         prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
         prefix = userId > 0 ? prefix(String.valueOf(userId)) : "";
+        orderSlot = "order:" + userId + ":create_food_order.php";
     }
 
     private static String prefix(String user) { return "food_cart:" + user + ":"; }
@@ -54,6 +56,8 @@ final class FoodCartStore {
                     line.name = row.optString("name", "Menu");
                     line.optionText = row.optString("option_text");
                     line.image = row.optString("image");
+                    Object note = row.opt("note");
+                    line.note = note instanceof String ? (String) note : "";
                     line.selectionOrder = row.optLong("selection_order");
                     JSONArray options = row.optJSONArray("selected_options");
                     line.selectedOptions = options == null ? new JSONArray() : options;
@@ -92,7 +96,8 @@ final class FoodCartStore {
                 rows.put(new JSONObject().put("id", line.id).put("qty", line.qty)
                         .put("price", line.price).put("name", line.name).put("option_text", line.optionText)
                         .put("selected", line.selected).put("image", line.image).put("selection_order", line.selectionOrder)
-                        .put("selected_options", line.selectedOptions).put("line_id", line.lineId));
+                        .put("selected_options", line.selectedOptions).put("line_id", line.lineId)
+                        .put("note", line.note));
             }
             return new JSONObject().put("name", name).put("photo", photo).put("draft_id", draftId).put("items", rows).toString();
         }
@@ -103,6 +108,7 @@ final class FoodCartStore {
         int id, qty;
         boolean selected = true;
         String name, key, optionText, image;
+        String note = "";
         double price;
         long selectionOrder;
         JSONArray selectedOptions;
@@ -179,7 +185,10 @@ final class FoodCartStore {
             for (CartItem pending : draft.items) {
                 CartItem existing = null;
                 for (CartItem line : saved.items) {
-                    if (pending.key.equals(line.key)) { existing = line; break; }
+                    if (pending.key.equals(line.key) && pending.note.equals(line.note)) {
+                        existing = line;
+                        break;
+                    }
                 }
                 if (existing == null) {
                     saved.items.add(pending);
@@ -193,6 +202,25 @@ final class FoodCartStore {
                 existing.selected = true;
             }
             return save(saved);
+        }
+    }
+
+    boolean updateCheckoutLine(int restaurantId, CartItem expected, int qty, String note) {
+        synchronized (FoodCartStore.class) {
+            if (!prefs.getString(orderSlot + ":key", "").isEmpty()) return false;
+            Cart saved = get(restaurantId);
+            for (int i = 0; i < saved.items.size(); i++) {
+                CartItem line = saved.items.get(i);
+                if (!line.lineId.equals(expected.lineId)) continue;
+                if (!line.selected || line.qty != expected.qty || !line.note.equals(expected.note)) return false;
+                if (qty == 0) saved.items.remove(i);
+                else {
+                    line.qty = qty;
+                    line.note = note;
+                }
+                return save(saved);
+            }
+            return false;
         }
     }
 
@@ -210,7 +238,8 @@ final class FoodCartStore {
             String lineId = item.optString("_cart_line_id");
             boolean found = false;
             for (CartItem line : cart.items) {
-                if (line.lineId.equals(lineId) && line.id == item.optInt("id") && line.qty >= item.optInt("qty")) {
+                if (line.lineId.equals(lineId) && line.id == item.optInt("id") && line.selected
+                        && line.qty == item.optInt("qty") && line.note.equals(item.optString("note"))) {
                     found = true;
                     break;
                 }

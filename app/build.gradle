@@ -48,8 +48,8 @@ android {
         testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner'
         minSdk 23
         targetSdk 36
-        versionCode 66
-        versionName "2.9.16"
+        versionCode 67
+        versionName "2.9.17"
     }
 
     signingConfigs {

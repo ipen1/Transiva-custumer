@@ -291,7 +291,7 @@
             android:theme="@style/AppTheme"
             android:windowSoftInputMode="adjustResize" />
 
-        <activity android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|uiMode"
+        <activity android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|uiMode|fontScale"
             android:name=".TransFoodActivity"
             android:enableOnBackInvokedCallback="true"
             android:exported="false"

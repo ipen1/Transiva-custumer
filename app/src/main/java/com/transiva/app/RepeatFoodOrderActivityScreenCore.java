@@ -54,6 +54,8 @@ class RepeatFoodOrderActivityScreenCore extends CustomerAdaptiveFragmentActivity
     protected int userId;
     protected String paymentMethod = "cash";
     protected boolean submitting;
+    private String customerNote = "";
+    private FoodCheckoutNote noteField;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -68,8 +70,17 @@ class RepeatFoodOrderActivityScreenCore extends CustomerAdaptiveFragmentActivity
         );
 
         loadSession();
+        if (savedInstanceState != null && savedInstanceState.getInt("food_note_user") == userId) {
+            customerNote = savedInstanceState.getString("food_checkout_note", "");
+        }
         setContentView(buildScreen());
         loadRestaurantMenus();
+    }
+
+    @Override protected void onSaveInstanceState(Bundle out) {
+        super.onSaveInstanceState(out);
+        out.putInt("food_note_user", userId);
+        out.putString("food_checkout_note", customerNote);
     }
 
     protected void loadSession() {
@@ -212,6 +223,8 @@ class RepeatFoodOrderActivityScreenCore extends CustomerAdaptiveFragmentActivity
         );
 
         root.addView(menuBox);
+        noteField = new FoodCheckoutNote(this, customerNote, value -> customerNote = value);
+        root.addView(noteField, new LinearLayout.LayoutParams(-1, -2));
 
         totalText = RepeatOrderUi.text(
                 this,
@@ -793,6 +806,7 @@ class RepeatFoodOrderActivityScreenCore extends CustomerAdaptiveFragmentActivity
         try {
             JSONObject payload=new JSONObject().put("user_id",userId).put("restaurant_id",data.restaurantId)
                     .put("delivery_mode",data.deliveryMode).put("payment_method",paymentMethod).put("items",items);
+            FoodCheckoutNote.addTo(payload, customerNote);
             loadFoodQuote(payload);
         } catch (Exception error) { toast("Rincian pesanan belum siap."); }
     }
@@ -838,7 +852,7 @@ class RepeatFoodOrderActivityScreenCore extends CustomerAdaptiveFragmentActivity
     }
 
     private void presentFoodQuote(JSONObject payload, JSONObject quote, boolean changed) {
-        FoodCheckoutConfirmation.show(this,quote,changed,fingerprint->{
+        FoodCheckoutConfirmation.show(this,quote,changed,payload.optString("customer_note"),fingerprint->{
             try {
                 JSONObject confirmed=new JSONObject(payload.toString()).put("expected_quote",fingerprint);
                 if ("balance".equals(confirmed.optString("payment_method")) && BiometricSecurityManager.isEnabled(this)) {
@@ -872,6 +886,7 @@ class RepeatFoodOrderActivityScreenCore extends CustomerAdaptiveFragmentActivity
 
     private void setFoodSubmitting(boolean value) {
         submitting=value;
+        noteField.setEnabled(!value);
         loading.setVisibility(value?ProgressBar.VISIBLE:ProgressBar.GONE);
     }
 

@@ -25,7 +25,7 @@ final class FoodCheckoutConfirmation {
         return quote;
     }
 
-    static void show(Activity activity, JSONObject quote, boolean changed, OnConfirmed confirmed, Runnable cancel) {
+    static void show(Activity activity, JSONObject quote, boolean changed, String note, OnConfirmed confirmed, Runnable cancel) {
         if (activity.isFinishing() || activity.isDestroyed()) return;
         StringBuilder summary = new StringBuilder();
         JSONArray items=quote.optJSONArray("items");
@@ -37,6 +37,7 @@ final class FoodCheckoutConfirmation {
             if (!option.isEmpty()) summary.append(" · ").append(option);
             summary.append("  ").append(rupiah(item.optLong("subtotal"))).append('\n');
         }
+        if (!note.isEmpty()) summary.append("\nCatatan pesanan\n").append(note).append('\n');
         summary.append("\nSubtotal  ").append(rupiah(quote.optLong("food_total")))
                 .append("\nOngkir  ").append(rupiah(quote.optLong("delivery_fee")));
         if (quote.optLong("voucher_discount")>0) summary.append("\nVoucher  −").append(rupiah(quote.optLong("voucher_discount")));

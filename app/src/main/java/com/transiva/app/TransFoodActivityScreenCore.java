@@ -62,6 +62,8 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
     private Cart activeCart;
     private ImageButton savedCartButton;
     private TextView savedCartBadge;
+    private final Bundle checkoutNotes = new Bundle();
+    private FoodCheckoutNote singleCheckoutNote;
     private final java.util.Map<Integer, Cart> merchantDrafts = new java.util.HashMap<>();
     private final java.util.Map<Integer, String> cartPhotos = new java.util.HashMap<>();
     private static final int COMBINED_CHECKOUT = 5;
@@ -166,6 +168,10 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
         } catch (Exception ignored) {}
         loadSession();
         cartStore = new FoodCartStore(this, userId);
+        if (savedInstanceState != null && savedInstanceState.getInt("food_note_user") == userId) {
+            Bundle notes = savedInstanceState.getBundle("food_checkout_notes");
+            if (notes != null) checkoutNotes.putAll(notes);
+        }
         if(getIntent()!=null)defaultVoucherCode=firstNonEmpty(getIntent().getStringExtra("royalty_voucher_code"),"");
         voucherCode=defaultVoucherCode;
         if (getIntent() != null) homeSearchQuery = firstNonEmpty(getIntent().getStringExtra("global_search_query"), "");
@@ -1624,6 +1630,10 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
                 item.qty, item.price, item.price * item.qty));
         addWithMargin(items, 0, 0, 0, dp(8));
 
+        LinearLayout noteCard = checkoutCard();
+        singleCheckoutNote = addCheckoutNote(noteCard, activeCart, checkoutFromCarts);
+        addWithMargin(noteCard, 0, 0, 0, dp(8));
+
         LinearLayout delivery=checkoutCard();delivery.addView(text("Pengantaran",14,"#0F172A",true));
         boolean coinReady=hematRemaining>=hematLimit;
         LinearLayout choices=new LinearLayout(this);choices.setPadding(0,dp(8),0,0);
@@ -1683,6 +1693,29 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
         total.addView(summaryLine("Total bayar",amount));addWithMargin(total,0,0,0,dp(12));
         buildCheckoutBar(amount);
         if(foodScroll!=null)foodScroll.post(()->{if(currentScreen==2)foodScroll.scrollTo(0,scrollY);});
+    }
+
+    private FoodCheckoutNote addCheckoutNote(LinearLayout parent, Cart orderCart, boolean savedCart) {
+        String key = checkoutNoteKey(orderCart, savedCart);
+        FoodCheckoutNote note = new FoodCheckoutNote(this, checkoutNotes.getString(key, ""), value -> {
+            if (value.isEmpty()) checkoutNotes.remove(key);
+            else checkoutNotes.putString(key, value);
+            if (!parent.isAttachedToWindow()) {
+                if (currentScreen == 2) renderCheckout();
+                else if (currentScreen == COMBINED_CHECKOUT) renderCombinedCheckout();
+            }
+        });
+        note.setEnabled(!foodOrderSubmitting);
+        parent.addView(note, new LinearLayout.LayoutParams(-1, -2));
+        return note;
+    }
+
+    private static String checkoutNoteKey(Cart orderCart, boolean savedCart) {
+        if (!savedCart) return "direct:" + orderCart.draftId;
+        List<String> ids = new ArrayList<>();
+        for (CartItem item : orderCart.items) ids.add(item.lineId + ":" + item.qty);
+        java.util.Collections.sort(ids);
+        return "saved:" + orderCart.draftId + ":" + android.text.TextUtils.join("/", ids);
     }
 
     private void hideFoodKeyboard(View field){android.view.inputmethod.InputMethodManager keyboard=(android.view.inputmethod.InputMethodManager)getSystemService(INPUT_METHOD_SERVICE);if(keyboard!=null)keyboard.hideSoftInputFromWindow(field.getWindowToken(),0);}
@@ -2080,6 +2113,7 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
             if (splitBillManager != null && !splitBillManager.sessionKey().isEmpty()) payload.put("split_session_key", splitBillManager.sessionKey());
             if (splitBillManager != null && splitBillManager.groupSize() > 1) payload.put("split_bill_required", true);
             payload.put("items", FoodCombinedCheckout.items(cart, checkoutFromCarts));
+            FoodCheckoutNote.addTo(payload, checkoutNotes.getString(checkoutNoteKey(activeCart, checkoutFromCarts), ""));
             if (!checkoutFromCarts) payload.put("_direct_food_draft", activeCart.draftId);
         }catch(Exception invalid){showInfo("Pesanan","Rincian pesanan belum siap. Silakan coba lagi.");return;}
         requestFoodConfirmation(payload, null);
@@ -2089,6 +2123,7 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
         if (currentScreen!=2 || isFinishing() || isDestroyed()) return;
         foodOrderSubmitting=true;
         if (checkoutSubmitButton!=null) checkoutSubmitButton.setEnabled(false);
+        if (singleCheckoutNote != null) singleCheckoutNote.setEnabled(false);
         if (updatedQuote!=null) {
             presentFoodQuote(payload,updatedQuote,true);
             return;
@@ -2120,7 +2155,7 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
     }
 
     private void presentFoodQuote(JSONObject payload,JSONObject quote,boolean changed) {
-        FoodCheckoutConfirmation.show(this,quote,changed, fingerprint->{
+        FoodCheckoutConfirmation.show(this,quote,changed,payload.optString("customer_note"),fingerprint->{
             try {
                 JSONObject confirmed=new JSONObject(payload.toString()).put("expected_quote",fingerprint);
                 submitConfirmedFood(confirmed);
@@ -2156,6 +2191,7 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
     private void finishFoodSubmission() {
         foodOrderSubmitting=false;
         restoreCheckoutSubmit();
+        if (singleCheckoutNote != null) singleCheckoutNote.setEnabled(true);
         setLoading(false);
     }
 
@@ -2197,6 +2233,10 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
     }
 
     private void completeCartCheckout(JSONObject receipt) {
+        if (activeCart != null && activeCart.restaurantId == receipt.optInt("restaurant_id")
+                && !receipt.optBoolean("recovered_attempt")) {
+            checkoutNotes.remove(checkoutNoteKey(activeCart, checkoutFromCarts));
+        }
         removeConfirmedDraftItems(receipt);
         int rid = receipt.optInt("restaurant_id");
         if (splitBillManager != null && activeCart != null && rid == activeCart.restaurantId
@@ -2279,6 +2319,8 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
 
     @Override protected void onSaveInstanceState(Bundle out) {
         super.onSaveInstanceState(out);
+        out.putInt("food_note_user", userId);
+        out.putBundle("food_checkout_notes", checkoutNotes);
         if (currentScreen == 3) {
             out.putStringArrayList("food_success_order_ids", successOrderIds);
             out.putLong("food_success_due", successActivityAt);
@@ -2904,6 +2946,7 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
             section.addView(compactSummary("Subtotal menu", store.quote.optLong("food_total"), false));
             section.addView(compactSummary("Ongkir toko", store.quote.optLong("delivery_fee"), false));
             section.addView(compactSummary("Total toko", store.quote.optLong("total"), true));
+            addCheckoutNote(section, store.cart, true);
             addWithMargin(section, 0, 0, 0, dp(10));
         }
         LinearLayout totals = checkoutCard();
@@ -2928,12 +2971,23 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
     private void submitCombinedCheckout() {
         if (currentScreen != COMBINED_CHECKOUT || combinedPlan == null || foodOrderSubmitting) return;
         FoodCombinedCheckout.Plan approved = combinedPlan;
+        java.util.Map<Integer, String> notes = new java.util.HashMap<>();
+        for (FoodCombinedCheckout.StoreQuote store : approved.stores) {
+            notes.put(store.cart.restaurantId, checkoutNotes.getString(checkoutNoteKey(store.cart, true), ""));
+        }
         foodOrderSubmitting = true;
         renderCombinedCheckout();
         setLoading(true);
         featureRuntime.execute(() -> {
-            FoodCombinedCheckout.Result result = FoodCombinedCheckout.submit(this, approved);
-            featureRuntime.post(mainHandler, () -> showCombinedResult(result, approved.stores.size()));
+            FoodCombinedCheckout.Result result = FoodCombinedCheckout.submit(this, approved, notes);
+            featureRuntime.post(mainHandler, () -> {
+                if (!result.recoveredPrevious) {
+                    for (int i = 0; i < result.orderIds.size(); i++) {
+                        checkoutNotes.remove(checkoutNoteKey(approved.stores.get(i).cart, true));
+                    }
+                }
+                showCombinedResult(result, approved.stores.size());
+            });
         }, () -> featureRuntime.post(mainHandler, () -> {
             foodOrderSubmitting = false;
             setLoading(false);

@@ -8,6 +8,7 @@ import org.json.JSONException;
 import org.json.JSONObject;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 final class FoodCombinedCheckout {
     private static final String ORDER_URL = ApiConfig.server("create_food_order.php");
@@ -153,7 +154,7 @@ final class FoodCombinedCheckout {
         return plan;
     }
 
-    static Result submit(Activity activity, Plan plan) {
+    static Result submit(Activity activity, Plan plan, Map<Integer, String> notes) {
         Result result = new Result();
         if (plan.stores.isEmpty()) return result;
         try {
@@ -179,7 +180,9 @@ final class FoodCombinedCheckout {
         for (StoreQuote store : plan.stores) {
             if (Thread.currentThread().isInterrupted()) break;
             try {
-                JSONObject receipt = ReliableOrderClient.create(activity, ORDER_URL, store.payload, TIMEOUT);
+                JSONObject payload = new JSONObject(store.payload.toString());
+                FoodCheckoutNote.addTo(payload, notes.get(store.cart.restaurantId));
+                JSONObject receipt = ReliableOrderClient.create(activity, ORDER_URL, payload, TIMEOUT);
                 if (receipt.optBoolean("recovered_previous_attempt")) {
                     result.orderIds.add(receipt.getString("order_id"));
                     result.recoveredPrevious = true;

@@ -21,21 +21,36 @@ final class FoodCheckoutNote extends LinearLayout {
     private static final String EXAMPLE = "Misalnya, pisahkan saus atau hubungi saat tiba.";
 
     private final Button edit;
+    private final boolean compact;
     private final TextView preview;
     private String value;
 
     FoodCheckoutNote(Activity activity, String value, OnSaved onSaved) {
+        this(activity, value, false, onSaved);
+    }
+
+    FoodCheckoutNote(Activity activity, String value, boolean compact, OnSaved onSaved) {
         super(activity);
         this.value = value;
+        this.compact = compact;
         setOrientation(VERTICAL);
         LinearLayout header = new LinearLayout(activity);
         header.setGravity(Gravity.CENTER_VERTICAL);
-        header.addView(RepeatOrderUi.text(activity, "Catatan pesanan (opsional)", 13, "#0F172A", true),
-                new LayoutParams(0, -2, 1));
-        edit = RepeatOrderUi.outline(activity, "", 12);
+        if (compact) {
+            android.widget.ImageView icon = new android.widget.ImageView(activity);
+            icon.setImageResource(R.drawable.ic_checkout_note);
+            icon.setColorFilter(0xff60758e);
+            icon.setImportantForAccessibility(IMPORTANT_FOR_ACCESSIBILITY_NO);
+            LayoutParams iconParams = new LayoutParams(dp(20), dp(20));
+            iconParams.setMarginEnd(dp(9));
+            header.addView(icon, iconParams);
+        }
+        header.addView(RepeatOrderUi.text(activity, compact ? "Catatan pengantaran" : "Catatan pesanan (opsional)",
+                13, "#0F172A", !compact), new LayoutParams(0, -2, 1));
+        edit = compact ? inlineButton(activity) : RepeatOrderUi.outline(activity, "", 12);
         edit.setMinWidth(0);
         edit.setMinimumWidth(0);
-        header.addView(edit, new LayoutParams(-2, dp(44)));
+        header.addView(edit, new LayoutParams(-2, -2));
         addView(header);
 
         preview = RepeatOrderUi.text(activity, "", 13, "#475569", false);
@@ -45,7 +60,8 @@ final class FoodCheckoutNote extends LinearLayout {
         addView(preview, new LayoutParams(-1, -2));
         updatePreview();
 
-        edit.setOnClickListener(v -> showEditor(activity, "Catatan pesanan", EXAMPLE, this.value, note -> {
+        edit.setOnClickListener(v -> showEditor(activity, compact ? "Catatan pengantaran" : "Catatan pesanan",
+                compact ? "Misalnya, hubungi saat tiba." : EXAMPLE, this.value, note -> {
             this.value = note;
             onSaved.save(note);
             updatePreview();
@@ -67,6 +83,45 @@ final class FoodCheckoutNote extends LinearLayout {
                     button.setTag(value);
                     updateItemButton(button, menuName, value);
                 }));
+        return button;
+    }
+
+    static Button inlineItemButton(Activity activity, String menuName, String note, OnSaved onSaved) {
+        Button button = inlineButton(activity);
+        button.setGravity(Gravity.START | Gravity.CENTER_VERTICAL);
+        int inset = CustomerUiPrimitives.dp(activity, 2);
+        button.setPadding(0, inset, inset, inset);
+        button.setMaxLines(3);
+        button.setEllipsize(TextUtils.TruncateAt.END);
+        android.graphics.drawable.Drawable pencil = activity.getDrawable(R.drawable.ic_checkout_edit);
+        int size = CustomerUiPrimitives.dp(activity, 14);
+        pencil.setBounds(0, 0, size, size);
+        button.setCompoundDrawablesRelative(pencil, null, null, null);
+        button.setCompoundDrawablePadding(CustomerUiPrimitives.dp(activity, 5));
+        button.setText(note.isEmpty() ? "Tambah catatan" : note);
+        button.setContentDescription(note.isEmpty() ? "Tambah catatan untuk " + menuName
+                : "Ubah catatan untuk " + menuName + ". " + note);
+        button.setOnClickListener(v -> showEditor(activity, "Catatan · " + menuName,
+                "Misalnya, tanpa es atau saus dipisah.", note, onSaved));
+        return button;
+    }
+
+    private static Button inlineButton(Activity activity) {
+        Button button = new Button(activity);
+        button.setAllCaps(false);
+        button.setTextSize(13);
+        button.setTextColor(0xff0967db);
+        button.setStateListAnimator(null);
+        int touch = CustomerUiPrimitives.dp(activity, 44);
+        button.setMinimumHeight(touch);
+        button.setMinHeight(touch);
+        button.setMinimumWidth(touch);
+        button.setMinWidth(touch);
+        int padding = CustomerUiPrimitives.dp(activity, 5);
+        button.setPadding(padding, 0, padding, 0);
+        button.setBackground(new android.graphics.drawable.RippleDrawable(
+                android.content.res.ColorStateList.valueOf(0x22096bd9), null,
+                new android.graphics.drawable.ColorDrawable(android.graphics.Color.WHITE)));
         return button;
     }
 
@@ -114,7 +169,8 @@ final class FoodCheckoutNote extends LinearLayout {
     private void updatePreview() {
         edit.setText(value.isEmpty() ? "Tambah" : "Ubah");
         edit.setContentDescription(value.isEmpty() ? "Tambah catatan pesanan" : "Ubah catatan pesanan");
-        preview.setText(value.isEmpty() ? EXAMPLE : value);
+        preview.setText(value.isEmpty() && !compact ? EXAMPLE : value);
+        preview.setVisibility(compact && value.isEmpty() ? GONE : VISIBLE);
     }
 
     private int dp(int value) {

@@ -54,6 +54,10 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
     private LinearLayout foodHeader;
     protected ProgressBar progressBar;
     protected View stickyCartBar;
+    private LinearLayout foodLayout;
+    private int checkoutWidth;
+    private boolean checkoutNarrow;
+    private final List<View> checkoutControls = new ArrayList<>();
 
     protected final List<JSONObject> restaurants = new ArrayList<>();
     protected final List<JSONObject> menus = new ArrayList<>();
@@ -118,12 +122,11 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
     private final Runnable requoteCombined = () -> {
         if (currentScreen == COMBINED_CHECKOUT && !foodOrderSubmitting) quoteCombinedCheckout();
     };
-    private boolean voucherExpanded, editingCheckoutAddress;
-    private String voucherDraft="";
+    private boolean editingCheckoutAddress;
     private int royaltyVoucherDiscount;
     private String royaltyVoucherNote="",royaltyPreviewKey="";
     private int checkoutQuoteGeneration;
-    private boolean checkoutQuoteReady;
+    private boolean checkoutQuoteReady, checkoutQuoteLoading;
     private Button checkoutSubmitButton;
     private String favoritesError="";
     private final java.util.Set<Integer> favoriteMerchantIds=new java.util.HashSet<>();
@@ -221,13 +224,14 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
     }
 
     protected void buildBase() {
-        page = new FrameLayout(this);
+        page = new FoodPage();
         page.setBackgroundColor(Color.parseColor("#F7FAFF"));
         MitraPullScrollView scroll = new MitraPullScrollView(this);
         foodScroll = scroll;
         virtualFood=new FoodVirtualList(this,()->{if(root!=null)rebindRetainedViews();});
         scroll.setFillViewport(false);
         LinearLayout layout = new LinearLayout(this);
+        foodLayout = layout;
         layout.setOrientation(LinearLayout.VERTICAL);
         page.addView(layout, new FrameLayout.LayoutParams(-1, -1));
         foodHeader = new LinearLayout(this);
@@ -261,7 +265,30 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
         lp.gravity = Gravity.CENTER;
         page.addView(progressBar, lp);
         setContentView(page);
+        page.addOnLayoutChangeListener((v, left, top, right, bottom, oldLeft, oldTop, oldRight, oldBottom) -> {
+            int width = right - left;
+            boolean narrow = isNarrowCheckout(width);
+            if (width == checkoutWidth && narrow == checkoutNarrow) return;
+            checkoutWidth = width;
+            checkoutNarrow = narrow;
+            page.post(this::refreshCheckoutLayout);
+        });
         CustomerAppSettings.apply(this);
+    }
+
+    private final class FoodPage extends FrameLayout implements CustomerAppSettings.ThemeAware {
+        FoodPage() {
+            super(TransFoodActivityScreenCore.this);
+        }
+
+        @Override public void onCustomerThemeChanged(boolean dark) {
+            if (currentScreen == 2 || currentScreen == COMBINED_CHECKOUT) applyCheckoutSystemBars(dark);
+        }
+    }
+
+    private void applyCheckoutSystemBars(boolean dark) {
+        CustomerWindowPolicy.setBarColorsIfChanged(getWindow(),
+                dark ? 0xff091625 : Color.WHITE, dark ? 0xff122235 : Color.WHITE);
     }
 
     protected void showRestaurantList() {
@@ -1487,10 +1514,12 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
     }
 
     protected void clearStickyCartBar() {
-        if (stickyCartBar != null && stickyCartBar.getParent() instanceof FrameLayout) {
-            ((FrameLayout) stickyCartBar.getParent()).removeView(stickyCartBar);
+        if (stickyCartBar != null && stickyCartBar.getParent() instanceof android.view.ViewGroup) {
+            ((android.view.ViewGroup) stickyCartBar.getParent()).removeView(stickyCartBar);
         }
         stickyCartBar = null;
+        singleCheckoutNote = null;
+        checkoutControls.clear();
         checkoutSubmitButton = null;
         cartQuantityLabel = null; cartTotalLabel = null;
         if (root != null) setFoodPadding(dp(16),dp(18),dp(16),dp(28));
@@ -1588,11 +1617,9 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
         leaveVirtualFood();
         ++menuLoadGeneration;featureRuntime.cancel("food-menus");featureRuntime.cancel("food-social");menusRequestLoading=false;
         currentScreen = 2;
-        voucherDraft=voucherCode;voucherExpanded=false;
         clearStickyCartBar();
         root.removeAllViews();
-        buildTopBar("Checkout", "Satu pesanan untuk toko ini", true);
-        addStatus("Menghitung ongkir...");
+        buildTopBar("Checkout", "TransFood", true);
         if (foodScroll != null) foodScroll.scrollTo(0, 0);
         calculateOngkirThenRender();
     }
@@ -1615,101 +1642,157 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
     }
 
     protected void renderCheckout() {
-        if(currentScreen!=2 || root==null || activeRestaurant==null)return;
-        int scrollY=foodScroll==null?0:foodScroll.getScrollY();
-        clearStickyCartBar();
-        root.removeAllViews();
-        LinearLayout address=checkoutCard();
-        LinearLayout addressTitle=new LinearLayout(this);addressTitle.setGravity(Gravity.CENTER_VERTICAL);
-        addressTitle.addView(text("Antar ke",13,"#0F172A",true),new LinearLayout.LayoutParams(0,-2,1));
-        Button edit=choiceButton("Ubah",false);edit.setTextSize(12);
-        edit.setOnClickListener(v->{editingCheckoutAddress=true;DeliveryAddressGate.edit(this,"TransFood");});
-        addressTitle.addView(edit,new LinearLayout.LayoutParams(dp(64),dp(44)));address.addView(addressTitle);
-        address.addView(text("Penerima · "+firstNonEmpty(new SessionManager(this).getName(),username,"Customer"),12,"#64748B",false));
-        TextView addressText=text(firstNonEmpty(DeliveryAddressGate.address(this),"Alamat belum tersedia"),13,"#64748B",false);
-        addressText.setMaxLines(3);addressText.setEllipsize(android.text.TextUtils.TruncateAt.END);address.addView(addressText);
-        addWithMargin(address,0,0,0,dp(10));
+        if (currentScreen != 2 || root == null || activeRestaurant == null) return;
+        int scrollY = foodScroll.getScrollY();
+        beginCheckoutLayout();
+        addCheckoutCard(checkoutAddress(DeliveryAddressGate.address(this), () -> {
+            editingCheckoutAddress = true;
+            DeliveryAddressGate.edit(this, "TransFood");
+        }));
 
-        LinearLayout items = compactCartCard();
-        addCartMerchant(items, activeCart, null);
-        if (distanceKm > 0) items.addView(text(String.format(Locale.US, "Jarak antar · %.2f km", distanceKm), 11, "#64748B", false));
-        if (activeRestaurant.optInt("is_open",1)!=1) items.addView(text(firstNonEmpty(activeRestaurant.optString("availability_reason"),"Merchant sedang tutup"),12,"#EF4444",true));
-        for (CartItem item : cart) addCheckoutProduct(items, activeCart, item, null, checkoutFromCarts);
-        addWithMargin(items, 0, 0, 0, dp(8));
-
-        LinearLayout noteCard = checkoutCard();
-        singleCheckoutNote = addCheckoutNote(noteCard, activeCart, checkoutFromCarts);
-        addWithMargin(noteCard, 0, 0, 0, dp(8));
-
-        LinearLayout delivery=checkoutCard();delivery.addView(text("Pengantaran",14,"#0F172A",true));
-        boolean coinReady=hematRemaining>=hematLimit;
-        LinearLayout choices=new LinearLayout(this);choices.setPadding(0,dp(8),0,0);
-        Button standard=checkoutChoice("Standar\n"+rupiah(standardFee),"standard".equals(deliveryMode));
-        Button hemat=checkoutChoice("Pakai poin\n"+hematRemaining+" poin","hemat".equals(deliveryMode));
-        hemat.setEnabled(coinReady);hemat.setAlpha(coinReady?1f:.65f);
-        standard.setOnClickListener(v->{deliveryMode="standard";deliveryFee=standardFee;renderCheckout();});
-        hemat.setOnClickListener(v->{deliveryMode="hemat";deliveryFee=standardFee;renderCheckout();});
-        addCheckoutPair(choices,standard,hemat,56);delivery.addView(choices);
-        if(!coinReady){TextView why=text("Saldo "+hematRemaining+" poin · perlu minimal "+hematLimit+" poin untuk Hemat.",11,"#64748B",false);why.setPadding(0,dp(6),0,0);delivery.addView(why);}
-        addWithMargin(delivery,0,0,0,dp(10));
-
-        LinearLayout voucher=checkoutCard();
-        TextView voucherToggle=text(voucherCode.isEmpty()?"Punya voucher? Gunakan  ›":"Voucher dipilih · "+voucherCode+"  ›",13,"#0B7CFF",true);
-        voucherToggle.setGravity(Gravity.CENTER_VERTICAL);voucherToggle.setMinHeight(dp(44));voucher.addView(voucherToggle);
-        LinearLayout form=new LinearLayout(this);form.setOrientation(LinearLayout.VERTICAL);form.setVisibility(voucherExpanded?View.VISIBLE:View.GONE);
-        form.addView(text("Voucher berlaku untuk akun terverifikasi. Potongan dikonfirmasi saat pesanan diproses.",11,"#64748B",false));
-        EditText code=new EditText(this);code.setSingleLine(true);code.setTextSize(14);code.setHint("Masukkan kode voucher");code.setText(voucherDraft);
-        code.addTextChangedListener(new TextWatcher(){public void beforeTextChanged(CharSequence s,int start,int count,int after){}public void onTextChanged(CharSequence s,int start,int before,int count){voucherDraft=s.toString();}public void afterTextChanged(Editable e){}});
-        form.addView(code,new LinearLayout.LayoutParams(-1,dp(48)));
-        Button apply=choiceButton("Gunakan voucher",false);apply.setTextSize(13);form.addView(apply,new LinearLayout.LayoutParams(-1,dp(44)));
-        apply.setOnClickListener(v->{voucherCode=voucherDraft.trim().toUpperCase(Locale.US);voucherDraft=voucherCode;voucherExpanded=false;hideFoodKeyboard(code);renderCheckout();});
-        voucherToggle.setOnClickListener(v->{voucherExpanded=!voucherExpanded;form.setVisibility(voucherExpanded?View.VISIBLE:View.GONE);if(!voucherExpanded)hideFoodKeyboard(code);voucherToggle.setText(voucherExpanded?"Voucher ongkir  ⌃":voucherCode.isEmpty()?"Punya voucher? Gunakan  ›":"Voucher dipilih · "+voucherCode+"  ›");});
-        Button chooseRoyalty=choiceButton("Pilih voucher saya",false);chooseRoyalty.setTextSize(13);
-        chooseRoyalty.setOnClickListener(v->RoyaltyVoucherPicker.show(this,(int)Math.round(foodTotal()+standardFee),(int)Math.round(standardFee),voucherCode,(selected,discount)->{voucherCode=selected;voucherDraft=selected;royaltyVoucherDiscount=discount;royaltyPreviewKey="";voucherExpanded=false;renderCheckout();}));voucher.addView(chooseRoyalty,new LinearLayout.LayoutParams(-1,dp(44)));
-        voucher.addView(form);if(!royaltyVoucherNote.isEmpty())voucher.addView(text(royaltyVoucherNote,11,"#64748B",false));addWithMargin(voucher,0,0,0,dp(10));
-
-        LinearLayout pay=checkoutCard();pay.addView(text("Pembayaran",14,"#0F172A",true));
-        LinearLayout payments=new LinearLayout(this);payments.setPadding(0,dp(8),0,0);
-        Button cash=checkoutChoice("Tunai","cash".equals(paymentMethod));Button balance=checkoutChoice("Transiva Pay","balance".equals(paymentMethod));
-        cash.setOnClickListener(v -> {
-            paymentMethod = "cash";
-            if (splitBillManager != null && splitBillManager.groupSize() > 1) splitBillManager.clear();
-            else renderCheckout();
-        });
-        balance.setOnClickListener(v->{paymentMethod="balance";renderCheckout();});
-        addCheckoutPair(payments,cash,balance,48);pay.addView(payments);
-        if("balance".equals(paymentMethod)){
-            Button split=choiceButton(splitBillManager!=null&&splitBillManager.groupSize()>1?(splitBillManager.ready()?"✓ Split Bill ":"Menunggu Split Bill ")+splitBillManager.groupSize()+" orang":"Split Bill · Bayar bersama",false);
-            split.setTextSize(12);split.setEnabled(checkoutQuoteReady && activeRestaurant.optInt("is_open", 1) == 1);split.setOnClickListener(v->showFoodSplitDialog());LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-1,dp(44));lp.topMargin=dp(6);pay.addView(split,lp);
+        LinearLayout items = checkoutCard();
+        String distance = distanceKm > 0 ? String.format(new Locale("id", "ID"), "%.2f km", distanceKm) : "";
+        addCheckoutMerchant(items, activeCart, distance);
+        if (activeRestaurant.optInt("is_open", 1) != 1) {
+            items.addView(checkoutText(firstNonEmpty(activeRestaurant.optString("availability_reason"),
+                    "Merchant sedang tutup"), 12, "#B42318", true));
         }
-        addWithMargin(pay,0,0,0,dp(10));
+        for (int i = 0; i < cart.size(); i++) {
+            if (i > 0) checkoutDivider(items);
+            addCheckoutProduct(items, activeCart, cart.get(i), null, checkoutFromCarts);
+        }
+        addCheckoutCard(items);
 
-        LinearLayout total=checkoutCard();total.addView(text("Rincian pembayaran",14,"#0F172A",true));
-        double grossTotal=foodTotal()+standardFee;
-        String previewKey=checkoutQuoteGeneration+":"+voucherCode+":"+Math.round(grossTotal)+":"+standardFee;
-        if(!previewKey.equals(royaltyPreviewKey)){royaltyPreviewKey=previewKey;royaltyVoucherDiscount=0;royaltyVoucherNote=voucherCode.isEmpty()?"":"Memeriksa potongan voucher…";final String expected=previewKey;
-            if(!voucherCode.isEmpty())RoyaltyVoucherPicker.preview(this,voucherCode,(int)Math.round(grossTotal),(int)Math.round(standardFee),(discount,note)->{if(!expected.equals(royaltyPreviewKey)||currentScreen!=2)return;royaltyVoucherDiscount=discount;royaltyVoucherNote=note;renderCheckout();});}
+        double grossTotal = foodTotal() + standardFee;
+        refreshCheckoutVoucher(grossTotal);
+        LinearLayout settings = checkoutCard();
+        settings.addView(checkoutHeading("Pengantaran"));
+        boolean coinReady = checkoutQuoteReady && hematRemaining >= hematLimit;
+        LinearLayout choices = new LinearLayout(this);
+        choices.setPadding(0, dp(7), 0, dp(4));
+        Button standard = deliveryChoice("Standar", checkoutQuoteReady ? rupiah(standardFee) : "—",
+                "standard".equals(deliveryMode));
+        Button points = deliveryChoice("Pakai poin", hematRemaining + " poin", "hemat".equals(deliveryMode));
+        bindCheckoutControl(standard, true, () -> {
+            deliveryMode = "standard";
+            deliveryFee = standardFee;
+            renderCheckout();
+        });
+        bindCheckoutControl(points, coinReady, () -> {
+            deliveryMode = "hemat";
+            deliveryFee = standardFee;
+            renderCheckout();
+        });
+        addDeliveryChoices(choices, standard, points);
+        settings.addView(choices);
+        if (checkoutQuoteReady && !coinReady) {
+            settings.addView(checkoutText("Minimal " + hematLimit + " poin untuk opsi Hemat.", 11, "#64748B", false));
+        }
+        singleCheckoutNote = addCheckoutNote(settings, activeCart, checkoutFromCarts);
+        checkoutDivider(settings);
+        settings.addView(checkoutSetting(R.drawable.ic_checkout_voucher, "Voucher",
+                voucherCode.isEmpty() ? "Pilih  ›" : voucherCode + "  ›", this::showCheckoutVoucher));
+        if (!royaltyVoucherNote.isEmpty()) {
+            settings.addView(checkoutText(royaltyVoucherNote, 11, "#64748B", false));
+        }
+        checkoutDivider(settings);
+        settings.addView(checkoutSetting(R.drawable.ic_nav2_wallet, "Pembayaran",
+                paymentLabel(paymentMethod) + "  ›", () -> showCheckoutPayment(paymentMethod, method -> {
+                    if (foodOrderSubmitting || currentScreen != 2 || paymentMethod.equals(method)) return;
+                    paymentMethod = method;
+                    if ("cash".equals(method) && splitBillManager != null && splitBillManager.groupSize() > 1) {
+                        splitBillManager.clear();
+                    } else renderCheckout();
+                })));
+        if ("balance".equals(paymentMethod)) {
+            String splitLabel = splitBillManager.groupSize() > 1
+                    ? splitBillManager.groupSize() + " orang · " + (splitBillManager.ready() ? "Siap" : "Menunggu")
+                    : "Atur  ›";
+            checkoutDivider(settings);
+            View split = checkoutSetting(0, "Split Bill", splitLabel, this::showFoodSplitDialog);
+            if (!checkoutQuoteReady || activeRestaurant.optInt("is_open", 1) != 1) {
+                checkoutControls.remove(split);
+                split.setEnabled(false);
+            }
+            settings.addView(split);
+        }
+        addCheckoutCard(settings);
+
+        LinearLayout total = checkoutCard();
+        total.addView(checkoutHeading("Rincian pembayaran"));
         double afterVoucher=Math.max(0,grossTotal-royaltyVoucherDiscount);
         double coinDiscount=0;
         if("hemat".equals(deliveryMode)&&hematRemaining>=hematLimit)coinDiscount=CustomerFinancialRules.foodCoinDiscount(hematRemaining,coinValueRupiah,afterVoucher,coinMinOrderAfterDiscount,coinMaxRedeemPercent,hematLimit);
-        total.addView(summaryLine("Subtotal makanan",foodTotal()));total.addView(summaryLine("Ongkir",standardFee));
-        if(royaltyVoucherDiscount>0)total.addView(summaryLine("Potongan voucher",-royaltyVoucherDiscount));
-        if(coinDiscount>0)total.addView(summaryLine("Potongan Poin Transiva",-coinDiscount));
-        double amount=Math.max(0,afterVoucher-coinDiscount);lastFoodQuote=(int)Math.round(amount);
-        if(!checkoutQuoteReady)total.addView(text("Ongkir belum terkonfirmasi. Coba hitung kembali sebelum memesan.",12,"#EF4444",false));
-        total.addView(summaryLine("Total bayar",amount));addWithMargin(total,0,0,0,dp(12));
+        addCheckoutAmount(total, "Subtotal makanan", rupiah(foodTotal()));
+        addCheckoutAmount(total, "Ongkir", checkoutQuoteReady ? rupiah(standardFee) : "—");
+        if (royaltyVoucherDiscount > 0) addCheckoutAmount(total, "Potongan voucher", rupiah(-royaltyVoucherDiscount));
+        if (coinDiscount > 0) addCheckoutAmount(total, "Potongan Poin Transiva", rupiah(-coinDiscount));
+        double amount = Math.max(0, afterVoucher - coinDiscount);
+        lastFoodQuote = (int) Math.round(amount);
+        if (!checkoutQuoteReady && !checkoutQuoteLoading) {
+            total.addView(checkoutText("Ongkir belum terkonfirmasi.", 12, "#B42318", false));
+        }
+        addCheckoutCard(total);
         buildCheckoutBar(amount);
-        if(foodScroll!=null)foodScroll.post(()->{if(currentScreen==2)foodScroll.scrollTo(0,scrollY);});
+        foodScroll.post(() -> { if (currentScreen == 2) foodScroll.scrollTo(0, scrollY); });
+    }
+
+    private void refreshCheckoutVoucher(double grossTotal) {
+        String expected = checkoutQuoteGeneration + ":" + voucherCode + ":" + Math.round(grossTotal) + ":" + standardFee;
+        if (expected.equals(royaltyPreviewKey)) return;
+        royaltyPreviewKey = expected;
+        royaltyVoucherDiscount = 0;
+        royaltyVoucherNote = "";
+        if (voucherCode.isEmpty() || !checkoutQuoteReady) return;
+        royaltyVoucherNote = "Memeriksa potongan voucher…";
+        RoyaltyVoucherPicker.preview(this, voucherCode, (int) Math.round(grossTotal),
+                (int) Math.round(standardFee), (discount, note) -> {
+                    if (!expected.equals(royaltyPreviewKey) || currentScreen != 2 || isFinishing() || isDestroyed()) return;
+                    royaltyVoucherDiscount = discount;
+                    royaltyVoucherNote = note;
+                    renderCheckout();
+                });
+    }
+
+    private void showCheckoutVoucher() {
+        if (!checkoutQuoteReady) {
+            showInfo("Voucher", "Hitung ongkir terlebih dahulu untuk memeriksa voucher.");
+            return;
+        }
+        RoyaltyVoucherPicker.show(this, (int) Math.round(foodTotal() + standardFee),
+                (int) Math.round(standardFee), voucherCode, (selected, discount) -> {
+                    if (currentScreen != 2 || foodOrderSubmitting || isFinishing() || isDestroyed()) return;
+                    voucherCode = selected;
+                    royaltyPreviewKey = "";
+                    renderCheckout();
+                });
+    }
+
+    private void showCheckoutPayment(String current, FoodCheckoutNote.OnSaved select) {
+        String[] labels = {"Tunai", "Transiva Pay"};
+        new TransivaAlertDialogBuilder(this).setTitle("Metode pembayaran")
+                .setSingleChoiceItems(labels, "balance".equals(current) ? 1 : 0, (dialog, choice) -> {
+                    dialog.dismiss();
+                    select.save(choice == 1 ? "balance" : "cash");
+                })
+                .setNegativeButton("Batal", null).show();
+    }
+
+    private static String paymentLabel(String method) {
+        return "balance".equals(method) ? "Transiva Pay" : "Tunai";
     }
 
     private FoodCheckoutNote addCheckoutNote(LinearLayout parent, Cart orderCart, boolean savedCart) {
         String key = checkoutNoteKey(orderCart, savedCart);
-        FoodCheckoutNote note = new FoodCheckoutNote(this, checkoutNotes.getString(key, ""), value -> {
+        FoodCheckoutNote note = new FoodCheckoutNote(this, checkoutNotes.getString(key, ""), true, value -> {
             if (value.isEmpty()) checkoutNotes.remove(key);
             else checkoutNotes.putString(key, value);
             if (!parent.isAttachedToWindow()) {
                 if (currentScreen == 2) renderCheckout();
-                else if (currentScreen == COMBINED_CHECKOUT) renderCombinedCheckout();
+                else if (currentScreen == COMBINED_CHECKOUT) {
+                    combinedCheckoutScroll = foodScroll.getScrollY();
+                    renderCombinedCheckout();
+                }
             }
         });
         note.setEnabled(!foodOrderSubmitting);
@@ -1725,25 +1808,253 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
         return "saved:" + orderCart.draftId + ":" + android.text.TextUtils.join("/", ids);
     }
 
-    private void hideFoodKeyboard(View field){android.view.inputmethod.InputMethodManager keyboard=(android.view.inputmethod.InputMethodManager)getSystemService(INPUT_METHOD_SERVICE);if(keyboard!=null)keyboard.hideSoftInputFromWindow(field.getWindowToken(),0);}
-    private LinearLayout checkoutCard(){LinearLayout c=card();c.setPadding(dp(14),dp(12),dp(14),dp(12));return c;}
+    private LinearLayout checkoutCard() {
+        LinearLayout panel = new LinearLayout(this);
+        panel.setOrientation(LinearLayout.VERTICAL);
+        panel.setPadding(dp(12), dp(9), dp(12), dp(9));
+        panel.setBackground(roundStroke("#FFFFFF", "#D9E3EF", dp(14), dp(1)));
+        return panel;
+    }
     private Button checkoutChoice(String label,boolean selected){
         Button b=choiceButton((selected?"✓ ":"")+label,selected);b.setTextSize(13);b.setMinWidth(0);b.setMinimumWidth(0);b.setPadding(dp(6),0,dp(6),0);b.setContentDescription(label+(selected?", dipilih":""));return b;
     }
     private void addCheckoutPair(LinearLayout row,View left,View right,int height){
         row.addView(left,new LinearLayout.LayoutParams(0,dp(height),1));LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(0,dp(height),1);lp.leftMargin=dp(8);row.addView(right,lp);
     }
-    private void buildCheckoutBar(double amount){
-        LinearLayout bar=checkoutCard();bar.setGravity(Gravity.CENTER_VERTICAL);bar.setElevation(dp(12));
-        boolean narrow=getResources().getConfiguration().screenWidthDp<360 || getResources().getConfiguration().fontScale>1.2f;
-        bar.setOrientation(narrow?LinearLayout.VERTICAL:LinearLayout.HORIZONTAL);
-        LinearLayout words=new LinearLayout(this);words.setOrientation(LinearLayout.VERTICAL);words.addView(text("Total bayar",11,"#64748B",false));words.addView(text(rupiah(amount),20,"#0F172A",true));
-        bar.addView(words,narrow?new LinearLayout.LayoutParams(-1,-2):new LinearLayout.LayoutParams(0,-2,1));
-        boolean accepting=refreshCheckoutRestaurant || activeRestaurant.optInt("is_open",1)==1;
-        Button order=primaryButton(!accepting?"Toko sedang tutup":!checkoutQuoteReady?"Coba hitung ongkir":"Buat Pesanan");checkoutSubmitButton=order;order.setTextSize(14);order.setEnabled(accepting&&!foodOrderSubmitting);order.setAlpha(accepting?1f:.55f);order.setOnClickListener(v->{if(checkoutQuoteReady)createFoodOrder();else calculateOngkirThenRender();});
-        LinearLayout.LayoutParams olp=new LinearLayout.LayoutParams(narrow?-1:dp(150),dp(48));if(narrow)olp.topMargin=dp(8);else olp.leftMargin=dp(8);bar.addView(order,olp);
-        FrameLayout.LayoutParams lp=new FrameLayout.LayoutParams(-1,-2,Gravity.BOTTOM);lp.setMargins(dp(12),0,dp(12),dp(10));page.addView(bar,lp);stickyCartBar=bar;
-        bar.addOnLayoutChangeListener((v,l,t,r,b,ol,ot,or,ob)->{if(stickyCartBar==bar&&currentScreen==2)setFoodPadding(dp(16),dp(18),dp(16),bar.getHeight()+dp(28));});
+    private void buildCheckoutBar(double amount) {
+        boolean accepting = refreshCheckoutRestaurant || activeRestaurant.optInt("is_open", 1) == 1;
+        String action = !accepting ? "Toko sedang tutup" : checkoutQuoteLoading ? "Menghitung ongkir…"
+                : checkoutQuoteReady ? "Buat Pesanan" : "Coba hitung ongkir";
+        checkoutSubmitButton = attachCheckoutBar("Total bayar", checkoutQuoteReady ? rupiah(amount) : "—",
+                action, accepting && !foodOrderSubmitting && !checkoutQuoteLoading, () -> {
+                    if (foodOrderSubmitting || checkoutQuoteLoading) return;
+                    if (checkoutQuoteReady) createFoodOrder();
+                    else calculateOngkirThenRender();
+                });
+    }
+
+    private Button attachCheckoutBar(String label, String amount, String action, boolean enabled, Runnable submit) {
+        LinearLayout footer = new LinearLayout(this);
+        footer.setOrientation(LinearLayout.VERTICAL);
+        footer.setBackgroundColor(Color.WHITE);
+        checkoutDivider(footer);
+        LinearLayout row = new LinearLayout(this);
+        boolean stack = checkoutNarrow && getResources().getConfiguration().screenHeightDp >= 420;
+        row.setOrientation(stack ? LinearLayout.VERTICAL : LinearLayout.HORIZONTAL);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        int inset = checkoutSideInset();
+        row.setPadding(inset, dp(7), inset, dp(8));
+        LinearLayout totals = new LinearLayout(this);
+        totals.setOrientation(LinearLayout.VERTICAL);
+        totals.addView(checkoutText(label, 12, "#64748B", false));
+        totals.addView(checkoutText(amount, 21, "#0F172A", true));
+        row.addView(totals, stack ? new LinearLayout.LayoutParams(-1, -2)
+                : new LinearLayout.LayoutParams(0, -2, 1));
+        Button button = primaryButton(action);
+        styleCheckoutButton(button, 14);
+        button.setTextColor(Color.WHITE);
+        button.setBackground(checkoutRipple(round("#0967DB", dp(13))));
+        button.setEnabled(enabled);
+        button.setAlpha(enabled ? 1f : .55f);
+        button.setOnClickListener(v -> submit.run());
+        LinearLayout.LayoutParams actionParams = stack ? new LinearLayout.LayoutParams(-1, -2)
+                : new LinearLayout.LayoutParams(0, -2, 1.15f);
+        if (stack) actionParams.topMargin = dp(5);
+        else actionParams.setMarginStart(dp(8));
+        row.addView(button, actionParams);
+        footer.addView(row, new LinearLayout.LayoutParams(-1, -2));
+        foodLayout.addView(footer, new LinearLayout.LayoutParams(-1, -2));
+        stickyCartBar = footer;
+        return button;
+    }
+
+    private void beginCheckoutLayout() {
+        clearStickyCartBar();
+        root.removeAllViews();
+        root.setGravity(Gravity.TOP);
+        int inset = checkoutSideInset();
+        setFoodPadding(inset, dp(10), inset, dp(3));
+    }
+
+    private int checkoutSideInset() {
+        return Math.max(dp(12), (checkoutWidth - dp(560)) / 2);
+    }
+
+    private boolean isNarrowCheckout(int width) {
+        return width < dp(340) || getResources().getConfiguration().fontScale >= 1.3f;
+    }
+
+    private void refreshCheckoutLayout() {
+        if (isFinishing() || isDestroyed() || root == null) return;
+        if (currentScreen == 2 && activeRestaurant != null) {
+            buildTopBar("Checkout", "TransFood", true);
+            renderCheckout();
+        } else if (currentScreen == COMBINED_CHECKOUT) {
+            combinedCheckoutScroll = foodScroll.getScrollY();
+            buildTopBar("Checkout", "TransFood", true);
+            renderCombinedCheckout();
+        }
+    }
+
+    @Override public void onConfigurationChanged(android.content.res.Configuration configuration) {
+        super.onConfigurationChanged(configuration);
+        if (page != null) page.post(() -> {
+            checkoutWidth = page.getWidth();
+            checkoutNarrow = isNarrowCheckout(checkoutWidth);
+            refreshCheckoutLayout();
+        });
+    }
+
+    private TextView checkoutText(String value, int size, String color, boolean bold) {
+        return RepeatOrderUi.text(this, value, size, color, bold);
+    }
+
+    private TextView checkoutHeading(String title) {
+        return checkoutText(title, 15, "#0F172A", true);
+    }
+
+    private void addCheckoutCard(LinearLayout panel) {
+        addWithMargin(panel, 0, 0, 0, dp(9));
+    }
+
+    private void checkoutDivider(LinearLayout panel) {
+        View divider = new View(this);
+        divider.setBackgroundColor(0xffdce5ef);
+        panel.addView(divider, new LinearLayout.LayoutParams(-1, dp(1)));
+    }
+
+    private android.graphics.drawable.Drawable checkoutRipple(android.graphics.drawable.Drawable fill) {
+        return new android.graphics.drawable.RippleDrawable(
+                android.content.res.ColorStateList.valueOf(0x22096BD9), fill,
+                fill == null ? new android.graphics.drawable.ColorDrawable(Color.WHITE) : null);
+    }
+
+    private void styleCheckoutButton(Button button, int size) {
+        button.setAllCaps(false);
+        button.setTextSize(size);
+        button.setMinimumWidth(0);
+        button.setMinWidth(0);
+        button.setMinimumHeight(dp(44));
+        button.setMinHeight(dp(44));
+        button.setPadding(dp(6), dp(5), dp(6), dp(5));
+        button.setStateListAnimator(null);
+    }
+
+    private void bindCheckoutControl(View control, boolean available, Runnable action) {
+        control.setEnabled(available && !foodOrderSubmitting);
+        if (available) checkoutControls.add(control);
+        control.setOnClickListener(v -> { if (!foodOrderSubmitting) action.run(); });
+    }
+
+    private ImageView checkoutIcon(int resource, boolean accent) {
+        ImageView icon = new ImageView(this);
+        icon.setImageResource(resource);
+        icon.setImageTintList(android.content.res.ColorStateList.valueOf(accent ? 0xff287ae3 : 0xff71859e));
+        icon.setAlpha(.95f);
+        icon.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+        return icon;
+    }
+
+    private LinearLayout checkoutAddress(String address, Runnable editAddress) {
+        LinearLayout panel = checkoutCard();
+        LinearLayout row = new LinearLayout(this);
+        row.setGravity(Gravity.TOP);
+        ImageView icon = checkoutIcon(R.drawable.ic_checkout_pin, true);
+        icon.setPadding(dp(8), dp(8), dp(8), dp(8));
+        icon.setBackground(round("#E3EDFA", dp(11)));
+        row.addView(icon, new LinearLayout.LayoutParams(dp(38), dp(38)));
+        LinearLayout words = new LinearLayout(this);
+        words.setOrientation(LinearLayout.VERTICAL);
+        words.setPadding(dp(10), 0, 0, 0);
+        words.addView(checkoutHeading("Antar ke"));
+        words.addView(checkoutText(firstNonEmpty(new SessionManager(this).getName(), username, "Customer"),
+                13, "#0F172A", false));
+        words.addView(checkoutText(firstNonEmpty(address, "Alamat belum tersedia"), 12, "#64748B", false));
+        row.addView(words, new LinearLayout.LayoutParams(0, -2, 1));
+        Button edit = new Button(this);
+        edit.setText("Ubah");
+        edit.setTextColor(0xff0967db);
+        edit.setBackground(checkoutRipple(null));
+        styleCheckoutButton(edit, 13);
+        bindCheckoutControl(edit, true, editAddress);
+        row.addView(edit, new LinearLayout.LayoutParams(-2, -2));
+        panel.addView(row);
+        return panel;
+    }
+
+    private void addCheckoutMerchant(LinearLayout panel, Cart draft, String subtitle) {
+        LinearLayout row = new LinearLayout(this);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setPadding(0, 0, 0, dp(5));
+        row.addView(cartThumbnail(cartPhoto(draft), true), new LinearLayout.LayoutParams(dp(38), dp(38)));
+        LinearLayout words = new LinearLayout(this);
+        words.setOrientation(LinearLayout.VERTICAL);
+        words.setPadding(dp(10), 0, 0, 0);
+        words.addView(checkoutHeading(firstNonEmpty(draft.name,
+                activeRestaurant == null ? "" : activeRestaurant.optString("name"), "Toko")));
+        if (!subtitle.isEmpty()) words.addView(checkoutText(subtitle, 12, "#64748B", false));
+        row.addView(words, new LinearLayout.LayoutParams(0, -2, 1));
+        panel.addView(row);
+    }
+
+    private View checkoutSetting(int icon, String label, String value, Runnable action) {
+        LinearLayout row = new LinearLayout(this);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setMinHeight(dp(44));
+        row.setPadding(0, dp(4), 0, dp(4));
+        row.setBackground(checkoutRipple(null));
+        if (icon != 0) {
+            LinearLayout.LayoutParams iconParams = new LinearLayout.LayoutParams(dp(20), dp(20));
+            iconParams.setMarginEnd(dp(9));
+            row.addView(checkoutIcon(icon, false), iconParams);
+        }
+        row.addView(checkoutText(label, 13, "#0F172A", false), new LinearLayout.LayoutParams(0, -2, 1));
+        TextView actionLabel = checkoutText(value, 13, "#0967DB", true);
+        actionLabel.setGravity(Gravity.END);
+        row.addView(actionLabel, new LinearLayout.LayoutParams(0, -2, 0.7f));
+        row.setContentDescription(label + ", " + value.replace("›", "").trim());
+        row.setFocusable(true);
+        bindCheckoutControl(row, true, action);
+        return row;
+    }
+
+    private Button deliveryChoice(String label, String detail, boolean selected) {
+        Button button = new Button(this);
+        styleCheckoutButton(button, 13);
+        button.setText((selected ? "✓ " : "") + label + "\n" + detail);
+        button.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+        button.setTextColor(selected ? 0xff0967db : 0xff52647c);
+        button.setBackground(checkoutRipple(roundStroke(selected ? "#E3EDFA" : "#FFFFFF",
+                selected ? "#0967DB" : "#D9E3EF", dp(11), dp(selected ? 2 : 1))));
+        button.setSelected(selected);
+        return button;
+    }
+
+    private void addDeliveryChoices(LinearLayout row, Button standard, Button points) {
+        if (checkoutNarrow) {
+            row.setOrientation(LinearLayout.VERTICAL);
+            row.addView(standard, new LinearLayout.LayoutParams(-1, -2));
+            LinearLayout.LayoutParams next = new LinearLayout.LayoutParams(-1, -2);
+            next.topMargin = dp(5);
+            row.addView(points, next);
+        } else {
+            row.addView(standard, new LinearLayout.LayoutParams(0, -2, 1));
+            LinearLayout.LayoutParams next = new LinearLayout.LayoutParams(0, -2, 1);
+            next.setMarginStart(dp(7));
+            row.addView(points, next);
+        }
+        points.setAlpha(points.isEnabled() || points.isSelected() ? 1f : .85f);
+    }
+
+    private void addCheckoutAmount(LinearLayout panel, String label, String amount) {
+        LinearLayout row = new LinearLayout(this);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setPadding(0, dp(5), 0, dp(5));
+        row.addView(checkoutText(label, 13, "#64748B", false), new LinearLayout.LayoutParams(0, -2, 1));
+        TextView value = checkoutText(amount, 13, "#0F172A", true);
+        value.setGravity(Gravity.END);
+        row.addView(value, new LinearLayout.LayoutParams(0, -2, .85f));
+        panel.addView(row);
     }
 
     protected void showFoodSplitDialog() {
@@ -2056,9 +2367,11 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
         final int quoteGeneration=++checkoutQuoteGeneration,restaurantId=activeRestaurant.optInt("id");
         final String quoteMode=deliveryMode;
         final boolean checkRestaurant=refreshCheckoutRestaurant;
-        checkoutQuoteReady=false;
+        checkoutQuoteReady = false;
+        checkoutQuoteLoading = true;
         deliveryFee=standardFee=hematFee=distanceKm=0;
-        clearStickyCartBar();setLoading(true);
+        renderCheckout();
+        setLoading(true);
         java.util.concurrent.Future<?> task=featureRuntime.execute(() -> {
             try {
                 if (checkRestaurant) {
@@ -2073,6 +2386,7 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
                         activeRestaurant = restaurant;
                         refreshCheckoutRestaurant = false;
                         if (closed) {
+                            checkoutQuoteLoading = false;
                             setLoading(false);
                             renderCheckout();
                         }
@@ -2089,14 +2403,32 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
                     deliveryFee=hematFee=standardFee;distanceKm=res.optDouble("distance_km",0);
                     hematRemaining=res.optInt("hemat_remaining",0);hematLimit=res.optInt("hemat_limit",0);
                     hematTier=firstNonEmpty(res.optString("hemat_tier"),"BRONZE");coinValueRupiah=res.optInt("coin_value_rupiah",1);coinMinOrderAfterDiscount=res.optInt("coin_min_order_after_discount",1000);coinMaxRedeemPercent=res.optInt("coin_max_redeem_percent",100);
-                    TierBadgeUi.saveActiveTier(this,hematTier);checkoutQuoteReady=true;setLoading(false);renderCheckout();
+                    TierBadgeUi.saveActiveTier(this,hematTier);
+                    checkoutQuoteReady = true;
+                    checkoutQuoteLoading = false;
+                    setLoading(false);
+                    renderCheckout();
                 });
             }catch(Exception e){featureRuntime.post(mainHandler,()->{
                 if(quoteGeneration!=checkoutQuoteGeneration||currentScreen!=2)return;
-                setLoading(false);deliveryFee=standardFee=hematFee=0;distanceKm=0;renderCheckout();showInfo("Ongkir",e.getMessage());
+                showCheckoutQuoteError(e.getMessage());
             });}
-        },()->featureRuntime.post(mainHandler,()->{if(quoteGeneration==checkoutQuoteGeneration&&currentScreen==2){setLoading(false);renderCheckout();showInfo("Ongkir","Sistem sedang sibuk. Coba hitung ongkir lagi, ya.");}}));
-        if(task==null){setLoading(false);renderCheckout();showInfo("Ongkir","Sistem sedang sibuk. Coba hitung ongkir lagi, ya.");}
+        }, () -> featureRuntime.post(mainHandler, () -> {
+            if (quoteGeneration == checkoutQuoteGeneration && currentScreen == 2) {
+                showCheckoutQuoteError("Sistem sedang sibuk. Coba hitung ongkir lagi, ya.");
+            }
+        }));
+        if (task == null && checkoutQuoteLoading) {
+            showCheckoutQuoteError("Sistem sedang sibuk. Coba hitung ongkir lagi, ya.");
+        }
+    }
+
+    private void showCheckoutQuoteError(String message) {
+        if (!checkoutQuoteLoading) return;
+        checkoutQuoteLoading = false;
+        setLoading(false);
+        renderCheckout();
+        showInfo("Ongkir", firstNonEmpty(message, "Ongkir belum dapat dihitung. Coba lagi."));
     }
 
     protected void createFoodOrder() {
@@ -2129,8 +2461,12 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
     private void requestFoodConfirmation(JSONObject payload, JSONObject updatedQuote) {
         if (currentScreen!=2 || isFinishing() || isDestroyed()) return;
         foodOrderSubmitting=true;
-        if (checkoutSubmitButton!=null) checkoutSubmitButton.setEnabled(false);
+        if (checkoutSubmitButton != null) {
+            checkoutSubmitButton.setEnabled(false);
+            checkoutSubmitButton.setAlpha(.55f);
+        }
         if (singleCheckoutNote != null) singleCheckoutNote.setEnabled(false);
+        for (View control : checkoutControls) control.setEnabled(false);
         if (updatedQuote!=null) {
             presentFoodQuote(payload,updatedQuote,true);
             return;
@@ -2199,6 +2535,7 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
         foodOrderSubmitting=false;
         restoreCheckoutSubmit();
         if (singleCheckoutNote != null) singleCheckoutNote.setEnabled(true);
+        for (View control : checkoutControls) control.setEnabled(true);
         setLoading(false);
     }
 
@@ -2217,7 +2554,13 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
         showInfo("Pesanan", firstNonEmpty(message, "Pesanan belum dapat diproses."));
     }
 
-    private void restoreCheckoutSubmit(){if(checkoutSubmitButton!=null)checkoutSubmitButton.setEnabled(activeRestaurant!=null&&activeRestaurant.optInt("is_open",1)==1);}
+    private void restoreCheckoutSubmit() {
+        if (checkoutSubmitButton == null) return;
+        boolean accepting = !checkoutQuoteLoading && activeRestaurant != null
+                && (refreshCheckoutRestaurant || activeRestaurant.optInt("is_open", 1) == 1);
+        checkoutSubmitButton.setEnabled(accepting);
+        checkoutSubmitButton.setAlpha(accepting ? 1f : .55f);
+    }
 
     private void removeConfirmedDraftItems(JSONObject receipt) {
         if (receipt == null) return;
@@ -2264,6 +2607,9 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
         if (keyboard != null) keyboard.hideSoftInputFromWindow(page.getWindowToken(), 0);
         foodHeader.setVisibility(View.GONE);
         currentScreen = 3;
+        boolean dark = CustomerAppSettings.isDarkMode(this);
+        CustomerWindowPolicy.status(getWindow(), dark ? 0xff05101d : 0xff0b7cff);
+        CustomerWindowPolicy.navigation(getWindow(), dark ? 0xff05101d : 0xff071426);
         successOrderIds = new ArrayList<>(orderIds);
         long duration = Math.min(9000, 4400 + Math.max(0, orderIds.size() - 2) * 300L);
         successActivityAt = due > 0 ? due : android.os.SystemClock.elapsedRealtime() + duration;
@@ -2707,52 +3053,62 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
     private void addCheckoutProduct(LinearLayout section, Cart draft, CartItem item, JSONObject quote, boolean saved) {
         boolean priced = quote != null && quote.optInt("id") == item.id && quote.optInt("qty") == item.qty;
         double price = priced ? quote.optDouble("price", item.price) : item.price;
+        LinearLayout product = new LinearLayout(this);
+        product.setOrientation(LinearLayout.VERTICAL);
+        product.setPadding(0, dp(4), 0, dp(4));
         LinearLayout row = new LinearLayout(this);
         row.setGravity(Gravity.CENTER_VERTICAL);
-        row.setPadding(0, dp(6), 0, dp(6));
-        row.addView(cartThumbnail(item.image, false), new LinearLayout.LayoutParams(dp(40), dp(40)));
-
+        int imageSize = dp(checkoutNarrow ? 40 : 48);
+        row.addView(cartThumbnail(item.image, false), new LinearLayout.LayoutParams(imageSize, imageSize));
         LinearLayout details = new LinearLayout(this);
         details.setOrientation(LinearLayout.VERTICAL);
-        details.setPadding(dp(8), 0, dp(4), 0);
-        details.addView(text(item.name, 13, "#0F172A", true));
-        if (!item.optionText.isEmpty()) details.addView(text(item.optionText, 11, "#64748B", false));
-        details.addView(text(rupiah(price) + " / porsi", 11, "#64748B", false));
-        Button noteButton = FoodCheckoutNote.itemButton(this, item.name, item.note,
+        details.setPadding(dp(9), 0, dp(5), 0);
+        details.addView(checkoutText(item.name, 14, "#0F172A", true));
+        if (!item.optionText.isEmpty()) details.addView(checkoutText(item.optionText, 12, "#64748B", false));
+        details.addView(checkoutText(rupiah(price), 13, "#64748B", false));
+        Button note = FoodCheckoutNote.inlineItemButton(this, item.name, item.note,
                 value -> updateCheckoutProduct(draft, item, item.qty, value, saved));
-        details.addView(noteButton, new LinearLayout.LayoutParams(-2, dp(44)));
-        if (!item.note.isEmpty()) {
-            TextView preview = text(item.note, 12, "#475569", false);
-            preview.setMaxLines(3);
-            preview.setEllipsize(android.text.TextUtils.TruncateAt.END);
-            details.addView(preview);
-        }
+        note.setEnabled(!foodOrderSubmitting);
+        checkoutControls.add(note);
+        details.addView(note, new LinearLayout.LayoutParams(-1, -2));
         row.addView(details, new LinearLayout.LayoutParams(0, -2, 1));
 
-        LinearLayout quantity = new LinearLayout(this);
-        quantity.setGravity(Gravity.CENTER_VERTICAL);
+        LinearLayout stepper = new LinearLayout(this);
+        stepper.setGravity(Gravity.CENTER_VERTICAL);
         Button minus = checkoutQuantityButton("−", "Kurangi " + item.name);
         Button plus = checkoutQuantityButton("+", "Tambah " + item.name);
-        minus.setEnabled(!foodOrderSubmitting);
-        plus.setEnabled(!foodOrderSubmitting && item.qty < 99);
-        noteButton.setEnabled(!foodOrderSubmitting);
-        minus.setOnClickListener(v -> updateCheckoutProduct(draft, item, item.qty - 1, item.note, saved));
-        plus.setOnClickListener(v -> updateCheckoutProduct(draft, item, item.qty + 1, item.note, saved));
-        quantity.addView(minus, new LinearLayout.LayoutParams(dp(44), dp(44)));
-        TextView count = text(String.valueOf(item.qty), 14, "#0F172A", true);
+        bindCheckoutControl(minus, true, () -> updateCheckoutProduct(draft, item, item.qty - 1, item.note, saved));
+        bindCheckoutControl(plus, item.qty < 99, () -> updateCheckoutProduct(draft, item, item.qty + 1, item.note, saved));
+        stepper.addView(minus, new LinearLayout.LayoutParams(dp(44), dp(44)));
+        TextView count = checkoutText(String.valueOf(item.qty), 14, "#0F172A", true);
         count.setGravity(Gravity.CENTER);
-        quantity.addView(count, new LinearLayout.LayoutParams(dp(26), -2));
-        quantity.addView(plus, new LinearLayout.LayoutParams(dp(44), dp(44)));
-        row.addView(quantity);
-        section.addView(row, new LinearLayout.LayoutParams(-1, -2));
+        count.setMinWidth(dp(23));
+        count.setPadding(dp(2), 0, dp(2), 0);
+        count.setContentDescription(item.qty + " porsi");
+        stepper.addView(count, new LinearLayout.LayoutParams(-2, -2));
+        stepper.addView(plus, new LinearLayout.LayoutParams(dp(44), dp(44)));
+
+        if (checkoutNarrow) {
+            product.addView(row);
+            LinearLayout.LayoutParams stepperParams = new LinearLayout.LayoutParams(-2, -2, Gravity.END);
+            product.addView(stepper, stepperParams);
+        } else {
+            row.addView(stepper);
+            product.addView(row);
+        }
+        section.addView(product, new LinearLayout.LayoutParams(-1, -2));
     }
 
     private Button checkoutQuantityButton(String symbol, String description) {
-        Button button = checkoutChoice(symbol, false);
-        button.setTextSize(19);
-        button.setMinimumHeight(0);
-        button.setMinHeight(0);
+        Button button = new Button(this);
+        styleCheckoutButton(button, 20);
+        // Reserve a 44 dp hit target around the 36 dp visible control.
+        button.setPadding(0, 0, 0, 0);
+        button.setText(symbol);
+        button.setTextColor(0xff0967db);
         button.setContentDescription(description);
+        button.setBackground(new android.graphics.drawable.InsetDrawable(
+                checkoutRipple(round("#E3EDFA", dp(10))), dp(4)));
         return button;
     }
 
@@ -2968,7 +3324,7 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
         currentScreen = COMBINED_CHECKOUT;
         combinedSessionId = FoodCombinedCheckout.sessionId(this, userId, drafts);
         combinedPayment = FoodCombinedCheckout.payment(this, userId);
-        buildTopBar("Checkout", "Ringkasan pilihanmu", true);
+        buildTopBar("Checkout", "TransFood", true);
         combinedCheckoutScroll = 0;
         foodScroll.scrollTo(0, 0);
         quoteCombinedCheckout();
@@ -3018,40 +3374,17 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
     }
 
     private void renderCombinedCheckout() {
-        clearStickyCartBar();
-        root.removeAllViews();
-        LinearLayout address = checkoutCard();
-        address.addView(text("Alamat pengantaran", 15, "#0F172A", true));
-        address.addView(text(combinedPlan == null ? DeliveryAddressGate.address(this) : combinedPlan.address,
-                13, "#64748B", false));
-        Button edit = checkoutChoice("Ubah alamat", false);
-        edit.setEnabled(!foodOrderSubmitting);
-        edit.setOnClickListener(v -> {
+        beginCheckoutLayout();
+        addCheckoutCard(checkoutAddress(combinedPlan == null ? DeliveryAddressGate.address(this) : combinedPlan.address, () -> {
             combinedCheckoutScroll = foodScroll.getScrollY();
             editingCombinedAddress = true;
             DeliveryAddressGate.edit(this, "TransFood");
-        });
-        address.addView(edit, new LinearLayout.LayoutParams(-1, dp(44)));
-        addWithMargin(address, 0, 0, 0, dp(10));
-
-        LinearLayout payment = checkoutCard();
-        payment.addView(text("Metode pembayaran", 15, "#0F172A", true));
-        LinearLayout options = new LinearLayout(this);
-        Button cash = checkoutChoice("Tunai", "cash".equals(combinedPayment));
-        Button wallet = checkoutChoice("Transiva Pay", "balance".equals(combinedPayment));
-        cash.setEnabled(!foodOrderSubmitting && !combinedQuoting);
-        wallet.setEnabled(!foodOrderSubmitting && !combinedQuoting);
-        cash.setOnClickListener(v -> chooseCombinedPayment("cash"));
-        wallet.setOnClickListener(v -> chooseCombinedPayment("balance"));
-        addCheckoutPair(options, cash, wallet, 46);
-        payment.addView(options);
-        payment.addView(text("Pengantaran standar dari setiap toko", 12, "#64748B", false));
-        addWithMargin(payment, 0, 0, 0, dp(10));
+        }));
 
         List<Cart> drafts = cartStore.selectedCarts();
         for (Cart draft : drafts) {
-            LinearLayout section = compactCartCard();
-            addCartMerchant(section, draft, null);
+            LinearLayout section = checkoutCard();
+            addCheckoutMerchant(section, draft, "");
             FoodCombinedCheckout.StoreQuote store = null;
             if (combinedPlan != null) {
                 for (FoodCombinedCheckout.StoreQuote quotedStore : combinedPlan.stores) {
@@ -3063,6 +3396,7 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
             }
             JSONArray quoted = store == null ? null : store.quote.optJSONArray("items");
             for (int i = 0; i < draft.items.size(); i++) {
+                if (i > 0) checkoutDivider(section);
                 addCheckoutProduct(section, draft, draft.items.get(i),
                         quoted == null ? null : quoted.optJSONObject(i), true);
             }
@@ -3072,8 +3406,19 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
                 section.addView(compactSummary("Total toko", store.quote.optLong("total"), true));
             }
             addCheckoutNote(section, draft, true);
-            addWithMargin(section, 0, 0, 0, dp(10));
+            addCheckoutCard(section);
         }
+        LinearLayout settings = checkoutCard();
+        settings.addView(checkoutHeading("Pengantaran"));
+        settings.addView(text("Standar dari setiap toko", 12, "#64748B", false));
+        checkoutDivider(settings);
+        View payment = checkoutSetting(R.drawable.ic_nav2_wallet, "Pembayaran",
+                paymentLabel(combinedPayment) + "  ›",
+                () -> showCheckoutPayment(combinedPayment, this::chooseCombinedPayment));
+        payment.setEnabled(!foodOrderSubmitting && !combinedQuoting);
+        settings.addView(payment);
+        addCheckoutCard(settings);
+
         int targetScroll = combinedCheckoutScroll;
         foodScroll.post(() -> {
             if (currentScreen == COMBINED_CHECKOUT) foodScroll.scrollTo(0, targetScroll);
@@ -3093,14 +3438,13 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
         }
 
         LinearLayout totals = checkoutCard();
-        totals.addView(text("Rincian pembayaran", 15, "#0F172A", true));
-        totals.addView(summaryLine("Subtotal semua menu", combinedPlan.food));
-        totals.addView(summaryLine("Total ongkir", combinedPlan.delivery));
-        totals.addView(summaryLine("Total akhir", combinedPlan.total));
+        totals.addView(checkoutHeading("Rincian pembayaran"));
+        addCheckoutAmount(totals, "Subtotal semua menu", rupiah(combinedPlan.food));
+        addCheckoutAmount(totals, "Total ongkir", rupiah(combinedPlan.delivery));
         totals.addView(text("Setiap toko memiliki nomor pesanan dan pengantaran sendiri. Jika satu pesanan terkendala, pesanan yang sudah tercatat tetap berjalan.", 12, "#64748B", false));
         addWithMargin(totals, 0, 0, 0, dp(10));
-        if (!foodOrderSubmitting) showCombinedBar("Total akhir", combinedPlan.total, "Buat pesanan", this::submitCombinedCheckout);
-        else addStatus("Membuat pesanan tiap toko…");
+        attachCheckoutBar("Total bayar", rupiah(combinedPlan.total),
+                foodOrderSubmitting ? "Memproses…" : "Buat Pesanan", !foodOrderSubmitting, this::submitCombinedCheckout);
     }
 
     private void chooseCombinedPayment(String payment) {
@@ -3182,7 +3526,7 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
             resume.setOnClickListener(v -> {
                 currentScreen = COMBINED_CHECKOUT;
                 combinedCheckoutScroll = 0;
-                buildTopBar("Checkout", "Ringkasan pilihan yang tersisa", true);
+                buildTopBar("Checkout", "TransFood", true);
                 foodScroll.scrollTo(0, 0);
                 quoteCombinedCheckout();
             });
@@ -3199,19 +3543,33 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
     private void buildTopBar(String title, String sub, boolean back) {
         LinearLayout row = new LinearLayout(this);
         row.setGravity(Gravity.CENTER_VERTICAL);
-        row.setPadding(dp(14), dp(8), dp(14), dp(8));
+        boolean checkout = currentScreen == 2 || currentScreen == COMBINED_CHECKOUT;
+        boolean dark = CustomerAppSettings.isDarkMode(this);
+        if (checkout) {
+            applyCheckoutSystemBars(dark);
+        } else {
+            CustomerWindowPolicy.status(getWindow(), dark ? 0xff05101d : 0xff0b7cff);
+            CustomerWindowPolicy.navigation(getWindow(), dark ? 0xff05101d : 0xff071426);
+        }
+        int inset = checkout ? checkoutSideInset() : dp(14);
+        row.setPadding(inset, dp(checkout ? 4 : 8), inset, dp(checkout ? 4 : 8));
+        foodHeader.setElevation(dp(checkout ? 0 : 3));
         if (back) {
             TextView b = text("‹", 34, "#0B3A78", true);
             b.setGravity(Gravity.CENTER);
-            b.setBackground(round("#FFFFFF", dp(18)));
+            b.setBackground(checkout ? checkoutRipple(null) : round("#FFFFFF", dp(18)));
+            b.setContentDescription("Kembali");
+            b.setFocusable(true);
             b.setOnClickListener(v -> handleBack());
             row.addView(b, new LinearLayout.LayoutParams(dp(44), dp(44)));
         }
         LinearLayout col = new LinearLayout(this);
         col.setOrientation(LinearLayout.VERTICAL);
-        col.setPadding(dp(12), 0, 0, 0);
-        col.addView(text(title, 23, "#0B3A78", true));
-        if (sub != null && sub.length() > 0) col.addView(text(sub, 12, "#64748B", false));
+        col.setPadding(dp(checkout ? 6 : 12), 0, 0, 0);
+        col.addView(checkout ? checkoutText(title, 23, "#0F172A", true) : text(title, 23, "#0B3A78", true));
+        if (sub != null && !sub.isEmpty()) {
+            col.addView(checkout ? checkoutText(sub, 12, "#64748B", false) : text(sub, 12, "#64748B", false));
+        }
         row.addView(col, new LinearLayout.LayoutParams(0, -2, 1));
         savedCartButton = null;
         savedCartBadge = null;
@@ -3232,6 +3590,7 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
         foodHeader.setVisibility(View.VISIBLE);
         foodHeader.removeAllViews();
         foodHeader.addView(row, new LinearLayout.LayoutParams(-1, -2));
+        if (checkout) checkoutDivider(foodHeader);
     }
 
     private void handleBack() {
@@ -3386,7 +3745,10 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
         if(restaurantsLoadFinished||activeRestaurant!=null)refreshMerchantStories();
         if (!DeliveryAddressGate.valid(this)) { return; }
         if(root==null){recreate();return;}
-        if(editingCheckoutAddress){editingCheckoutAddress=false;if(currentScreen==2){clearStickyCartBar();root.removeAllViews();addStatus("Memperbarui alamat dan ongkir…");calculateOngkirThenRender();}}
+        if (editingCheckoutAddress) {
+            editingCheckoutAddress = false;
+            if (currentScreen == 2) calculateOngkirThenRender();
+        }
         if (editingCombinedAddress) {
             editingCombinedAddress = false;
             if (currentScreen == COMBINED_CHECKOUT && !foodOrderSubmitting) quoteCombinedCheckout();

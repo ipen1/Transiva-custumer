@@ -98,6 +98,15 @@ public final class CustomerWindowPolicy {
         State state = state(window); state.bottomColor = color;
         state.protection.invalidateSelf(); applyIcons(window,state);
     }
+    static void setBarColorsIfChanged(Window window, int top, int bottom) {
+        State state = state(window);
+        if (state.topColor == top && state.bottomColor == bottom) return;
+        state.topColor = top;
+        state.bottomColor = bottom;
+        state.protection.invalidateSelf();
+        applyIcons(window, state);
+    }
+
     private static void applyIcons(Window window, State state) {
         WindowInsetsControllerCompat c = WindowCompat.getInsetsController(window,window.getDecorView());
         c.setAppearanceLightStatusBars(ColorUtils.calculateLuminance(state.topColor) > .5);

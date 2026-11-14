@@ -16,7 +16,7 @@ import android.view.View;
 final class AntarKilatRoadView extends View {
     private static final float HORIZON = .347f;
     private static final float RIDER_GROUND = .91f;
-    private final Bitmap street;
+    private final AntarKilatVillage village;
     private final Bitmap courier;
     private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
     private final RectF bounds = new RectF();
@@ -36,7 +36,7 @@ final class AntarKilatRoadView extends View {
 
     AntarKilatRoadView(Context context) {
         super(context);
-        street = BitmapFactory.decodeResource(getResources(), R.drawable.antar_kilat_street);
+        village = new AntarKilatVillage(getResources());
         courier = BitmapFactory.decodeResource(getResources(), R.drawable.antar_kilat_courier);
         swipeThreshold = 18 * getResources().getDisplayMetrics().density;
         parcelFaces[0] = polygon(-.74f, -.32f, .15f, -.61f, .75f, -.28f, -.11f, .03f);
@@ -68,24 +68,14 @@ final class AntarKilatRoadView extends View {
         canvas.save();
         canvas.translate((getWidth() - width) * .5f, 0);
         canvas.clipRect(0, 0, width, height);
-        drawStreet(canvas);
+        village.draw(canvas, width, height, round.elapsed / AntarKilatRound.TRAVEL_TIME,
+                round.riderLane - 1, HORIZON, RIDER_GROUND);
         drawMovingRoad(canvas);
         for (int i = round.objects.size() - 1; i >= 0; i--) {
             drawObject(canvas, round.objects.get(i));
         }
         drawCourier(canvas);
         canvas.restore();
-    }
-
-    private void drawStreet(Canvas canvas) {
-        float progress = round.elapsed / AntarKilatRound.DURATION;
-        float zoom = .035f + .055f * progress;
-        float shift = -.014f * width * (round.riderLane - 1);
-        // The buildings push forward slowly while road markings and props share the faster ground speed.
-        bounds.set(-width * zoom + shift, -height * zoom * HORIZON * 2,
-                width * (1 + zoom) + shift, height * (1 + 2 * zoom * (1 - HORIZON)));
-        paint.setColor(Color.WHITE);
-        canvas.drawBitmap(street, null, bounds, paint);
     }
 
     private void drawMovingRoad(Canvas canvas) {

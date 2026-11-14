@@ -3,6 +3,16 @@ plugins {
 }
 
 def customerSources = rootProject.file('app/src/main')
+// Stage only the shared game classes in the test module's Java source tree.
+def gameJava = layout.buildDirectory.dir('generated/gameJava')
+def copyGameJava = tasks.register('copyGameJava', Sync) {
+    from new File(customerSources, 'java')
+    include 'com/transiva/app/AntarKilatGameView.java',
+            'com/transiva/app/AntarKilatRoadView.java',
+            'com/transiva/app/AntarKilatRound.java'
+    into gameJava
+}
+
 def gameResources = layout.buildDirectory.dir('generated/gameResources')
 def copyGameResources = tasks.register('copyGameResources', Sync) {
     from new File(customerSources, 'res')
@@ -29,16 +39,12 @@ android {
 
     sourceSets {
         main {
-            java.srcDir new File(customerSources, 'java')
-            java.include 'com/transiva/app/AntarKilatGameView.java',
-                    'com/transiva/app/AntarKilatRoadView.java',
-                    'com/transiva/app/AntarKilatRound.java',
-                    'com/transiva/app/AntarKilatTestActivity.java'
+            java.srcDir gameJava
             res.srcDir gameResources
         }
     }
 }
 
 tasks.named('preBuild').configure {
-    dependsOn copyGameResources
+    dependsOn copyGameJava, copyGameResources
 }

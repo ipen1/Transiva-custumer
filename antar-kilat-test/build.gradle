@@ -1,0 +1,44 @@
+plugins {
+    id 'com.android.application'
+}
+
+def customerSources = rootProject.file('app/src/main')
+def gameResources = layout.buildDirectory.dir('generated/gameResources')
+def copyGameResources = tasks.register('copyGameResources', Sync) {
+    from new File(customerSources, 'res')
+    include 'drawable-nodpi/antar_kilat_*.webp', 'raw/antar_kilat_*.wav'
+    into gameResources
+}
+
+android {
+    namespace 'com.transiva.app'
+    compileSdk 36
+
+    defaultConfig {
+        applicationId 'com.transiva.antarkilat.test'
+        minSdk 23
+        targetSdk 36
+        versionCode 1
+        versionName '0.2'
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
+    }
+
+    sourceSets {
+        main {
+            java.srcDir new File(customerSources, 'java')
+            java.include 'com/transiva/app/AntarKilatGameView.java',
+                    'com/transiva/app/AntarKilatRoadView.java',
+                    'com/transiva/app/AntarKilatRound.java',
+                    'com/transiva/app/AntarKilatTestActivity.java'
+            res.srcDir gameResources
+        }
+    }
+}
+
+tasks.named('preBuild').configure {
+    dependsOn copyGameResources
+}

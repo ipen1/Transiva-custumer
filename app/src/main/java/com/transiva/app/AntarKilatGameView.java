@@ -1,6 +1,5 @@
 package com.transiva.app;
 
-import android.app.Activity;
 import android.content.Context;
 import android.content.SharedPreferences;
 import android.content.res.ColorStateList;
@@ -8,6 +7,8 @@ import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
 import android.graphics.drawable.RippleDrawable;
+import android.media.AudioAttributes;
+import android.media.SoundPool;
 import android.view.Gravity;
 import android.view.View;
 import android.widget.Button;
@@ -19,7 +20,7 @@ import android.widget.TextView;
 import java.util.Locale;
 import java.util.Random;
 
-final class AntarKilatGameView extends LinearLayout implements CustomerAppSettings.ThemeAware {
+class AntarKilatGameView extends LinearLayout {
     private static final int NAVY = 0xff092659;
     private static final int BLUE = 0xff1468df;
     private static final int DARK = 0xff081833;
@@ -47,11 +48,14 @@ final class AntarKilatGameView extends LinearLayout implements CustomerAppSettin
     private int displayedSeconds = -1;
     private boolean themed;
     private boolean darkTheme;
+    private SoundPool sounds;
+    private int pickupSound;
+    private int hitSound;
+    private int activeStream;
 
-    AntarKilatGameView(Activity context, String orderStatus, Runnable close) {
+    AntarKilatGameView(Context context, String orderStatus, Runnable close, boolean dark) {
         super(context);
         scores = context.getSharedPreferences("antar_kilat", Context.MODE_PRIVATE);
-        CustomerAppSettings.preserveArtwork(this);
         setOrientation(VERTICAL);
         setBackgroundColor(DARK);
 
@@ -131,13 +135,11 @@ final class AntarKilatGameView extends LinearLayout implements CustomerAppSettin
         center.addView(card, new LayoutParams(-2, -2));
         overlay.addView(center, new ScrollView.LayoutParams(-1, -2));
         stage.addView(overlay, new FrameLayout.LayoutParams(-1, -1));
-        onCustomerThemeChanged(CustomerAppSettings.isDarkMode(context));
+        applyPalette(dark);
         showState();
     }
 
-    @Override public void onCustomerThemeChanged(boolean dark) {
-        Activity activity = (Activity) getContext();
-        CustomerWindowPolicy.setBarColorsIfChanged(activity.getWindow(), NAVY, DARK);
+    final void applyPalette(boolean dark) {
         if (themed && dark == darkTheme) return;
         themed = true;
         darkTheme = dark;
@@ -154,13 +156,40 @@ final class AntarKilatGameView extends LinearLayout implements CustomerAppSettin
     void pauseRound() {
         if (state != State.RUNNING) return;
         removeCallbacks(frame);
+        stopSound();
         state = State.PAUSED;
         showState();
     }
 
+    @Override protected void onAttachedToWindow() {
+        super.onAttachedToWindow();
+        sounds = new SoundPool.Builder()
+                .setMaxStreams(1)
+                .setAudioAttributes(new AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_GAME)
+                        .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION).build())
+                .build();
+        pickupSound = sounds.load(getContext(), R.raw.antar_kilat_pickup, 1);
+        hitSound = sounds.load(getContext(), R.raw.antar_kilat_hit, 1);
+    }
+
     @Override protected void onDetachedFromWindow() {
         pauseRound();
+        if (sounds != null) {
+            sounds.release();
+            sounds = null;
+        }
         super.onDetachedFromWindow();
+    }
+
+    private void playSound(int sample) {
+        if (sounds == null || sample == 0) return;
+        stopSound();
+        activeStream = sounds.play(sample, .30f, .30f, 1, 0, 1f);
+    }
+
+    private void stopSound() {
+        if (sounds != null && activeStream != 0) sounds.stop(activeStream);
+        activeStream = 0;
     }
 
     private void play() {
@@ -178,8 +207,12 @@ final class AntarKilatGameView extends LinearLayout implements CustomerAppSettin
     private void step() {
         if (state != State.RUNNING) return;
         long now = System.nanoTime();
+        int pickups = round.pickupCount;
+        int hits = round.hitCount;
         round.advance((now - previousFrame) / 1_000_000_000f);
         previousFrame = now;
+        if (round.hitCount != hits) playSound(hitSound);
+        else if (round.pickupCount != pickups) playSound(pickupSound);
         if (round.elapsed >= AntarKilatRound.DURATION) {
             state = State.FINISHED;
             if (round.score > scores.getInt(BEST_SCORE, 0)) {

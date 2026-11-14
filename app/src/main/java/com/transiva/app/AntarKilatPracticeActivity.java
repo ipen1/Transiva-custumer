@@ -7,7 +7,7 @@ public final class AntarKilatPracticeActivity extends CustomerAdaptiveActivity {
 
     @Override protected void onCreate(Bundle state) {
         super.onCreate(state);
-        game = new AntarKilatGameView(this, null, this::finish);
+        game = new CustomerAntarKilatView(this, null, this::finish);
         setContentView(game);
     }
 

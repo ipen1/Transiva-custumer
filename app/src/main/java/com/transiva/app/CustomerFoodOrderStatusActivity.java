@@ -142,7 +142,7 @@ public class CustomerFoodOrderStatusActivity extends CustomerAdaptiveActivity {
 
     private void openGame(String merchantStatus) {
         if (game != null || latestWaiting == null || !foreground || terminal || routed) return;
-        game = new AntarKilatGameView(this, gameOrderLabel(merchantStatus), this::closeGame);
+        game = new CustomerAntarKilatView(this, gameOrderLabel(merchantStatus), this::closeGame);
         setContentView(game);
     }
 

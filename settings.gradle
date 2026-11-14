@@ -7,3 +7,5 @@ dependencyResolutionManagement {
 }
 rootProject.name = "Transiva-Customer"
 include ':app'
+
+include ':antar-kilat-test'

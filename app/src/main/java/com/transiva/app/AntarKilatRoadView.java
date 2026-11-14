@@ -14,8 +14,6 @@ import android.view.MotionEvent;
 import android.view.View;
 
 final class AntarKilatRoadView extends View {
-    private static final float HORIZON = .347f;
-    private static final float RIDER_GROUND = .91f;
     private final AntarKilatVillage village;
     private final Bitmap courier;
     private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
@@ -68,8 +66,7 @@ final class AntarKilatRoadView extends View {
         canvas.save();
         canvas.translate((getWidth() - width) * .5f, 0);
         canvas.clipRect(0, 0, width, height);
-        village.draw(canvas, width, height, round.elapsed / AntarKilatRound.TRAVEL_TIME,
-                round.riderLane - 1, HORIZON, RIDER_GROUND);
+        village.draw(canvas, width, height, round.elapsed / AntarKilatRound.TRAVEL_TIME);
         drawMovingRoad(canvas);
         for (int i = round.objects.size() - 1; i >= 0; i--) {
             drawObject(canvas, round.objects.get(i));
@@ -80,24 +77,16 @@ final class AntarKilatRoadView extends View {
 
     private void drawMovingRoad(Canvas canvas) {
         float distance = round.elapsed / AntarKilatRound.TRAVEL_TIME;
-        float marks = distance % .18f;
-        for (float depth = marks - .18f; depth < 1.08f; depth += .18f) {
+        float spacing = .18f;
+        float marks = distance % spacing;
+        float edge = AntarKilatPerspective.END_DEPTH;
+        paint.setColor(0xaedbe3ef);
+        for (float depth = marks - spacing; depth < edge; depth += spacing) {
             float start = Math.max(0, depth);
-            float end = Math.min(1.08f, depth + .085f);
+            float end = Math.min(edge, depth + .075f);
             if (end <= start) continue;
-            paint.setColor(0xbfedefff);
             drawStripe(canvas, -.5f, start, end);
             drawStripe(canvas, .5f, start, end);
-        }
-        // Small glints in the asphalt travel with the same projection as the road objects.
-        for (int i = 0; i < 45; i++) {
-            float depth = (distance + i * .1439f) % 1.08f;
-            float lane = ((i * 53 % 97) / 96f - .5f) * 2.95f;
-            float x = roadX(lane, depth);
-            float y = roadY(depth);
-            float size = width * .013f * depth * depth;
-            paint.setColor(i % 5 == 0 ? 0x35ffc080 : 0x237aa7c8);
-            canvas.drawOval(x - size * .25f, y - size, x + size * .25f, y + size, paint);
         }
     }
 
@@ -112,19 +101,18 @@ final class AntarKilatRoadView extends View {
     }
 
     private float roadX(float lane, float depth) {
-        float cameraShift = (round.riderLane - 1) * (.014f + .025f * depth);
-        return width * (.5f - cameraShift + lane * (.008f + .30f * depth * depth));
+        return AntarKilatPerspective.x(lane, depth, width);
     }
 
     private float roadY(float depth) {
-        return height * (HORIZON + (RIDER_GROUND - HORIZON) * depth * depth);
+        return AntarKilatPerspective.y(depth, height);
     }
 
     private void drawObject(Canvas canvas, AntarKilatRound.ObjectOnRoad object) {
         float depth = object.depth;
         float x = roadX(object.lane - 1, depth);
         float y = roadY(depth);
-        float size = width * (.005f + .088f * depth * depth);
+        float size = width * (.004f + .082f * AntarKilatPerspective.scale(depth));
         paint.setColor(0x5b050a18);
         canvas.drawOval(x - size, y - size * .19f, x + size, y + size * .19f, paint);
         if (object.kind == AntarKilatRound.Kind.PARCEL) {
@@ -137,7 +125,7 @@ final class AntarKilatRoadView extends View {
     }
 
     private void drawParcel(Canvas canvas, float x, float ground, float size, int lane) {
-        float y = ground - size * (.57f + .14f * (float) Math.sin(round.elapsed * 7 + lane));
+        float y = ground - size * (.52f + .05f * (float) Math.sin(round.elapsed * 4 + lane));
         canvas.save();
         canvas.translate(x, y);
         canvas.scale(size, size);
@@ -150,7 +138,7 @@ final class AntarKilatRoadView extends View {
         fill(canvas, 0xffdc7914, parcelFaces[2]);
         fill(canvas, 0xfffff1ad, parcelFaces[3]);
         fill(canvas, 0xffffcc68, parcelFaces[4]);
-        float twinkle = .10f + .06f * (float) Math.sin(round.elapsed * 10 + lane);
+        float twinkle = .11f + .025f * (float) Math.sin(round.elapsed * 4 + lane);
         paint.setColor(0xffffefad);
         canvas.drawOval(.83f - twinkle, -.62f, .83f + twinkle, -.56f, paint);
         canvas.drawOval(.80f, -.59f - twinkle, .86f, -.59f + twinkle, paint);
@@ -197,13 +185,13 @@ final class AntarKilatRoadView extends View {
         float x = roadX(round.riderLane - 1, 1);
         float bikeHeight = Math.min(height * .40f, width * .44f);
         float bikeWidth = bikeHeight * courier.getWidth() / courier.getHeight();
-        float bounce = width * (.0025f * (float) Math.sin(round.elapsed * 21)
-                + .026f * (round.impact / .32f) * (float) Math.sin(round.impact * 19));
+        float impact = round.impact / .32f;
+        float bounce = width * .008f * 4 * impact * (1 - impact);
         paint.setColor(0x70030c1b);
         canvas.drawOval(x - bikeWidth * .42f, ground - bikeHeight * .071f,
                 x + bikeWidth * .42f, ground + bikeHeight * .038f, paint);
         canvas.save();
-        canvas.rotate(15 * round.lean, x, ground);
+        canvas.rotate(8 * round.lean, x, ground);
         bounds.set(x - bikeWidth / 2, ground - bikeHeight - bounce,
                 x + bikeWidth / 2, ground - bounce);
         paint.setColor(Color.WHITE);

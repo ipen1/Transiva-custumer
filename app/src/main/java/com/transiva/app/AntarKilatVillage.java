@@ -14,8 +14,8 @@ import android.graphics.Shader;
 
 /** Draws roadside scenery in the same depth space as the collectibles and lane markings. */
 final class AntarKilatVillage {
-    private static final float ROW_SPACING = .19f;
-    private static final float FAR_EDGE = 1.21f;
+    private static final float ROW_SPACING = .16f;
+    private static final float FAR_EDGE = AntarKilatPerspective.END_DEPTH;
     private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
     private final Path shape = new Path();
     private final RectF bounds = new RectF();
@@ -24,12 +24,11 @@ final class AntarKilatVillage {
             new int[]{0xafffe6a6, 0x56ffb558, 0x00ff8b32}, null, Shader.TileMode.CLAMP);
     private final Shader sky = new LinearGradient(0, 0, 0, 1, 0xff081d48, 0xff7395cf, Shader.TileMode.CLAMP);
     private Shader asphalt;
+    private Shader roadside;
     private float roadHeight;
     private float width;
     private float height;
     private float horizon;
-    private float ground;
-    private float cameraLane;
 
     AntarKilatVillage(Resources resources) {
         props = new Bitmap[]{
@@ -42,22 +41,21 @@ final class AntarKilatVillage {
         };
     }
 
-    void draw(Canvas canvas, float width, float height, float distance, float cameraLane,
-              float horizonFraction, float groundFraction) {
+    void draw(Canvas canvas, float width, float height, float distance) {
         this.width = width;
         this.height = height;
-        this.cameraLane = cameraLane;
-        horizon = height * horizonFraction;
-        ground = height * groundFraction;
+        horizon = height * AntarKilatPerspective.HORIZON;
         if (asphalt == null || height != roadHeight) {
             roadHeight = height;
             asphalt = new LinearGradient(0, horizon, 0, height,
-                    0xff52678b, 0xff293650, Shader.TileMode.CLAMP);
+                    0xff58647c, 0xff30394d, Shader.TileMode.CLAMP);
+            roadside = new LinearGradient(0, horizon, 0, height,
+                    0xff405869, 0xff263d3a, Shader.TileMode.CLAMP);
         }
         drawLandscape(canvas);
-        paint.setColor(0xff465557);
-        canvas.drawRect(0, horizon, width, height, paint);
         paint.setColor(Color.WHITE);
+        paint.setShader(roadside);
+        canvas.drawRect(0, horizon, width, height, paint);
         paint.setShader(asphalt);
         band(canvas, -1.51f, 1.51f, 0, FAR_EDGE);
         paint.setShader(null);
@@ -88,7 +86,6 @@ final class AntarKilatVillage {
         paint.setShader(sky);
         canvas.drawRect(0, 0, 1, 1, paint);
         paint.setShader(null);
-        canvas.translate(-.025f * cameraLane, 0);
         paint.setColor(0x257bade5);
         canvas.drawOval(-.05f, .23f, .43f, .265f, paint);
         canvas.drawOval(.59f, .42f, .96f, .45f, paint);
@@ -122,7 +119,7 @@ final class AntarKilatVillage {
         float end = Math.min(FAR_EDGE, depth + ROW_SPACING);
         float start = Math.max(0, depth);
         if (end <= start) return;
-        paint.setColor((row & 1) == 0 ? 0xffb8b3b0 : 0xff434c60);
+        paint.setColor((row & 1) == 0 ? 0xff89898b : 0xff707783);
         band(canvas, -1.60f, -1.50f, start, end);
         band(canvas, 1.50f, 1.60f, start, end);
     }
@@ -131,36 +128,35 @@ final class AntarKilatVillage {
         int slot = ((row + (side == 1 ? 3 : 0)) % 8 + 8) % 8;
         float base = x(side * 1.67f, depth);
         float groundY = y(depth);
-        float scale = depth * depth * width;
+        float scale = AntarKilatPerspective.scale(depth) * width;
         switch (slot) {
             case 0:
             case 4:
-                drawProp(canvas, props[0], base, groundY, scale * .48f, side, 0);
+                drawProp(canvas, props[0], base, groundY, scale * .48f, side);
                 break;
             case 2:
-                drawProp(canvas, props[1], base, groundY, scale * .46f, side, 0);
+                drawProp(canvas, props[1], base, groundY, scale * .46f, side);
                 break;
             case 6:
-                drawProp(canvas, props[2], base, groundY, scale * .46f, side, 0);
+                drawProp(canvas, props[2], base, groundY, scale * .46f, side);
                 break;
             case 1:
             case 5:
-                float sway = 2.4f * (float) Math.sin(distance * 4 + row);
-                drawProp(canvas, props[3], base, groundY, scale * .33f, side, sway);
-                drawLamp(canvas, x(side * 1.58f, depth), groundY, scale, side, distance * 6 + row);
+                drawProp(canvas, props[3], base, groundY, scale * .37f, side);
+                drawLamp(canvas, x(side * 1.58f, depth), groundY, scale, side, distance * 1.6f + row);
                 break;
             case 3:
-                drawProp(canvas, props[5], base, groundY, scale * .25f, side, 0);
+                drawProp(canvas, props[5], base, groundY, scale * .25f, side);
                 break;
             default:
-                drawProp(canvas, props[4], base, groundY, scale * .17f, side, 0);
-                drawLamp(canvas, x(side * 1.58f, depth), groundY, scale, side, distance * 6 + row);
+                drawProp(canvas, props[4], base, groundY, scale * .17f, side);
+                drawLamp(canvas, x(side * 1.58f, depth), groundY, scale, side, distance * 1.6f + row);
                 break;
         }
     }
 
     private void drawProp(Canvas canvas, Bitmap sprite, float x, float y,
-                          float spriteWidth, int side, float sway) {
+                          float spriteWidth, int side) {
         if (spriteWidth < 2) return;
         float spriteHeight = spriteWidth * sprite.getHeight() / sprite.getWidth();
         float anchor = x + side * spriteWidth * .46f;
@@ -169,7 +165,6 @@ final class AntarKilatVillage {
                 anchor + spriteWidth * .44f, y + spriteWidth * .05f, paint);
         canvas.save();
         canvas.translate(anchor, y);
-        canvas.rotate(sway);
         if (side == 1) canvas.scale(-1, 1);
         bounds.set(-spriteWidth / 2, -spriteHeight, spriteWidth / 2, 0);
         paint.setColor(Color.WHITE);
@@ -187,7 +182,7 @@ final class AntarKilatVillage {
         canvas.drawLine(x, top, bulb, top, paint);
         canvas.save();
         canvas.translate(bulb, top);
-        float radius = scale * (.078f + .009f * (float) Math.sin(phase));
+        float radius = scale * (.075f + .003f * (float) Math.sin(phase));
         canvas.scale(radius, radius);
         paint.setColor(Color.WHITE);
         paint.setShader(lampHalo);
@@ -199,12 +194,11 @@ final class AntarKilatVillage {
     }
 
     private float x(float lane, float depth) {
-        float shift = cameraLane * (.014f + .025f * depth);
-        return width * (.5f - shift + lane * (.008f + .30f * depth * depth));
+        return AntarKilatPerspective.x(lane, depth, width);
     }
 
     private float y(float depth) {
-        return horizon + (ground - horizon) * depth * depth;
+        return AntarKilatPerspective.y(depth, height);
     }
 
     private void band(Canvas canvas, float left, float right, float start, float end) {

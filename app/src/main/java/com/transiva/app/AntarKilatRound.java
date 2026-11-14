@@ -6,8 +6,8 @@ import java.util.Random;
 
 final class AntarKilatRound {
     static final float DURATION = 30f;
-    static final float TRAVEL_TIME = 2.65f;
-    private static final float TURN_TIME = .24f;
+    static final float TRAVEL_TIME = 3.65f;
+    private static final float TURN_TIME = .26f;
 
     enum Kind { PARCEL, POTHOLE, PUDDLE }
 
@@ -36,7 +36,7 @@ final class AntarKilatRound {
     private float turnElapsed = TURN_TIME;
     int targetLane = 1;
     int score;
-    private float nextRow = .15f;
+    private float nextRow = .18f;
 
     AntarKilatRound(Random random) {
         this.random = random;
@@ -98,7 +98,7 @@ final class AntarKilatRound {
                 Kind kind = random.nextBoolean() ? Kind.POTHOLE : Kind.PUDDLE;
                 objects.add(new ObjectOnRoad(hazardLane, kind));
             }
-            nextRow += Math.max(.78f, 1.18f - elapsed * .012f);
+            nextRow += 1.14f;
         }
     }
 }

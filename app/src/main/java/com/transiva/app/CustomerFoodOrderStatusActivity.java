@@ -15,6 +15,8 @@ public class CustomerFoodOrderStatusActivity extends CustomerAdaptiveActivity {
     private final CustomerFeatureRuntimeController runtime=new CustomerFeatureRuntimeController(CustomerRealtimeCoordinator.Role.FOOD);
     private LinearLayout root;
     private TextView countdown;
+    private AntarKilatGameView game;
+    private JSONObject latestWaiting;
     private String orderId="",signature="";
     private boolean foreground,terminal,inFlight,routed,rendered;
     private final java.util.concurrent.atomic.AtomicBoolean heartbeatInFlight=new java.util.concurrent.atomic.AtomicBoolean();
@@ -29,9 +31,10 @@ public class CustomerFoodOrderStatusActivity extends CustomerAdaptiveActivity {
     @Override protected void onCreate(Bundle state){super.onCreate(state);registerCustomBackNavigation();if(state!=null)remaining=Math.max(1000,Math.min(8000,state.getLong("remaining",8000)));readIntent();}
     @Override protected void onNewIntent(Intent intent){super.onNewIntent(intent);setIntent(intent);generation++;handler.removeCallbacksAndMessages(null);inFlight=false;routed=false;rendered=false;terminal=false;signature="";remaining=8000;readIntent();if(foreground){fetch();startTick();}}
     private void readIntent(){
+        game = null;
+        latestWaiting = null;
         orderId=FoodOrderDecision.first(getIntent().getStringExtra("order_id"));
-        CustomerWindowPolicy.status(getWindow(),CustomerAppSettings.isDarkMode(this)?0xFF071426:0xFFF7FAFF);
-        CustomerWindowPolicy.navigation(getWindow(),CustomerAppSettings.isDarkMode(this)?0xFF071426:0xFFF7FAFF);
+        restoreOrderBars();
         if(orderId.isEmpty()){shell();message("Pesanan belum ditemukan","Buka Aktivitas untuk memeriksa pesananmu.");return;}
         if("merchant_rejected".equals(getIntent().getStringExtra("status"))){
             try{JSONObject o=new JSONObject().put("order_id",orderId).put("order_type","food").put("status","merchant_rejected").put("restaurant_name",FoodOrderDecision.first(getIntent().getStringExtra("restaurant_name"),"Toko" )).put("merchant_reject_reason",FoodOrderDecision.first(getIntent().getStringExtra("merchant_reject_reason")));showOutcome(new JSONObject().put("order",o),false);}catch(Exception ignored){loading();}
@@ -59,6 +62,7 @@ public class CustomerFoodOrderStatusActivity extends CustomerAdaptiveActivity {
                 String status = FoodOrderDecision.status(response);
                 if (CustomerOrderState.hasDriver(status) || CustomerOrderState.isFinished(status)) {
                     routed = true;
+                    if (game != null) game.pauseRound();
                     Intent trip = new Intent(this, CustomerTripActivity.class)
                             .putExtra("order_id", orderId)
                             .putExtra("source", "orders")
@@ -77,8 +81,20 @@ public class CustomerFoodOrderStatusActivity extends CustomerAdaptiveActivity {
         }catch(Exception e){runtime.post(handler,()->{if(request==generation&&!routed){inFlight=false;error();}});}},()->runtime.post(handler,()->{if(request==generation&&!routed){inFlight=false;error();}}));
         if(future==null){inFlight=false;error();}
     }
-    private void error(){if(terminal){if(foreground)startTick();return;}signature="";shell();message("Kabar pesanan belum bisa dimuat","Koneksi belum berhasil. Coba lagi atau periksa pesanan melalui Aktivitas.");}
+    private void error(){
+        if (!foreground) return;
+        if (game != null) {
+            game.updateOrderStatus("Memeriksa ulang status TransFood…");
+            handler.removeCallbacks(poll);
+            handler.postDelayed(poll, 4000);
+            return;
+        }
+        latestWaiting = null;
+        if(terminal){if(foreground)startTick();return;}signature="";shell();message("Kabar pesanan belum bisa dimuat","Koneksi belum berhasil. Coba lagi atau periksa pesanan melalui Aktivitas.");}
     private void showOutcome(JSONObject res,boolean verified){
+        game = null;
+        latestWaiting = null;
+        restoreOrderBars();
         JSONObject order=FoodOrderDecision.order(res);terminal=true;handler.removeCallbacks(poll);
         if(verified)clearMatchingOrder();
         String next=res.toString()+verified;if(next.equals(signature)){startTick();return;}signature=next;
@@ -100,12 +116,50 @@ public class CustomerFoodOrderStatusActivity extends CustomerAdaptiveActivity {
     private void showWaiting(JSONObject res){
         String merchantStatus=FoodOrderDecision.value(FoodOrderDecision.order(res),"merchant_status");boolean preparing="preparing".equals(merchantStatus)||"ready".equals(merchantStatus)||"merchant_accepted".equals(FoodOrderDecision.status(res));
         String cancelState=CustomerActivityOrderAction.foodCancellationState(FoodOrderDecision.order(res));
+        latestWaiting = res;
+        if (game != null) {
+            if (preparing && !"pending".equals(cancelState)) {
+                game.updateOrderStatus(gameOrderLabel(merchantStatus));
+                return;
+            }
+            game = null;
+            signature = "";
+            restoreOrderBars();
+        }
         String next="waiting:"+preparing+":"+merchantStatus+":"+cancelState;if(next.equals(signature))return;signature=next;shell();root.addView(new FoodOrderDecisionView(this,"waiting"),new LinearLayout.LayoutParams(-1,dp(190)));
         root.addView(text(preparing?"Pesananmu sedang diproses":"Menunggu konfirmasi toko",24,true));TextView copy=text(preparing?"Toko sudah menerima pesananmu. Informasi driver akan muncul setelah ada driver yang menerima pesanan.":"Toko sedang memeriksa pesananmu. Kabar terbaru akan muncul di sini dan melalui notifikasi.",15,false);copy.setPadding(0,dp(12),0,dp(16));root.addView(copy);
         if ("pending".equals(cancelState)) root.addView(text("Pengajuan pembatalan menunggu keputusan toko.",14,true));
         else if ("declined".equals(cancelState)) root.addView(text("Pengajuan pembatalan ditolak. Pesanan dilanjutkan.",14,true));
-        button("Ke beranda",this::home,true);
+        if (preparing && !"pending".equals(cancelState)) {
+            button("Main 30 Detik", () -> openGame(merchantStatus), true);
+        }
+        button("Ke beranda",this::home,!preparing || "pending".equals(cancelState));
     }
+
+    private static String gameOrderLabel(String merchantStatus) {
+        return "ready".equals(merchantStatus) ? "Pesanan siap dijemput" : "Pesanan sedang disiapkan";
+    }
+
+    private void openGame(String merchantStatus) {
+        if (game != null || latestWaiting == null || !foreground || terminal || routed) return;
+        game = new AntarKilatGameView(this, gameOrderLabel(merchantStatus), this::closeGame);
+        setContentView(game);
+    }
+
+    private void closeGame() {
+        if (game == null) return;
+        game = null;
+        signature = "";
+        restoreOrderBars();
+        showWaiting(latestWaiting);
+        if (!inFlight) fetch();
+    }
+
+    private void restoreOrderBars() {
+        int color = CustomerAppSettings.isDarkMode(this) ? 0xff071426 : 0xfff7faff;
+        CustomerWindowPolicy.setBarColorsIfChanged(getWindow(), color, color);
+    }
+
     private void clearMatchingOrder(){
         SharedPreferences prefs=getSharedPreferences("transiva",MODE_PRIVATE);if(!orderId.equals(prefs.getString("active_order_id","")))return;
         prefs.edit().remove("active_order_id").remove("active_order_status").remove("active_order_type").remove("active_service_name").remove("active_order_price").remove("active_order_source").remove("pickup_lat").remove("pickup_lng").remove("delivery_lat").remove("delivery_lng").remove("active_driver_type").apply();
@@ -113,9 +167,9 @@ public class CustomerFoodOrderStatusActivity extends CustomerAdaptiveActivity {
     }
     private void startTick(){handler.removeCallbacks(tick);if(foreground&&terminal){lastTick=SystemClock.elapsedRealtime();handler.post(tick);}}
     private void home(){if(routed||!foreground)return;routed=true;handler.removeCallbacksAndMessages(null);Intent home=new Intent(this,CustomerDashboardActivity.class);home.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP|Intent.FLAG_ACTIVITY_SINGLE_TOP);startActivity(home);finish();}
-    @Override public void onBackPressed(){home();}
+    @Override public void onBackPressed(){if(game!=null)closeGame();else home();}
     @Override protected void onResume(){super.onResume();foreground=true;runtime.onResume();fetch();startTick();}
-    @Override protected void onPause(){foreground=false;handler.removeCallbacks(tick);handler.removeCallbacks(poll);runtime.onPause();super.onPause();}
+    @Override protected void onPause(){if(game!=null)game.pauseRound();foreground=false;handler.removeCallbacks(tick);handler.removeCallbacks(poll);runtime.onPause();super.onPause();}
     @Override protected void onSaveInstanceState(Bundle out){super.onSaveInstanceState(out);out.putLong("remaining",remaining);}
     @Override protected void onDestroy(){generation++;runtime.destroy();handler.removeCallbacksAndMessages(null);super.onDestroy();}
 }

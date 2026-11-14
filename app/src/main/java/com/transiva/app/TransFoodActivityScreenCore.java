@@ -306,6 +306,13 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
         buildTopBar("TransFood", "Makan enak, dekat denganmu", true);
         addDeliveryLocationRow();
         addHomeSearchBar();
+        TextView practice = text("Coba Antar Kilat", 13, "#FFFFFF", true);
+        practice.setGravity(Gravity.CENTER);
+        practice.setMinHeight(dp(48));
+        practice.setBackground(roundGradient("#087BFF", "#0754D8", dp(16)));
+        practice.setOnClickListener(v -> startActivity(
+                new android.content.Intent(this, AntarKilatPracticeActivity.class)));
+        addWithMargin(practice, 0, dp(4), 0, dp(8));
         addQuickMenus();
         addHomeSectionHeader();
 

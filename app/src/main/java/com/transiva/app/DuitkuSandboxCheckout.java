@@ -2,16 +2,19 @@ package com.transiva.app;
 
 import android.app.Activity;
 import android.app.AlertDialog;
-import android.content.ActivityNotFoundException;
-import android.content.Intent;
-import android.net.Uri;
 import android.view.View;
+import android.widget.LinearLayout;
+import android.widget.TextView;
 import android.widget.ArrayAdapter;
 import android.widget.Toast;
 
+import org.json.JSONArray;
 import org.json.JSONObject;
 
 import java.text.NumberFormat;
+import java.text.SimpleDateFormat;
+import java.util.ArrayList;
+import java.util.Date;
 import java.util.Locale;
 import java.util.UUID;
 
@@ -44,8 +47,8 @@ final class DuitkuSandboxCheckout {
                     if (owner.matches(activity)) selection.select(index == 2 ? METHOD : index == 1 ? "balance" : "cash");
                 })
                 .setNegativeButton("Batal", null)
-                .setNeutralButton("Status uji terakhir", (choice, button) -> {
-                    if (owner.matches(activity)) showLatest(activity, checkoutUrl, service, timeout);
+                .setNeutralButton("Riwayat QRIS", (choice, button) -> {
+                    if (owner.matches(activity)) showHistory(activity, checkoutUrl, service, timeout);
                 })
                 .show();
         dialog.getButton(AlertDialog.BUTTON_NEUTRAL).setVisibility(View.GONE);
@@ -82,91 +85,126 @@ final class DuitkuSandboxCheckout {
     static boolean showResult(Activity activity, String checkoutUrl, JSONObject result, int timeout) {
         JSONObject payment = result == null ? null : result.optJSONObject("sandbox_payment");
         if (payment == null) return false;
-        show(activity, endpoint(checkoutUrl, STATUS_PATH), payment, timeout, false);
+        DuitkuSandboxPaymentActivity.open(activity, payment, true);
         return true;
     }
 
-    static void showLatest(Activity activity, String checkoutUrl, String service, int timeout) {
-        refresh(activity, endpoint(checkoutUrl, STATUS_PATH), service, "", timeout, false);
+    private static void showHistory(Activity activity, String checkoutUrl, String service, int timeout) {
+        CustomerTransportSession owner = CustomerTransportSession.capture(activity);
+        String url = endpoint(checkoutUrl, STATUS_PATH);
+        TransivaNetworkExecutor.execute(() -> {
+            try {
+                JSONObject request = new JSONObject().put("action", "history").put("service", service);
+                JSONObject response = TransivaHttpRepository.postJson(activity, url, request, timeout, owner);
+                JSONArray rows = response.optJSONArray("sandbox_payments");
+                if (rows == null) {
+                    JSONObject latest = response.optJSONObject("sandbox_payment");
+                    if (latest == null) throw new IllegalStateException(response.optString("message", "Riwayat QRIS belum tersedia."));
+                    rows = new JSONArray().put(latest);
+                }
+                ArrayList<JSONObject> payments = new ArrayList<>();
+                ArrayList<String> labels = new ArrayList<>();
+                SimpleDateFormat format = new SimpleDateFormat("dd MMM · HH.mm", new Locale("id", "ID"));
+                for (int i = 0; i < rows.length(); i++) {
+                    JSONObject payment = rows.optJSONObject(i);
+                    if (payment == null || payment.optString("payment_id").isEmpty()) continue;
+                    long created = payment.optLong("created_epoch");
+                    String time = created > 0 ? "\n" + format.format(new Date(created * 1000L)) : "";
+                    labels.add(payment.optString("service") + " · " + rupiah(payment)
+                            + " · " + historyStatus(payment.optString("status")) + time);
+                    payments.add(payment);
+                }
+                activity.runOnUiThread(() -> {
+                    if (activity.isFinishing() || activity.isDestroyed() || !owner.matches(activity)) return;
+                    AlertDialog.Builder dialog = new TransivaAlertDialogBuilder(activity)
+                            .setTitle("Riwayat QRIS Sandbox").setNegativeButton("Tutup", null);
+                    if (payments.isEmpty()) {
+                        dialog.setMessage("Belum ada tagihan uji untuk akun ini.");
+                    } else {
+                        dialog.setItems(labels.toArray(new String[0]), (choice, index) -> {
+                            if (owner.matches(activity)) DuitkuSandboxPaymentActivity.open(activity, payments.get(index), false);
+                        });
+                    }
+                    dialog.show();
+                });
+            } catch (Exception error) {
+                activity.runOnUiThread(() -> {
+                    if (!activity.isFinishing() && !activity.isDestroyed() && owner.matches(activity)) {
+                        Toast.makeText(activity, "Riwayat QRIS belum bisa dibaca. Coba lagi.", Toast.LENGTH_LONG).show();
+                    }
+                });
+            }
+        });
+    }
+
+    static String historyStatus(String status) {
+        switch (status) {
+            case "paid": return "Lunas";
+            case "expired": return "Kedaluwarsa";
+            case "closed": return "Ditutup";
+            case "creating": return "Sedang dibuat";
+            default: return "Menunggu pembayaran";
+        }
+    }
+
+    static String rupiah(JSONObject payment) {
+        return "Rp" + NumberFormat.getIntegerInstance(new Locale("id", "ID")).format(payment.optLong("amount"));
     }
 
     private static String endpoint(String checkoutUrl, String path) {
         return checkoutUrl.substring(0, checkoutUrl.lastIndexOf('/') + 1) + path;
     }
 
-    private static void show(Activity activity, String statusUrl, JSONObject payment, int timeout, boolean retried) {
-        if (activity.isFinishing() || activity.isDestroyed()) return;
-        String status = payment.optString("status");
-        String service = payment.optString("service");
-        String id = payment.optString("payment_id");
-        String amount = NumberFormat.getIntegerInstance(new Locale("id", "ID")).format(payment.optLong("amount"));
-        String detail;
-        switch (status) {
-            case "paid":
-                detail = "Pembayaran simulasi lunas.\nCallback diterima: "
-                        + (payment.optBoolean("callback_received") ? "Ya" : "Belum");
-                break;
-            case "closed":
-            case "expired":
-                detail = "Tagihan ditutup atau kedaluwarsa. Cek status jika sudah melakukan simulasi bayar.";
-                break;
-            case "creating":
-                detail = "Duitku belum mengirim halaman bayar. Cek status atau tunggu sampai tagihan kedaluwarsa.";
-                break;
-            default:
-                detail = "Buka halaman bayar, selesaikan simulasi, lalu kembali dan tekan Cek Status.";
-        }
-        if (retried) detail += "\nPemeriksaan terbaru ke Duitku belum berhasil.";
-        String url = payment.optString("payment_url", "");
-        android.app.AlertDialog.Builder dialog = new TransivaAlertDialogBuilder(activity)
-                .setTitle("QRIS Sandbox · " + service)
-                .setMessage("Rp" + amount + "\n" + detail + "\n\nReferensi: " + id)
-                .setNegativeButton("Tutup", null)
-                .setNeutralButton("Cek Status", (d, w) -> refresh(activity, statusUrl, service, id, timeout, true));
-        Uri uri = Uri.parse(url);
-        String host = uri.getHost();
-        if ("pending".equals(status) && "https".equals(uri.getScheme())
-                && ("sandbox.duitku.com".equals(host) || "app-sandbox.duitku.com".equals(host)
-                || "api-sandbox.duitku.com".equals(host))
-                && uri.getUserInfo() == null && uri.getPort() == -1) {
-            dialog.setPositiveButton("Buka QRIS", (d, w) -> {
-                try {
-                    activity.startActivity(new Intent(Intent.ACTION_VIEW, uri));
-                    // Keep the tagihan dialog available after the customer returns from the browser.
-                    activity.getWindow().getDecorView().post(() -> show(activity, statusUrl, payment, timeout, false));
-                } catch (ActivityNotFoundException error) {
-                    Toast.makeText(activity, "Browser tidak tersedia.", Toast.LENGTH_SHORT).show();
-                }
-            });
-        }
-        dialog.show();
+    interface HistoryLoaded {
+        void loaded(JSONArray rows);
     }
 
-    private static void refresh(Activity activity, String statusUrl, String service, String id, int timeout, boolean verify) {
+    static void loadHistory(Activity activity, HistoryLoaded callback) {
         CustomerTransportSession owner = CustomerTransportSession.capture(activity);
         TransivaNetworkExecutor.execute(() -> {
             try {
-                JSONObject request = new JSONObject()
-                        .put("service", service).put("payment_id", id).put("check_provider", verify);
-                JSONObject result = TransivaHttpRepository.postJson(activity, statusUrl, request, timeout, owner);
-                JSONObject payment = result.optJSONObject("sandbox_payment");
-                if (payment == null) throw new IllegalStateException(result.optString("message", "Status uji belum tersedia."));
-                owner.check(activity);
+                String url = ApiConfig.server(STATUS_PATH);
+                JSONObject probe = TransivaHttpRepository.postJson(activity, url,
+                        new JSONObject().put("action", "capabilities"), 3500, owner);
+                if (!probe.optBoolean("sandbox_qris_available")) return;
+                JSONObject response = TransivaHttpRepository.postJson(activity, url,
+                        new JSONObject().put("action", "history"), 6000, owner);
+                JSONArray rows = response.optJSONArray("sandbox_payments");
+                if (rows == null) return;
                 activity.runOnUiThread(() -> {
-                    try {
-                        owner.check(activity);
-                        show(activity, statusUrl, payment, timeout, result.optBoolean("provider_check_pending"));
-                    } catch (Exception ignored) { /* The signed-in account changed. */ }
+                    if (!activity.isDestroyed() && !activity.isFinishing() && owner.matches(activity)) callback.loaded(rows);
                 });
-            } catch (Exception error) {
-                activity.runOnUiThread(() -> {
-                    if (!activity.isFinishing() && !activity.isDestroyed() && !CustomerAsyncError.isCancellation(error)) {
-                        String message = error instanceof TransivaHttpRepository.ServerResponseException
-                                || error instanceof IllegalStateException ? error.getMessage() : "Status uji belum bisa dibaca.";
-                        Toast.makeText(activity, message, Toast.LENGTH_LONG).show();
-                    }
-                });
-            }
+            } catch (Exception ignored) { /* QRIS Sandbox records are supplementary. */ }
         });
+    }
+
+    static boolean addRecords(Activity activity, LinearLayout list, JSONArray rows, boolean orders) {
+        if (rows == null) return false;
+        boolean added = false;
+        CustomerTransportSession owner = CustomerTransportSession.capture(activity);
+        for (int i = 0; i < rows.length(); i++) {
+            JSONObject payment = rows.optJSONObject(i);
+            if (payment == null || (orders && !payment.optString("sandbox_order_id", "").startsWith("UJI-"))) continue;
+            if (!added) {
+                TextView heading = new TextView(activity);
+                heading.setText(orders ? "Pesanan uji QRIS" : "Pembayaran QRIS Sandbox");
+                heading.setTextSize(16);
+                heading.setTypeface(null, android.graphics.Typeface.BOLD);
+                list.addView(heading);
+                added = true;
+            }
+            String label = payment.optString("service") + " · " + rupiah(payment)
+                    + "\nQRIS Sandbox · " + historyStatus(payment.optString("status"));
+            if (orders) label += "\n" + payment.optString("sandbox_order_id");
+            android.widget.Button row = new android.widget.Button(activity);
+            row.setAllCaps(false);
+            row.setGravity(android.view.Gravity.START | android.view.Gravity.CENTER_VERTICAL);
+            row.setText(label);
+            row.setOnClickListener(v -> {
+                if (owner.matches(activity)) DuitkuSandboxPaymentActivity.open(activity, payment, false);
+            });
+            list.addView(row, new LinearLayout.LayoutParams(-1, -2));
+        }
+        return added;
     }
 }

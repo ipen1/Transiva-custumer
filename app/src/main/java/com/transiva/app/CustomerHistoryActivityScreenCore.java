@@ -78,6 +78,7 @@ class CustomerHistoryActivityScreenCore extends CustomerAdaptiveActivity {
     protected LinearLayout listBox;
     protected LinearLayout serviceChipRow;
     protected LinearLayout tabRow;
+    private JSONArray qrisSandboxOrders;
     protected ProgressBar progressBar;
     protected EditText searchInput;
     protected TextView summaryTotal;
@@ -149,6 +150,11 @@ class CustomerHistoryActivityScreenCore extends CustomerAdaptiveActivity {
         if (!loading && listBox != null) {
             loadHistory(true);
         }
+
+        DuitkuSandboxCheckout.loadHistory(this, rows -> {
+            qrisSandboxOrders = rows;
+            renderOrders();
+        });
 
         mainHandler.postDelayed(realtimeRefresh, CustomerPerformanceManager.pollingBackground(this, REALTIME_REFRESH_MS));
     }
@@ -893,7 +899,10 @@ class CustomerHistoryActivityScreenCore extends CustomerAdaptiveActivity {
             listBox.addView(reports, new LinearLayout.LayoutParams(-1, dp(46)));
         }
 
+        boolean hasSandboxOrders = TAB_ACTIVE.equals(selectedTab)
+                && DuitkuSandboxCheckout.addRecords(this, listBox, qrisSandboxOrders, true);
         if (loading && allOrders.isEmpty()) {
+            if (hasSandboxOrders) return;
             addInfoState(
                     "Memuat aktivitas...",
                     "Data pesanan sedang diperbarui."
@@ -905,6 +914,7 @@ class CustomerHistoryActivityScreenCore extends CustomerAdaptiveActivity {
                 filteredOrders();
 
         if (filtered.isEmpty()) {
+            if (hasSandboxOrders) return;
             if (TAB_ACTIVE.equals(selectedTab)) {
                 addEmptyState(
                         "Belum ada aktivitas berjalan",

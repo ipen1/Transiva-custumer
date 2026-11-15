@@ -65,9 +65,11 @@ android {
     buildTypes {
         debug {
             debuggable true
+            buildConfigField 'boolean', 'DUITKU_SANDBOX_CHECKOUT', project.hasProperty('transivaDuitkuSandbox') ? 'true' : 'false'
         }
 
         release {
+            buildConfigField 'boolean', 'DUITKU_SANDBOX_CHECKOUT', 'false'
             signingConfig signingConfigs.release
             debuggable false
 

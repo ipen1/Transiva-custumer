@@ -1776,17 +1776,25 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
     }
 
     private void showCheckoutPayment(String current, FoodCheckoutNote.OnSaved select) {
-        String[] labels = {"Tunai", "Transiva Pay"};
-        new TransivaAlertDialogBuilder(this).setTitle("Metode pembayaran")
-                .setSingleChoiceItems(labels, "balance".equals(current) ? 1 : 0, (dialog, choice) -> {
+        boolean sandbox = BuildConfig.DUITKU_SANDBOX_CHECKOUT && currentScreen == 2;
+        String[] labels = sandbox ? new String[]{"Tunai", "Transiva Pay", "QRIS Sandbox"}
+                : new String[]{"Tunai", "Transiva Pay"};
+        int checked = "balance".equals(current) ? 1 : sandbox && "qris".equals(current) ? 2 : 0;
+        android.app.AlertDialog.Builder builder = new TransivaAlertDialogBuilder(this).setTitle("Metode pembayaran")
+                .setSingleChoiceItems(labels, checked, (dialog, choice) -> {
                     dialog.dismiss();
-                    select.save(choice == 1 ? "balance" : "cash");
+                    select.save(choice == 2 ? DuitkuSandboxCheckout.METHOD : choice == 1 ? "balance" : "cash");
                 })
-                .setNegativeButton("Batal", null).show();
+                .setNegativeButton("Batal", null);
+        if (sandbox) {
+            builder.setNeutralButton("Status uji terakhir", (d, w) -> DuitkuSandboxCheckout.showLatest(
+                    this, BASE_URL + "server/create_food_order.php", "TransFood", TIMEOUT_MS));
+        }
+        builder.show();
     }
 
     private static String paymentLabel(String method) {
-        return "balance".equals(method) ? "Transiva Pay" : "Tunai";
+        return DuitkuSandboxCheckout.label(method);
     }
 
     private FoodCheckoutNote addCheckoutNote(LinearLayout parent, Cart orderCart, boolean savedCart) {
@@ -2517,11 +2525,15 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
         setLoading(true);
         featureRuntime.execute(() -> {
             try {
-                JSONObject response=ReliableOrderClient.create(this,BASE_URL+"server/create_food_order.php",payload,TIMEOUT_MS);
+                String checkoutUrl = BASE_URL + "server/create_food_order.php";
+                JSONObject response = DuitkuSandboxCheckout.METHOD.equals(payload.optString("payment_method"))
+                        ? DuitkuSandboxCheckout.create(this, checkoutUrl, "TransFood", payload, TIMEOUT_MS)
+                        : ReliableOrderClient.create(this, checkoutUrl, payload, TIMEOUT_MS);
                 featureRuntime.post(mainHandler,()->{
                     finishFoodSubmission();
                     if(currentScreen!=2) return;
                     if(response.optBoolean("success")) {
+                        if (DuitkuSandboxCheckout.showResult(this, checkoutUrl, response, TIMEOUT_MS)) return;
                         completeCartCheckout(response);
                         return;
                     }

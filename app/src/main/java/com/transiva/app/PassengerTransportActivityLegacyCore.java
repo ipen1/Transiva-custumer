@@ -589,7 +589,7 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
         quickRow.setGravity(Gravity.CENTER_VERTICAL);
         bottomCard.addView(quickRow, new LinearLayout.LayoutParams(-1, dp(44)));
 
-        paymentChoiceBtn = smallButton("balance".equals(paymentMethod) ? "💳 Transiva Pay" : "💵 Tunai", "#FFFFFF", "#0B3A78", "#C8D9EC");
+        paymentChoiceBtn = smallButton(paymentButtonLabel(), "#FFFFFF", "#0B3A78", "#C8D9EC");
         voucherChoiceBtn = smallButton("🏷 Voucher", "#FFFFFF", "#0B3A78", "#C8D9EC");
         compactBookingButton(paymentChoiceBtn);
         compactBookingButton(voucherChoiceBtn);
@@ -753,7 +753,7 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
                 scheduledAt = f.format(chosen.getTime());
                 java.text.SimpleDateFormat label = new java.text.SimpleDateFormat("dd/MM HH:mm", Locale.getDefault());
                 target.setText("🕒 " + label.format(chosen.getTime()));
-                if ("balance".equals(paymentMethod)) { paymentMethod = "cash"; if (paymentChoiceBtn != null) paymentChoiceBtn.setText("💵 Tunai"); }
+                if (!"cash".equals(paymentMethod)) { paymentMethod = "cash"; if (paymentChoiceBtn != null) paymentChoiceBtn.setText("💵 Tunai"); }
             }, c.get(java.util.Calendar.HOUR_OF_DAY), c.get(java.util.Calendar.MINUTE), true).show();
         }, c.get(java.util.Calendar.YEAR), c.get(java.util.Calendar.MONTH), c.get(java.util.Calendar.DAY_OF_MONTH)).show();
     }
@@ -1073,22 +1073,32 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
              });
     }
 
-    protected void showPaymentDialog() {
-        String[] methods = {"Tunai", "Transiva Pay"};
-        int checked = paymentMethod.equals("balance") ? 1 : 0;
+    private String paymentButtonLabel() {
+        if (DuitkuSandboxCheckout.METHOD.equals(paymentMethod)) return "QRIS Sandbox";
+        return "balance".equals(paymentMethod) ? "💳 Transiva Pay" : "💵 Tunai";
+    }
 
-        new TransivaAlertDialogBuilder(this)
+    protected void showPaymentDialog() {
+        boolean sandbox = BuildConfig.DUITKU_SANDBOX_CHECKOUT && scheduledAt.isEmpty();
+        String[] methods = sandbox ? new String[]{"Tunai", "Transiva Pay", "QRIS Sandbox"}
+                : new String[]{"Tunai", "Transiva Pay"};
+        int checked = "balance".equals(paymentMethod) ? 1 : sandbox && "qris".equals(paymentMethod) ? 2 : 0;
+        android.app.AlertDialog.Builder dialog = new TransivaAlertDialogBuilder(this)
                 .setTitle("Pilih metode pembayaran")
-                .setSingleChoiceItems(methods, checked, (dialog, which) -> {
-                    paymentMethod = which == 1 ? "balance" : "cash";
-                    paymentChoiceBtn.setText(which == 1 ? "💳 Transiva Pay" : "💵 Tunai");
+                .setSingleChoiceItems(methods, checked, (choiceDialog, which) -> {
+                    paymentMethod = which == 2 ? DuitkuSandboxCheckout.METHOD : which == 1 ? "balance" : "cash";
+                    paymentChoiceBtn.setText(paymentButtonLabel());
                     updateTransPayOnlyFeatures();
                     if (!"balance".equals(paymentMethod) && splitBillManager != null) splitBillManager.clear();
-                    dialog.dismiss();
+                    choiceDialog.dismiss();
                     requestPaymentQuote();
                 })
-                .setNegativeButton("Batal", null)
-                .show();
+                .setNegativeButton("Batal", null);
+        if (sandbox) {
+            dialog.setNeutralButton("Status uji terakhir", (d, w) -> DuitkuSandboxCheckout.showLatest(
+                    this, CREATE_ORDER_URL, isCarService() ? "TransCar" : "TransRide", TIMEOUT_MS));
+        }
+        dialog.show();
     }
 
     protected void bindActions() {
@@ -2455,7 +2465,7 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
         ordering = true;
         setLoading(true);
         orderBtn.setEnabled(false);
-        orderBtn.setText("Mencari driver...");
+        orderBtn.setText(DuitkuSandboxCheckout.METHOD.equals(paymentMethod) ? "Membuat tagihan uji..." : "Mencari driver...");
 
         featureRuntime.execute(() -> {
             try {
@@ -2507,7 +2517,9 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
                 if (splitBillManager != null && !splitBillManager.sessionKey().isEmpty()) payload.put("split_session_key", splitBillManager.sessionKey());
                 if (splitBillManager != null && splitBillManager.groupSize() > 1) payload.put("split_bill_required", true);
 
-                JSONObject res = ReliableOrderClient.create(this, CREATE_ORDER_URL, payload, TIMEOUT_MS);
+                JSONObject res = DuitkuSandboxCheckout.METHOD.equals(payload.optString("payment_method"))
+                        ? DuitkuSandboxCheckout.create(this, CREATE_ORDER_URL, isCarService() ? "TransCar" : "TransRide", payload, TIMEOUT_MS)
+                        : ReliableOrderClient.create(this, CREATE_ORDER_URL, payload, TIMEOUT_MS);
                 featureRuntime.post(mainHandler, () -> handleOrderResult(res));
             } catch (Exception e) {
                 featureRuntime.post(mainHandler, () -> {
@@ -2537,6 +2549,7 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
             return;
         }
 
+        if (DuitkuSandboxCheckout.showResult(this, CREATE_ORDER_URL, res, TIMEOUT_MS)) return;
         String orderId = firstNonEmpty(res.optString("order_id", ""), res.optString("id", ""));
         syncEcosystemOrder(orderId);
         if (orderId.length() == 0) {
@@ -2803,14 +2816,8 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
                         discountInfoText.setVisibility(View.GONE);
                     }
 
-                    String label = paymentMethod.equals("balance")
-                            ? "Transiva Pay"
-                            : "Tunai";
-                    paymentChoiceBtn.setText(paymentMethod.equals("balance")
-                            ? "💳 Transiva Pay"
-                            : "💵 Tunai");
-
-                    String info = label;
+                    String info = DuitkuSandboxCheckout.label(paymentMethod);
+                    paymentChoiceBtn.setText(paymentButtonLabel());
                     if (paymentMethod.equals("balance")) {
                         info += " • Saldo Rp" + formatMoney(balance);
                     }
@@ -3031,7 +3038,8 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
         orderBtn.setEnabled(ready);
         orderBtn.setAlpha(1f);
         if (wizardStepText != null) setWizardProgress(ready ? 2 : (locationReady() ? 1 : 0));
-        if (ready) orderBtn.setText("PESAN " + serviceName().toUpperCase(Locale.US));
+        if (ready) orderBtn.setText(DuitkuSandboxCheckout.METHOD.equals(paymentMethod) ? "UJI BAYAR QRIS"
+                : "PESAN " + serviceName().toUpperCase(Locale.US));
     }
 
     private void resetOrderButton() { ordering = false; setLoading(false); orderBtn.setEnabled(true); updateWizardState(); }

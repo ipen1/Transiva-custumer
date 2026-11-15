@@ -45,7 +45,7 @@ final class FoodCheckoutConfirmation {
         if (quote.optLong("voucher_discount")>0) summary.append("\nVoucher  −").append(rupiah(quote.optLong("voucher_discount")));
         if (quote.optLong("point_discount")>0) summary.append("\nPoin Transiva  −").append(rupiah(quote.optLong("point_discount")));
         long total=quote.optLong("total");
-        summary.append("\n\nTotal ").append("balance".equals(quote.optString("payment_method"))?"Transiva Pay":"tunai")
+        summary.append("\n\nTotal ").append(DuitkuSandboxCheckout.label(quote.optString("payment_method")))
                 .append("  ").append(rupiah(total));
         ScrollView scroll=new ScrollView(activity);
         TextView content=new TextView(activity);
@@ -58,7 +58,7 @@ final class FoodCheckoutConfirmation {
                 .setView(scroll)
                 .setNegativeButton("Kembali",(d,w)->cancel.run())
                 .setOnCancelListener(d->cancel.run())
-                .setPositiveButton("Pesan · "+rupiah(total),(d,w)->confirmed.confirm(quote.optString("fingerprint")))
+                .setPositiveButton((DuitkuSandboxCheckout.METHOD.equals(quote.optString("payment_method")) ? "Uji QRIS · " : "Pesan · ")+rupiah(total),(d,w)->confirmed.confirm(quote.optString("fingerprint")))
                 .show();
     }
 

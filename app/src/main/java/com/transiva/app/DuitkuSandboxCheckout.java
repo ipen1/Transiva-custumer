@@ -20,12 +20,13 @@ import java.util.UUID;
 
 final class DuitkuSandboxCheckout {
     static final String METHOD = "qris";
+    static final int REQUEST_PAYMENT = 6931;
     private static final String STATUS_PATH = "duitku_sandbox_status.php";
 
     private DuitkuSandboxCheckout() {}
 
     static String label(String method) {
-        if (METHOD.equals(method)) return "QRIS Sandbox";
+        if (METHOD.equals(method)) return "QRIS";
         return "balance".equals(method) ? "Transiva Pay" : "Tunai";
     }
 
@@ -77,7 +78,7 @@ final class DuitkuSandboxCheckout {
                 .put("id", "TEST-" + UUID.randomUUID());
         JSONObject result = TransivaHttpRepository.postJson(activity, url, body, timeout);
         if (result.optBoolean("success") && result.optJSONObject("sandbox_payment") == null) {
-            throw new IllegalStateException("Server belum mengirim rincian QRIS Sandbox.");
+            throw new IllegalStateException("Server belum mengirim rincian QRIS.");
         }
         return result;
     }
@@ -117,7 +118,7 @@ final class DuitkuSandboxCheckout {
                 activity.runOnUiThread(() -> {
                     if (activity.isFinishing() || activity.isDestroyed() || !owner.matches(activity)) return;
                     AlertDialog.Builder dialog = new TransivaAlertDialogBuilder(activity)
-                            .setTitle("Riwayat QRIS Sandbox").setNegativeButton("Tutup", null);
+                            .setTitle("Riwayat QRIS").setNegativeButton("Tutup", null);
                     if (payments.isEmpty()) {
                         dialog.setMessage("Belum ada tagihan uji untuk akun ini.");
                     } else {
@@ -155,6 +156,21 @@ final class DuitkuSandboxCheckout {
         return checkoutUrl.substring(0, checkoutUrl.lastIndexOf('/') + 1) + path;
     }
 
+    static void acknowledgeFood(Activity activity, JSONObject receipt) throws Exception {
+        if (!"food".equals(receipt.optString("order_type"))) return;
+        String user = new SessionManager(activity).getUserId();
+        String id = receipt.optString("order_id");
+        if (user == null || user.isEmpty() || !id.startsWith("FOOD-QR-")) return;
+        android.content.SharedPreferences prefs = activity.getSharedPreferences("transiva_order_attempts", Activity.MODE_PRIVATE);
+        String key = "qris-confirmed:" + user + ":" + id;
+        synchronized (FoodCartStore.class) {
+            if (prefs.getBoolean(key, false)) return;
+            android.content.SharedPreferences.Editor edit = prefs.edit().putBoolean(key, true);
+            FoodCartStore.consume(prefs, edit, user, receipt);
+            if (!edit.commit()) throw new IllegalStateException("Keranjang belum dapat diperbarui.");
+        }
+    }
+
     interface HistoryLoaded {
         void loaded(JSONArray rows);
     }
@@ -174,28 +190,27 @@ final class DuitkuSandboxCheckout {
                 activity.runOnUiThread(() -> {
                     if (!activity.isDestroyed() && !activity.isFinishing() && owner.matches(activity)) callback.loaded(rows);
                 });
-            } catch (Exception ignored) { /* QRIS Sandbox records are supplementary. */ }
+            } catch (Exception ignored) { /* QRIS records are supplementary. */ }
         });
     }
 
-    static boolean addRecords(Activity activity, LinearLayout list, JSONArray rows, boolean orders) {
+    static boolean addRecords(Activity activity, LinearLayout list, JSONArray rows) {
         if (rows == null) return false;
         boolean added = false;
         CustomerTransportSession owner = CustomerTransportSession.capture(activity);
         for (int i = 0; i < rows.length(); i++) {
             JSONObject payment = rows.optJSONObject(i);
-            if (payment == null || (orders && !payment.optString("sandbox_order_id", "").startsWith("UJI-"))) continue;
+            if (payment == null) continue;
             if (!added) {
                 TextView heading = new TextView(activity);
-                heading.setText(orders ? "Pesanan uji QRIS" : "Pembayaran QRIS Sandbox");
+                heading.setText("Pembayaran QRIS");
                 heading.setTextSize(16);
                 heading.setTypeface(null, android.graphics.Typeface.BOLD);
                 list.addView(heading);
                 added = true;
             }
             String label = payment.optString("service") + " · " + rupiah(payment)
-                    + "\nQRIS Sandbox · " + historyStatus(payment.optString("status"));
-            if (orders) label += "\n" + payment.optString("sandbox_order_id");
+                    + "\nQRIS · " + historyStatus(payment.optString("status"));
             android.widget.Button row = new android.widget.Button(activity);
             row.setAllCaps(false);
             row.setGravity(android.view.Gravity.START | android.view.Gravity.CENTER_VERTICAL);

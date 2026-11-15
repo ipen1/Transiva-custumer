@@ -1074,7 +1074,7 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
     }
 
     private String paymentButtonLabel() {
-        if (DuitkuSandboxCheckout.METHOD.equals(paymentMethod)) return "QRIS Sandbox";
+        if (DuitkuSandboxCheckout.METHOD.equals(paymentMethod)) return "QRIS";
         return "balance".equals(paymentMethod) ? "💳 Transiva Pay" : "💵 Tunai";
     }
 
@@ -1596,6 +1596,23 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode == DuitkuSandboxCheckout.REQUEST_PAYMENT) {
+            if (resultCode == RESULT_OK && data != null) {
+                try {
+                    JSONObject receipt = new JSONObject(data.getStringExtra("order_receipt"));
+                    pickupLat = receipt.optDouble("pickup_lat", pickupLat);
+                    pickupLng = receipt.optDouble("pickup_lng", pickupLng);
+                    deliveryLat = receipt.optDouble("delivery_lat", deliveryLat);
+                    deliveryLng = receipt.optDouble("delivery_lng", deliveryLng);
+                    pickupAddress = receipt.optString("pickup_address", pickupAddress);
+                    deliveryAddress = receipt.optString("delivery_address", deliveryAddress);
+                    handleOrderResult(receipt);
+                } catch (Exception invalid) {
+                    startActivity(new Intent(this, CustomerHistoryActivity.class));
+                }
+            }
+            return;
+        }
         if (requestCode != REQ_PLACE_AUTOCOMPLETE) return;
 
         if (resultCode == RESULT_OK && data != null) {
@@ -2454,7 +2471,7 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
         ordering = true;
         setLoading(true);
         orderBtn.setEnabled(false);
-        orderBtn.setText(DuitkuSandboxCheckout.METHOD.equals(paymentMethod) ? "Membuat tagihan uji..." : "Mencari driver...");
+        orderBtn.setText(DuitkuSandboxCheckout.METHOD.equals(paymentMethod) ? "Membuat tagihan..." : "Mencari driver...");
 
         featureRuntime.execute(() -> {
             try {
@@ -3027,7 +3044,7 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
         orderBtn.setEnabled(ready);
         orderBtn.setAlpha(1f);
         if (wizardStepText != null) setWizardProgress(ready ? 2 : (locationReady() ? 1 : 0));
-        if (ready) orderBtn.setText(DuitkuSandboxCheckout.METHOD.equals(paymentMethod) ? "UJI BAYAR QRIS"
+        if (ready) orderBtn.setText(DuitkuSandboxCheckout.METHOD.equals(paymentMethod) ? "BAYAR QRIS"
                 : "PESAN " + serviceName().toUpperCase(Locale.US));
     }
 

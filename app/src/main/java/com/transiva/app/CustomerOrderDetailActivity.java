@@ -602,7 +602,7 @@ public class CustomerOrderDetailActivity extends CustomerAdaptiveActivity {
     private int dp(int n) { return Math.round(n * getResources().getDisplayMetrics().density); }
     private String rupiah(double n) { return "Rp" + NumberFormat.getNumberInstance(new Locale("id", "ID")).format(Math.round(n)); }
     private String first(String... values) { for (String s : values) if (s != null && !s.trim().isEmpty() && !"null".equalsIgnoreCase(s.trim())) return s.trim(); return ""; }
-    private String paymentLabel(String s) { s = first(s, "cash").toLowerCase(Locale.US); return s.contains("balance") || s.contains("transpay") || s.contains("wallet") || s.contains("saldo") ? "TransPay (Non-tunai)" : "Tunai"; }
+    private String paymentLabel(String s) { s = first(s, "cash").toLowerCase(Locale.US); return "qris".equals(s) ? "QRIS" : s.contains("balance") || s.contains("transpay") || s.contains("wallet") || s.contains("saldo") ? "TransPay (Non-tunai)" : "Tunai"; }
     private String vehicleLabel(String s) { s = first(s, "-").toLowerCase(Locale.US); return s.equals("car") || s.equals("mobil") ? "Mobil / Car" : s.equals("bike") || s.equals("motor") ? "Motor / Bike" : s; }
     private String priceStatus(String s) { if ("pending".equals(s)) return "Menunggu konfirmasi Anda"; if ("approved".equals(s)) return "Disetujui"; if ("rejected".equals(s)) return "Ditolak"; return "Tidak ada pengajuan"; }
     private String prettyStatus(String s) { s = first(s, "-").replace('_', ' '); StringBuilder b = new StringBuilder(); for (String p : s.split(" ")) { if (p.isEmpty()) continue; if (b.length() > 0) b.append(' '); b.append(Character.toUpperCase(p.charAt(0))).append(p.substring(1)); } return b.toString(); }

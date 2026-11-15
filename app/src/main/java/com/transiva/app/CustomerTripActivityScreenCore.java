@@ -789,7 +789,7 @@ class CustomerTripActivityScreenCore extends CustomerAdaptiveActivity {
         double price=order.optDouble("price",0), original=order.optDouble("original_price",price), requested=order.optDouble("price_change_requested",0);
         destinationRequestedPrice=requested;
         String change=order.optString("price_change_status","none").toLowerCase(Locale.US), reason=order.optString("price_change_reason","");
-        String line = (nonCash ? "TransPay · sudah dibayar" : "Tunai · bayar ke driver")
+        String line = ("qris".equals(method) ? "QRIS · sudah dibayar" : nonCash ? "TransPay · sudah dibayar" : "Tunai · bayar ke driver")
                 + (price > 0 ? "  ·  " + rupiah(price) : "");
         String proposal=CustomerOrderChangeState.summary(order);
         if(!proposal.isEmpty()) line+="\n"+proposal;
@@ -1031,6 +1031,7 @@ class CustomerTripActivityScreenCore extends CustomerAdaptiveActivity {
             String value = order.optString("payment_method", "");
             if ("balance".equalsIgnoreCase(value)) method = "TransPay";
             else if ("cash".equalsIgnoreCase(value)) method = "Tunai";
+            else if ("qris".equalsIgnoreCase(value)) method = "QRIS";
         }
         JSONObject waiting = order.optJSONObject("smart_waiting");
         long fee = order.optLong("waiting_fee_applied", waiting == null ? 0L : waiting.optLong("applied_fee"));

@@ -815,7 +815,7 @@ class CustomerBalanceHistoryActivityScreenCore extends CustomerAdaptiveActivity 
         addFilter("all", "Semua");
         addFilter("transpay", "Transiva Pay");
         addFilter("cash", "Tunai");
-        if (qrisSandboxTransactions != null && qrisSandboxTransactions.length() > 0) addFilter("qris", "QRIS Sandbox");
+        if (qrisSandboxTransactions != null && qrisSandboxTransactions.length() > 0) addFilter("qris", "QRIS");
         addFilter("in", "Pemasukan");
         addFilter("out", "Pengeluaran");
         addFilter("pending", "Diproses");
@@ -1013,7 +1013,7 @@ class CustomerBalanceHistoryActivityScreenCore extends CustomerAdaptiveActivity 
         }
 
         boolean hasSandboxTransactions = (filter.equals("all") || filter.equals("out") || filter.equals("qris"))
-                && DuitkuSandboxCheckout.addRecords(this, mutationBox, qrisSandboxTransactions, false);
+                && DuitkuSandboxCheckout.addRecords(this, mutationBox, qrisSandboxTransactions);
         if (hasSandboxTransactions && visible.isEmpty()) return;
 
         if (visible.isEmpty()) {

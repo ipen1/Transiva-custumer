@@ -5,6 +5,7 @@ import com.transiva.app.FoodCartStore.CartItem;
 
 import android.app.Activity;
 import android.app.AlertDialog;
+import android.content.Intent;
 import android.graphics.Color;
 import android.graphics.Paint;
 import android.graphics.Typeface;
@@ -2598,6 +2599,17 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
             }
         }
         if (draft.items.isEmpty()) merchantDrafts.remove(rid);
+    }
+
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode != DuitkuSandboxCheckout.REQUEST_PAYMENT || resultCode != RESULT_OK || data == null) return;
+        try {
+            completeCartCheckout(new JSONObject(data.getStringExtra("order_receipt")));
+        } catch (Exception invalid) {
+            startActivity(new Intent(this, CustomerHistoryActivity.class));
+        }
     }
 
     private void completeCartCheckout(JSONObject receipt) {

@@ -58,7 +58,7 @@ final class FoodCheckoutConfirmation {
                 .setView(scroll)
                 .setNegativeButton("Kembali",(d,w)->cancel.run())
                 .setOnCancelListener(d->cancel.run())
-                .setPositiveButton((DuitkuSandboxCheckout.METHOD.equals(quote.optString("payment_method")) ? "Uji QRIS · " : "Pesan · ")+rupiah(total),(d,w)->confirmed.confirm(quote.optString("fingerprint")))
+                .setPositiveButton((DuitkuSandboxCheckout.METHOD.equals(quote.optString("payment_method")) ? "Bayar QRIS · " : "Pesan · ")+rupiah(total),(d,w)->confirmed.confirm(quote.optString("fingerprint")))
                 .show();
     }
 

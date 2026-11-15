@@ -51,7 +51,8 @@ public final class DuitkuSandboxPaymentActivity extends Activity {
                 .putExtra("id", payment.optString("payment_id"))
                 .putExtra("service", payment.optString("service"))
                 .putExtra("auto", autoContinue);
-        source.startActivity(intent);
+        if (autoContinue) source.startActivityForResult(intent, DuitkuSandboxCheckout.REQUEST_PAYMENT);
+        else source.startActivity(intent);
     }
 
     @Override
@@ -82,10 +83,10 @@ public final class DuitkuSandboxPaymentActivity extends Activity {
         ScrollView scroll = new ScrollView(this);
         LinearLayout body = new LinearLayout(this);
         body.setOrientation(LinearLayout.VERTICAL);
-        body.addView(text("QRIS Sandbox · " + service, 18));
+        body.addView(text("QRIS · " + service, 18));
         amount = text("", 24);
         body.addView(amount);
-        detail = text("Memuat tagihan uji…", 14);
+        detail = text("Memuat tagihan…", 14);
         detail.setTextIsSelectable(true);
         body.addView(detail);
         code = new FrameLayout(this);
@@ -179,25 +180,31 @@ public final class DuitkuSandboxPaymentActivity extends Activity {
 
     private void render(JSONObject payment, boolean unavailable) {
         String status = payment.optString("status");
-        pending = "pending".equals(status) || "creating".equals(status);
-        String orderId = value(payment, "sandbox_order_id");
+        pending = "pending".equals(status) || "creating".equals(status) || payment.optBoolean("order_pending");
+        JSONObject receipt = payment.optJSONObject("order_receipt");
+        String orderId = receipt == null ? "" : receipt.optString("order_id");
         amount.setText(DuitkuSandboxCheckout.rupiah(payment));
         StringBuilder info = new StringBuilder(DuitkuSandboxCheckout.historyStatus(status));
         info.append("\nMetode: QRIS ").append("NQ".equals(payment.optString("channel")) ? "Nobu" : "ShopeePay");
         info.append("\nTagihan: ").append(paymentId);
         String provider = value(payment, "provider_reference");
         if (!provider.isEmpty()) info.append("\nReferensi Duitku: ").append(provider);
-        if (!orderId.isEmpty()) info.append("\nPesanan uji: ").append(orderId);
+        if (!orderId.isEmpty()) info.append("\nPesanan: ").append(orderId);
+        if (payment.optBoolean("order_pending")) info.append("\nPembayaran diterima. Pesanan sedang diproses.");
         String paidAt = value(payment, "paid_at");
         if (!paidAt.isEmpty()) info.append("\nWaktu lunas (server): ").append(paidAt);
-        if ("paid".equals(status)) info.append("\nCallback diterima: ").append(payment.optBoolean("callback_received") ? "Ya" : "Belum");
         if (unavailable) info.append("\nPengecekan terbaru ke Duitku belum berhasil.");
         detail.setText(info.toString());
         renderCode(payment, status);
         activityButton.setVisibility(orderId.isEmpty() ? View.GONE : View.VISIBLE);
-        if (visible && autoContinue && "paid".equals(status) && orderId.startsWith("UJI-")) {
-            autoContinue = false;
-            openOrders();
+        if (receipt != null && "paid".equals(status) && !orderId.isEmpty()) {
+            try { DuitkuSandboxCheckout.acknowledgeFood(this, receipt); }
+            catch (Exception ignored) { /* Order remains recoverable from Aktivitas. */ }
+            if (visible && autoContinue) {
+                autoContinue = false;
+                setResult(RESULT_OK, new Intent().putExtra("order_receipt", receipt.toString()));
+                finish();
+            }
         }
     }
 
@@ -230,7 +237,7 @@ public final class DuitkuSandboxPaymentActivity extends Activity {
         }
         Bitmap bitmap = Bitmap.createBitmap(pixels, width, height, Bitmap.Config.ARGB_8888);
         ImageView view = new ImageView(this);
-        view.setContentDescription("Kode QRIS untuk pembayaran uji");
+        view.setContentDescription("Kode QRIS untuk pembayaran");
         view.setImageBitmap(bitmap);
         view.setScaleType(ImageView.ScaleType.FIT_CENTER);
         code.addView(view, new FrameLayout.LayoutParams(-1, dp(310), Gravity.CENTER));

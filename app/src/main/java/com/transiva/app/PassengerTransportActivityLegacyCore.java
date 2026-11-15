@@ -1079,26 +1079,15 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
     }
 
     protected void showPaymentDialog() {
-        boolean sandbox = BuildConfig.DUITKU_SANDBOX_CHECKOUT && scheduledAt.isEmpty();
-        String[] methods = sandbox ? new String[]{"Tunai", "Transiva Pay", "QRIS Sandbox"}
-                : new String[]{"Tunai", "Transiva Pay"};
-        int checked = "balance".equals(paymentMethod) ? 1 : sandbox && "qris".equals(paymentMethod) ? 2 : 0;
-        android.app.AlertDialog.Builder dialog = new TransivaAlertDialogBuilder(this)
-                .setTitle("Pilih metode pembayaran")
-                .setSingleChoiceItems(methods, checked, (choiceDialog, which) -> {
-                    paymentMethod = which == 2 ? DuitkuSandboxCheckout.METHOD : which == 1 ? "balance" : "cash";
+        DuitkuSandboxCheckout.chooseMethod(this, CREATE_ORDER_URL, isCarService() ? "TransCar" : "TransRide",
+                paymentMethod, scheduledAt.isEmpty(), "Pilih metode pembayaran", TIMEOUT_MS, method -> {
+                    if (ordering || (DuitkuSandboxCheckout.METHOD.equals(method) && !scheduledAt.isEmpty())) return;
+                    paymentMethod = method;
                     paymentChoiceBtn.setText(paymentButtonLabel());
                     updateTransPayOnlyFeatures();
-                    if (!"balance".equals(paymentMethod) && splitBillManager != null) splitBillManager.clear();
-                    choiceDialog.dismiss();
+                    if (!"balance".equals(method) && splitBillManager != null) splitBillManager.clear();
                     requestPaymentQuote();
-                })
-                .setNegativeButton("Batal", null);
-        if (sandbox) {
-            dialog.setNeutralButton("Status uji terakhir", (d, w) -> DuitkuSandboxCheckout.showLatest(
-                    this, CREATE_ORDER_URL, isCarService() ? "TransCar" : "TransRide", TIMEOUT_MS));
-        }
-        dialog.show();
+                });
     }
 
     protected void bindActions() {

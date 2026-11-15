@@ -1,9 +1,12 @@
 package com.transiva.app;
 
 import android.app.Activity;
+import android.app.AlertDialog;
 import android.content.ActivityNotFoundException;
 import android.content.Intent;
 import android.net.Uri;
+import android.view.View;
+import android.widget.ArrayAdapter;
 import android.widget.Toast;
 
 import org.json.JSONObject;
@@ -21,6 +24,48 @@ final class DuitkuSandboxCheckout {
     static String label(String method) {
         if (METHOD.equals(method)) return "QRIS Sandbox";
         return "balance".equals(method) ? "Transiva Pay" : "Tunai";
+    }
+
+    interface PaymentSelection {
+        void select(String method);
+    }
+
+    static void chooseMethod(Activity activity, String checkoutUrl, String service, String current,
+                             boolean supportsSandbox, String title, int timeout, PaymentSelection selection) {
+        CustomerTransportSession owner = CustomerTransportSession.capture(activity);
+        ArrayAdapter<String> methods = new ArrayAdapter<>(activity, android.R.layout.simple_list_item_single_choice);
+        methods.add("Tunai");
+        methods.add("Transiva Pay");
+        int selected = METHOD.equals(current) ? -1 : "balance".equals(current) ? 1 : 0;
+        AlertDialog dialog = new TransivaAlertDialogBuilder(activity)
+                .setTitle(title)
+                .setSingleChoiceItems(methods, selected, (choice, index) -> {
+                    choice.dismiss();
+                    if (owner.matches(activity)) selection.select(index == 2 ? METHOD : index == 1 ? "balance" : "cash");
+                })
+                .setNegativeButton("Batal", null)
+                .setNeutralButton("Status uji terakhir", (choice, button) -> {
+                    if (owner.matches(activity)) showLatest(activity, checkoutUrl, service, timeout);
+                })
+                .show();
+        dialog.getButton(AlertDialog.BUTTON_NEUTRAL).setVisibility(View.GONE);
+        if (!supportsSandbox) return;
+        TransivaNetworkExecutor.execute(() -> {
+            try {
+                JSONObject request = new JSONObject().put("action", "capabilities");
+                JSONObject result = TransivaHttpRepository.postJson(activity, endpoint(checkoutUrl, STATUS_PATH),
+                        request, Math.min(timeout, 3500), owner);
+                if (!result.optBoolean("success") || !result.optBoolean("sandbox_qris_available")) return;
+                activity.runOnUiThread(() -> {
+                    if (!dialog.isShowing() || activity.isFinishing() || activity.isDestroyed() || !owner.matches(activity)) return;
+                    methods.add(label(METHOD));
+                    if (METHOD.equals(current)) dialog.getListView().setItemChecked(2, true);
+                    dialog.getButton(AlertDialog.BUTTON_NEUTRAL).setVisibility(View.VISIBLE);
+                });
+            } catch (Exception ignored) {
+                // Cash and TransPay remain selectable when the sandbox is unavailable.
+            }
+        });
     }
 
     static JSONObject create(Activity activity, String checkoutUrl, String service, JSONObject payload, int timeout) throws Exception {

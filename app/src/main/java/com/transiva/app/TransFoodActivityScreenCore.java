@@ -1612,6 +1612,10 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
     }
 
     protected void showCheckout() {
+        showCheckout(null);
+    }
+
+    private void showCheckout(String initialMethod) {
         if (activeCart == null || cart.isEmpty() || foodOrderSubmitting) return;
         if (checkoutRestaurantId != activeCart.restaurantId) {
             checkoutRestaurantId = activeCart.restaurantId;
@@ -1620,6 +1624,10 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
             voucherCode = defaultVoucherCode;
         }
         bindCheckoutSplitBill();
+        if (DuitkuSandboxCheckout.METHOD.equals(initialMethod)) {
+            if (splitBillManager != null && splitBillManager.groupSize() > 1) splitBillManager.clear();
+            paymentMethod = initialMethod;
+        }
         royaltyPreviewKey = "";
         leaveVirtualFood();
         ++menuLoadGeneration;featureRuntime.cancel("food-menus");featureRuntime.cancel("food-social");menusRequestLoading=false;
@@ -1707,7 +1715,7 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
                 paymentLabel(paymentMethod) + "  ›", () -> showCheckoutPayment(paymentMethod, method -> {
                     if (foodOrderSubmitting || currentScreen != 2 || paymentMethod.equals(method)) return;
                     paymentMethod = method;
-                    if ("cash".equals(method) && splitBillManager != null && splitBillManager.groupSize() > 1) {
+                    if (!"balance".equals(method) && splitBillManager != null && splitBillManager.groupSize() > 1) {
                         splitBillManager.clear();
                     } else renderCheckout();
                 })));
@@ -1776,21 +1784,12 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
     }
 
     private void showCheckoutPayment(String current, FoodCheckoutNote.OnSaved select) {
-        boolean sandbox = BuildConfig.DUITKU_SANDBOX_CHECKOUT && currentScreen == 2;
-        String[] labels = sandbox ? new String[]{"Tunai", "Transiva Pay", "QRIS Sandbox"}
-                : new String[]{"Tunai", "Transiva Pay"};
-        int checked = "balance".equals(current) ? 1 : sandbox && "qris".equals(current) ? 2 : 0;
-        android.app.AlertDialog.Builder builder = new TransivaAlertDialogBuilder(this).setTitle("Metode pembayaran")
-                .setSingleChoiceItems(labels, checked, (dialog, choice) -> {
-                    dialog.dismiss();
-                    select.save(choice == 2 ? DuitkuSandboxCheckout.METHOD : choice == 1 ? "balance" : "cash");
-                })
-                .setNegativeButton("Batal", null);
-        if (sandbox) {
-            builder.setNeutralButton("Status uji terakhir", (d, w) -> DuitkuSandboxCheckout.showLatest(
-                    this, BASE_URL + "server/create_food_order.php", "TransFood", TIMEOUT_MS));
-        }
-        builder.show();
+        int screen = currentScreen;
+        boolean singleStore = screen == 2 || (screen == COMBINED_CHECKOUT && cartStore.selectedCarts().size() == 1);
+        DuitkuSandboxCheckout.chooseMethod(this, BASE_URL + "server/create_food_order.php", "TransFood", current,
+                singleStore, "Metode pembayaran", TIMEOUT_MS, payment -> {
+                    if (currentScreen == screen && !foodOrderSubmitting) select.save(payment);
+                });
     }
 
     private static String paymentLabel(String method) {
@@ -3284,15 +3283,7 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
             });
             Button order = checkoutChoice("Checkout toko", false);
             order.setEnabled(!chosen.items.isEmpty());
-            order.setOnClickListener(v -> {
-                Cart selected = cartStore.get(draft.restaurantId).selectedOnly();
-                if (selected.items.isEmpty()) { renderSavedCarts(); return; }
-                selectRestaurant(restaurantForCart(draft.restaurantId, draft.name));
-                setActiveCart(selected);
-                checkoutFromCarts = true;
-                refreshCheckoutRestaurant = true;
-                showCheckout();
-            });
+            order.setOnClickListener(v -> openSavedStoreCheckout(draft, null));
             LinearLayout actions = new LinearLayout(this);
             actions.setPadding(0, dp(3), 0, 0);
             addCheckoutPair(actions, edit, order, 44);
@@ -3466,8 +3457,23 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
                 foodOrderSubmitting ? "Memproses…" : "Buat Pesanan", !foodOrderSubmitting, this::submitCombinedCheckout);
     }
 
+    private void openSavedStoreCheckout(Cart draft, String initialMethod) {
+        Cart selected = cartStore.get(draft.restaurantId).selectedOnly();
+        if (selected.items.isEmpty()) { renderSavedCarts(); return; }
+        selectRestaurant(restaurantForCart(draft.restaurantId, draft.name));
+        setActiveCart(selected);
+        checkoutFromCarts = true;
+        refreshCheckoutRestaurant = true;
+        showCheckout(initialMethod);
+    }
+
     private void chooseCombinedPayment(String payment) {
         if (payment.equals(combinedPayment) || foodOrderSubmitting) return;
+        if (DuitkuSandboxCheckout.METHOD.equals(payment)) {
+            List<Cart> selected = cartStore.selectedCarts();
+            if (selected.size() == 1) openSavedStoreCheckout(selected.get(0), payment);
+            return;
+        }
         combinedPayment = payment;
         combinedCheckoutScroll = foodScroll.getScrollY();
         FoodCombinedCheckout.savePayment(this, userId, payment);

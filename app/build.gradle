@@ -48,8 +48,8 @@ android {
         testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner'
         minSdk 23
         targetSdk 36
-        versionCode 67
-        versionName "2.9.17"
+        versionCode 68
+        versionName "2.9.18"
     }
 
     signingConfigs {
@@ -65,11 +65,9 @@ android {
     buildTypes {
         debug {
             debuggable true
-            buildConfigField 'boolean', 'DUITKU_SANDBOX_CHECKOUT', project.hasProperty('transivaDuitkuSandbox') ? 'true' : 'false'
         }
 
         release {
-            buildConfigField 'boolean', 'DUITKU_SANDBOX_CHECKOUT', 'false'
             signingConfig signingConfigs.release
             debuggable false
 

@@ -450,8 +450,7 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
                     mapView.centerOnInitialLocation(liveGpsBest.getLatitude(), liveGpsBest.getLongitude(), 17f);
                 }
                 startLiveGps();
-                loadMapPlaces();
-                loadOnlineDrivers();
+                queueNearbyPickup(true);
                 refreshSmartAvailability();
             }
             @Override public void onCenterChanged(double lat, double lng) {
@@ -490,9 +489,9 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
                 featureRuntime.execute(() -> {
                     final String road = reverseAddress(lat, lng);
                     final String admin = buildAdministrativeFallback(lat, lng);
+                    final String localName = findNearestPlaceName(lat, lng);
                     featureRuntime.post(mainHandler, () -> resolveNearestGooglePlace(lat, lng, googleName -> {
                         if (destroyed || selectingWaypoint || resolvingPickup != "pickup".equals(mode) || (!resolvingPickup && deliverySelectionLocked && !editingCheckoutPoint) || generation != destinationResolveGeneration) return;
-                        String localName = findNearestPlaceName(lat, lng);
                         String landmark = cleanLandmarkName(firstNonEmpty(googleName, localName, ""));
                         String title;
                         if (!landmark.isEmpty()) title = "Dekat " + landmark;
@@ -1832,6 +1831,7 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
             @Override public void onLocation(Location loc, boolean current) {
                 if (!screenLocationActive || destroyed || isFinishing()) return;
                 liveGpsBest = loc;
+                queueNearbyPickup(false);
                 updateGpsBadge(loc);
                 if (editingCheckoutPoint || !pickupGpsSelected || pickupGpsPinned || isRouteConfirmationLocked()) return;
                 // A recent cache can position the map immediately, but only a fresh,
@@ -1847,7 +1847,6 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
                 updateGpsBadge(loc);
                 mode = "delivery";
                 updateModeUI();
-                loadOnlineDrivers();
                 refreshSmartAvailability();
             }
             @Override public void onUnavailable(String message) {
@@ -2240,7 +2239,7 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
 
     protected String findNearestFromUrl(String urlText, String arrayKey, double lat, double lng, double maxMeter) {
         try {
-            JSONObject res = getJson(urlText + "?v=" + System.currentTimeMillis());
+            JSONObject res = getJson(urlText + nearbyQuery(lat, lng) + "&radius_km=0.2&limit=4");
 
             if (!res.optBoolean("success", false)) return "";
 
@@ -2277,21 +2276,58 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
         }
     }
 
-    protected void loadMapPlaces() {
-        featureRuntime.execute(() -> {
+    private double nearbyPickupLat = Double.NaN;
+    private double nearbyPickupLng = Double.NaN;
+    private int nearbyPickupGeneration;
+    private final Runnable nearbyDriverPoll = this::loadOnlineDrivers;
+    private final Runnable nearbyMerchantLoad = this::loadMapPlaces;
+
+    private static String nearbyQuery(double latitude, double longitude) {
+        return "?lat=" + latitude + "&lng=" + longitude;
+    }
+
+    private void queueNearbyPickup(boolean force) {
+        if (!mapReady || !screenLocationActive || destroyed) return;
+        double latitude = pickupLat, longitude = pickupLng;
+        if (!validCoord(latitude, longitude) && liveGpsBest != null) {
+            latitude = liveGpsBest.getLatitude();
+            longitude = liveGpsBest.getLongitude();
+        }
+        if (!validCoord(latitude, longitude)) return;
+        if (!force && validCoord(nearbyPickupLat, nearbyPickupLng)
+                && distanceMeter(latitude, longitude, nearbyPickupLat, nearbyPickupLng) < 150) return;
+        nearbyPickupLat = latitude;
+        nearbyPickupLng = longitude;
+        nearbyPickupGeneration++;
+        featureRuntime.cancel("nearby-pickup-drivers");
+        featureRuntime.cancel("nearby-pickup-merchants");
+        mainHandler.removeCallbacks(nearbyDriverPoll);
+        mainHandler.removeCallbacks(nearbyMerchantLoad);
+        if (mapView != null) {
+            mapView.clearOnlineDrivers();
+            mapView.clearPlaces();
+        }
+        if (driverAvailabilityText != null) driverAvailabilityText.setVisibility(View.GONE);
+        mainHandler.postDelayed(nearbyDriverPoll, 200);
+        mainHandler.postDelayed(nearbyMerchantLoad, 1200);
+    }
+
+    private void loadMapPlaces() {
+        if (!screenLocationActive || !mapReady || destroyed) return;
+        final int generation = nearbyPickupGeneration;
+        final String url = GET_BUSINESSES_URL + nearbyQuery(nearbyPickupLat, nearbyPickupLng) + "&radius_km=3&limit=8";
+        featureRuntime.executeLatest("nearby-pickup-merchants", CustomerLoadingCoordinator.CONTENT, () -> {
             try {
-                JSONObject food = getJson(GET_BUSINESSES_URL + "?v=" + System.currentTimeMillis());
-                JSONObject laundry = getJson(GET_LAUNDRIES_URL + "?v=" + System.currentTimeMillis());
-
+                JSONObject response = getJson(url);
+                if (!response.optBoolean("success")) return;
+                JSONArray merchants = response.optJSONArray("businesses");
                 featureRuntime.post(mainHandler, () -> {
-                    if (destroyed || !mapReady) return;
-
-                    if (mapView != null) mapView.clearPlaces();
-                    drawPlaces(food.optJSONArray("businesses"), "TransFood");
-                    drawPlaces(laundry.optJSONArray("laundries"), "TransLaundry");
+                    if (!screenLocationActive || destroyed || generation != nearbyPickupGeneration || mapView == null) return;
+                    mapView.clearPlaces();
+                    drawPlaces(merchants, "TransFood");
                 });
-            } catch (Exception ignored) {}
-        }, () -> { Exception ignored = new java.util.concurrent.RejectedExecutionException("Antrean penuh atau waktu tunggu habis");  });
+            } catch (Exception ignored) { /* The map and booking remain available. */ }
+        }, null);
     }
 
     protected void drawPlaces(JSONArray arr, String type) {
@@ -2322,70 +2358,40 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
         }
     }
 
-    protected void loadOnlineDrivers() {
-        if (destroyed) return;
-
-        featureRuntime.execute(() -> {
+    private void loadOnlineDrivers() {
+        if (!screenLocationActive || !mapReady || destroyed || !validCoord(nearbyPickupLat, nearbyPickupLng)) return;
+        final int generation = nearbyPickupGeneration;
+        final String url = GET_ONLINE_DRIVERS_URL + nearbyQuery(nearbyPickupLat, nearbyPickupLng)
+                + "&type=" + driverType() + "&radius_km=10&limit=8";
+        featureRuntime.executeLatest("nearby-pickup-drivers", CustomerLoadingCoordinator.CONTENT, () -> {
             try {
-                JSONObject res = getJson(GET_ONLINE_DRIVERS_URL + "?type=" + driverType() + "&v=" + System.currentTimeMillis());
-                JSONArray arr = res.optJSONArray("drivers");
-
+                JSONObject response = getJson(url);
+                JSONArray drivers = response.optJSONArray("drivers");
+                if (!response.optBoolean("success") || drivers == null) return;
                 featureRuntime.post(mainHandler, () -> {
-                    if (destroyed || !mapReady) return;
-
-                    if (mapView != null) mapView.clearOnlineDrivers();
-
-                    int onlineCount = arr == null ? 0 : arr.length();
-                    int availableCount = 0;
-                    if (arr != null) {
-                        for (int i = 0; i < arr.length(); i++) {
-                            JSONObject driver = arr.optJSONObject(i);
-                            if (driver != null && !isDriverBusy(driver)) availableCount++;
-                        }
+                    if (!screenLocationActive || destroyed || generation != nearbyPickupGeneration || mapView == null) return;
+                    mapView.clearOnlineDrivers();
+                    int count = 0;
+                    for (int i = 0; i < drivers.length() && count < 8; i++) {
+                        JSONObject driver = drivers.optJSONObject(i);
+                        if (driver == null || isDriverBusy(driver)) continue;
+                        double latitude = driver.optDouble("latitude", Double.NaN);
+                        double longitude = driver.optDouble("longitude", Double.NaN);
+                        if (!validCoord(latitude, longitude)
+                                || distanceMeter(nearbyPickupLat, nearbyPickupLng, latitude, longitude) > 10000) continue;
+                        mapView.addOnlineDriver(latitude, longitude,
+                                firstNonEmpty(driver.optString("name"), driver.optString("username"), "Driver"), isCarService());
+                        count++;
                     }
-                    boolean noDriversOnline = onlineCount == 0;
-                    boolean allDriversBusy = onlineCount > 0 && availableCount == 0;
                     if (driverAvailabilityText != null) {
-                        driverAvailabilityText.setVisibility((noDriversOnline || allDriversBusy) ? View.VISIBLE : View.GONE);
-                        if (noDriversOnline) {
-                            driverAvailabilityText.setText("Semua driver menjalankan tugas, orderan tetap kami terima");
-                            driverAvailabilityText.setTextColor(Color.parseColor("#B45309"));
-                            driverAvailabilityText.setBackground(roundStroke("#FFF7ED", "#FED7AA", dp(10), 1));
-                        } else if (allDriversBusy) {
-                            driverAvailabilityText.setText("Semua driver menjalankan tugas, orderan tetap kami terima");
-                            driverAvailabilityText.setTextColor(Color.parseColor("#1D4ED8"));
-                            driverAvailabilityText.setBackground(roundStroke("#EFF6FF", "#BFDBFE", dp(10), 1));
-                        }
-                    }
-
-                    if (arr == null) return;
-
-                    for (int i = 0; i < arr.length(); i++) {
-                        JSONObject d = arr.optJSONObject(i);
-                        if (d == null) continue;
-
-                        double lat = d.optDouble("latitude", 0);
-                        double lng = d.optDouble("longitude", 0);
-
-                        if (!validCoord(lat, lng)) continue;
-
-                        String name = firstNonEmpty(
-                                d.optString("name", ""),
-                                d.optString("username", ""),
-                                "Driver"
-                        );
-
-                        if (mapView != null) mapView.addOnlineDriver(lat, lng, name, isCarService());
+                        driverAvailabilityText.setText("Belum ada driver tersedia di sekitar titik jemput");
+                        driverAvailabilityText.setVisibility(count == 0 ? View.VISIBLE : View.GONE);
                     }
                 });
-            } catch (Exception ignored) {}
-        }, () -> { Exception ignored = new java.util.concurrent.RejectedExecutionException("Antrean penuh atau waktu tunggu habis");  });
-
-        mainHandler.postDelayed(() -> {
-            if (!destroyed && mapReady && !isFinishing()) {
-                loadOnlineDrivers();
-            }
-        }, 15000);
+            } catch (Exception ignored) { /* Keep the last successful map result. */ }
+        }, null);
+        mainHandler.removeCallbacks(nearbyDriverPoll);
+        mainHandler.postDelayed(nearbyDriverPoll, 15000);
     }
 
     protected JSONObject getJson(String urlText) throws Exception {
@@ -2893,6 +2899,7 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
     }
 
     private void updateModeUI() {
+        queueNearbyPickup(false);
         boolean pickupMode = "pickup".equals(mode);
 
         boolean routeComplete = !editingCheckoutPoint && validCoord(pickupLat, pickupLng) && validCoord(deliveryLat, deliveryLng);
@@ -3142,10 +3149,16 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
         updateGpsBadge(liveGpsBest);
         startLiveGps();
         if (mapView != null) mapView.onResumeMap();
+        queueNearbyPickup(true);
     }
 
     @Override protected void onPause() {
         screenLocationActive = false;
+        nearbyPickupGeneration++;
+        mainHandler.removeCallbacks(nearbyDriverPoll);
+        mainHandler.removeCallbacks(nearbyMerchantLoad);
+        featureRuntime.cancel("nearby-pickup-drivers");
+        featureRuntime.cancel("nearby-pickup-merchants");
         stopLiveGps();
         featureRuntime.onPause();
         if (mapView != null) mapView.onPauseMap();

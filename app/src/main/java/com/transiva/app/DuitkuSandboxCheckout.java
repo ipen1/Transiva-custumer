@@ -139,6 +139,8 @@ final class DuitkuSandboxCheckout {
     static String historyStatus(String status) {
         switch (status) {
             case "paid": return "Lunas";
+            case "refunded": return "Dikembalikan ke TransPay";
+            case "cancelled": return "Dibatalkan · Refund belum tercatat";
             case "expired": return "Kedaluwarsa";
             case "closed": return "Ditutup";
             case "creating": return "Sedang dibuat";

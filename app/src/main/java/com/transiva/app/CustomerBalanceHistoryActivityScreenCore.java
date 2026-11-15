@@ -1068,7 +1068,7 @@ class CustomerBalanceHistoryActivityScreenCore extends CustomerAdaptiveActivity 
             String status = payment.optString("status");
             boolean waiting = "pending".equals(status) || "creating".equals(status);
             if (!("all".equals(filter) || "qris".equals(filter)
-                    || "out".equals(filter) && "paid".equals(status)
+                    || "out".equals(filter) && ("paid".equals(status) || "refunded".equals(status))
                     || "pending".equals(filter) && (waiting || payment.optBoolean("order_pending")))) continue;
             try {
                 visible.add(new JSONObject()
@@ -1076,7 +1076,7 @@ class CustomerBalanceHistoryActivityScreenCore extends CustomerAdaptiveActivity 
                         .put("title", payment.optString("service"))
                         .put("amount", payment.optLong("amount"))
                         .put("status", waiting || payment.optBoolean("order_pending") ? "pending"
-                                : "paid".equals(status) ? "success" : "cancelled")
+                                : "paid".equals(status) || "refunded".equals(status) ? "success" : "cancelled")
                         .put("created_at", created > 0 ? timestamp.format(new java.util.Date(created * 1000)) : "")
                         .put("payment", payment));
             } catch (org.json.JSONException ignored) { /* Ignore malformed entries. */ }

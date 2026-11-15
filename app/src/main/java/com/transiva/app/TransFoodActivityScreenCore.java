@@ -2105,7 +2105,7 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
         final int generation=++restaurantGeneration;
         final String context=restaurantRequestContext();inFlightRestaurantContext=context;
         final boolean replace=!context.equals(acceptedRestaurantContext);
-        final int requestedLimit=offset==0&&!replace?Math.max(20,Math.min(50,restaurantOffset)):20;
+        final int requestedLimit = offset > 0 ? 12 : 8;
         final String query=homeSearchQuery.trim(),sort=homeMode;final long refresh=catalogRefreshEpoch;
         if(currentScreen==0)renderHomeResults();
         featureRuntime.executeLatest("food-merchants",CustomerLoadingCoordinator.CONTENT,()->{
@@ -2137,7 +2137,14 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
                     acceptedRestaurantContext=context;restaurants.clear();restaurants.addAll(merged.values());
                     if(replace||offset>0||restaurantOffset<=requestedLimit||!response.optBoolean("has_more")){restaurantOffset=response.optInt("next_offset",offset+rows.length());restaurantHasMore=response.optBoolean("has_more");}
                     if(currentScreen==0&&activeRestaurant==null)renderHomeResults();
-                    if(!cached){if(lastMenuIndexAt==0&&!menuIndexLoading)loadAllMenuIndex();refreshMerchantStories();}
+                    if (!cached && offset == 0 && currentScreen == 0) {
+                        featureRuntime.postDelayed(mainHandler, () -> {
+                            if (currentScreen != 0 || generation != restaurantGeneration
+                                    || !context.equals(restaurantRequestContext())) return;
+                            if (lastMenuIndexAt == 0 && !menuIndexLoading) loadAllMenuIndex();
+                            refreshMerchantStories();
+                        }, 400);
+                    }
     }
 
     private int menuSearchGeneration = 0;

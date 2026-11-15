@@ -50,7 +50,7 @@ import java.util.Locale;
 public final class DuitkuSandboxPaymentActivity extends Activity {
     private static final int STORAGE_REQUEST = 6932;
     private final Handler handler = new Handler(Looper.getMainLooper());
-    private final Runnable poll = () -> load(false);
+    private final Runnable poll = this::pollPayment;
     private final Runnable tick = this::updateTimer;
     private final Runnable continueOrder = this::openOrders;
     private CustomerTransportSession owner;
@@ -65,6 +65,7 @@ public final class DuitkuSandboxPaymentActivity extends Activity {
     private boolean expiryCheckSent;
     private boolean dark;
     private long expiresAt;
+    private long lastGatewayCheck = SystemClock.elapsedRealtime();
     private JSONObject readyReceipt;
     private TextView title;
     private TextView successMark;
@@ -203,6 +204,10 @@ public final class DuitkuSandboxPaymentActivity extends Activity {
         super.onDestroy();
     }
 
+    private void pollPayment() {
+        load("pending".equals(status) && SystemClock.elapsedRealtime() - lastGatewayCheck >= 30000L);
+    }
+
     private void load(boolean checkProvider) {
         handler.removeCallbacks(poll);
         if (!visible || isFinishing() || isDestroyed() || loading) return;
@@ -211,6 +216,7 @@ public final class DuitkuSandboxPaymentActivity extends Activity {
             return;
         }
         loading = true;
+        if (checkProvider) lastGatewayCheck = SystemClock.elapsedRealtime();
         check.setEnabled(false);
         TransivaNetworkExecutor.execute(() -> {
             try {
@@ -251,7 +257,8 @@ public final class DuitkuSandboxPaymentActivity extends Activity {
         JSONObject receipt = payment.optJSONObject("order_receipt");
         String orderId = receipt == null ? "" : receipt.optString("order_id");
         boolean paid = "paid".equals(status);
-        title.setText(paid ? "Pembayaran berhasil" : "Pembayaran QRIS");
+        boolean refunded = "refunded".equals(status);
+        title.setText(refunded ? "Dana dikembalikan" : paid ? "Pembayaran berhasil" : "Pembayaran QRIS");
         if (paid && successMark.getVisibility() != View.VISIBLE) {
             successMark.setVisibility(View.VISIBLE);
             successMark.setAlpha(0f);
@@ -269,6 +276,8 @@ public final class DuitkuSandboxPaymentActivity extends Activity {
         if (!orderId.isEmpty()) info.append("\nPesanan  ").append(orderId);
         String paidAt = value(payment, "paid_at");
         if (!paidAt.isEmpty()) info.append("\nWaktu pembayaran  ").append(paidAt);
+        String refundedAt = value(payment, "refunded_at");
+        if (!refundedAt.isEmpty()) info.append("\nWaktu refund  ").append(refundedAt);
         if (unavailable) info.append("\nStatus dari Duitku belum diperbarui.");
         detail.setText(info.toString());
 
@@ -277,8 +286,12 @@ public final class DuitkuSandboxPaymentActivity extends Activity {
         expiresAt = expiry > 0 ? SystemClock.elapsedRealtime() + (expiry - serverTime) * 1000L : 0;
         renderCode(payment);
         updateTimer();
-        check.setVisibility(paid && !orderPending ? View.GONE : View.VISIBLE);
+        check.setVisibility(refunded || paid && !orderPending ? View.GONE : View.VISIBLE);
         activityButton.setVisibility(paid && !orderId.isEmpty() ? View.VISIBLE : View.GONE);
+        if (!paid) {
+            readyReceipt = null;
+            handler.removeCallbacks(continueOrder);
+        }
         if (paid && !orderId.isEmpty() && readyReceipt == null) {
             readyReceipt = receipt;
             try { DuitkuSandboxCheckout.acknowledgeFood(this, receipt); }

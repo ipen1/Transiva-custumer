@@ -745,7 +745,7 @@ class CustomerBalanceHistoryActivityScreenCore extends CustomerAdaptiveActivity 
                 );
 
         periodText=period;
-        period.setPadding(dp(8),dp(12),dp(8),dp(12));period.setOnClickListener(v->new TransivaAlertDialogBuilder(this).setTitle("Periode transaksi").setItems(new String[]{"7 hari terakhir","30 hari terakhir","90 hari terakhir"},(dialog,which)->{periodDays=new int[]{7,30,90}[which];periodText.setText(periodDays+" hari ▾");loadWallet();}).show());
+        period.setPadding(dp(8),dp(12),dp(8),dp(12));period.setOnClickListener(v->new TransivaAlertDialogBuilder(this).setTitle("Periode transaksi").setItems(new String[]{"7 hari terakhir","30 hari terakhir","90 hari terakhir"},(dialog,which)->{periodDays=new int[]{7,30,90}[which];periodText.setText(periodDays+" hari ▾");renderTransactions();loadWallet();}).show());
         header.addView(period);
         content.addView(header);
 
@@ -966,6 +966,9 @@ class CustomerBalanceHistoryActivityScreenCore extends CustomerAdaptiveActivity 
                 new ArrayList<>();
 
         for (JSONObject item : transactions) {
+            // Older servers returned QRIS orders in the synthetic cash list.
+            if ("cash".equals(item.optString("payment_channel"))
+                    && item.optString("reference").matches("(?:ORD|FOOD)-QR-[a-f0-9]{28}")) continue;
             String direction =
                     item.optString(
                             "direction",
@@ -1012,9 +1015,8 @@ class CustomerBalanceHistoryActivityScreenCore extends CustomerAdaptiveActivity 
             }
         }
 
-        boolean hasSandboxTransactions = (filter.equals("all") || filter.equals("out") || filter.equals("qris"))
-                && DuitkuSandboxCheckout.addRecords(this, mutationBox, qrisSandboxTransactions);
-        if (hasSandboxTransactions && visible.isEmpty()) return;
+        appendQrisTransactions(visible);
+        java.util.Collections.sort(visible, (left, right) -> right.optString("created_at").compareTo(left.optString("created_at")));
 
         if (visible.isEmpty()) {
             LinearLayout empty =
@@ -1054,18 +1056,58 @@ class CustomerBalanceHistoryActivityScreenCore extends CustomerAdaptiveActivity 
 
 
 
+    private void appendQrisTransactions(List<JSONObject> visible) {
+        if (qrisSandboxTransactions == null) return;
+        long cutoff = System.currentTimeMillis() / 1000 - periodDays * 86400L;
+        java.text.SimpleDateFormat timestamp = new java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US);
+        for (int i = 0; i < qrisSandboxTransactions.length(); i++) {
+            JSONObject payment = qrisSandboxTransactions.optJSONObject(i);
+            if (payment == null || payment.optString("payment_id").isEmpty()) continue;
+            long created = payment.optLong("created_epoch");
+            if (created > 0 && created < cutoff) continue;
+            String status = payment.optString("status");
+            boolean waiting = "pending".equals(status) || "creating".equals(status);
+            if (!("all".equals(filter) || "qris".equals(filter)
+                    || "out".equals(filter) && "paid".equals(status)
+                    || "pending".equals(filter) && (waiting || payment.optBoolean("order_pending")))) continue;
+            try {
+                visible.add(new JSONObject()
+                        .put("payment_channel", "qris")
+                        .put("title", payment.optString("service"))
+                        .put("amount", payment.optLong("amount"))
+                        .put("status", waiting || payment.optBoolean("order_pending") ? "pending"
+                                : "paid".equals(status) ? "success" : "cancelled")
+                        .put("created_at", created > 0 ? timestamp.format(new java.util.Date(created * 1000)) : "")
+                        .put("payment", payment));
+            } catch (org.json.JSONException ignored) { /* Ignore malformed entries. */ }
+        }
+    }
+
     protected View transactionCard(JSONObject item) {
-        boolean cash="cash".equals(item.optString("payment_channel"));boolean incoming="in".equals(item.optString("direction"));String status=item.optString("status","success");
+        String paymentChannel = item.optString("payment_channel");
+        boolean cash = "cash".equals(paymentChannel);
+        boolean qris = "qris".equals(paymentChannel);
+        boolean incoming="in".equals(item.optString("direction"));String status=item.optString("status","success");
         LinearLayout card=new LinearLayout(this);card.setOrientation(LinearLayout.VERTICAL);card.setPadding(dp(12),dp(10),dp(12),dp(10));card.setBackground(roundStroke("#FFFFFF","#E1EAF5",14,1));
         LinearLayout top=new LinearLayout(this);top.setGravity(Gravity.CENTER_VERTICAL);
         TextView title=text(cash?cashService(item):item.optString("title",transactionTitle(item.optString("type"))),12,"#0B3A78",true);title.setMaxLines(2);top.addView(title,new LinearLayout.LayoutParams(0,-2,1));
-        TextView amount=text((cash?"":incoming?"+":"−")+rupiah(item.optInt("amount")),12,cash?"#0B3A78":incoming?"#0E9F4B":"#D9485F",true);amount.setPadding(dp(8),0,0,0);top.addView(amount);card.addView(top);
-        String channel=cash?"Tunai":"Transiva Pay";
+        TextView amount=text((cash||qris?"":incoming?"+":"−")+rupiah(item.optInt("amount")),12,cash||qris?"#0B3A78":incoming?"#0E9F4B":"#D9485F",true);amount.setPadding(dp(8),0,0,0);top.addView(amount);card.addView(top);
+        String channel=qris?"QRIS":cash?"Tunai":"Transiva Pay";
         TextView meta=text(channel+" • "+transactionStatus(item),10,statusColor(status),false);meta.setPadding(0,dp(4),0,0);card.addView(meta);
         card.addView(text(formatDate(item.optString("created_at")),10,"#8495A8",false));
-        LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-1,-2);lp.setMargins(0,0,0,dp(7));card.setLayoutParams(lp);card.setOnClickListener(v->showTransactionDetails(item));return card;
+        LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-1,-2);lp.setMargins(0,0,0,dp(7));card.setLayoutParams(lp);card.setOnClickListener(v -> {
+            JSONObject payment = item.optJSONObject("payment");
+            if (qris && payment != null) DuitkuSandboxPaymentActivity.open(this, payment, false);
+            else showTransactionDetails(item);
+        });
+        return card;
     }
     private String transactionStatus(JSONObject item){
+        JSONObject payment = item.optJSONObject("payment");
+        if (payment != null) {
+            if (payment.optBoolean("order_pending")) return "Lunas · Pesanan diproses";
+            return DuitkuSandboxCheckout.historyStatus(payment.optString("status"));
+        }
         String status=item.optString("status");
         if(status.equals("cancelled")||status.equals("canceled"))return "cash".equals(item.optString("payment_channel"))?"Dibatalkan · Tidak perlu dibayar":"Dibatalkan";
         if("cash".equals(item.optString("payment_channel"))){if(status.equals("success"))return "Dibayar tunai";if(status.equals("pending"))return "Menunggu pembayaran";}

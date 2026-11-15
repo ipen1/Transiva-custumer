@@ -3,8 +3,6 @@ package com.transiva.app;
 import android.app.Activity;
 import android.app.AlertDialog;
 import android.view.View;
-import android.widget.LinearLayout;
-import android.widget.TextView;
 import android.widget.ArrayAdapter;
 import android.widget.Toast;
 
@@ -120,7 +118,7 @@ final class DuitkuSandboxCheckout {
                     AlertDialog.Builder dialog = new TransivaAlertDialogBuilder(activity)
                             .setTitle("Riwayat QRIS").setNegativeButton("Tutup", null);
                     if (payments.isEmpty()) {
-                        dialog.setMessage("Belum ada tagihan uji untuk akun ini.");
+                        dialog.setMessage("Belum ada tagihan QRIS untuk akun ini.");
                     } else {
                         dialog.setItems(labels.toArray(new String[0]), (choice, index) -> {
                             if (owner.matches(activity)) DuitkuSandboxPaymentActivity.open(activity, payments.get(index), false);
@@ -194,32 +192,4 @@ final class DuitkuSandboxCheckout {
         });
     }
 
-    static boolean addRecords(Activity activity, LinearLayout list, JSONArray rows) {
-        if (rows == null) return false;
-        boolean added = false;
-        CustomerTransportSession owner = CustomerTransportSession.capture(activity);
-        for (int i = 0; i < rows.length(); i++) {
-            JSONObject payment = rows.optJSONObject(i);
-            if (payment == null) continue;
-            if (!added) {
-                TextView heading = new TextView(activity);
-                heading.setText("Pembayaran QRIS");
-                heading.setTextSize(16);
-                heading.setTypeface(null, android.graphics.Typeface.BOLD);
-                list.addView(heading);
-                added = true;
-            }
-            String label = payment.optString("service") + " · " + rupiah(payment)
-                    + "\nQRIS · " + historyStatus(payment.optString("status"));
-            android.widget.Button row = new android.widget.Button(activity);
-            row.setAllCaps(false);
-            row.setGravity(android.view.Gravity.START | android.view.Gravity.CENTER_VERTICAL);
-            row.setText(label);
-            row.setOnClickListener(v -> {
-                if (owner.matches(activity)) DuitkuSandboxPaymentActivity.open(activity, payment, false);
-            });
-            list.addView(row, new LinearLayout.LayoutParams(-1, -2));
-        }
-        return added;
-    }
 }

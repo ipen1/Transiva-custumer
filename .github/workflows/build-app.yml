@@ -45,7 +45,18 @@ jobs:
               "https://repo1.maven.org/$json_path" --output "$json_jar"
           echo "3cf6cd6892e32e2b4c1c39e0f52f5248a2f5b37646fdfbb79a66b46b618414ed  $json_jar" | sha256sum --check --strict
           echo "JSON_JAR=$json_jar" >> "$GITHUB_ENV"
+      - name: Detect full release server source
+        id: release_server
+        shell: bash
+        run: |
+          if [[ -f server/config.php ]]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+            echo "Server source is managed separately. Running the bundled backend regression tests."
+          fi
       - name: Test the server that ships with this release
+        if: steps.release_server.outputs.present == 'true'
         env:
           TEST_DB_PASSWORD: integration-only
         run: |
@@ -62,6 +73,7 @@ jobs:
             sha256sum "transiva-server-${GITHUB_SHA}.zip" > "transiva-server-${GITHUB_SHA}.sha256"
           )
       - name: Upload verified server for this commit
+        if: steps.release_server.outputs.present == 'true'
         uses: actions/upload-artifact@v6
         with:
           name: transiva-server-${{ github.sha }}

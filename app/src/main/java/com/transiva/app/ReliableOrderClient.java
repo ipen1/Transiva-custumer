@@ -18,7 +18,7 @@ public final class ReliableOrderClient {
     }
     private ReliableOrderClient() {}
 
-    public static JSONObject create(Context context, String url, JSONObject input, int timeout) throws Exception {
+    public static JSONObject create(android.app.Activity context, String url, JSONObject input, int timeout) throws Exception {
         Context app=context.getApplicationContext();
         String user=new SessionManager(app).getUserId();
         if(user==null||user.isEmpty()||"0".equals(user))throw new PendingAttemptException("Login diperlukan.");
@@ -53,6 +53,12 @@ public final class ReliableOrderClient {
             }
             boolean newAttempt = key.isEmpty();
             if (newAttempt) key = "ORD-" + UUID.randomUUID();
+            JSONObject request = new JSONObject(body.toString()).put("id", key).put("user_id", user);
+            if ("balance".equals(body.optString("payment_method"))) {
+                String route = url.substring(url.lastIndexOf('/') + 1);
+                String proof = TransPayCheckoutApproval.request(context, user, route, key, request);
+                request.put("_transpay_proof", proof);
+            }
             synchronized (FoodCartStore.class) {
                 if (newAttempt && slot.endsWith(":create_food_order.php") && !FoodCartStore.matchesDraft(prefs, user, body))
                     throw new FoodCartChangedException();
@@ -60,9 +66,8 @@ public final class ReliableOrderClient {
                     throw new PendingAttemptException("Percobaan order belum dapat disimpan di perangkat.");
             }
             if(!user.equals(new SessionManager(app).getUserId()))throw new InterruptedException("Account changed");
-            body.put("id",key);body.put("user_id",user);
             try {
-                JSONObject result=TransivaHttpRepository.postJsonIdempotent(app,url,body,timeout,key);
+                JSONObject result=TransivaHttpRepository.postJsonIdempotent(app,url,request,timeout,key);
                 saveOutcome(prefs,slot,user,result);return result;
             } catch (Exception error) {
                 if (definitelyRejected(error)) { clear(prefs,slot); throw error; }
@@ -239,7 +244,7 @@ public final class ReliableOrderClient {
         }
     }
 
-    public static JSONObject retryPickup(Context context, int timeout) throws Exception {
+    public static JSONObject retryPickup(android.app.Activity context, int timeout) throws Exception {
         String slot = pickupSlot(context);
         SharedPreferences prefs = context.getSharedPreferences("transiva_order_attempts", Context.MODE_PRIVATE);
         if (slot.isEmpty() || prefs.contains(slot + ":receipt")) {

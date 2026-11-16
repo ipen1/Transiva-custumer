@@ -35,7 +35,6 @@ public final class RepeatOrderApi {
         if ("GET".equalsIgnoreCase(method)) {
             return TransivaHttpRepository.getJson(app, url, TIMEOUT_MS);
         }
-        if (url.endsWith("/createOrder.php") || url.endsWith("/create_food_order.php") || url.endsWith("/create_pickup_order.php")) return ReliableOrderClient.create(app, url, body, TIMEOUT_MS);
         return TransivaHttpRepository.postJson(app, url, body == null ? new JSONObject() : body, TIMEOUT_MS);
     }
 

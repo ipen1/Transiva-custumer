@@ -677,17 +677,6 @@ class TransPickupActivityScreenCore extends CustomerAdaptiveFragmentActivity {
         }));
     }
 
-    private void createPickupOrder() {
-        if ("balance".equals(paymentMethod) && BiometricSecurityManager.isEnabled(this)) {
-            BiometricSecurityManager.authenticate(this, "Otorisasi Transiva Pay", "Konfirmasi biometrik sebelum membayar pengiriman ini.", new BiometricSecurityManager.Callback() {
-                @Override public void onSuccess() { createPickupOrderAuthorized(); }
-                @Override public void onUnavailable(String message) { Toast.makeText(TransPickupActivityScreenCore.this, message, Toast.LENGTH_SHORT).show(); }
-            });
-            return;
-        }
-        createPickupOrderAuthorized();
-    }
-
     private boolean validatePackage() {
         EditText invalid = null;
         String message = "";
@@ -708,7 +697,7 @@ class TransPickupActivityScreenCore extends CustomerAdaptiveFragmentActivity {
         return false;
     }
 
-    private void createPickupOrderAuthorized() {
+    private void createPickupOrder() {
         if (submittingOrder) return;
         if (userId <= 0) { showInfo("Login", "User ID tidak ditemukan. Silakan login ulang."); return; }
         if (!isCheckout() || !hasRoutePoints() || !validatePackage()) return;
@@ -720,6 +709,7 @@ class TransPickupActivityScreenCore extends CustomerAdaptiveFragmentActivity {
         final String submittedPickupAddress=pickupAddress,submittedDeliveryAddress=deliveryAddress;
         final String submittedSize=packageSize,submittedVehicle=vehicleType,submittedPayment=paymentMethod,submittedCategory=itemCategory;
         final boolean submittedFragile=fragile;
+        final long approvedPrice = Math.round(deliveryFee);
         final double submittedValue=parseMoney(itemValueInput.getText().toString());
         final String submittedNote=noteInput.getText().toString().trim();
         submittingOrder = true;
@@ -736,7 +726,8 @@ class TransPickupActivityScreenCore extends CustomerAdaptiveFragmentActivity {
                 p.put("item_name", itemName); p.put("item_category", submittedCategory); p.put("item_value", submittedValue);
                 p.put("package_size", submittedSize); p.put("vehicle_type", submittedVehicle); p.put("fragile", submittedFragile ? 1 : 0);
                 p.put("receiver_name", receiverName); p.put("receiver_phone", receiverPhone); p.put("note", submittedNote);
-                p.put("payment_method", submittedPayment); // price, distance, dan OTP dihitung/dibuat ulang oleh server
+                p.put("payment_method", submittedPayment);
+                if ("balance".equals(submittedPayment)) p.put("approved_price", approvedPrice);
                 JSONObject res = ReliableOrderClient.create(this, BASE_URL + "server/create_pickup_order.php", p, TIMEOUT_MS);
                 networkScope.post(mainHandler, () -> {
                     if (pickupScreenClosed || isFinishing() || isDestroyed()) return;
@@ -760,6 +751,13 @@ class TransPickupActivityScreenCore extends CustomerAdaptiveFragmentActivity {
                         submittingOrder = false;
                         updateCheckoutButton();
                         setLoading(false);
+                        if (e instanceof TransivaHttpRepository.ServerResponseException) {
+                            JSONObject rejection = ((TransivaHttpRepository.ServerResponseException) e).response;
+                            if (rejection != null && "PICKUP_QUOTE_CHANGED".equals(rejection.optString("code"))) {
+                                pickupFareGate.invalidate();
+                                calculateOngkir();
+                            }
+                        }
                         showInfo("Pengiriman", ReliableOrderClient.failureMessage(e));
                     }
                 });

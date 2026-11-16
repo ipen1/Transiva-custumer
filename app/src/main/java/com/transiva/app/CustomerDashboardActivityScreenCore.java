@@ -145,7 +145,6 @@ class CustomerDashboardActivityScreenCore extends CustomerAdaptiveActivity
 
     protected LinearLayout promoSection;
     protected TextView promoHeader;
-    protected TextView promoEmptyText;
     protected HorizontalScrollView promoScroll;
     protected LinearLayout promoTrack;
     protected LinearLayout promoDots;
@@ -1394,18 +1393,10 @@ class CustomerDashboardActivityScreenCore extends CustomerAdaptiveActivity
         ).show();
     }
 
-    /**
-     * Promo section memakai tinggi WRAP_CONTENT.
-     *
-     * Saat tidak ada promo:
-     * - banner disembunyikan;
-     * - dots disembunyikan;
-     * - hanya teks kecil "Belum ada promo hari ini";
-     * - Layanan Transiva langsung naik ke bawahnya.
-     */
     protected void buildPromoSection() {
         if (!CustomerResourceConfig.feature(this, "dashboard_promos", true)) return;
         promoSection = new LinearLayout(this);
+        promoSection.setVisibility(View.GONE);
         promoSection.setOrientation(
                 LinearLayout.VERTICAL
         );
@@ -1443,51 +1434,6 @@ class CustomerDashboardActivityScreenCore extends CustomerAdaptiveActivity
         LinearLayout.LayoutParams promoHintLp = new LinearLayout.LayoutParams(-1, -2);
         promoHintLp.setMargins(0, dp(3), 0, 0);
         promoSection.addView(promoHint, promoHintLp);
-
-        promoEmptyText = text(
-                "Belum ada promo hari ini",
-                12,
-                "#7B8DA3",
-                false
-        );
-
-        promoEmptyText.setGravity(
-                Gravity.CENTER_VERTICAL
-        );
-
-        promoEmptyText.setPadding(
-                dp(14),
-                dp(11),
-                dp(14),
-                dp(11)
-        );
-
-        promoEmptyText.setBackground(
-                Shape.roundStroke(
-                        "#FFFFFF",
-                        "#E3ECF7",
-                        dp(14),
-                        1
-                )
-        );
-
-        LinearLayout.LayoutParams emptyLp =
-                new LinearLayout.LayoutParams(
-                        -1,
-                        dp(46)
-                );
-
-        emptyLp.setMargins(
-                0,
-                dp(7),
-                0,
-                0
-        );
-
-        promoSection.addView(
-                promoEmptyText,
-                emptyLp
-        );
 
         promoScroll =
                 new HorizontalScrollView(this);
@@ -1590,6 +1536,7 @@ class CustomerDashboardActivityScreenCore extends CustomerAdaptiveActivity
 
 
     protected void renderPromos(List<Promo> promos) {
+        if (promoSection == null) return;
         stopPromoAutoSlide();
 
         promoTrack.removeAllViews();
@@ -1603,7 +1550,6 @@ class CustomerDashboardActivityScreenCore extends CustomerAdaptiveActivity
         if (promoCount == 0) {
             activePromoIndex = 0;
 
-            promoEmptyText.setVisibility(View.GONE);
             if (promoHeader != null) promoHeader.setVisibility(View.GONE);
             if (promoSection != null) promoSection.setVisibility(View.GONE);
 
@@ -1625,7 +1571,6 @@ class CustomerDashboardActivityScreenCore extends CustomerAdaptiveActivity
         if (promoSection != null) promoSection.setVisibility(View.VISIBLE);
         updateLocationPopularFallback();
         if (promoHeader != null) promoHeader.setVisibility(View.VISIBLE);
-        promoEmptyText.setVisibility(View.GONE);
         promoScroll.setVisibility(View.VISIBLE);
 
         promoDots.setVisibility(

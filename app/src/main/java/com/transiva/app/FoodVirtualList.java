@@ -19,6 +19,11 @@ final class FoodVirtualList extends RecyclerView {
     }
     private final LinearLayoutManager manager;
     private final Rows adapter=new Rows();private final Runnable changed;
+    private boolean rebindScheduled;
+    private final Runnable rebindVisible = () -> {
+        rebindScheduled = false;
+        rebindIfActive();
+    };
     private final Map<String,Long> ids=new HashMap<>();private long sequence;
     private final LinkedHashMap<String,Parcelable> states=new LinkedHashMap<>();
     private String screen="";private boolean presented,disposed;private int left,top,right,bottom;
@@ -36,7 +41,7 @@ final class FoodVirtualList extends RecyclerView {
         adapter.rows=next;for(int position:dirty)adapter.notifyItemChanged(position,values.get(Integer.parseInt(next.get(position).key.substring(5))));
     }
     boolean isPresented(){return presented;}
-    void dispose(){disposed=true;setAdapter(null);removeCallbacks(changed);adapter.rows=Collections.emptyList();ids.clear();states.clear();presented=false;}
+    void dispose(){disposed=true;setAdapter(null);removeCallbacks(rebindVisible);adapter.rows=Collections.emptyList();ids.clear();states.clear();presented=false;}
     void present(ScrollView scroller,LinearLayout header,List<View> cards,String key,int l,int t,int r,int b){
         boolean switching=!presented||!key.equals(screen);if(switching)saveState();screen=key;left=l;top=t;right=r;bottom=b;
         List<Entry> entries=new ArrayList<>();entries.add(new Entry("header:"+key,"header",()->header));
@@ -59,6 +64,16 @@ final class FoodVirtualList extends RecyclerView {
     private void saveState(){if(presented&&!screen.isEmpty()){states.put(screen,manager.onSaveInstanceState());while(states.size()>16)states.remove(states.keySet().iterator().next());}}
     private static void detach(View view){if(view.getParent() instanceof ViewGroup)((ViewGroup)view.getParent()).removeView(view);}
     static List<View> take(LinearLayout container,int first){List<View> views=new ArrayList<>();for(int i=first;i<container.getChildCount();i++)views.add(container.getChildAt(i));for(int i=container.getChildCount()-1;i>=first;i--)container.removeViewAt(i);return views;}
+    private void scheduleRebind() {
+        if (disposed || rebindScheduled) return;
+        rebindScheduled = true;
+        postOnAnimation(rebindVisible);
+    }
+
+    private void rebindIfActive() {
+        if (!disposed && presented) changed.run();
+    }
+
     private final class Rows extends Adapter<Holder> {
         List<Entry> rows=Collections.emptyList();Rows(){setHasStableIds(true);}
         void submit(List<Entry> next){
@@ -73,7 +88,7 @@ final class FoodVirtualList extends RecyclerView {
             Entry entry=rows.get(position);if(holder.key.equals(entry.key)&&holder.fingerprint.equals(entry.fingerprint)&&holder.frame.getChildCount()>0)return;
             holder.frame.removeAllViews();View view=entry.factory.create();detach(view);FrameLayout.LayoutParams params=new FrameLayout.LayoutParams(-1,-2);
             if(view.getLayoutParams() instanceof ViewGroup.MarginLayoutParams){ViewGroup.MarginLayoutParams margin=(ViewGroup.MarginLayoutParams)view.getLayoutParams();params.setMargins(margin.leftMargin,margin.topMargin,margin.rightMargin,margin.bottomMargin);}
-            holder.frame.addView(view,params);holder.key=entry.key;holder.fingerprint=entry.fingerprint;if(!disposed)post(changed);
+            holder.frame.addView(view,params);holder.key=entry.key;holder.fingerprint=entry.fingerprint;scheduleRebind();
         }
         @Override public void onBindViewHolder(Holder holder,int position,List<Object> payloads){
             if(!payloads.isEmpty()&&holder.key.equals(rows.get(position).key)&&holder.frame.getChildCount()>0){
@@ -85,6 +100,6 @@ final class FoodVirtualList extends RecyclerView {
             if(view instanceof TextView && view.getTag() instanceof String && ((String)view.getTag()).startsWith("qty:"))((TextView)view).setText(String.valueOf(value));
             if(view instanceof ViewGroup){ViewGroup group=(ViewGroup)view;for(int i=0;i<group.getChildCount();i++)setQuantity(group.getChildAt(i),value);}
         }
-        @Override public void onViewRecycled(Holder holder){holder.frame.removeAllViews();holder.key="";holder.fingerprint="";if(!disposed)post(changed);}
+        @Override public void onViewRecycled(Holder holder){holder.frame.removeAllViews();holder.key="";holder.fingerprint="";scheduleRebind();}
     }
 }

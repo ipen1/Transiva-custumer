@@ -140,6 +140,7 @@ final class DuitkuSandboxCheckout {
         switch (status) {
             case "paid": return "Lunas";
             case "refunded": return "Dikembalikan ke TransPay";
+            case "refund_pending": return "Refund ke TransPay sedang diproses";
             case "cancelled": return "Dibatalkan · Refund belum tercatat";
             case "expired": return "Kedaluwarsa";
             case "closed": return "Ditutup";

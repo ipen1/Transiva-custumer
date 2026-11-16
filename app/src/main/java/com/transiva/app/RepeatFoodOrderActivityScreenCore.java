@@ -878,14 +878,7 @@ class RepeatFoodOrderActivityScreenCore extends CustomerAdaptiveFragmentActivity
         FoodCheckoutConfirmation.show(this,quote,changed,payload.optString("customer_note"),fingerprint->{
             try {
                 JSONObject confirmed=new JSONObject(payload.toString()).put("expected_quote",fingerprint);
-                if ("balance".equals(confirmed.optString("payment_method")) && BiometricSecurityManager.isEnabled(this)) {
-                    setFoodSubmitting(false);
-                    BiometricSecurityManager.authenticate(this,"Otorisasi Transiva Pay",
-                            "Konfirmasi biometrik sebelum membayar pesanan ini.",new BiometricSecurityManager.Callback() {
-                        @Override public void onSuccess() { submitConfirmedFood(confirmed); }
-                        @Override public void onUnavailable(String message) { setFoodSubmitting(false); toast(message); }
-                    });
-                } else submitConfirmedFood(confirmed);
+                submitConfirmedFood(confirmed);
             } catch (Exception error) { failFoodOrder(error); }
         },()->setFoodSubmitting(false));
     }
@@ -894,7 +887,7 @@ class RepeatFoodOrderActivityScreenCore extends CustomerAdaptiveFragmentActivity
         setFoodSubmitting(true);
         networkScope.newThread(()->{
             try {
-                JSONObject response=RepeatOrderApi.post(CREATE_FOOD_URL,payload);
+                JSONObject response=ReliableOrderClient.create(this, CREATE_FOOD_URL, payload, 25_000);
                 runOnUiThread(()->{
                     setFoodSubmitting(false);
                     if (response.optBoolean("success")) showFoodReceipt(response);

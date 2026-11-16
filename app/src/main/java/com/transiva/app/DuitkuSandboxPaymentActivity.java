@@ -246,8 +246,8 @@ public final class DuitkuSandboxPaymentActivity extends Activity {
             Toast.makeText(this, "Status belum bisa diperbarui. Coba lagi.", Toast.LENGTH_SHORT).show();
         }
         if (visible && (status.isEmpty() || "pending".equals(status) || "creating".equals(status)
-                || "expired".equals(status) && autoContinue || orderPending)) {
-            handler.postDelayed(poll, "expired".equals(status) ? 15000 : 5000);
+                || "expired".equals(status) && autoContinue || "refund_pending".equals(status) || orderPending)) {
+            handler.postDelayed(poll, "expired".equals(status) || "refund_pending".equals(status) ? 15000 : 5000);
         }
     }
 

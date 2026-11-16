@@ -383,10 +383,7 @@ public class RepeatRideOrderActivity extends CustomerAdaptiveActivity {
                 }
                 payload.put("quote_token",acceptedQuoteToken);
                 JSONObject response =
-                        RepeatOrderApi.post(
-                                CREATE_ORDER_URL,
-                                payload
-                        );
+                        ReliableOrderClient.create(this, CREATE_ORDER_URL, payload, 25_000);
 
                 acceptedQuoteToken="";acceptedQuoteInput="";
                 if (

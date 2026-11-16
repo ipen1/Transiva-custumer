@@ -1107,16 +1107,29 @@ class TransShopActivityScreenCore extends CustomerAdaptiveActivity {
 
 
 
-    protected void loadOnlineDrivers() {
-        if (destroyed) return;
+    private final Runnable refreshNearbyDrivers = this::loadOnlineDrivers;
+    private boolean nearbyDriverScreenVisible;
 
-        featureRuntime.execute(() -> {
+    protected void loadOnlineDrivers() {
+        mainHandler.removeCallbacks(refreshNearbyDrivers);
+        if (destroyed || !nearbyDriverScreenVisible || !mapReady) return;
+        mainHandler.postDelayed(refreshNearbyDrivers, 15000);
+        double latitude = validCoord(pickupLat, pickupLng) ? pickupLat : deliveryLat;
+        double longitude = validCoord(pickupLat, pickupLng) ? pickupLng : deliveryLng;
+        if (!validCoord(latitude, longitude)) return;
+
+        featureRuntime.executeLatest("shop-nearby-drivers", CustomerLoadingCoordinator.CONTENT, () -> {
             try {
-                JSONObject res = getJson(GET_ONLINE_DRIVERS_URL + "?type=bike&v=" + System.currentTimeMillis());
+                String url = GET_ONLINE_DRIVERS_URL + "?type=bike&lat=" + latitude
+                        + "&lng=" + longitude + "&radius_km=10&limit=8";
+                JSONObject res = getJson(url);
                 JSONArray arr = res.optJSONArray("drivers");
 
                 featureRuntime.post(mainHandler, () -> {
-                    if (destroyed || !mapReady) return;
+                    double currentLat = validCoord(pickupLat, pickupLng) ? pickupLat : deliveryLat;
+                    double currentLng = validCoord(pickupLat, pickupLng) ? pickupLng : deliveryLng;
+                    if (destroyed || !mapReady || !nearbyDriverScreenVisible
+                            || distanceMeter(latitude, longitude, currentLat, currentLng) > 150) return;
 
                     if (mapView != null) mapView.clearOnlineDrivers();
 
@@ -1164,13 +1177,7 @@ class TransShopActivityScreenCore extends CustomerAdaptiveActivity {
                     }
                 });
             } catch (Exception ignored) {}
-        }, () -> { Exception ignored = new java.util.concurrent.RejectedExecutionException("Antrean penuh atau waktu tunggu habis");  });
-
-        mainHandler.postDelayed(() -> {
-            if (!destroyed && mapReady && !isFinishing()) {
-                loadOnlineDrivers();
-            }
-        }, 15000);
+        }, null);
     }
 
     protected JSONObject getJson(String urlText) throws Exception {
@@ -1733,10 +1740,15 @@ class TransShopActivityScreenCore extends CustomerAdaptiveActivity {
     @Override protected void onResume() {
         super.onResume();
         featureRuntime.onResume();
+        nearbyDriverScreenVisible = true;
         if (mapView != null) mapView.onResumeMap();
+        loadOnlineDrivers();
     }
 
     @Override protected void onPause() {
+        nearbyDriverScreenVisible = false;
+        mainHandler.removeCallbacks(refreshNearbyDrivers);
+        featureRuntime.cancel("shop-nearby-drivers");
         if (mapView != null) mapView.onPauseMap();
         featureRuntime.onPause();
         super.onPause();

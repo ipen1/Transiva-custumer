@@ -977,6 +977,18 @@ PAYLOAD = (
     'eW91dE1hbmFnZXIuamF2YVBLAQIUAxQAAAAIAL2YXF11Tc2o3AEAAHAEAAA8AAAAAAAAAAAAAACAAcYJAQB2aXJ0dWFsLXN0dWJz'
     'L2FuZHJvaWR4L3JlY3ljbGVydmlldy93aWRnZXQvUmVjeWNsZXJWaWV3LmphdmFQSwUGAAAAADQANAAWEAAA/AsBAAAA'
 )
+def install_virtual_frame_fixture(suite):
+    # Match the fixture's synchronous post() model. Device tests cover real frame timing.
+    view = suite / 'virtual-stubs/android/view/View.java'
+    content = view.read_text(encoding='utf-8')
+    existing_method = 'public boolean removeCallbacks(Runnable r)'
+    if content.count(existing_method) != 1:
+        raise RuntimeError('Virtual list View fixture has changed')
+    view.write_text(
+        content.replace(existing_method, 'public void postOnAnimation(Runnable r){post(r);}' + existing_method),
+        encoding='utf-8',
+    )
+
 def main():
  parser=argparse.ArgumentParser(description=__doc__);parser.add_argument('--mysql',action='store_true');args=parser.parse_args()
  project=Path(__file__).resolve().parents[2]
@@ -988,6 +1000,7 @@ def main():
     path=Path(item.filename)
     if path.is_absolute() or '..' in path.parts:raise ValueError('Invalid fixture path')
    archive.extractall(suite)
+  install_virtual_frame_fixture(suite)
   env=os.environ.copy();env['RF_TEST_MYSQL']='1' if args.mysql else '0'
   scripts=['test_referral.py','test_catalog.py'] if args.mysql else ['test_schema_hook.py','run_java.py','test_catalog.py','test_referral.py']
   for name in scripts:subprocess.run([sys.executable,str(suite/name)],env=env,check=True)

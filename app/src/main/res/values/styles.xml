@@ -6,6 +6,10 @@
         <item name="android:windowActionModeOverlay">true</item>
         <item name="android:windowDrawsSystemBarBackgrounds">true</item>
     </style>
+    <style name="TransPayApprovalTheme" parent="AppTheme">
+        <item name="android:windowIsTranslucent">true</item>
+        <item name="android:windowBackground">@android:color/transparent</item>
+    </style>
     <!-- Colors are required only on legacy Android. API 35+ has its own theme. -->
     <style name="AppTheme" parent="TransivaBaseTheme">
         <item name="android:statusBarColor">@android:color/transparent</item>

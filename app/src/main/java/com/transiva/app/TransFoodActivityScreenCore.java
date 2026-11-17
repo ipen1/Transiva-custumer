@@ -933,8 +933,13 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
             String matches = item.optString("name") + " " + item.optString("category") + " "
                     + item.optString("subcategory_name") + " " + item.optString("description");
             if (!matches.toLowerCase(Locale.ROOT).contains(query)) continue;
-            categories.computeIfAbsent(merchantCategoryName(item.optString("category")),
-                    unused -> new java.util.ArrayList<>()).add(item);
+            String categoryName = merchantCategoryName(item.optString("category"));
+            java.util.List<JSONObject> items = categories.get(categoryName);
+            if (items == null) {
+                items = new java.util.ArrayList<>();
+                categories.put(categoryName, items);
+            }
+            items.add(item);
             count++;
         }
         for (java.util.Map.Entry<String, java.util.List<JSONObject>> category : categories.entrySet()) {
@@ -948,10 +953,15 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
             java.util.Map<Integer, java.util.List<JSONObject>> groups = new java.util.LinkedHashMap<>();
             for (JSONObject item : category.getValue()) {
                 int id = item.optString("subcategory_name").trim().isEmpty() ? 0 : item.optInt("subcategory_id");
-                groups.computeIfAbsent(id, unused -> new java.util.ArrayList<>()).add(item);
+                java.util.List<JSONObject> items = groups.get(id);
+                if (items == null) {
+                    items = new java.util.ArrayList<>();
+                    groups.put(id, items);
+                }
+                items.add(item);
             }
             java.util.List<Integer> ordered = new java.util.ArrayList<>(groups.keySet());
-            ordered.sort((a, b) -> {
+            java.util.Collections.sort(ordered, (a, b) -> {
                 if (a.equals(b)) return 0;
                 if (a == 0) return 1;
                 if (b == 0) return -1;

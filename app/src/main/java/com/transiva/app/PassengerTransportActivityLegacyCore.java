@@ -37,7 +37,6 @@ import android.text.TextWatcher;
 import android.content.ClipboardManager;
 import android.content.ClipData;
 
-import com.google.android.gms.common.api.Status;
 import com.google.android.gms.common.api.ApiException;
 import android.util.Log;
 import com.google.android.gms.maps.model.LatLng;
@@ -49,9 +48,6 @@ import com.google.android.libraries.places.api.model.AutocompleteSessionToken;
 import com.google.android.libraries.places.api.model.RectangularBounds;
 import com.google.android.libraries.places.api.model.CircularBounds;
 import com.google.android.libraries.places.api.net.SearchNearbyRequest;
-import com.google.android.libraries.places.widget.Autocomplete;
-import com.google.android.libraries.places.widget.AutocompleteActivity;
-import com.google.android.libraries.places.widget.model.AutocompleteActivityMode;
 
 import org.json.JSONObject;
 import org.json.JSONArray;
@@ -151,7 +147,6 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
     protected static final String GET_LAUNDRIES_URL = BASE_URL + "server/admin_get_laundries.php";
     protected static final String GET_ONLINE_DRIVERS_URL = BASE_URL + "server/get_map_drivers.php";
     protected static final int REQ_LOCATION = 44;
-    protected static final int REQ_PLACE_AUTOCOMPLETE = 45;
     protected static final int TIMEOUT_MS = 25000;
 
     protected final Handler mainHandler = new Handler(Looper.getMainLooper());
@@ -1755,83 +1750,18 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
-        if (requestCode == DuitkuSandboxCheckout.REQUEST_PAYMENT) {
-            if (resultCode == RESULT_OK && data != null) {
-                try {
-                    JSONObject receipt = new JSONObject(data.getStringExtra("order_receipt"));
-                    pickupLat = receipt.optDouble("pickup_lat", pickupLat);
-                    pickupLng = receipt.optDouble("pickup_lng", pickupLng);
-                    deliveryLat = receipt.optDouble("delivery_lat", deliveryLat);
-                    deliveryLng = receipt.optDouble("delivery_lng", deliveryLng);
-                    pickupAddress = receipt.optString("pickup_address", pickupAddress);
-                    deliveryAddress = receipt.optString("delivery_address", deliveryAddress);
-                    handleOrderResult(receipt);
-                } catch (Exception invalid) {
-                    startActivity(new Intent(this, CustomerHistoryActivity.class));
-                }
-            }
-            return;
-        }
-        if (requestCode != REQ_PLACE_AUTOCOMPLETE) return;
-
-        if (resultCode == RESULT_OK && data != null) {
-            try {
-                Place place = Autocomplete.getPlaceFromIntent(data);
-                LatLng point = place.getLatLng();
-                if (point == null || !validCoord(point.latitude, point.longitude)) {
-                    toastDialog("Lokasi tempat belum tersedia. Coba pilih tempat lain atau gunakan peta.");
-                    return;
-                }
-
-                deliveryLat = point.latitude;
-                deliveryLng = point.longitude;
-                deliveryAddress = firstNonEmpty(place.getName(), place.getAddress(), "Tujuan dipilih");
-                googleMapInput.setText(deliveryAddress);
-                deliveryText.setText("Pengantaran: " + deliveryAddress);
-                deliveryBtn.setText("●  Tujuan\n" + shortAddress(deliveryAddress));
-                mode = "delivery";
-
-                if (mapView != null) {
-                    mapView.setDelivery(deliveryLat, deliveryLng, deliveryAddress);
-                    mapView.moveTo(deliveryLat, deliveryLng, 17f);
-                }
-
-                hideKeyboard();
-                updateModeUI();
-                requestPaymentQuote();
-            } catch (Exception e) {
-                toastDialog("Tempat tidak dapat dibuka. Coba lagi atau pilih langsung dari peta.");
-            }
-        } else if (resultCode == AutocompleteActivity.RESULT_ERROR && data != null) {
-            try {
-                Status status = Autocomplete.getStatusFromIntent(data);
-                String message = status == null ? "" : firstNonEmpty(status.getStatusMessage(), "");
-                if (!message.toLowerCase(Locale.ROOT).contains("cancel")) {
-                    showPlacesErrorDialog();
-                }
-            } catch (Exception ignored) {
-                showPlacesErrorDialog();
-            }
-        }
-    }
-
-
-    /** Pesan ramah pengguna saat layanan pencarian tempat belum dapat dipakai. */
-    protected void showPlacesErrorDialog() {
+        if (requestCode != DuitkuSandboxCheckout.REQUEST_PAYMENT || resultCode != RESULT_OK || data == null) return;
         try {
-            new TransivaAlertDialogBuilder(this)
-                    .setTitle("Cari tujuan")
-                    .setMessage("Pencarian tempat belum dapat digunakan. Coba lagi, atau pilih titik tujuan langsung dari peta.")
-                    .setNegativeButton("Pilih di Peta", (d, w) -> {
-                        mode = "delivery";
-                        updateModeUI();
-                        if (mapView != null && validCoord(centerLat, centerLng)) mapView.moveTo(centerLat, centerLng, 16f);
-                    })
-                    .setPositiveButton("Coba Lagi", (d, w) -> openDestinationAutocomplete())
-                    .show();
-        } catch (Exception ignored) {
-            mode = "delivery";
-            updateModeUI();
+            JSONObject receipt = new JSONObject(data.getStringExtra("order_receipt"));
+            pickupLat = receipt.optDouble("pickup_lat", pickupLat);
+            pickupLng = receipt.optDouble("pickup_lng", pickupLng);
+            deliveryLat = receipt.optDouble("delivery_lat", deliveryLat);
+            deliveryLng = receipt.optDouble("delivery_lng", deliveryLng);
+            pickupAddress = receipt.optString("pickup_address", pickupAddress);
+            deliveryAddress = receipt.optString("delivery_address", deliveryAddress);
+            handleOrderResult(receipt);
+        } catch (Exception invalid) {
+            startActivity(new Intent(this, CustomerHistoryActivity.class));
         }
     }
 

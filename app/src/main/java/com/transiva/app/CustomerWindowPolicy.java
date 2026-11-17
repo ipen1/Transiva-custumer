@@ -39,10 +39,12 @@ public final class CustomerWindowPolicy {
         return state;
     }
     public static void install(Activity activity) {
-        install(activity.getWindow(), Build.VERSION.SDK_INT >= 26 && activity.isInPictureInPictureMode());
+        install(activity.getWindow(),
+                Build.VERSION.SDK_INT >= 26 && activity.isInPictureInPictureMode(),
+                Build.VERSION.SDK_INT < 35);
     }
-    public static void install(Window window) { install(window, false); }
-    private static void install(Window window, boolean pip) {
+    public static void install(Window window) { install(window, false, true); }
+    private static void install(Window window, boolean pip, boolean configureDecor) {
         State state = state(window);
         state.pip = pip;
         View decor = window.getDecorView();
@@ -50,13 +52,10 @@ public final class CustomerWindowPolicy {
         if (content == null) return;
         if (!state.installed) {
             state.installed = true;
-            // Apply explicitly on every API: Android 15+ only enforces this for
-            // non-floating windows. Food stories use a Dialog with a floating
-            // theme, even after its size is changed to MATCH_PARENT. Leaving that
-            // window fitted by the OS and also padding it here applies insets twice.
-            // Legacy themes provide transparency; BarProtection paints behind bars.
-            WindowCompat.setDecorFitsSystemWindows(window, false);
-            if (Build.VERSION.SDK_INT >= 29) {
+            // Android 15+ applies this to Transiva's non-floating activity themes.
+            // Older devices and full-screen dialogs still need explicit setup.
+            if (configureDecor) WindowCompat.setDecorFitsSystemWindows(window, false);
+            if (configureDecor && Build.VERSION.SDK_INT >= 29) {
                 window.setNavigationBarContrastEnforced(false);
             }
             // Keep the caller's keyboard visibility state and other window flags.

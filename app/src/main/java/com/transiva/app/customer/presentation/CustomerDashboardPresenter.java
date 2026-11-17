@@ -4,109 +4,244 @@ import android.os.Handler;
 import android.os.Looper;
 import android.os.SystemClock;
 
-import com.transiva.app.TransivaHttpRepository.ServerResponseException;
-import com.transiva.app.TransivaNetworkExecutor;
-
+import com.transiva.app.CustomerReadError;
+import com.transiva.app.DashboardReadExecutor;
+import com.transiva.app.TransivaNetworkMonitor;
 import com.transiva.app.customer.domain.CustomerDashboardRepository;
 import com.transiva.app.customer.domain.DashboardState;
+import com.transiva.app.customer.domain.DashboardState.Section;
 
-import java.io.IOException;
-import java.util.concurrent.ExecutionException;
+import org.json.JSONObject;
+
+import java.net.UnknownHostException;
+import java.util.EnumMap;
 import java.util.concurrent.Future;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.TimeoutException;
 
 public final class CustomerDashboardPresenter {
+    private static final long MIN_REFRESH_MS = 12000L;
+    private static final int REQUEST_MS = 5000;
+    private static final int OPTIONAL_QUEUE_MS = 10000;
+    private static final Section[] BASE_SECTIONS = {
+            Section.BALANCE, Section.ORDER, Section.PROMOS, Section.LOYALTY, Section.BEST_OFFER
+    };
 
     private final CustomerDashboardRepository repository;
-    private CustomerDashboardContract.View view;
-    private Future<?> currentTask;
-    private volatile long lastFinishedAt;
-    private static final long MIN_REFRESH_MS = 12000L;
     private final Handler main = new Handler(Looper.getMainLooper());
-    private volatile boolean loading;
-    private long generation;
+    private final EnumMap<Section, Load> pending = new EnumMap<>(Section.class);
+    private final EnumMap<Section, Throwable> errors = new EnumMap<>(Section.class);
+    private final EnumMap<Section, Long> retryAt = new EnumMap<>(Section.class);
+    private final Runnable retry = this::retryFailedReads;
+    private CustomerDashboardContract.View view;
+    private final int userId;
+    private long lastRefreshAt;
+    private long lastOrderAt;
+    private boolean visibleRefresh;
+    private boolean referralAfterBalance;
+    private boolean retryAfterCurrent;
+    private JSONObject activeOrder;
 
-    public CustomerDashboardPresenter(
-            CustomerDashboardRepository repository,
-            CustomerDashboardContract.View view
-    ) {
+    private static final class Load {
+        Future<?> work;
+        Runnable timeout;
+    }
+
+    public CustomerDashboardPresenter(CustomerDashboardRepository repository,
+                                      CustomerDashboardContract.View view, int userId) {
         this.repository = repository;
         this.view = view;
+        this.userId = userId;
     }
 
-    public boolean isLoading() { return loading; }
+    public boolean isLoading() { return visibleRefresh; }
 
-    public void load(String username, int userId) {
-        request(username, userId, true);
-    }
+    public void load() { beginRefresh(true); }
 
-    public void refresh(String username, int userId) {
+    public void refresh() {
         long now = SystemClock.elapsedRealtime();
-        if (lastFinishedAt > 0L && now - lastFinishedAt < MIN_REFRESH_MS) return;
-        request(username, userId, false);
+        if (!pending.isEmpty() || (lastRefreshAt != 0L && now - lastRefreshAt < MIN_REFRESH_MS)) return;
+        beginRefresh(false);
     }
 
-    public void refreshAfterCancellation(String username, int userId) {
-        cancelLoad();
-        lastFinishedAt = 0L;
-        request(username, userId, false);
+    private void beginRefresh(boolean visible) {
+        if (view == null || visibleRefresh) return;
+        visibleRefresh = visible;
+        lastRefreshAt = SystemClock.elapsedRealtime();
+        for (Section section : BASE_SECTIONS) start(section);
+        // Referral may reconcile a reward. Its balance snapshot must follow the base balance read.
+        referralAfterBalance = pending.containsKey(Section.BALANCE);
+        if (!referralAfterBalance) start(Section.REFERRAL);
+        updateProgress();
     }
 
-    private void request(String username, int userId, boolean visibleLoading) {
-        if (loading || view == null) return;
-        final long requestGeneration = ++generation;
-        loading = true;
-        if (visibleLoading) view.showLoading(true);
+    public void refreshBalance() { start(Section.BALANCE); }
 
+    public void pollOrder() {
+        if (activeOrder != null && SystemClock.elapsedRealtime() - lastOrderAt >= MIN_REFRESH_MS
+                && TransivaNetworkMonitor.isOnline()) start(Section.ORDER);
+    }
+
+    public void refreshAfterCancellation() {
+        cancel(Section.ORDER);
+        cancel(Section.ORDER_DETAILS);
+        activeOrder = null;
+        start(Section.ORDER);
+        updateProgress();
+    }
+
+    public void networkRestored() {
+        if (!pending.isEmpty()) retryAfterCurrent = true;
+        main.removeCallbacks(retry);
+        main.postDelayed(retry, 350L);
+    }
+
+    public void stopRecovery() {
+        main.removeCallbacks(retry);
+        retryAfterCurrent = false;
+    }
+
+    private void retryFailedReads() {
+        if (view == null || !TransivaNetworkMonitor.isOnline()) return;
+        if (!pending.isEmpty()) {
+            retryAfterCurrent = true;
+            return;
+        }
+        retryAfterCurrent = false;
+        long earliest = Long.MAX_VALUE;
+        long now = SystemClock.elapsedRealtime();
+        for (Section section : Section.values()) {
+            Throwable error = errors.get(section);
+            if (!CustomerReadError.canRetryOnReconnect(error)) continue;
+            long remaining = retryRemaining(section, now);
+            if (remaining > 0L) earliest = Math.min(earliest, remaining);
+            else start(section);
+        }
+        if (earliest != Long.MAX_VALUE) main.postDelayed(retry, earliest);
+    }
+
+    private void start(Section section) {
+        if (view == null || pending.containsKey(section)) return;
+        long now = SystemClock.elapsedRealtime();
+        long remainingRetry = retryRemaining(section, now);
+        if (remainingRetry > 0L) {
+            view.showError(section, CustomerReadError.message(errors.get(section), remainingRetry, failureMessage(section)));
+            return;
+        }
+        if (section == Section.ORDER) lastOrderAt = now;
+        final JSONObject order = activeOrder;
+        if (section == Section.ORDER_DETAILS && order == null) return;
+
+        Load load = new Load();
+        pending.put(section, load);
+        if (!TransivaNetworkMonitor.isOnline()) {
+            main.post(() -> complete(section, load, null, new UnknownHostException("Offline")));
+            return;
+        }
+
+        int maxWait = isCore(section) ? REQUEST_MS + 500 : OPTIONAL_QUEUE_MS;
+        long deadline = now + maxWait;
+        load.timeout = () -> {
+            if (load.work != null) load.work.cancel(true);
+            complete(section, load, null, new TimeoutException());
+        };
+        main.postDelayed(load.timeout, maxWait);
         try {
-            currentTask = TransivaNetworkExecutor.execute(() -> {
+            java.util.concurrent.Callable<Void> request = () -> {
                 try {
-                    DashboardState state = repository.load(username, userId);
-                    main.post(() -> complete(requestGeneration, state, null));
+                    int remaining = (int) Math.min(REQUEST_MS, deadline - SystemClock.elapsedRealtime());
+                    if (remaining <= 0) throw new TimeoutException();
+                    DashboardState state = repository.load(section, userId, order, remaining);
+                    main.post(() -> complete(section, load, state, null));
                 } catch (Exception error) {
-                    main.post(() -> complete(requestGeneration, null, errorMessage(error)));
+                    main.post(() -> complete(section, load, null, error));
                 }
-            }, () -> main.post(() -> complete(requestGeneration, null,
-                    "Aplikasi sedang sibuk.")));
+                return null;
+            };
+            load.work = isCore(section) ? DashboardReadExecutor.submitCritical(request)
+                    : DashboardReadExecutor.submit(request);
         } catch (RejectedExecutionException busy) {
-            complete(requestGeneration, null, "Aplikasi sedang sibuk.");
+            main.post(() -> complete(section, load, null, busy));
         }
     }
 
-    private void complete(long requestGeneration, DashboardState state, String message) {
-        if (requestGeneration != generation || view == null) return;
-        currentTask = null;
-        loading = false;
-        lastFinishedAt = SystemClock.elapsedRealtime();
-        view.showLoading(false);
-        if (state != null) view.showDashboard(state);
-        else view.showError(message);
+    private void complete(Section section, Load load, DashboardState state, Throwable error) {
+        if (view == null || pending.get(section) != load) return;
+        pending.remove(section);
+        if (load.timeout != null) main.removeCallbacks(load.timeout);
+        if (error == null) {
+            errors.remove(section);
+            retryAt.remove(section);
+            if (section == Section.ORDER) {
+                cancel(Section.ORDER_DETAILS);
+                activeOrder = state.activeOrder;
+                if (activeOrder == null || activeOrder.has("smart_waiting")) {
+                    errors.remove(Section.ORDER_DETAILS);
+                    retryAt.remove(Section.ORDER_DETAILS);
+                }
+            }
+            view.showSection(section, state, true);
+            if (section == Section.ORDER && activeOrder != null && !activeOrder.has("smart_waiting")) {
+                start(Section.ORDER_DETAILS);
+            }
+        } else {
+            errors.put(section, error);
+            long delay = CustomerReadError.retryDelay(error);
+            if (delay > 0L) retryAt.put(section, SystemClock.elapsedRealtime() + delay);
+            view.showError(section, CustomerReadError.message(error, delay, failureMessage(section)));
+        }
+        if (section == Section.BALANCE && referralAfterBalance) {
+            referralAfterBalance = false;
+            start(Section.REFERRAL);
+        }
+        updateProgress();
+        if (pending.isEmpty() && retryAfterCurrent) {
+            retryAfterCurrent = false;
+            main.removeCallbacks(retry);
+            main.post(retry);
+        }
     }
 
-    private String errorMessage(Exception error) {
-        Throwable cause = error instanceof ExecutionException ? error.getCause() : error;
-        if (cause instanceof ServerResponseException) {
-            int status = ((ServerResponseException) cause).status;
-            if (status == 401 || status == 403) return "Akses akun perlu diperiksa.";
-            if (status == 429) return "Server sedang sibuk. Coba beberapa saat lagi.";
-            return "Server belum dapat memuat data beranda.";
+    private void updateProgress() {
+        if (view == null || !visibleRefresh) return;
+        boolean coreLoading = pending.containsKey(Section.BALANCE) || pending.containsKey(Section.ORDER);
+        view.showLoading(coreLoading);
+        if (!coreLoading) {
+            visibleRefresh = false;
+            view.finishRefresh(!errors.containsKey(Section.BALANCE) && !errors.containsKey(Section.ORDER));
         }
-        if (cause instanceof TimeoutException || cause instanceof java.net.SocketTimeoutException) {
-            return "Respons server terlalu lama.";
-        }
-        if (cause instanceof IOException) return "Koneksi ke server terganggu.";
-        return "Data beranda belum dapat dimuat.";
+    }
+
+    private static boolean isCore(Section section) {
+        return section == Section.BALANCE || section == Section.ORDER;
+    }
+
+    private long retryRemaining(Section section, long now) {
+        Long available = retryAt.get(section);
+        return available == null ? 0L : Math.max(0L, available - now);
+    }
+
+    private static String failureMessage(Section section) {
+        if (section == Section.BALANCE) return "Saldo belum dapat dimuat.";
+        if (section == Section.ORDER) return "Status pesanan belum dapat dimuat.";
+        return "Bagian beranda belum dapat dimuat.";
+    }
+
+    private void cancel(Section section) {
+        Load load = pending.remove(section);
+        if (load == null) return;
+        if (load.timeout != null) main.removeCallbacks(load.timeout);
+        if (load.work != null) load.work.cancel(true);
     }
 
     public void cancelLoad() {
-        ++generation;
-        Future<?> task = currentTask;
-        currentTask = null;
-        if (task != null) task.cancel(true);
-        loading = false;
+        for (Section section : Section.values()) cancel(section);
+        referralAfterBalance = false;
+        stopRecovery();
+        visibleRefresh = false;
         if (view != null) view.showLoading(false);
     }
+
     public void destroy() {
         view = null;
         cancelLoad();

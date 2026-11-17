@@ -5,6 +5,7 @@ import com.transiva.app.SessionManager;
 import com.transiva.app.NetworkSafetyRules;
 import android.content.SharedPreferences;
 import com.transiva.app.customer.domain.DashboardState;
+import com.transiva.app.customer.domain.DashboardState.Section;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
@@ -60,40 +61,56 @@ public final class DashboardStateCache {
         catch (org.json.JSONException invalid) { return new JSONArray(); }
     }
 
-    public static void put(Context context, DashboardState s) {
-        if (context != null) put(context, s, owner(context));
-    }
-
-    public static void put(Context context, DashboardState s, String account) {
-        if (context == null || s == null) return;
+    public static void put(Context context, Section section, DashboardState state, String account) {
+        if (!stores(section) || account.isEmpty() || !account.equals(owner(context))) return;
         try {
-            if (account == null || account.isEmpty() || !account.equals(owner(context))) return;
-            JSONObject o = new JSONObject();
-            o.put("owner", account);
-            o.put("saved_at", System.currentTimeMillis());
-            o.put("balance", s.balance);
-            o.put("activeOrderText", s.activeOrderText);
-            if (s.activeOrder != null) o.put("activeOrder", s.activeOrder);
-            if (s.loyalty != null) o.put("loyalty", s.loyalty);
-            if (s.referral != null) o.put("referral", s.referral);
-            if (s.bestOffer != null) o.put("bestOffer", s.bestOffer);
+            JSONObject entry = new JSONObject();
+            entry.put("owner", account);
+            entry.put("saved_at", System.currentTimeMillis());
+            switch (section) {
+                case BALANCE: entry.put("balance", state.balance); break;
+                case ORDER:
+                    entry.put("activeOrderText", state.activeOrderText);
+                    entry.put("activeOrder", state.activeOrder);
+                    break;
+                case LOYALTY: entry.put("loyalty", state.loyalty); break;
+                case REFERRAL: entry.put("referral", state.referral); break;
+                case BEST_OFFER: entry.put("bestOffer", state.bestOffer); break;
+                default: return;
+            }
             context.getApplicationContext().getSharedPreferences(PREF, Context.MODE_PRIVATE)
-                    .edit().putString(KEY, o.toString()).apply();
-        } catch (Exception ignored) {}
+                    .edit().putString(sectionKey(section), entry.toString()).apply();
+        } catch (org.json.JSONException ignored) { }
     }
 
-    public static DashboardState get(Context context) {
-        if (context == null) return null;
-        SharedPreferences p = context.getApplicationContext().getSharedPreferences(PREF, Context.MODE_PRIVATE);
-        String raw = p.getString(KEY, null); if (raw == null || raw.trim().isEmpty()) return null;
+    public static DashboardState get(Context context, Section section) {
+        if (!stores(section)) return null;
+        SharedPreferences prefs = context.getApplicationContext().getSharedPreferences(PREF, Context.MODE_PRIVATE);
+        String raw = prefs.getString(sectionKey(section), null);
+        // Existing installs can still render their most recent pre-upgrade snapshot.
+        if (raw == null) raw = prefs.getString(KEY, null);
+        if (raw == null) return null;
         try {
-            JSONObject o = new JSONObject(raw);
-            String account = owner(context);
-            if (!NetworkSafetyRules.mayUseAccountCache(account, o.optString("owner"),
-                    o.optLong("saved_at", 0L), System.currentTimeMillis(), MAX_AGE_MS)) return null;
-            return new DashboardState(o.optDouble("balance",0d), o.optString("activeOrderText","Belum ada pesanan aktif"),
-                    o.optJSONObject("activeOrder"), o.optJSONObject("loyalty"), o.optJSONObject("referral"),
-                    o.optJSONObject("bestOffer"), java.util.Collections.emptyList());
-        } catch (Exception ignored) { return null; }
+            JSONObject entry = new JSONObject(raw);
+            if (!NetworkSafetyRules.mayUseAccountCache(owner(context), entry.optString("owner"),
+                    entry.optLong("saved_at"), System.currentTimeMillis(), MAX_AGE_MS)) return null;
+            if (section == Section.BALANCE && !entry.has("balance")) return null;
+            if (section == Section.LOYALTY && !entry.has("loyalty")) return null;
+            if (section == Section.REFERRAL && !entry.has("referral")) return null;
+            if (section == Section.BEST_OFFER && !entry.has("bestOffer")) return null;
+            return new DashboardState(entry.optDouble("balance", 0), entry.optString("activeOrderText"),
+                    entry.optJSONObject("activeOrder"), entry.optJSONObject("loyalty"),
+                    entry.optJSONObject("referral"), entry.optJSONObject("bestOffer"), null);
+        } catch (org.json.JSONException invalid) {
+            return null;
+        }
+    }
+
+    private static boolean stores(Section section) {
+        return section != Section.PROMOS && section != Section.ORDER_DETAILS;
+    }
+
+    private static String sectionKey(Section section) {
+        return KEY + "_" + section.name();
     }
 }

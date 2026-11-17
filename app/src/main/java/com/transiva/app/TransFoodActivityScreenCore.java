@@ -229,7 +229,17 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
         page.setBackgroundColor(Color.parseColor("#F7FAFF"));
         MitraPullScrollView scroll = new MitraPullScrollView(this);
         foodScroll = scroll;
+        scroll.setOnScrollChangeListener((view, x, y, oldX, oldY) -> {
+            if (y > oldY && !scroll.canScrollVertically(1)) loadNextCatalogPage();
+        });
         virtualFood=new FoodVirtualList(this,()->{if(root!=null)rebindRetainedViews();});
+        virtualFood.addOnScrollListener(new androidx.recyclerview.widget.RecyclerView.OnScrollListener() {
+            @Override public void onScrolled(androidx.recyclerview.widget.RecyclerView list, int dx, int dy) {
+                if (dy > 0 && !list.canScrollVertically(1)) mainHandler.post(() -> {
+                    if (!isDestroyed() && virtualFood.isPresented()) loadNextCatalogPage();
+                });
+            }
+        });
         scroll.setFillViewport(false);
         LinearLayout layout = new LinearLayout(this);
         foodLayout = layout;
@@ -526,12 +536,24 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
         }
     }
 
+    private void loadNextCatalogPage() {
+        if (!foodForeground || isFinishing()) return;
+        if (currentScreen == 0 && restaurantHasMore && !restaurantsLoading && foodLoadError.isEmpty()
+                && restaurantOffset > 0 && restaurantRequestContext().equals(acceptedRestaurantContext)) {
+            loadRestaurantPage(restaurantOffset);
+        } else if (currentScreen == 1 && activeRestaurant != null && menusHasMore && !menusRequestLoading
+                && menusError.isEmpty() && menusOffset > 0) {
+            loadMenuPage(activeRestaurant.optInt("id"), menusOffset, false);
+        }
+    }
+
     private void addHomePageControls(String q){
         if(catalogCacheServing)addStatusTo(homeResultsBox,restaurantsLoading?"Data tersimpan · memperbarui merchant…":"Menampilkan data tersimpan. Tarik untuk mencoba lagi.");
         if(restaurantHasMore || !foodLoadError.isEmpty()) {
             TextView more=text(restaurantsLoading?"Memuat merchant…":!foodLoadError.isEmpty()?"↻ Coba lagi memuat merchant":"Lihat merchant berikutnya",13,"#087BFF",true);
             more.setPadding(dp(12),dp(14),dp(12),dp(14));more.setGravity(Gravity.CENTER);
-            more.setOnClickListener(v->loadRestaurantPage(restaurantRequestContext().equals(acceptedRestaurantContext)?restaurantOffset:0));more.setEnabled(!restaurantsLoading);
+            more.setOnClickListener(v->loadRestaurantPage(restaurantRequestContext().equals(acceptedRestaurantContext)
+                    ? (foodLoadError.isEmpty() ? restaurantOffset : failedRestaurantOffset) : 0));more.setEnabled(!restaurantsLoading);
             homeResultsBox.addView(more);
         }
         if((!q.isEmpty()||"favorites".equals(homeMode))&&menuSearchHasMore){
@@ -820,8 +842,7 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
         clearStickyCartBar();
         root.removeAllViews();
         buildTopBar("Detail Merchant", firstNonEmpty(activeRestaurant != null ? activeRestaurant.optString("name") : "", "Menu makanan"), true);
-        if (menus.isEmpty()) addStatus(menusLoadFinished ? "Belum ada menu makanan yang tersedia dari merchant ini." : "Memuat menu...");
-        else renderMenus();
+        if (activeRestaurant != null) renderMenus();
     }
 
     protected void renderMenus() {
@@ -2162,7 +2183,7 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
     private String acceptedRestaurantContext="",inFlightRestaurantContext="";
     private String restaurantRequestContext(){return homeMode+":"+homeSearchQuery.trim();}
     private long catalogRefreshEpoch;
-    private int restaurantOffset,restaurantGeneration;
+    private int restaurantOffset,restaurantGeneration,failedRestaurantOffset;
     private boolean restaurantHasMore;
     protected void loadRestaurants() { loadRestaurants(true); }
     protected void loadRestaurants(boolean showLoading) {
@@ -2175,16 +2196,16 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
     }
     private void loadRestaurantPage(int offset) {
         if(restaurantsLoading)return;
-        restaurantsLoading=true;foodLoadError="";
+        restaurantsLoading=true;foodLoadError="";failedRestaurantOffset=offset;
         final int generation=++restaurantGeneration;
         final String context=restaurantRequestContext();inFlightRestaurantContext=context;
         final boolean replace=!context.equals(acceptedRestaurantContext);
-        final int requestedLimit = offset > 0 ? 12 : 8;
+        final int requestedLimit = offset > 0 ? 12 : 6;
         final String query=homeSearchQuery.trim(),sort=homeMode;final long refresh=catalogRefreshEpoch;
         if(currentScreen==0)renderHomeResults();
         featureRuntime.executeLatest("food-merchants",CustomerLoadingCoordinator.CONTENT,()->{
             try{
-                String url=BASE_URL+"server/get_food_restaurants.php?user_id="+userId+"&limit="+requestedLimit+"&offset="+offset+"&q="+Uri.encode(query)+"&sort="+Uri.encode(sort)+"&refresh="+refresh;
+                String url=BASE_URL+"server/get_food_restaurants.php?page_only=1&user_id="+userId+"&limit="+requestedLimit+"&offset="+offset+"&q="+Uri.encode(query)+"&sort="+Uri.encode(sort)+"&refresh="+refresh;
                 JSONObject cached=offset==0?TransivaHttpRepository.cachedCatalog(this,url):null;
                 if(cached!=null&&cached.optBoolean("success")&&cached.optJSONArray("restaurants")!=null)featureRuntime.post(mainHandler,()->acceptRestaurantPage(cached,cached.optJSONArray("restaurants"),offset,requestedLimit,context,replace,generation,true));
                 JSONObject response=TransivaHttpRepository.getJsonFresh(this,url,TIMEOUT_MS);
@@ -2285,7 +2306,7 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
         final int offset=newContext?0:pageOffset;
         if(menusRequestLoading&&menusRequestRid==rid&&menusRequestQuery.equals(requested))return;
         final int generation=++menuLoadGeneration;menusRequestLoading=true;menusRequestRid=rid;menusRequestQuery=requested;menusError="";failedMenusOffset=offset;
-        final int limit=offset==0&&!newContext?Math.max(40,Math.min(50,menusOffset)):40;
+        final int limit = offset == 0 ? 8 : 16;
         if(showLoading&&menus.isEmpty()){setLoading(true);menusLoadFinished=false;}
         final String url=BASE_URL+"server/get_food_menus.php?restaurant_id="+rid+"&q="+Uri.encode(requested)+"&limit="+limit+"&offset="+offset;
         Runnable rejected=()->featureRuntime.post(mainHandler,()->menuPageFailed(rid,generation,"Sistem sedang sibuk. Coba lagi."));
@@ -2315,7 +2336,12 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
         if(offset==0&&!newContext&&response.optBoolean("has_more"))for(int i=Math.min(limit,menus.size());i<menus.size();i++){JSONObject row=menus.get(i);if(!merged.containsKey(row.optInt("id")))merged.put(row.optInt("id"),row);}
         menus.clear();menus.addAll(merged.values());
         if(newContext||offset>0||menusOffset<=limit||!response.optBoolean("has_more")){menusOffset=response.optInt("next_offset",offset+rows.length());menusHasMore=response.optBoolean("has_more");}
-        acceptedMenuContext=rid+":"+menusRequestQuery;renderMenus();if(!cached){loadMenuSocial(rid,generation);refreshMerchantStories();refreshProfileStories(rid);}
+        acceptedMenuContext=rid+":"+menusRequestQuery;renderMenus();
+        if (!cached && offset == 0) {
+            loadMenuSocial(rid);
+            refreshMerchantStories();
+            refreshProfileStories(rid);
+        }
     }
     private void menuPageFailed(int rid,int generation,String message){
         if(generation!=menuLoadGeneration||activeRestaurant==null||activeRestaurant.optInt("id")!=rid||currentScreen!=1)return;
@@ -2331,12 +2357,12 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
         }
     }
 
-    private void loadMenuSocial(int rid,int generation){
+    private void loadMenuSocial(int rid){
         featureRuntime.executeLatest("food-social",CustomerLoadingCoordinator.OPTIONAL,()->{
             try{
                 JSONObject social=getJson(BASE_URL+"server/customer_food_social.php?restaurant_id="+rid);
                 featureRuntime.post(mainHandler,()->{
-                    if(generation!=menuLoadGeneration||currentScreen!=1||activeRestaurant==null||activeRestaurant.optInt("id")!=rid)return;
+                    if(currentScreen!=1||activeRestaurant==null||activeRestaurant.optInt("id")!=rid)return;
                     String before=menuSnapshot();mergeFoodSocial(social);if(!before.equals(menuSnapshot()))renderMenus();
                 });
             }catch(Exception ignored){}
@@ -3866,7 +3892,10 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
         }
         if (foodOrderSubmitting && currentScreen == COMBINED_CHECKOUT) setLoading(true);
         catalogRefreshEpoch=System.currentTimeMillis();
-        if(currentScreen==0&&root!=null){showRestaurantList();loadRestaurants(false);loadMenuSearch(homeSearchQuery);}
+        if(currentScreen==0&&root!=null){
+            showRestaurantList();loadRestaurants(false);
+            if (!homeSearchQuery.trim().isEmpty()) loadMenuSearch(homeSearchQuery);
+        }
         else if(currentScreen==1&&activeRestaurant!=null){
             loadActiveCart();
             updateCartButton();

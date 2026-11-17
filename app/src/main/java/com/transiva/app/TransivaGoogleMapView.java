@@ -88,6 +88,7 @@ public final class TransivaGoogleMapView extends FrameLayout implements OnMapRea
     private String waypointSignature = "";
     private boolean userCameraGesture;
     private long lastDriverFrameAt;
+    private boolean numberedRideStops;
     private final Map<String, BitmapDescriptor> iconCache = new HashMap<>();
 
     private static final LatLng DEFAULT_CENTER = new LatLng(-0.018137, 120.087380);
@@ -505,6 +506,34 @@ public final class TransivaGoogleMapView extends FrameLayout implements OnMapRea
         waypointMarkers.clear();
     }
 
+    void useNumberedRideStops() {
+        numberedRideStops = true;
+    }
+
+    private BitmapDescriptor numberedRideStop(int sequence) {
+        String key = "ride-stop:" + sequence;
+        BitmapDescriptor cached = iconCache.get(key);
+        if (cached != null) return cached;
+
+        int size = dp(32);
+        int center = size / 2;
+        Bitmap marker = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888);
+        android.graphics.Canvas canvas = new android.graphics.Canvas(marker);
+        android.graphics.Paint paint = new android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG);
+        paint.setColor(android.graphics.Color.WHITE);
+        canvas.drawCircle(center, center, center - dp(1), paint);
+        paint.setColor(android.graphics.Color.rgb(217, 102, 0));
+        canvas.drawCircle(center, center, center - dp(3), paint);
+        paint.setColor(android.graphics.Color.WHITE);
+        paint.setTextAlign(android.graphics.Paint.Align.CENTER);
+        paint.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
+        paint.setTextSize(dp(16));
+        canvas.drawText(String.valueOf(sequence), center, center - (paint.ascent() + paint.descent()) / 2f, paint);
+        BitmapDescriptor descriptor = BitmapDescriptorFactory.fromBitmap(marker);
+        iconCache.put(key, descriptor);
+        return descriptor;
+    }
+
     public void setWaypoints(JSONArray waypoints) {
         if (!isReady()) return;
         String signature = waypoints == null ? "" : waypoints.toString();
@@ -521,8 +550,9 @@ public final class TransivaGoogleMapView extends FrameLayout implements OnMapRea
             String address = wp.optString("address", "Pemberhentian " + seq);
             Marker marker = googleMap.addMarker(new MarkerOptions()
                     .position(new LatLng(lat, lng))
-                    .anchor(0.5f, 1f)
+                    .anchor(0.5f, numberedRideStops ? 0.5f : 1f)
                     .icon(shopDeliveryClick != null ? icon(R.drawable.map_shop_stop_pin, 42, 54)
+                            : numberedRideStops ? numberedRideStop(seq)
                             : BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_ORANGE))
                     .title("Stop " + seq)
                     .snippet(address));
@@ -654,15 +684,23 @@ public final class TransivaGoogleMapView extends FrameLayout implements OnMapRea
             if (marker != null) { b.include(marker.getPosition()); n++; }
         }
         if (tripDriverMarker != null) { b.include(tripDriverMarker.getPosition()); n++; }
+        if (numberedRideStops && routePolyline != null) {
+            for (LatLng point : routePolyline.getPoints()) { b.include(point); n++; }
+        }
         if (n == 0) return;
         if (n == 1) {
-            LatLng p = tripDriverMarker != null ? tripDriverMarker.getPosition()
-                    : pickupMarker != null ? pickupMarker.getPosition() : deliveryMarker.getPosition();
+            LatLng p = b.build().getCenter();
             googleMap.animateCamera(CameraUpdateFactory.newLatLngZoom(p, 16f));
             return;
         }
-        try { googleMap.animateCamera(CameraUpdateFactory.newLatLngBounds(b.build(), dp(58))); }
-        catch (Exception ignored) {}
+        try {
+            if (numberedRideStops) {
+                int width = getWidth(), height = getHeight();
+                if (width < 2 || height < 2) return;
+                int padding = Math.min(dp(48), Math.min(width, height) / 5);
+                googleMap.animateCamera(CameraUpdateFactory.newLatLngBounds(b.build(), width, height, padding));
+            } else googleMap.animateCamera(CameraUpdateFactory.newLatLngBounds(b.build(), dp(58)));
+        } catch (Exception ignored) {}
     }
 
     public void fitPickupDelivery() {

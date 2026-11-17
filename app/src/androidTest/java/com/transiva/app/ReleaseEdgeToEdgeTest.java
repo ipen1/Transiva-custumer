@@ -2,8 +2,11 @@ package com.transiva.app;
 
 import android.app.Instrumentation;
 import android.app.Dialog;
+import android.content.ComponentName;
 import android.content.Intent;
+import android.content.pm.PackageManager;
 import android.view.View;
+import android.view.ViewGroup;
 import android.graphics.Insets;
 import android.view.WindowInsets;
 import android.view.WindowManager;
@@ -57,6 +60,49 @@ public class ReleaseEdgeToEdgeTest {
                 assertFalse("API 35+ theme still enables navigation contrast scrim",activity.getWindow().isNavigationBarContrastEnforced());
             });
         } finally {i.runOnMainSync(activity::finish);}
+    }
+
+    @Test public void registrationContentFitsRealSystemBars() {
+        Instrumentation instrumentation = InstrumentationRegistry.getInstrumentation();
+        RegisterActivity activity = (RegisterActivity) instrumentation.startActivitySync(
+                new Intent(instrumentation.getTargetContext(), RegisterActivity.class)
+                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+        try {
+            instrumentation.waitForIdleSync();
+            instrumentation.runOnMainSync(() -> {
+                ViewGroup content = activity.findViewById(android.R.id.content);
+                View decor = activity.getWindow().getDecorView();
+                WindowInsets insets = decor.getRootWindowInsets();
+                assertNotNull("Expected insets from the attached window", insets);
+                Insets safe = insets.getInsets(WindowInsets.Type.systemBars() | WindowInsets.Type.displayCutout());
+                int keyboard = insets.getInsets(WindowInsets.Type.ime()).bottom;
+                assertTrue("Expected visible system bars", safe.top + safe.bottom > 0);
+
+                View form = content.getChildAt(0);
+                assertNotNull(form);
+                int[] position = new int[2];
+                form.getLocationInWindow(position);
+                assertEquals(safe.left, position[0]);
+                assertEquals(safe.top, position[1]);
+                assertEquals(decor.getWidth() - safe.right, position[0] + form.getWidth());
+                assertEquals(decor.getHeight() - Math.max(safe.bottom, keyboard),
+                        position[1] + form.getHeight());
+            });
+        } finally {
+            instrumentation.runOnMainSync(activity::finish);
+        }
+    }
+
+    @Test public void releaseDoesNotRegisterUnusedPlacesAutocompleteActivity() {
+        android.content.Context target = InstrumentationRegistry.getInstrumentation().getTargetContext();
+        ComponentName widget = new ComponentName(target,
+                "com.google.android.libraries.places.widget.AutocompleteActivity");
+        try {
+            target.getPackageManager().getActivityInfo(widget, 0);
+            fail("The Places widget should be absent from the merged manifest");
+        } catch (PackageManager.NameNotFoundException expected) {
+            // Transiva hosts its own PlacesClient search UI.
+        }
     }
 
     @Test public void floatingMediaDialogPreservesKeyboardStateAndAppliesInsetsOnce() {

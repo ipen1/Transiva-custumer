@@ -80,6 +80,10 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
     private void applyStopPricing(JSONObject rule) {
         if(rule==null)return;
         stopPricing=rule;
+        if (waypointDraft && ecosystemFeatures.waypoints.length() >= maxStopCount()) {
+            removeWaypointAt(ecosystemFeatures.waypoints.length());
+            return;
+        }
         updateStopSummary();
         updateWaypointButton();
     }
@@ -222,6 +226,8 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
     protected int lastQuotedFare = 0;
     protected int royaltyOriginalFare = 0;
     protected boolean selectingWaypoint = false;
+    private boolean waypointDraft;
+    private int waypointEditIndex = -1;
     protected String familyMemberName = "";
     protected boolean smartFavoriteIntent = false;
     protected int userId = 0;
@@ -250,7 +256,20 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
         familyMemberId = getIntent() == null ? 0 : getIntent().getIntExtra("family_member_id", 0);
         familyMemberName = getIntent() == null ? "" : firstNonEmpty(getIntent().getStringExtra("family_member_name"), "");
         if (getIntent() != null && getIntent().getBooleanExtra("split_pay_entry", false)) paymentMethod = "balance";
-        if(savedInstanceState!=null) driverNoteDraft=savedInstanceState.getString("driver_note_draft","");
+        if (savedInstanceState != null) {
+            driverNoteDraft = savedInstanceState.getString("driver_note_draft", "");
+            waypointDraft = savedInstanceState.getBoolean("waypoint_draft");
+            try {
+                JSONArray stops = new JSONArray(savedInstanceState.getString("waypoints", "[]"));
+                for (int i = 0; i < stops.length() && i < 2; i++) {
+                    JSONObject stop = stops.optJSONObject(i);
+                    if (stop != null && validCoord(stop.optDouble("latitude"), stop.optDouble("longitude"))) {
+                        ecosystemFeatures.waypoints.put(stop);
+                    }
+                }
+                resequenceWaypoints();
+            } catch (org.json.JSONException ignored) {}
+        }
         buildLayout();
         loadStopPricing();
         String royaltyVoucher=getIntent()==null?"":getIntent().getStringExtra("royalty_voucher_code");
@@ -449,6 +468,7 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
                 if (liveGpsBest != null && followInitialGpsCamera) {
                     mapView.centerOnInitialLocation(liveGpsBest.getLatitude(), liveGpsBest.getLongitude(), 17f);
                 }
+                if (ecosystemFeatures.waypoints.length() > 0) mapView.setWaypoints(ecosystemFeatures.waypoints);
                 startLiveGps();
                 queueNearbyPickup(true);
                 refreshSmartAvailability();
@@ -468,7 +488,7 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
                 if (pointSearchScroll != null) pointSearchScroll.setVisibility(View.GONE);
                 if (pointSearchResults != null) pointSearchResults.setTag("");
                 followInitialGpsCamera = false;
-                if ("pickup".equals(mode) && !editingCheckoutPoint) {
+                if ("pickup".equals(mode) && !editingCheckoutPoint && !selectingWaypoint) {
                     pickupGpsSelected = false;
                     pickupGpsPinned = true;
                 }
@@ -795,92 +815,111 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
 
     @Override protected void onSaveInstanceState(Bundle outState) {
         outState.putString("driver_note_draft", noteInput==null?driverNoteDraft:noteInput.getText().toString());
+        outState.putString("waypoints", ecosystemFeatures.waypoints.toString());
+        outState.putBoolean("waypoint_draft", waypointDraft);
         super.onSaveInstanceState(outState);
     }
 
     protected void showWaypointDialog() {
-        if (isRouteConfirmationLocked()) return;
+        if (ordering || editingCheckoutPoint) return;
         int count = ecosystemFeatures.waypoints.length();
-        if (count >= maxStopCount()) {
-            new TransivaAlertDialogBuilder(this)
-                    .setTitle("Tambah Tujuan")
-                    .setMessage("Batas layanan saat ini " + maxStopCount() + " persinggahan. Hapus titik jika ingin memilih ulang.")
-                    .setNegativeButton("Hapus semua", (d,w) -> {
-                        ecosystemFeatures.clearWaypoints();
-                        selectingWaypoint = false;
-                        if (mapView != null) {
-                            mapView.clearWaypoints();
-                            updateModeUI();
-                        }
-                        updateWaypointButton();
-                        requestPaymentQuote();
-                        requestVisibleOsrmRoute();
-                    })
-                    .setPositiveButton("Tutup", null)
-                    .show();
-            return;
-        }
+        if (count >= maxStopCount()) return;
+        waypointDraft = true;
+        beginWaypointSelection(count, false);
+    }
 
+    private void beginWaypointSelection(int index, boolean search) {
+        int count = ecosystemFeatures.waypoints.length();
+        if (ordering || editingCheckoutPoint || index < 0 || index > count
+                || (index == count && (!waypointDraft || count >= maxStopCount()))) return;
+        closePointSearch();
         selectingWaypoint = true;
+        waypointEditIndex = index;
+        setCheckoutBackEnabled(true);
+        followInitialGpsCamera = false;
+        ++destinationResolveGeneration;
+        ++routePreviewVersion;
+        ++quoteVersion;
+        locationQuoteReady = false;
+        quoteLoading = false;
         if (mapView != null) {
-            mapView.setWaypointSelectionMode(count + 1);
-            mapView.showCenterPin(true);
+            JSONObject point = ecosystemFeatures.waypoints.optJSONObject(index);
+            if (point != null) {
+                centerLat = pickLat = point.optDouble("latitude");
+                centerLng = pickLng = point.optDouble("longitude");
+                mapView.centerOnInitialLocation(centerLat, centerLng, 17f);
+            }
         }
-        if (modeText != null) {
-            modeText.setText("Geser peta ke Stop " + (count + 1) + ", lalu tekan TAMBAH STOP " + (count + 1));
-        }
-        android.widget.Toast.makeText(this, "Geser peta ke lokasi stop lalu tekan TAMBAH STOP " + (count + 1), android.widget.Toast.LENGTH_LONG).show();
+        updateModeUI();
+        if (search) showSmartDestinationSearch("waypoint");
     }
 
     protected void addWaypointFromCenter() {
-        double lat = centerLat;
-        double lng = centerLng;
+        double lat = centerLat, lng = centerLng;
         if (mapView != null && mapView.isReady()) {
-            com.google.android.gms.maps.model.LatLng c = mapView.getCenter();
-            if (c != null && validCoord(c.latitude, c.longitude)) {
-                lat = c.latitude;
-                lng = c.longitude;
-                centerLat = lat;
-                centerLng = lng;
-                pickLat = lat;
-                pickLng = lng;
+            LatLng center = mapView.getCenter();
+            if (center != null && validCoord(center.latitude, center.longitude)) {
+                lat = center.latitude;
+                lng = center.longitude;
             }
         }
-        if (!validCoord(lat,lng)) { toastDialog("Posisi peta belum tersedia."); return; }
-
-        if(ecosystemFeatures.waypoints.length()>=maxStopCount()){toastDialog("Batas persinggahan " + maxStopCount() + " titik.");return;}
-        final int sequence = ecosystemFeatures.waypoints.length() + 1;
-        if (!ecosystemFeatures.addWaypoint(lat,lng,"Stop " + sequence)) {
-            toastDialog("Maksimal 2 pemberhentian.");
-            selectingWaypoint = false;
-            updateModeUI();
+        if (!validCoord(lat, lng)) {
+            toastDialog("Posisi peta belum tersedia.");
             return;
         }
+        applyWaypointLocation(lat, lng, "", true);
+    }
 
-        selectingWaypoint = false;
+    private void applyWaypointLocation(double lat, double lng, String address, boolean resolve) {
+        int index = waypointEditIndex;
+        int count = ecosystemFeatures.waypoints.length();
+        if (!selectingWaypoint || ordering || index < 0 || index > count || !validCoord(lat, lng)) return;
+        boolean added = index == count;
+        String title = firstNonEmpty(address, shortCoord(lat, lng));
+        if (added) {
+            if (!waypointDraft || count >= maxStopCount() || !ecosystemFeatures.addWaypoint(lat, lng, title)) return;
+            waypointDraft = false;
+        }
+        JSONObject waypoint = ecosystemFeatures.waypoints.optJSONObject(index);
+        if (waypoint == null) return;
+        if (!added) {
+            try {
+                waypoint.put("latitude", lat).put("longitude", lng).put("address", title);
+            } catch (org.json.JSONException ignored) { return; }
+        }
+        cancelWaypointSelection();
+        if (mapView != null) mapView.moveTo(lat, lng, 17f);
+        updateWaypointsAndQuote();
+        if (resolve) {
+            featureRuntime.execute(() -> {
+                String place = buildSmartAddress(lat, lng);
+                featureRuntime.post(mainHandler, () -> {
+                    if (destroyed || ordering || place == null || place.trim().isEmpty()
+                            || !containsWaypoint(waypoint) || waypoint.optDouble("latitude") != lat
+                            || waypoint.optDouble("longitude") != lng) return;
+                    try {
+                        waypoint.put("address", place);
+                    } catch (org.json.JSONException ignored) { return; }
+                    updateWaypointsAndQuote();
+                });
+            }, () -> {});
+        }
+        if (added) showWaypointNotePopup(index + 1);
+    }
+
+    private boolean containsWaypoint(JSONObject point) {
+        for (int i = 0; i < ecosystemFeatures.waypoints.length(); i++) {
+            if (ecosystemFeatures.waypoints.optJSONObject(i) == point) return true;
+        }
+        return false;
+    }
+
+    private void updateWaypointsAndQuote() {
         if (mapView != null) mapView.setWaypoints(ecosystemFeatures.waypoints);
         updateWaypointButton();
         updateModeUI();
         requestPaymentQuote();
-        requestVisibleOsrmRoute();
-
-        final double stopLat = lat, stopLng = lng;
-        featureRuntime.execute(() -> {
-            String address = buildSmartAddress(stopLat, stopLng);
-            featureRuntime.post(mainHandler, () -> {
-                if (destroyed) return;
-                try {
-                    JSONObject wp = ecosystemFeatures.waypoints.optJSONObject(sequence - 1);
-                    if (wp != null && address != null && !address.trim().isEmpty()) wp.put("address", address);
-                } catch (Exception ignored) {}
-                if (mapView != null) mapView.setWaypoints(ecosystemFeatures.waypoints);
-                updateWaypointButton();
-                requestPaymentQuote();
-            });
-        }, () -> featureRuntime.post(mainHandler, () -> { setLoading(false);toastDialog("Sistem sedang sibuk. Coba lagi."); }));
-
-        updateModeUI();
-        showWaypointNotePopup(sequence);
+        if (!locationReady()) requestVisibleOsrmRoute();
     }
 
     protected void showWaypointNotePopup(final int sequence) {
@@ -923,56 +962,75 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
         if (waypointHeaderRows == null) return;
         waypointHeaderRows.removeAllViews();
         int count = ecosystemFeatures.waypoints.length();
-        for (int i = 0; i < count; i++) {
+        int rows = count + (waypointDraft ? 1 : 0);
+        for (int i = 0; i < rows; i++) {
             final int position = i;
-            JSONObject wp = ecosystemFeatures.waypoints.optJSONObject(i);
             String name = "Singgah " + (i + 1);
-            String address = wp == null ? "" : wp.optString("address", "");
+            String address = i == count ? "Cari tempat / tempel link Maps   ›" : shortAddress(addressForWaypoint(i));
             if (address.trim().isEmpty()) address = "Titik dipilih di peta";
-            Button row = compactPointButton("●  " + name, address, "#D97706");
-            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, dp(42));
-            lp.topMargin = dp(4);
-            waypointHeaderRows.addView(row, lp);
-            row.setContentDescription(name + ", " + address + ". Ketuk untuk mengubah atau menghapus.");
-            row.setEnabled(!isRouteConfirmationLocked());
-            row.setOnClickListener(v -> { if (isRouteConfirmationLocked()) return; new TransivaAlertDialogBuilder(this)
-                    .setTitle(name)
-                    .setMessage(addressForWaypoint(position))
-                    .setPositiveButton("Ubah lokasi", (dialog, which) -> {
-                        removeWaypointAt(position);
-                        showWaypointDialog();
-                    })
-                    .setNegativeButton("Hapus", (dialog, which) -> removeWaypointAt(position))
-                    .setNeutralButton("Batal", null).show(); });
+            LinearLayout row = new LinearLayout(this);
+            row.setGravity(Gravity.CENTER_VERTICAL);
+            row.setPadding(0, 0, dp(3), 0);
+            row.setBackground(roundStroke("#FFF9F0", "#F2D5A8", dp(14), 1));
+            Button place = compactPointButton("●  " + name, address, "#A65408");
+            place.setBackground(new android.graphics.drawable.ColorDrawable(Color.TRANSPARENT));
+            place.setMinimumHeight(dp(48));
+            place.setContentDescription(name + ", " + address + ". Ketuk untuk mencari atau mengubah lokasi.");
+            place.setEnabled(!ordering && !editingCheckoutPoint);
+            place.setOnClickListener(v -> beginWaypointSelection(position, true));
+            row.addView(place, new LinearLayout.LayoutParams(0, -2, 1));
+            Button remove = smallButton("×", "#FFF1E1", "#9A440A", "#F2D5A8");
+            remove.setTextSize(21);
+            remove.setPadding(0, 0, 0, 0);
+            remove.setMinWidth(0);
+            remove.setContentDescription("Hapus " + name);
+            remove.setEnabled(!ordering && !editingCheckoutPoint);
+            remove.setOnClickListener(v -> removeWaypointAt(position));
+            row.addView(remove, new LinearLayout.LayoutParams(dp(48), dp(48)));
+            LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(-1, -2);
+            params.topMargin = dp(4);
+            waypointHeaderRows.addView(row, params);
         }
         if (waypointHeaderAdd != null) waypointHeaderAdd.setVisibility(
-                count < maxStopCount() && !isRouteConfirmationLocked() ? View.VISIBLE : View.GONE);
-        waypointHeaderRows.setVisibility(count == 0 ? View.GONE : View.VISIBLE);
+                rows < maxStopCount() && !waypointDraft && !ordering && !editingCheckoutPoint ? View.VISIBLE : View.GONE);
+        waypointHeaderRows.setVisibility(rows == 0 ? View.GONE : View.VISIBLE);
     }
+
     protected String addressForWaypoint(int index) {
-        JSONObject wp = ecosystemFeatures.waypoints.optJSONObject(index);
-        return wp == null ? "" : wp.optString("address", "Titik persinggahan");
+        JSONObject waypoint = ecosystemFeatures.waypoints.optJSONObject(index);
+        return waypoint == null ? "" : waypoint.optString("address", "Titik persinggahan");
     }
-    protected void removeWaypointAt(int index) {
-        if (isRouteConfirmationLocked()) return;
-        JSONArray updated = new JSONArray();
-        for (int i = 0; i < ecosystemFeatures.waypoints.length(); i++)
-            if (i != index) updated.put(ecosystemFeatures.waypoints.optJSONObject(i));
-        ecosystemFeatures.clearWaypoints();
-        for (int i = 0; i < updated.length(); i++) {
-            JSONObject wp = updated.optJSONObject(i);
-            if (wp == null) continue;
-            if (ecosystemFeatures.addWaypoint(wp.optDouble("latitude"), wp.optDouble("longitude"), wp.optString("address"))) {
-                JSONObject target = ecosystemFeatures.waypoints.optJSONObject(i);
-                if (target != null) try { target.put("note", wp.optString("note")); } catch (Exception ignored) {}
+
+    private void resequenceWaypoints() {
+        for (int i = 0; i < ecosystemFeatures.waypoints.length(); i++) {
+            JSONObject point = ecosystemFeatures.waypoints.optJSONObject(i);
+            if (point != null) {
+                try { point.put("sequence", i + 1); }
+                catch (org.json.JSONException ignored) {}
             }
         }
-        if (mapView != null) mapView.setWaypoints(ecosystemFeatures.waypoints);
-        updateWaypointButton();
-        updateModeUI();
-        requestPaymentQuote();
-        requestVisibleOsrmRoute();
     }
+
+    protected void removeWaypointAt(int index) {
+        if (ordering || editingCheckoutPoint || index < 0) return;
+        int count = ecosystemFeatures.waypoints.length();
+        if (index < count) ecosystemFeatures.waypoints.remove(index);
+        else if (index == count && waypointDraft) waypointDraft = false;
+        else return;
+        cancelWaypointSelection();
+        resequenceWaypoints();
+        updateWaypointsAndQuote();
+    }
+
+    private void cancelWaypointSelection() {
+        if (selectingWaypoint) {
+            closePointSearch();
+            setCheckoutBackEnabled(editingCheckoutPoint);
+        }
+        selectingWaypoint = false;
+        waypointEditIndex = -1;
+    }
+
     protected void updateWaypointButton(){
         int count = ecosystemFeatures.waypoints.length();
         updateStopSummary();
@@ -1101,6 +1159,7 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
 
     private void onPointCardClicked(String point) {
         if (ordering || beginCheckoutPointEdit(point)) return;
+        cancelWaypointSelection();
         mode = point;
         openDestinationAutocomplete();
     }
@@ -1113,7 +1172,7 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
         setCheckoutBackEnabled(true);
         mode = point;
         followInitialGpsCamera = false;
-        selectingWaypoint = false;
+        cancelWaypointSelection();
         pendingDeliveryTitle = "";
         pendingDeliverySubtitle = "";
         ++destinationResolveGeneration;
@@ -1203,13 +1262,21 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
 
     @Override public void onBackPressed() {
         if (editingCheckoutPoint) cancelCheckoutPointEdit();
-        else super.onBackPressed();
+        else if (pointSearchHost != null) { closePointSearch(); updateModeUI(); }
+        else if (selectingWaypoint) {
+            if (waypointDraft && waypointEditIndex == ecosystemFeatures.waypoints.length()) {
+                removeWaypointAt(waypointEditIndex);
+            } else {
+                cancelWaypointSelection();
+                updateWaypointsAndQuote();
+            }
+        } else super.onBackPressed();
     }
 
     private void setCheckoutBackEnabled(boolean enabled) {
         if (android.os.Build.VERSION.SDK_INT < 33) return;
         if (enabled && checkoutBackCallback == null) {
-            checkoutBackCallback = this::cancelCheckoutPointEdit;
+            checkoutBackCallback = this::onBackPressed;
             getOnBackInvokedDispatcher().registerOnBackInvokedCallback(
                     android.window.OnBackInvokedDispatcher.PRIORITY_DEFAULT, checkoutBackCallback);
         } else if (!enabled && checkoutBackCallback != null) {
@@ -1253,20 +1320,37 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
 
     /** The selected field becomes the search box; the native map stays in place. */
     protected void showSmartDestinationSearch() {
+        showSmartDestinationSearch("pickup".equals(mode) ? "pickup" : "delivery");
+    }
+
+    private String activePointMode() {
+        return selectingWaypoint ? "waypoint" : mode;
+    }
+
+    private void showSmartDestinationSearch(String selectedMode) {
+        final boolean waypoint = "waypoint".equals(selectedMode);
+        final boolean pickup = "pickup".equals(selectedMode);
         final boolean compactScreen = getResources().getDisplayMetrics().heightPixels
                 / getResources().getDisplayMetrics().density < 700;
         closePointSearch();
-        final String selectedMode = "pickup".equals(mode) ? "pickup" : "delivery";
         activeSearchOriginLat = currentSearchOriginLat();
         activeSearchOriginLng = currentSearchOriginLng();
-        final double oldLat = "pickup".equals(selectedMode) ? pickupLat : deliveryLat;
-        final double oldLng = "pickup".equals(selectedMode) ? pickupLng : deliveryLng;
-        handlePointButtonClick(selectedMode);
-        if (mapView != null && validCoord(oldLat, oldLng)) {
-            centerLat = pickLat = oldLat; centerLng = pickLng = oldLng;
-            mapView.centerOnInitialLocation(oldLat, oldLng, 17f);
+        if (waypoint) {
+            JSONObject point = ecosystemFeatures.waypoints.optJSONObject(waypointEditIndex);
+            if (point != null) {
+                activeSearchOriginLat = point.optDouble("latitude");
+                activeSearchOriginLng = point.optDouble("longitude");
+            }
+        } else {
+            double oldLat = pickup ? pickupLat : deliveryLat;
+            double oldLng = pickup ? pickupLng : deliveryLng;
+            handlePointButtonClick(selectedMode);
+            if (mapView != null && validCoord(oldLat, oldLng)) {
+                centerLat = pickLat = oldLat; centerLng = pickLng = oldLng;
+                mapView.centerOnInitialLocation(oldLat, oldLng, 17f);
+            }
         }
-        final Button selectedButton = "pickup".equals(selectedMode) ? pickupBtn : deliveryBtn;
+        final Button selectedButton = pickup ? pickupBtn : deliveryBtn;
         final FrameLayout host = new FrameLayout(this);
         host.setTag(selectedMode);
         pointSearchHost = host;
@@ -1280,10 +1364,12 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
         search.setSingleLine(true);
         search.setTextSize(12);
         search.setPadding(dp(10), dp(3), dp(8), dp(3));
-        search.setHint("pickup".equals(selectedMode) ? "Cari jemput / tempel link Maps" : "Cari tujuan / tempel link Maps");
-        search.setContentDescription("pickup".equals(selectedMode) ? "Pencarian lokasi jemput" : "Pencarian lokasi tujuan");
+        search.setHint(waypoint ? "Cari singgah / tempel link Maps"
+                : pickup ? "Cari jemput / tempel link Maps" : "Cari tujuan / tempel link Maps");
+        search.setContentDescription(waypoint ? "Pencarian lokasi Singgah " + (waypointEditIndex + 1)
+                : pickup ? "Pencarian lokasi jemput" : "Pencarian lokasi tujuan");
         search.setTextColor(Color.parseColor("#0B3A78"));
-        search.setBackground(roundStroke("#FFFFFF", "pickup".equals(selectedMode) ? "#16A34A" : "#EF4444", dp(14), 2));
+        search.setBackground(roundStroke("#FFFFFF", waypoint ? "#D97706" : pickup ? "#16A34A" : "#EF4444", dp(14), 2));
         search.setImeOptions(android.view.inputmethod.EditorInfo.IME_ACTION_SEARCH);
         row.addView(search, new LinearLayout.LayoutParams(0, dp(44), 1));
         Button map = smallButton("Peta", "#EAF4FF", "#0B7CFF", "#C8D9EC");
@@ -1301,7 +1387,7 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
         box.addView(scroll, new LinearLayout.LayoutParams(-1, dp(compactScreen ? 126 : 150)));
         int index = pointFields.indexOfChild(selectedButton);
         pointFields.addView(host, index, new LinearLayout.LayoutParams(-1, -2));
-        selectedButton.setVisibility(View.GONE);
+        if (!waypoint) selectedButton.setVisibility(View.GONE);
         if (pointUtilityRow != null) pointUtilityRow.setVisibility(View.GONE);
         map.setOnClickListener(v -> { closePointSearch(); updateModeUI(); });
         initializePlacesAutocomplete();
@@ -1363,7 +1449,7 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
 
     private boolean isPointSearchCurrent(FrameLayout host, LinearLayout results, String query) {
         return !destroyed && host != null && host.getParent() != null
-                && mode.equals(host.getTag()) && query.equals(results.getTag());
+                && activePointMode().equals(host.getTag()) && query.equals(results.getTag());
     }
 
     private void closePointSearch() {
@@ -1478,7 +1564,7 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
     }
 
     private void selectNearbyResult(TransportSearchRanking.Result row, AutocompleteSessionToken token, FrameLayout host) {
-        final String selectedMode = mode;
+        final String selectedMode = activePointMode();
         final long generation = ++pointSelectionGeneration;
         if (transportPlaceSearch != null) transportPlaceSearch.cancel();
         if (row.hasCoordinates()) {
@@ -1505,8 +1591,12 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
 
     private void applyNearbyResult(TransportSearchRanking.Result row, FrameLayout host, String selectedMode, long generation) {
         if (destroyed || generation != pointSelectionGeneration || host.getParent() == null
-                || !selectedMode.equals(mode) || !validCoord(row.latitude, row.longitude)) return;
+                || !selectedMode.equals(activePointMode()) || !validCoord(row.latitude, row.longitude)) return;
         String address = row.address.isEmpty() ? row.name : row.name + ", " + row.address;
+        if ("waypoint".equals(selectedMode)) {
+            applyWaypointLocation(row.latitude, row.longitude, address, false);
+            return;
+        }
         if ("pickup".equals(selectedMode)) {
             pickupGpsSelected = false; pickupGpsPinned = true;
             pickupLat = row.latitude; pickupLng = row.longitude; pickupAddress = address;
@@ -1866,7 +1956,7 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
     }
 
     protected void goToMyLocation() {
-        if (editingCheckoutPoint) {
+        if (editingCheckoutPoint || selectingWaypoint) {
             if (mapView != null && liveGpsBest != null) {
                 mapView.centerOnInitialLocation(liveGpsBest.getLatitude(), liveGpsBest.getLongitude(), 17f);
             } else {
@@ -1989,10 +2079,10 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
 
     protected void useGoogleMapLink() {
         final String link = TransportMapsInput.findLink(googleMapInput.getText().toString());
-        final String selectedMode = mode;
+        final String selectedMode = activePointMode();
         final long selectionGeneration = ++pointSelectionGeneration;
         if (link.length() == 0) {
-            toastDialog("Tempel link Google Maps jemput atau tujuan terlebih dahulu.");
+            toastDialog("Tempel link lokasi Google Maps terlebih dahulu.");
             return;
         }
 
@@ -2013,7 +2103,7 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
                 double[] c = extractLatLng(finalLink);
 
                 featureRuntime.post(mainHandler, () -> {
-                    if (destroyed || selectionGeneration != pointSelectionGeneration || !selectedMode.equals(mode)) return;
+                    if (destroyed || selectionGeneration != pointSelectionGeneration || !selectedMode.equals(activePointMode())) return;
                     setLoading(false);
 
                     if (c == null || !validCoord(c[0], c[1])) {
@@ -2021,6 +2111,11 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
                         return;
                     }
 
+                    if ("waypoint".equals(selectedMode)) {
+                        googleMapInput.setText("");
+                        applyWaypointLocation(c[0], c[1], "", true);
+                        return;
+                    }
                     if ("pickup".equals(selectedMode)) {
                         pickupGpsSelected = false; pickupGpsPinned = true;
                         pickupLat=c[0]; pickupLng=c[1]; pickupAddress="Mencari alamat jemput...";
@@ -2040,14 +2135,14 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
                 });
             } catch (Exception e) {
                 featureRuntime.post(mainHandler, () -> {
-                    if (destroyed || selectionGeneration != pointSelectionGeneration || !selectedMode.equals(mode)) return;
+                    if (destroyed || selectionGeneration != pointSelectionGeneration || !selectedMode.equals(activePointMode())) return;
                     setLoading(false);
                     toastDialog("Gagal membaca link Google Maps.");
                 });
             }
         }, () -> { Exception e = new java.util.concurrent.RejectedExecutionException("Antrean penuh atau waktu tunggu habis"); 
                 featureRuntime.post(mainHandler, () -> {
-                    if (destroyed || selectionGeneration != pointSelectionGeneration || !selectedMode.equals(mode)) return;
+                    if (destroyed || selectionGeneration != pointSelectionGeneration || !selectedMode.equals(activePointMode())) return;
                     setLoading(false);
                     toastDialog("Gagal membaca link Google Maps.");
                 });
@@ -2633,7 +2728,7 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
     private long deliveryAddressRequest;
     private boolean locationReady() {
         boolean busy=pickupAddressResolving && Math.abs(pickupLat-resolvingPickupLat)<0.000001 && Math.abs(pickupLng-resolvingPickupLng)<0.000001;
-        return !editingCheckoutPoint && !busy && validCoord(pickupLat,pickupLng) && validCoord(deliveryLat,deliveryLng)
+        return !editingCheckoutPoint && !selectingWaypoint && !waypointDraft && !busy && validCoord(pickupLat,pickupLng) && validCoord(deliveryLat,deliveryLng)
             && addressReady(pickupAddress) && addressReady(deliveryAddress);
     }
     private boolean addressReady(String address) {
@@ -2902,7 +2997,7 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
         queueNearbyPickup(false);
         boolean pickupMode = "pickup".equals(mode);
 
-        boolean routeComplete = !editingCheckoutPoint && validCoord(pickupLat, pickupLng) && validCoord(deliveryLat, deliveryLng);
+        boolean routeComplete = !editingCheckoutPoint && !selectingWaypoint && !waypointDraft && validCoord(pickupLat, pickupLng) && validCoord(deliveryLat, deliveryLng);
         if (bookingDetailsCard != null) bookingDetailsCard.setVisibility(routeComplete ? View.VISIBLE : View.GONE);
         if (pickupBtn != null) pickupBtn.setContentDescription("Ubah titik jemput. " + pickupAddress);
         if (deliveryBtn != null) deliveryBtn.setContentDescription("Ubah titik tujuan. " + deliveryAddress);
@@ -2918,6 +3013,8 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
         refreshWaypointHeader();
         modeText.setText(
                 routeComplete ? "Ketuk titik untuk ubah"
+                        : selectingWaypoint ? "Pilih lokasi Singgah " + (waypointEditIndex + 1)
+                        : waypointDraft ? "Tentukan lokasi singgah"
                         : editingCheckoutPoint ? (pickupMode ? "Geser pin jemput" : "Geser pin tujuan")
                         : (pickupMode ? "Cek titik jemput" : "Cari atau pilih tujuan")
         );
@@ -2938,10 +3035,12 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
             if (routeComplete) {
                 mapView.showOrderAction(false, "");
             } else {
-                mapView.setSelectionMode(pickupMode ? "pickup" : "delivery");
+                if (selectingWaypoint) mapView.setWaypointSelectionMode(waypointEditIndex + 1, "PILIH SINGGAH " + (waypointEditIndex + 1));
+                else mapView.setSelectionMode(pickupMode ? "pickup" : "delivery");
                 mapView.showCenterPin(true);
             }
-        }        updateWizardState();
+        }
+        updateWizardState();
     }
 
     private void requestVisibleOsrmRoute() {

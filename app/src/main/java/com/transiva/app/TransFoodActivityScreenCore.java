@@ -892,18 +892,7 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
             TextView fromSearch=text("Hasil untuk “"+menuSearchQuery+"”",12,"#64748B",false);
             addWithMargin(fromSearch,0,0,0,dp(8));
         }
-        int shown = 0;
-        String q = menuSearchQuery == null ? "" : menuSearchQuery.trim().toLowerCase(Locale.ROOT);
-        for (JSONObject m : menus) {
-            String name = firstNonEmpty(m.optString("name"), "").toLowerCase(Locale.ROOT);
-            String category = firstNonEmpty(m.optString("category"), "").toLowerCase(Locale.ROOT);
-            String desc = firstNonEmpty(m.optString("description"), "").toLowerCase(Locale.ROOT);
-            if (q.length() == 0 || name.contains(q) || category.contains(q) || desc.contains(q)) {
-                addMenuCard(m);
-                shown++;
-            }
-        }
-
+        int shown = addGroupedMerchantMenus(menuSearchQuery);
         if (shown == 0) addStatus(!menusLoadFinished?"Memuat menu…":menuSearchQuery.isEmpty()?"Belum ada menu makanan yang tersedia dari merchant ini.":"Menu tidak ditemukan untuk: " + menuSearchQuery);
         addMenuPageControls();
 
@@ -931,6 +920,81 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
             if(list==null){list=new ArrayList<>();merchantAvatars.put(rid,list);}list.add((KabarMitraUi.Avatar)view);
         }
         if(view instanceof android.view.ViewGroup){android.view.ViewGroup group=(android.view.ViewGroup)view;for(int i=0;i<group.getChildCount();i++)collectRetainedViews(group.getChildAt(i));}
+    }
+
+    private int addGroupedMerchantMenus(String search) {
+        String query = search == null ? "" : search.trim().toLowerCase(Locale.ROOT);
+        java.util.Map<String, java.util.List<JSONObject>> categories = new java.util.TreeMap<>((a, b) -> {
+            int sort = Integer.compare(merchantCategoryOrder(a), merchantCategoryOrder(b));
+            return sort == 0 ? a.compareToIgnoreCase(b) : sort;
+        });
+        int count = 0;
+        for (JSONObject item : menus) {
+            String matches = item.optString("name") + " " + item.optString("category") + " "
+                    + item.optString("subcategory_name") + " " + item.optString("description");
+            if (!matches.toLowerCase(Locale.ROOT).contains(query)) continue;
+            categories.computeIfAbsent(merchantCategoryName(item.optString("category")),
+                    unused -> new java.util.ArrayList<>()).add(item);
+            count++;
+        }
+        for (java.util.Map.Entry<String, java.util.List<JSONObject>> category : categories.entrySet()) {
+            String label = category.getKey();
+            TextView heading = text(label, 16, "#0B3A78", true);
+            heading.setPadding(dp(10), dp(6), dp(10), dp(6));
+            heading.setBackground(roundStroke("#EAF4FF", "#D5E8FB", dp(12), 1));
+            IncrementalLinearRenderer.mark(heading, "menu-category:" + label, label);
+            addWithMargin(heading, 0, dp(4), 0, dp(6));
+
+            java.util.Map<Integer, java.util.List<JSONObject>> groups = new java.util.LinkedHashMap<>();
+            for (JSONObject item : category.getValue()) {
+                int id = item.optString("subcategory_name").trim().isEmpty() ? 0 : item.optInt("subcategory_id");
+                groups.computeIfAbsent(id, unused -> new java.util.ArrayList<>()).add(item);
+            }
+            java.util.List<Integer> ordered = new java.util.ArrayList<>(groups.keySet());
+            ordered.sort((a, b) -> {
+                if (a.equals(b)) return 0;
+                if (a == 0) return 1;
+                if (b == 0) return -1;
+                JSONObject left = groups.get(a).get(0), right = groups.get(b).get(0);
+                int sort = Integer.compare(left.optInt("subcategory_sort"), right.optInt("subcategory_sort"));
+                return sort == 0 ? left.optString("subcategory_name").compareToIgnoreCase(right.optString("subcategory_name")) : sort;
+            });
+            for (int id : ordered) {
+                java.util.List<JSONObject> items = groups.get(id);
+                if (id > 0 || groups.size() > 1) {
+                    String name = id == 0 ? "Lainnya" : items.get(0).optString("subcategory_name");
+                    TextView subcategory = text(name, 14, "#123B6B", true);
+                    subcategory.setPadding(dp(6), dp(3), 0, dp(3));
+                    IncrementalLinearRenderer.mark(subcategory, "menu-subcategory:" + label + ":" + id, name);
+                    addWithMargin(subcategory, 0, 0, 0, dp(4));
+                }
+                for (JSONObject item : items) addMenuCard(item);
+            }
+        }
+        return count;
+    }
+
+    private static String merchantCategoryName(String raw) {
+        String category = raw.trim();
+        switch (category.toLowerCase(Locale.ROOT)) {
+            case "makanan": return "Makanan";
+            case "minuman": return "Minuman";
+            case "snack":
+            case "snack & jajanan":
+            case "jajanan": return "Snack";
+            case "": return "Menu lainnya";
+            default: return category;
+        }
+    }
+
+    private static int merchantCategoryOrder(String category) {
+        switch (category) {
+            case "Makanan": return 0;
+            case "Minuman": return 1;
+            case "Snack": return 2;
+            case "Menu lainnya": return 4;
+            default: return 3;
+        }
     }
 
     protected void addMenuCard(JSONObject m){

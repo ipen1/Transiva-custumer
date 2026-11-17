@@ -315,6 +315,10 @@ public final class TransivaGoogleMapView extends FrameLayout implements OnMapRea
 
     /** Mode pemilihan waypoint Multi Destination. */
     public void setWaypointSelectionMode(int sequence) {
+        setWaypointSelectionMode(sequence, null);
+    }
+
+    void setWaypointSelectionMode(int sequence, String actionLabel) {
         selectionMode = "waypoint";
         updateCenterActionPosition(false);
         setOrderFocus(false);
@@ -325,7 +329,7 @@ public final class TransivaGoogleMapView extends FrameLayout implements OnMapRea
         }
         if (centerAction != null) {
             int n = Math.max(1, Math.min(2, sequence));
-            centerAction.setText("TAMBAH STOP " + n);
+            centerAction.setText(actionLabel == null ? "TAMBAH STOP " + n : actionLabel);
             centerAction.setBackground(actionBackground("#F59E0B"));
             centerAction.setVisibility(VISIBLE);
         }

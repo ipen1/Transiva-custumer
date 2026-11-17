@@ -6,9 +6,7 @@ import android.net.Uri;
 
 import org.json.JSONObject;
 
-import java.io.BufferedReader;
 import java.io.InputStream;
-import java.io.InputStreamReader;
 import java.net.HttpURLConnection;
 
 /**
@@ -37,21 +35,35 @@ public final class CustomerSecurityPolicy {
 
     /** Blocking; panggil hanya dari worker/background thread. */
     public static Policy resolve(Context context) {
-        return resolve(context, false);
+        return resolve(context, false, 0);
     }
 
     /** Paksa baca server; dipakai saat FCM memberi sinyal perubahan policy. */
     public static Policy resolveFresh(Context context) {
-        return resolve(context, true);
+        return resolve(context, true, 0);
     }
 
-    private static Policy resolve(Context context, boolean forceRefresh) {
+    static Policy resolveForStartup(Context context, int budgetMs) {
+        return resolve(context, false, budgetMs);
+    }
+
+    static Policy confirmForStartup(Context context) {
+        return resolve(context, true, 3500);
+    }
+
+    static boolean hasFreshCache(Context context) {
+        long checkedAt = checkedAt(context);
+        long age = System.currentTimeMillis() - checkedAt;
+        return checkedAt > 0L && age >= 0L && age < CACHE_MS;
+    }
+
+    private static synchronized Policy resolve(Context context, boolean forceRefresh, int budgetMs) {
         Context app = context.getApplicationContext();
         SharedPreferences prefs = app.getSharedPreferences(PREF, Context.MODE_PRIVATE);
         long now = System.currentTimeMillis();
-        long checkedAt = prefs.getLong("checked_at", 0L);
-
-        if (!forceRefresh && checkedAt > 0L && now - checkedAt < CACHE_MS) {
+        String policyOwner = ownerKey(app);
+        if (Thread.currentThread().isInterrupted()
+                || (!forceRefresh && hasFreshCache(app)) || !TransivaNetworkMonitor.isOnline()) {
             return cached(app);
         }
 
@@ -59,20 +71,26 @@ public final class CustomerSecurityPolicy {
         String username = "";
         try {
             SessionManager session = new SessionManager(app);
-            userId = safe(session.getUserId());
-            username = safe(session.getUsername());
+            if (session.isLoggedIn()) {
+                userId = safe(session.getUserId());
+                username = safe(session.getUsername());
+            }
         } catch (Throwable ignored) { }
 
         HttpURLConnection connection = null;
-        try {
+        CustomerTransportSession owner = CustomerTransportSession.capture(app);
+        try (CustomerReadDeadline limit = budgetMs > 0 ? new CustomerReadDeadline(budgetMs) : null) {
             StringBuilder link = new StringBuilder(POLICY_URL);
             link.append("?app=customer");
             if (!userId.isEmpty()) link.append("&user_id=").append(Uri.encode(userId));
             if (!username.isEmpty()) link.append("&username=").append(Uri.encode(username));
 
             connection = CustomerApiClient.open(app, link.toString());
-            connection.setConnectTimeout(4500);
-            connection.setReadTimeout(4500);
+            if (limit != null) limit.attach(connection);
+            owner.pin(app, connection);
+            int timeout = limit == null ? 4500 : budgetMs;
+            connection.setConnectTimeout(timeout);
+            connection.setReadTimeout(timeout);
             connection.setUseCaches(false);
             connection.setRequestProperty("Accept", "application/json");
             connection.setRequestProperty("X-Transiva-App", "Android-Customer");
@@ -82,17 +100,12 @@ public final class CustomerSecurityPolicy {
                     ? connection.getErrorStream()
                     : connection.getInputStream();
 
-            StringBuilder body = new StringBuilder();
-            if (input != null) {
-                try (BufferedReader reader = new BufferedReader(new InputStreamReader(input))) {
-                    String line;
-                    while ((line = reader.readLine()) != null) body.append(line);
-                }
-            }
+            String body = BoundedResponseReader.read(input, 64 * 1024, timeout);
+            if (code < 200 || code >= 300 || Thread.currentThread().isInterrupted()
+                    || (limit != null && android.os.SystemClock.elapsedRealtime() >= limit.endAt)) return cached(app);
+            owner.check(app);
 
-            if (code < 200 || code >= 300) return cached(app);
-
-            JSONObject json = new JSONObject(body.toString());
+            JSONObject json = new JSONObject(body);
             if (!json.optBoolean("success", false)) return cached(app);
 
             boolean root = json.optBoolean("root_detection_enabled", true);
@@ -103,6 +116,7 @@ public final class CustomerSecurityPolicy {
                     .putBoolean("root_detection_enabled", root)
                     .putBoolean("fake_gps_detection_enabled", fake)
                     .putString("policy_source", source)
+                    .putString("policy_owner", policyOwner)
                     .putLong("checked_at", now)
                     .apply();
 
@@ -118,6 +132,9 @@ public final class CustomerSecurityPolicy {
         SharedPreferences p = context.getApplicationContext()
                 .getSharedPreferences(PREF, Context.MODE_PRIVATE);
 
+        if (!ownerKey(context).equals(p.getString("policy_owner", null))) {
+            return new Policy(true, true, "fallback");
+        }
         return new Policy(
                 p.getBoolean("root_detection_enabled", true),
                 p.getBoolean("fake_gps_detection_enabled", true),
@@ -145,12 +162,20 @@ public final class CustomerSecurityPolicy {
 
     public static long checkedAt(Context context) {
         try {
-            return context.getApplicationContext()
-                    .getSharedPreferences(PREF, Context.MODE_PRIVATE)
-                    .getLong("checked_at", 0L);
+            SharedPreferences prefs = context.getApplicationContext()
+                    .getSharedPreferences(PREF, Context.MODE_PRIVATE);
+            return ownerKey(context).equals(prefs.getString("policy_owner", null))
+                    ? prefs.getLong("checked_at", 0L) : 0L;
         } catch (Throwable ignored) {
             return 0L;
         }
+    }
+
+    private static String ownerKey(Context context) {
+        SessionManager session = new SessionManager(context);
+        if (!session.isLoggedIn()) return "";
+        String id = safe(session.getUserId());
+        return id.isEmpty() ? "username:" + safe(session.getUsername()) : "id:" + id;
     }
 
     private static String safe(String value) {

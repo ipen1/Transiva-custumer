@@ -2,11 +2,17 @@ package com.transiva.app;
 
 import android.content.Context;
 import org.json.JSONObject;
-import java.io.BufferedReader;import java.io.InputStream;import java.io.InputStreamReader;import java.net.HttpURLConnection;import java.nio.charset.StandardCharsets;
 
-/** Network/data responsibility extracted from SmartReorderActivity. */
+/** A successful empty result always comes from a verified server response. */
 public final class SmartReorderRepository {
-    private static final String URL="https://transiva.my.id/server/customer_smart_reorder.php";
-    public interface Callback{void onResult(JSONObject data,Throwable error);}
-    public void load(Context context,Callback cb){NetworkResilienceManager.executeSafe(()->{try{HttpURLConnection c=CustomerApiClient.open(context,URL+"?_="+System.currentTimeMillis());c.setRequestMethod("GET");c.setConnectTimeout(12000);c.setReadTimeout(12000);int code=c.getResponseCode();InputStream in=code>=200&&code<400?c.getInputStream():c.getErrorStream();BufferedReader r=new BufferedReader(new InputStreamReader(in,StandardCharsets.UTF_8));StringBuilder b=new StringBuilder();String l;while((l=r.readLine())!=null)b.append(l);r.close();c.disconnect();JSONObject o=new JSONObject(b.toString());new android.os.Handler(android.os.Looper.getMainLooper()).post(()->cb.onResult(o,null));}catch(Throwable e){new android.os.Handler(android.os.Looper.getMainLooper()).post(()->cb.onResult(null,e));}});}
+    private static final String URL = ApiConfig.ROOT + "server/customer_smart_reorder.php";
+
+    public JSONObject load(Context context, int budgetMs) throws Exception {
+        JSONObject result = TransivaHttpRepository.getJsonWithin(context, URL, budgetMs);
+        if (!result.optBoolean("success", false) || result.optJSONArray("orders") == null) {
+            throw new TransivaHttpRepository.ServerResponseException(
+                    "Rekomendasi belum dapat dimuat.", 0, result);
+        }
+        return result;
+    }
 }

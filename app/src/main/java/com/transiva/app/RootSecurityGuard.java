@@ -46,23 +46,28 @@ public final class RootSecurityGuard {
     private RootSecurityGuard() { }
 
     public static void checkBeforeContinue(Activity activity, Runnable onAllowed) {
-        check(activity, onAllowed, false);
+        check(activity, onAllowed, false, null);
     }
 
     public static void protect(Activity activity) {
-        check(activity, null, false);
+        check(activity, null, false, null);
     }
 
     /** Refresh langsung dari server, dipakai oleh FCM security_policy_changed. */
     public static void protectFresh(Activity activity) {
-        check(activity, null, true);
+        check(activity, null, true, null);
     }
 
-    private static void check(Activity activity, Runnable onAllowed, boolean forcePolicyRefresh) {
+    static void checkAtStartup(Activity activity, CustomerSecurityPolicy.Policy policy, Runnable onAllowed) {
+        check(activity, onAllowed, false, policy);
+    }
+
+    private static void check(Activity activity, Runnable onAllowed, boolean forcePolicyRefresh,
+                              CustomerSecurityPolicy.Policy startupPolicy) {
         if (!usable(activity)) return;
         if (!RUNNING.compareAndSet(false, true)) {
             if (onAllowed != null || forcePolicyRefresh) {
-                MAIN.postDelayed(() -> check(activity, onAllowed, forcePolicyRefresh), 300L);
+                MAIN.postDelayed(() -> check(activity, onAllowed, forcePolicyRefresh, startupPolicy), 300L);
             }
             return;
         }
@@ -71,13 +76,17 @@ public final class RootSecurityGuard {
         WORKER.execute(() -> {
             Detection result;
             try {
-                CustomerSecurityPolicy.Policy policy = forcePolicyRefresh
+                CustomerSecurityPolicy.Policy policy = startupPolicy != null ? startupPolicy : forcePolicyRefresh
                         ? CustomerSecurityPolicy.resolveFresh(app)
                         : CustomerSecurityPolicy.resolve(app);
 
                 result = policy.rootEnabled ? detect(app) : Detection.clean();
+                if (result.blocked && startupPolicy != null && !CustomerSecurityPolicy.hasFreshCache(app)
+                        && !CustomerSecurityPolicy.confirmForStartup(app).rootEnabled) {
+                    result = Detection.clean();
+                }
             } catch (Throwable ignored) {
-                result = CustomerSecurityPolicy.rootEnabledCached(app)
+                result = (startupPolicy == null ? CustomerSecurityPolicy.rootEnabledCached(app) : startupPolicy.rootEnabled)
                         ? safeDetect(app)
                         : Detection.clean();
             }

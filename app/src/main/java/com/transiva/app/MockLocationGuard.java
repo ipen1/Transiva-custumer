@@ -41,35 +41,40 @@ public final class MockLocationGuard {
 
     /** Compatibility entry point for normal screens. Check is asynchronous. */
     public static boolean protect(Activity activity) {
-        checkAsync(activity, null, false);
+        checkAsync(activity, null, false, null);
         return false;
     }
 
     /** Splash uses this and continues only when the device is clean. */
     public static void checkBeforeContinue(Activity activity, Runnable onAllowed) {
-        checkAsync(activity, onAllowed, false);
+        checkAsync(activity, onAllowed, false, null);
     }
 
     public static void recheck(Activity activity) {
-        checkAsync(activity, null, true);
+        checkAsync(activity, null, true, null);
     }
 
     /** Refresh langsung dari server, dipakai oleh FCM security_policy_changed. */
     public static void protectFresh(Activity activity) {
-        checkAsync(activity, null, true);
+        checkAsync(activity, null, true, null);
+    }
+
+    static void checkAtStartup(Activity activity, CustomerSecurityPolicy.Policy policy, Runnable onAllowed) {
+        checkAsync(activity, onAllowed, false, policy);
     }
 
     private static void checkAsync(
             Activity activity,
             Runnable onAllowed,
-            boolean forcePolicyRefresh
+            boolean forcePolicyRefresh,
+            CustomerSecurityPolicy.Policy startupPolicy
     ) {
         if (!isUsable(activity)) return;
 
         if (!CHECK_RUNNING.compareAndSet(false, true)) {
             if (onAllowed != null || forcePolicyRefresh) {
                 MAIN.postDelayed(
-                        () -> checkAsync(activity, onAllowed, forcePolicyRefresh),
+                        () -> checkAsync(activity, onAllowed, forcePolicyRefresh, startupPolicy),
                         350L
                 );
             }
@@ -83,7 +88,7 @@ public final class MockLocationGuard {
             boolean detectionEnabled = true;
 
             try {
-                CustomerSecurityPolicy.Policy policy = forcePolicyRefresh
+                CustomerSecurityPolicy.Policy policy = startupPolicy != null ? startupPolicy : forcePolicyRefresh
                         ? CustomerSecurityPolicy.resolveFresh(appContext)
                         : CustomerSecurityPolicy.resolve(appContext);
 
@@ -96,8 +101,9 @@ public final class MockLocationGuard {
 
                     // Jika akan memblokir dari cache lama, konfirmasi sekali ke server.
                     if (result.blocked && !forcePolicyRefresh) {
-                        CustomerSecurityPolicy.Policy fresh =
-                                CustomerSecurityPolicy.resolveFresh(appContext);
+                        CustomerSecurityPolicy.Policy fresh = startupPolicy == null
+                                ? CustomerSecurityPolicy.resolveFresh(appContext)
+                                : CustomerSecurityPolicy.confirmForStartup(appContext);
 
                         if (!fresh.fakeGpsEnabled) {
                             detectionEnabled = false;
@@ -106,8 +112,8 @@ public final class MockLocationGuard {
                     }
                 }
             } catch (Throwable ignored) {
-                detectionEnabled =
-                        CustomerSecurityPolicy.fakeGpsEnabledCached(appContext);
+                detectionEnabled = startupPolicy == null
+                        ? CustomerSecurityPolicy.fakeGpsEnabledCached(appContext) : startupPolicy.fakeGpsEnabled;
                 result = detectionEnabled
                         ? detectSafely(appContext)
                         : Detection.allowed();
@@ -304,7 +310,7 @@ public final class MockLocationGuard {
             dialog.setOnShowListener(d -> {
                 dialog.getButton(DialogInterface.BUTTON_POSITIVE).setOnClickListener(v -> openDeveloperSettings(activity));
                 dialog.getButton(DialogInterface.BUTTON_NEUTRAL)
-                        .setOnClickListener(v -> checkAsync(activity, null, true));
+                        .setOnClickListener(v -> checkAsync(activity, null, true, null));
             });
             dialog.setOnDismissListener(d -> {
                 if (activeDialog.get() == dialog) {

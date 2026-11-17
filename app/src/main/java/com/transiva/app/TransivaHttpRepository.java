@@ -17,9 +17,18 @@ public final class TransivaHttpRepository {
     public static final class ServerResponseException extends Exception {
         public final int status;
         public final JSONObject response;
+        public final long retryAfterMs;
         public ServerResponseException(String message) { this(message, 0); }
         public ServerResponseException(String message, int status) { this(message, status, null); }
-        public ServerResponseException(String message, int status, JSONObject response) { super(message); this.status = status; this.response = response; }
+        public ServerResponseException(String message, int status, JSONObject response) {
+            this(message, status, response, 0L);
+        }
+        private ServerResponseException(String message, int status, JSONObject response, long retryAfterMs) {
+            super(message);
+            this.status = status;
+            this.response = response;
+            this.retryAfterMs = retryAfterMs;
+        }
     }
     private TransivaHttpRepository() { }
     public static JSONObject getJson(Context context, String url, int timeoutMs) throws Exception {
@@ -28,6 +37,21 @@ public final class TransivaHttpRepository {
     public static JSONObject getJsonOnce(Context context, String url, int timeoutMs) throws Exception {
         return measuredRead(context, url, timeoutMs, 0, false);
     }
+    /** End-to-end limit for foreground reads, including DNS, headers and the response body. */
+    public static JSONObject getJsonWithin(Context context, String url, int budgetMs) throws Exception {
+        long started = SystemClock.elapsedRealtime();
+        boolean success = false;
+        try (CustomerReadDeadline limit = new CustomerReadDeadline(budgetMs)) {
+            JSONObject result = request(context, "GET", url, null, budgetMs, 0, null,
+                    CustomerTransportSession.capture(context), limit);
+            success = result.optBoolean("success", false);
+            return result;
+        } finally {
+            try { CustomerPerformanceMetrics.load(context, CustomerPerformanceMetrics.readCategory(url), started, success); }
+            catch (Exception ignored) { }
+        }
+    }
+
     public static JSONObject getJsonFresh(Context c,String url,int timeout)throws Exception{return measuredRead(c,url,timeout,1,true);}
     public static String catalogCacheUrl(String url){
         String value=url.replaceAll("([?&])refresh=[^&]*&?","$1");
@@ -70,9 +94,15 @@ public final class TransivaHttpRepository {
     }
     private static JSONObject request(Context context, String method, String url, JSONObject body,
                                       int timeoutMs, int retries, String key,CustomerTransportSession owner) throws Exception {
+        return request(context, method, url, body, timeoutMs, retries, key, owner, null);
+    }
+
+    private static JSONObject request(Context context, String method, String url, JSONObject body,
+                                      int timeoutMs, int retries, String key, CustomerTransportSession owner,
+                                      CustomerReadDeadline limit) throws Exception {
         owner.check(context);
         int socketTimeout = Math.max(3000, Math.min(30000, timeoutMs));
-        long deadline = SystemClock.elapsedRealtime() + socketTimeout * 2L;
+        long deadline = limit == null ? SystemClock.elapsedRealtime() + socketTimeout * 2L : limit.endAt;
         for (int attempt = 0; ; attempt++) {
             checkCancelled(deadline);
             owner.check(context);
@@ -81,6 +111,7 @@ public final class TransivaHttpRepository {
             long started = SystemClock.elapsedRealtime();
             try {
                 c = CustomerApiClient.open(context, url);
+                if (limit != null) limit.attach(c);
                 owner.pin(context,c);
                 CustomerLoadingCoordinator.attach(c);
                 CustomerRequestCancellation.attach(c);
@@ -102,6 +133,7 @@ public final class TransivaHttpRepository {
                 TransivaCrashReporter.recordHttpStatus(code, method, url, SystemClock.elapsedRealtime() - started);
                 c.setReadTimeout(remaining(deadline, socketTimeout));
                 String raw = read(code >= 200 && code < 300 ? c.getInputStream() : c.getErrorStream(), deadline);
+                if (limit != null) checkCancelled(deadline);
                 owner.check(context);
                 if((code==401||code==403)&&NetworkSafetyRules.maySendCredentials(url)) {
                     // Login changes and logout application are serialized on the UI thread.
@@ -114,15 +146,18 @@ public final class TransivaHttpRepository {
                 String message = "Server belum dapat memproses permintaan (" + code + ").";
                 JSONObject errorBody = null;
                 try { errorBody = new JSONObject(raw); message = errorBody.optString("message", message); } catch (Exception ignored) { }
-                throw new ServerResponseException(message, code, errorBody);
+                long cooldown = code == 429 || code == 503 ? retryAfter(c, errorBody) : 0L;
+                throw new ServerResponseException(message, code, errorBody, cooldown);
             } catch (ServerResponseException error) {
                 // Do not let a generic catch accidentally retry 401/403/404/429.
                 if (attempt >= retries || !NetworkSafetyRules.retryableStatus(error.status)) {CustomerLoadingCoordinator.reportFailure();throw error;}
             } catch (IOException error) {
+                if (limit != null && SystemClock.elapsedRealtime() >= deadline)
+                    throw new java.net.SocketTimeoutException("Waktu permintaan habis");
                 TransivaCrashReporter.recordNetworkFailure(error, method, url);
                 if (Thread.currentThread().isInterrupted() || error instanceof javax.net.ssl.SSLException
                         || attempt >= retries) {if(!Thread.currentThread().isInterrupted())CustomerLoadingCoordinator.reportFailure();throw error;}
-            } finally { if (c != null) { CustomerLoadingCoordinator.detach(c); CustomerRequestCancellation.detach(c); c.disconnect(); } }
+            } finally { if (c != null) { CustomerLoadingCoordinator.detach(c); CustomerRequestCancellation.detach(c); if (limit != null) limit.detach(c); c.disconnect(); } }
             checkCancelled(deadline);
             long delay = 220L + ThreadLocalRandom.current().nextLong(60L, 181L);
             if (SystemClock.elapsedRealtime() + delay >= deadline) throw new java.net.SocketTimeoutException("Waktu permintaan habis");
@@ -130,6 +165,16 @@ public final class TransivaHttpRepository {
             catch (InterruptedException e) { Thread.currentThread().interrupt(); throw e; }
         }
     }
+    private static long retryAfter(HttpURLConnection connection, JSONObject body) {
+        long seconds = body == null ? 0L : body.optLong("retry_after", 0L);
+        String header = connection.getHeaderField("Retry-After");
+        if (header != null) {
+            try { seconds = Math.max(seconds, Long.parseLong(header.trim())); }
+            catch (NumberFormatException ignored) { } // The Transiva server sends delta seconds.
+        }
+        return Math.max(0L, Math.min(seconds, Long.MAX_VALUE / 2000L)) * 1000L;
+    }
+
     private static int remaining(long deadline, int cap) throws java.net.SocketTimeoutException {
         long value = deadline - SystemClock.elapsedRealtime();
         if (value <= 0L) throw new java.net.SocketTimeoutException("Waktu permintaan habis");

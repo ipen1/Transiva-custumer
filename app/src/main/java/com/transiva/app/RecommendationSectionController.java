@@ -5,6 +5,9 @@ import android.content.Intent;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
+import android.os.Handler;
+import android.os.Looper;
+import android.os.SystemClock;
 import android.view.Gravity;
 import android.view.View;
 import android.widget.HorizontalScrollView;
@@ -16,11 +19,11 @@ import android.widget.TextView;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
-import java.io.BufferedReader;
-import java.io.InputStream;
-import java.io.InputStreamReader;
-import java.net.HttpURLConnection;
-import java.net.URL;
+import java.net.UnknownHostException;
+import java.util.concurrent.Future;
+import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.TimeoutException;
+
 
 public final class RecommendationSectionController {
 
@@ -32,7 +35,16 @@ public final class RecommendationSectionController {
     private final LinearLayout row;
     private final TextView empty;
     private final ProgressBar progress;
+    private final Handler main = new Handler(Looper.getMainLooper());
+    private final CustomerLifecycleNetworkScope requests = new CustomerLifecycleNetworkScope();
     private boolean loading;
+    private boolean retryOnCompletion;
+    private long loadedAt;
+    private long retryAt;
+    private int attempt;
+    private Throwable lastError;
+    private Future<?> work;
+    private Runnable timeout;
     private Runnable visibilityChanged;
     private boolean hasContent;
 
@@ -80,8 +92,6 @@ public final class RecommendationSectionController {
                 new LinearLayout.LayoutParams(-1, dp(132));
         scrollLp.setMargins(0, dp(7), 0, dp(4));
         root.addView(scroll, scrollLp);
-
-        refresh();
     }
 
     public View buildView() {
@@ -95,29 +105,65 @@ public final class RecommendationSectionController {
     public boolean hasContent() { return hasContent; }
 
     public void refresh() {
-        if (loading) return;
+        long now = SystemClock.elapsedRealtime();
+        if (loading || (loadedAt != 0L && now - loadedAt < 30000L) || now < retryAt) return;
+        if (!TransivaNetworkMonitor.isOnline()) {
+            lastError = new UnknownHostException("Offline");
+            return;
+        }
+        final int budgetMs = 6500;
+        long endAt = now + budgetMs;
+        int token = ++attempt;
         loading = true;
-        progress.setVisibility(View.GONE);
-
-        TransivaNetworkExecutor.execute(() -> {
-            JSONArray items = new JSONArray();
+        timeout = () -> {
+            if (work != null) work.cancel(true);
+            complete(token, null, new TimeoutException());
+        };
+        main.postDelayed(timeout, budgetMs);
+        work = requests.execute(() -> {
             try {
-                JSONObject response = TransivaHttpRepository.getJson(
-                        activity, API + "?role=customer&_=" + System.currentTimeMillis(), 20000);
-                JSONArray received = response.optJSONArray("recommendations");
-                if (response.optBoolean("success", false) && received != null) {
-                    items = received;
+                int remaining = (int) (endAt - SystemClock.elapsedRealtime());
+                if (remaining <= 0) throw new TimeoutException();
+                JSONObject response = TransivaHttpRepository.getJsonWithin(activity,
+                        API + "?role=customer", remaining);
+                if (!response.optBoolean("success", false)) {
+                    throw new TransivaHttpRepository.ServerResponseException(
+                            "Rekomendasi belum dapat dimuat.", 0, response);
                 }
-            } catch (Exception ignored) {
+                JSONArray items = response.getJSONArray("recommendations");
+                requests.post(main, () -> complete(token, items, null));
+            } catch (Exception error) {
+                requests.post(main, () -> complete(token, null, error));
             }
+        }, () -> requests.post(main, () -> complete(token, null, new RejectedExecutionException())));
+    }
 
-            JSONArray finalItems = items;
-            activity.runOnUiThread(() -> {
-                loading = false;
-                progress.setVisibility(View.GONE);
-                render(finalItems);
-            });
-        });
+    void retryIfFailed() {
+        if (loading) retryOnCompletion = true;
+        else if (CustomerReadError.canRetryOnReconnect(lastError)) refresh();
+    }
+
+    private void complete(int token, JSONArray items, Throwable error) {
+        if (!loading || token != attempt || activity.isDestroyed() || activity.isFinishing()) return;
+        loading = false;
+        work = null;
+        main.removeCallbacks(timeout);
+        progress.setVisibility(View.GONE);
+        boolean retry = retryOnCompletion;
+        retryOnCompletion = false;
+        lastError = error;
+        if (error == null) {
+            loadedAt = SystemClock.elapsedRealtime();
+            render(items);
+        } else {
+            retryAt = SystemClock.elapsedRealtime() + CustomerReadError.retryDelay(error);
+            if (retry) retryIfFailed();
+        }
+    }
+
+    void destroy() {
+        requests.destroy();
+        main.removeCallbacksAndMessages(null);
     }
 
     private void render(JSONArray items) {

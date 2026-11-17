@@ -17,7 +17,10 @@ public final class BoundedResponseReader {
             while(true){
                 if(Thread.currentThread().isInterrupted())throw new InterruptedIOException("Response canceled");
                 if(System.nanoTime()>deadline)throw new java.net.SocketTimeoutException("Response deadline exceeded");
-                int count=input.read(buffer);if(count<0)break;
+                int count=input.read(buffer);
+                if(Thread.currentThread().isInterrupted())throw new InterruptedIOException("Response canceled");
+                if(System.nanoTime()>deadline)throw new java.net.SocketTimeoutException("Response deadline exceeded");
+                if(count<0)break;
                 if(output.size()+count>maxBytes)throw new IOException("Response exceeds size limit");
                 output.write(buffer,0,count);
             }

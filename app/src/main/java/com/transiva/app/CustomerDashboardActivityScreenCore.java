@@ -42,7 +42,9 @@ import com.google.android.libraries.places.api.net.FindAutocompletePredictionsRe
 import com.google.android.libraries.places.api.net.PlacesClient;
 
 import com.transiva.app.customer.data.CustomerDashboardRepositoryImpl;
+import com.transiva.app.customer.data.DashboardStateCache;
 import com.transiva.app.customer.domain.DashboardState;
+import com.transiva.app.customer.domain.DashboardState.Section;
 import com.transiva.app.customer.domain.Promo;
 import com.transiva.app.customer.presentation.CustomerDashboardContract;
 import com.transiva.app.customer.presentation.CustomerDashboardPresenter;
@@ -93,7 +95,28 @@ class CustomerDashboardActivityScreenCore extends CustomerAdaptiveActivity
     protected TextView clusterText;
     protected TextView balanceText;
     private TextView dashboardRetry;
-    private boolean dashboardHasData;
+    private boolean hasDashboardBalance;
+    private boolean hasDashboardOrder;
+    private boolean firstDashboardLoad = true;
+    private boolean recoverStartupOrder;
+    private boolean verifyStartupOrder;
+    private boolean initialLocationPending = true;
+    private final Runnable initialLocation = this::loadInitialLocation;
+    private long startupRecoveryUntil;
+    private CustomerSessionGuard dashboardSession;
+    private TransivaNetworkMonitor.State lastDashboardNetworkState;
+    private final java.util.EnumMap<Section, String> dashboardErrors = new java.util.EnumMap<>(Section.class);
+
+    private final TransivaNetworkMonitor.Listener dashboardNetworkListener = state -> uiHandler.post(() -> {
+        if (!this.orderStatusVisible || presenter == null) return;
+        TransivaNetworkMonitor.State previous = lastDashboardNetworkState;
+        lastDashboardNetworkState = state;
+        if ((previous == TransivaNetworkMonitor.State.OFFLINE && state != TransivaNetworkMonitor.State.OFFLINE)
+                || (previous == TransivaNetworkMonitor.State.CONNECTED && state == TransivaNetworkMonitor.State.VALIDATED)) {
+            presenter.networkRestored();
+            if (this.recommendationController != null) this.recommendationController.retryIfFailed();
+        }
+    });
     private PremiumOrderStatusView premiumOrder;
     private TextView dashboardCancel;
     private boolean dashboardCancelBusy;
@@ -101,7 +124,7 @@ class CustomerDashboardActivityScreenCore extends CustomerAdaptiveActivity
     protected TextView orderHint;
     private SmartWaitingTextView dashboardWaiting;
     private boolean orderStatusVisible;
-    private final Runnable orderStatusRefresh=new Runnable(){public void run(){if(!orderStatusVisible)return;if(presenter!=null&&activeOrderJson!=null)presenter.refresh(username,userId);uiHandler.postDelayed(this,5000L);}};
+    private final Runnable orderStatusRefresh=new Runnable(){public void run(){if(!orderStatusVisible)return;if(presenter!=null)presenter.pollOrder();uiHandler.postDelayed(this,5000L);}};
     protected FrameLayout orderCard;
     protected JSONObject activeOrderJson;
     protected TextView loyaltyTierText;
@@ -214,29 +237,27 @@ class CustomerDashboardActivityScreenCore extends CustomerAdaptiveActivity
         );
 
         readSession();
+        dashboardSession = CustomerSessionGuard.capture(this);
+        lastDashboardNetworkState = TransivaNetworkMonitor.state();
+        verifyStartupOrder = savedInstanceState == null && getIntent().getBooleanExtra(
+                ActiveOrderRecovery.CHECK_ON_DASHBOARD, false);
+        recoverStartupOrder = verifyStartupOrder;
+        startupRecoveryUntil = android.os.SystemClock.elapsedRealtime() + 5500L;
 
         presenter =
                 new CustomerDashboardPresenter(
                         new CustomerDashboardRepositoryImpl(this),
-                        this
+                        this, userId
                 );
 
         setContentView(buildScreen());
         CustomerResponsiveUi.apply(this);
         CustomerAppSettings.apply(this);
 
-        // Zero Spinner / stale-while-revalidate: render the last safe read snapshot
-        // immediately, then refresh it silently from the network.
-        com.transiva.app.customer.domain.DashboardState cached =
-                com.transiva.app.customer.data.DashboardStateCache.get(this);
-        if (cached != null) {
-            showDashboard(cached);
-            presenter.refresh(username, userId);
-        } else {
-            presenter.load(username, userId);
+        for (Section section : Section.values()) {
+            DashboardState cached = DashboardStateCache.get(this, section);
+            if (cached != null) showSection(section, cached, false);
         }
-        loadLocation();
-        // Update berjalan setelah Dashboard tampil sehingga startup tidak tertahan jaringan.
         DashboardUpdateCoordinator.check(this);
     }
 
@@ -251,6 +272,17 @@ class CustomerDashboardActivityScreenCore extends CustomerAdaptiveActivity
         uiHandler.removeCallbacks(accountStatusRefresh);
         uiHandler.post(accountStatusRefresh);
         orderStatusVisible=true;uiHandler.removeCallbacks(orderStatusRefresh);uiHandler.postDelayed(orderStatusRefresh,5000L);
+        TransivaNetworkMonitor.addListener(dashboardNetworkListener);
+        if (firstDashboardLoad && presenter != null) {
+            firstDashboardLoad = false;
+            if (hasDashboardBalance && hasDashboardOrder) presenter.refresh();
+            else presenter.load();
+        }
+        if (initialLocationPending) {
+            long delay = recoverStartupOrder && TransivaNetworkMonitor.isOnline()
+                    ? Math.max(0L, startupRecoveryUntil - android.os.SystemClock.elapsedRealtime()) : 0L;
+            uiHandler.postDelayed(initialLocation, delay);
+        }
         DeliveryAddressGate.prefetch(this);
         RoyaltyRewardFeedback.check(this);
 
@@ -270,8 +302,8 @@ class CustomerDashboardActivityScreenCore extends CustomerAdaptiveActivity
             refreshSmartRecommendation();
         }
         if (presenter != null) {
-            if (canceled) presenter.refreshAfterCancellation(username, userId);
-            else presenter.refresh(username, userId);
+            if (canceled) presenter.refreshAfterCancellation();
+            else presenter.refresh();
         }
 
         startPromoAutoSlide();
@@ -287,7 +319,17 @@ class CustomerDashboardActivityScreenCore extends CustomerAdaptiveActivity
     }
 
     @Override
+    public void onUserInteraction() {
+        super.onUserInteraction();
+        recoverStartupOrder = false;
+    }
+
+    @Override
     protected void onPause() {
+        recoverStartupOrder = false;
+        uiHandler.removeCallbacks(initialLocation);
+        TransivaNetworkMonitor.removeListener(dashboardNetworkListener);
+        if (presenter != null) presenter.stopRecovery();
         accountStatusVisible = false;
         uiHandler.removeCallbacks(accountStatusRefresh);
         getSharedPreferences("transiva_native_session", MODE_PRIVATE).unregisterOnSharedPreferenceChangeListener(accountStatusListener);
@@ -303,6 +345,7 @@ class CustomerDashboardActivityScreenCore extends CustomerAdaptiveActivity
         orderStatusVisible=false;uiHandler.removeCallbacks(orderStatusRefresh);
         if (dashboardController != null) dashboardController.onDestroy();
         featureRuntime.destroy();
+        if (recommendationController != null) recommendationController.destroy();
         networkScope.destroy();
         stopPromoAutoSlide();
 
@@ -360,7 +403,7 @@ class CustomerDashboardActivityScreenCore extends CustomerAdaptiveActivity
         scroll.setFillViewport(true);
         scroll.setClipToPadding(false);
 
-        pullRefresh = new CustomerPullRefreshLayout(this, scroll, () -> { if(presenter!=null)presenter.load(username,userId); }, () -> presenter==null||presenter.isLoading());
+        pullRefresh = new CustomerPullRefreshLayout(this, scroll, () -> { if(presenter!=null)presenter.load(); }, () -> presenter==null||presenter.isLoading());
         pullRefresh.setTimeoutAction(() -> {if(presenter!=null)presenter.cancelLoad();});
         shell.addView(
                 pullRefresh,
@@ -571,8 +614,8 @@ class CustomerDashboardActivityScreenCore extends CustomerAdaptiveActivity
 
     protected void renderBalance() {
         if (balanceText == null) return;
-        if (!dashboardHasData) {
-            boolean failed = dashboardRetry != null && dashboardRetry.getVisibility() == View.VISIBLE;
+        if (!hasDashboardBalance) {
+            boolean failed = dashboardErrors.containsKey(Section.BALANCE);
             balanceText.setText(failed ? "Saldo belum dimuat" : "Memuat saldo...");
         } else if (balanceVisible) {
             balanceText.setText(rupiah(currentBalance));
@@ -2214,8 +2257,8 @@ class CustomerDashboardActivityScreenCore extends CustomerAdaptiveActivity
                             }
                             Toast.makeText(CustomerDashboardActivityScreenCore.this, message, Toast.LENGTH_SHORT).show();
                             if (presenter != null) {
-                                if (canceled) presenter.refreshAfterCancellation(username, userId);
-                                else presenter.refresh(username, userId);
+                                if (canceled) presenter.refreshAfterCancellation();
+                                else presenter.refresh();
                             }
                         }
                         @Override public void onRequested(String message) { complete(message, false); }
@@ -2483,6 +2526,12 @@ class CustomerDashboardActivityScreenCore extends CustomerAdaptiveActivity
         return CustomerBottomNavigation.build(this, CustomerPageTransition.HOME);
     }
 
+    private void loadInitialLocation() {
+        if (!initialLocationPending || !orderStatusVisible || isFinishing() || isDestroyed()) return;
+        initialLocationPending = false;
+        loadLocation();
+    }
+
     private void loadLocation() {
         if (checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED
                 && checkSelfPermission(Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
@@ -2595,30 +2644,77 @@ class CustomerDashboardActivityScreenCore extends CustomerAdaptiveActivity
     }
 
     @Override
-    public void showDashboard(
-            DashboardState state
-    ) {
-        if (state == null) {
-            return;
-        }
-
+    public void showSection(Section section, DashboardState state, boolean live) {
         if (!hasDashboardSession()) return;
-        if (pullRefresh != null) pullRefresh.finish(true);
-        dashboardHasData = true;
-        dashboardRetry.setVisibility(View.GONE);
-        currentBalance = state.balance;
-        renderBalance();
-
-        renderDashboardOrder(state.activeOrder, state.activeOrderText);
-        renderGrowthState(state);
-
-        if (orderHint != null) {
-            // 5.2: empty state stays one-line compact; active order owns the card.
-            orderHint.setVisibility(View.GONE);
+        if (live) {
+            DashboardStateCache.put(this, section, state, Integer.toString(userId));
+            if (dashboardErrors.remove(section) != null) updateDashboardError();
         }
-
-        renderPromos(state.promos);
+        switch (section) {
+            case BALANCE:
+                hasDashboardBalance = true;
+                currentBalance = state.balance;
+                renderBalance();
+                break;
+            case ORDER:
+                hasDashboardOrder = true;
+                JSONObject order = state.activeOrder;
+                if (live && verifyStartupOrder) {
+                    verifyStartupOrder = false;
+                    if (recoverStartupOrder && orderStatusVisible
+                            && android.os.SystemClock.elapsedRealtime() <= startupRecoveryUntil) {
+                        if (state.recoveryOrder == null) ActiveOrderRecovery.clearLegacy(this);
+                        else if (!wasDashboardOrderCanceled(state.recoveryOrder)
+                                && ActiveOrderRecovery.open(this, state.recoveryOrder)) {
+                            presenter.destroy();
+                            return;
+                        }
+                    }
+                    if (initialLocationPending) {
+                        uiHandler.removeCallbacks(initialLocation);
+                        uiHandler.post(initialLocation);
+                    }
+                }
+                String status = state.activeOrderText;
+                // Keep the waiting tile steady while the details of this order are refreshed.
+                if (sameDashboardOrder(order, activeOrderJson) && !order.has("smart_waiting")) {
+                    org.json.JSONObject waiting = activeOrderJson.optJSONObject("smart_waiting");
+                    if (waiting != null && order.optString("status").equals(activeOrderJson.optString("status"))) {
+                        try { order = new JSONObject(order.toString()).put("smart_waiting", waiting); }
+                        catch (org.json.JSONException ignored) { }
+                    }
+                }
+                renderDashboardOrder(order, status);
+                if (orderHint != null) orderHint.setVisibility(View.GONE);
+                break;
+            case ORDER_DETAILS:
+                if (sameDashboardOrder(state.activeOrder, activeOrderJson)) {
+                    renderDashboardOrder(state.activeOrder, state.activeOrderText);
+                }
+                return;
+            case PROMOS:
+                renderPromos(state.promos);
+                return;
+            case REFERRAL:
+                renderGrowthState(state);
+                if (live && state.referral != null && state.referral.has("wallet_balance")
+                        && (!hasDashboardBalance
+                        || Math.abs(currentBalance - state.referral.optDouble("wallet_balance", currentBalance)) >= 1d)) {
+                    presenter.refreshBalance();
+                }
+                return;
+            default:
+                renderGrowthState(state);
+                return;
+        }
         refreshSmartRecommendation();
+    }
+
+    private static boolean sameDashboardOrder(JSONObject firstOrder, JSONObject secondOrder) {
+        if (firstOrder == null || secondOrder == null) return false;
+        String id = firstOrder.optString("order_id");
+        return !id.isEmpty() && id.equals(secondOrder.optString("order_id"))
+                && firstOrder.optString("source").equals(secondOrder.optString("source"));
     }
 
     private boolean wasDashboardOrderCanceled(JSONObject order) {
@@ -2668,23 +2764,39 @@ class CustomerDashboardActivityScreenCore extends CustomerAdaptiveActivity
     }
 
     @Override
-    public void showError(String message) {
-        if (pullRefresh != null) pullRefresh.finish(false);
-        if (!hasDashboardSession()) return;
+    public void finishRefresh(boolean success) {
+        if (pullRefresh != null) pullRefresh.finish(success);
+    }
 
-        String status = dashboardHasData ? "Data terakhir masih ditampilkan. " : "";
-        dashboardRetry.setText(status + message + "\nKetuk untuk coba lagi");
-        dashboardRetry.setVisibility(View.VISIBLE);
-        if (!dashboardHasData) {
-            renderBalance();
+    @Override
+    public void showError(Section section, String message) {
+        if (!hasDashboardSession() || (section != Section.BALANCE && section != Section.ORDER)) return;
+        dashboardErrors.put(section, message);
+        updateDashboardError();
+        if (section == Section.BALANCE && !hasDashboardBalance) renderBalance();
+        if (section == Section.ORDER && !hasDashboardOrder) {
             premiumOrder.bind(null, "Status pesanan belum dimuat", "Lihat pusat pesanan  ›");
         }
     }
 
+    private void updateDashboardError() {
+        String balance = dashboardErrors.get(Section.BALANCE);
+        String order = dashboardErrors.get(Section.ORDER);
+        if (balance == null && order == null) {
+            dashboardRetry.setVisibility(View.GONE);
+            return;
+        }
+        boolean stale = (balance != null && hasDashboardBalance) || (order != null && hasDashboardOrder);
+        String status = stale ? "Data terakhir masih ditampilkan. " : "";
+        String message = balance != null ? balance : order;
+        if (balance != null && order != null && !balance.equals(order)) message += " " + order;
+        dashboardRetry.setText(status + message + "\nKetuk untuk coba lagi");
+        dashboardRetry.setVisibility(View.VISIBLE);
+    }
+
     private boolean hasDashboardSession() {
-        SessionManager liveSession = new SessionManager(this);
-        String liveId = first(liveSession.getId(), liveSession.getUserId(), "0");
-        return liveSession.isLoggedIn() && Integer.toString(userId).equals(liveId);
+        return dashboardSession != null && dashboardSession.matches(this)
+                && Integer.toString(userId).equals(dashboardSession.account);
     }
 
     private boolean isActiveOrderText(

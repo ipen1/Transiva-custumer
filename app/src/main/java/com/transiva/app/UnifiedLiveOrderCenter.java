@@ -113,6 +113,39 @@ public final class UnifiedLiveOrderCenter {
         }, () -> deliver(app,identity,sequence,cb,readCache(app,identity.account),app.getSharedPreferences(PREF,Context.MODE_PRIVATE).getLong(KEY_AT,0),true,new IllegalStateException("Network queue busy")));
     }
 
+    /** Distribute the dashboard's already verified response to the existing live-order consumers. */
+    public static void acceptDashboardSnapshot(Context context, JSONArray rows, long startedAt) {
+        Context app = context.getApplicationContext();
+        CustomerTransportSession requestOwner = CustomerTransportSession.capture(app);
+        if (!requestOwner.matches(app) || Thread.currentThread().isInterrupted()) return;
+        CustomerSessionGuard identity = CustomerSessionGuard.capture(app);
+        if (identity.account.isEmpty()) return;
+        List<Order> orders = new ArrayList<>();
+        for (int i = 0; i < rows.length(); i++) {
+            JSONObject raw = rows.optJSONObject(i);
+            if (raw == null) continue;
+            String owner = raw.optString("user_id");
+            if (!owner.isEmpty() && !owner.equals(identity.account)) continue;
+            Order order = new Order(raw);
+            if (!order.id.isEmpty() && !CustomerOrderState.isEnded(order.status)) orders.add(order);
+        }
+        sort(orders);
+        MAIN.post(() -> {
+            synchronized (UnifiedLiveOrderCenter.class) {
+                if (!requestOwner.matches(app) || !identity.matches(app)
+                        || (identity.account.equals(memoryOwner) && memoryAt > startedAt)) return;
+                cacheContext = app;
+                long savedAt = System.currentTimeMillis();
+                List<Order> current = excludeCanceled(app, identity.account, orders);
+                writeCache(app, identity.account, current, savedAt);
+                memory = Collections.unmodifiableList(current);
+                memoryOwner = identity.account;
+                memoryAt = savedAt;
+            }
+            notifyListeners();
+        });
+    }
+
     public static Order primary(List<Order> orders) {
         if (orders == null || orders.isEmpty()) return null;
         for (Order o : orders) if (o.hasDriver()) return o;

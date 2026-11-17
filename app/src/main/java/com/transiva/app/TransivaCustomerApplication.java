@@ -133,6 +133,11 @@ public class TransivaCustomerApplication extends Application implements Applicat
         }
     }
 
+    static boolean foregroundOwnsActiveOrderRead() {
+        Activity active = currentActivity.get();
+        return active instanceof SplashActivity || active instanceof CustomerDashboardActivityScreenCore;
+    }
+
     public static Application appContext() {
         return instance;
     }

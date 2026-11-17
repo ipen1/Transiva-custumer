@@ -84,12 +84,13 @@ public class SplashActivity extends CustomerAdaptiveActivity {
             return;
         }
 
-        // Tetap pertahankan recovery order aktif milik Customer.
-        ActiveOrderRecovery.route(this, session, routedToTrip -> {
-            if (!routedToTrip && !isFinishing()) {
-                openRoot(new Intent(this, CustomerDashboardActivity.class));
-            }
-        });
+        if (ReliableOrderClient.hasPickupRecovery(this)) {
+            openRoot(new Intent(this, TransPickupActivity.class));
+            return;
+        }
+
+        openRoot(new Intent(this, CustomerDashboardActivity.class)
+                .putExtra(ActiveOrderRecovery.CHECK_ON_DASHBOARD, true));
     }
 
     private void openRoot(Intent intent) {

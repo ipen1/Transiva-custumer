@@ -272,6 +272,22 @@ jobs:
           python3 tools/reliability/verify_webrtc_jni.py app/build/outputs/mapping/playRelease/mapping.txt
           python3 tools/reliability/verify_webrtc_jni.py app/build/outputs/mapping/directRelease/mapping.txt
 
+      - name: Check edge-to-edge APIs in the signed Play AAB
+        shell: bash
+        run: |
+          set -eo pipefail
+          python3 tools/reliability/verify_play_edge_to_edge.py \
+            app/build/outputs/bundle/playRelease/*.aab \
+            app/build/outputs/mapping/playRelease/mapping.txt | tee play-edge-to-edge.txt
+
+      - name: Upload Play edge-to-edge report
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: transiva-play-edge-to-edge
+          path: play-edge-to-edge.txt
+          if-no-files-found: ignore
+
       - name: Upload Direct Signed APK
         uses: actions/upload-artifact@v6
         with:

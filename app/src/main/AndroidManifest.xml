@@ -65,7 +65,6 @@
         android:supportsRtl="true"
         android:theme="@style/AppTheme"
         android:usesCleartextTraffic="false">
-        <activity android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|uiMode" android:name=".AntarKilatPracticeActivity" android:exported="false" android:theme="@style/AppTheme" />
         <activity android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|uiMode" android:name=".CustomerFoodOrderStatusActivity" android:enableOnBackInvokedCallback="true" android:exported="false" android:theme="@style/AppTheme" />
         <activity android:name=".TransPayApprovalActivity" android:exported="false"
             android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|uiMode"

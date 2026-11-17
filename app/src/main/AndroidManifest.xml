@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
 
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
@@ -65,6 +66,9 @@
         android:supportsRtl="true"
         android:theme="@style/AppTheme"
         android:usesCleartextTraffic="false">
+        <!-- The ride/car screens use PlacesClient and their own search interface. -->
+        <activity android:name="com.google.android.libraries.places.widget.AutocompleteActivity"
+            tools:node="remove" />
         <activity android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|uiMode" android:name=".CustomerFoodOrderStatusActivity" android:enableOnBackInvokedCallback="true" android:exported="false" android:theme="@style/AppTheme" />
         <activity android:name=".TransPayApprovalActivity" android:exported="false"
             android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|uiMode"
@@ -128,7 +132,7 @@
             android:name=".SplashActivity"
             android:exported="true"
            
-            android:theme="@style/AppTheme">
+        android:theme="@style/AppTheme">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />

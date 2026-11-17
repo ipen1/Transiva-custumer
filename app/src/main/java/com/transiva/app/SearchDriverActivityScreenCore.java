@@ -166,6 +166,10 @@ class SearchDriverActivityScreenCore extends CustomerAdaptiveActivity {
     }
 
     private PremiumOrderStatusView searchStatus;
+    private CustomerPasangAntar entertainment;
+    private Button entertainmentButton;
+    private String entertainmentState = CustomerOrderState.PENDING;
+    private String entertainmentLabel = "Mencari driver terdekat";
 
     protected void buildLayout() {
         FrameLayout page = new FrameLayout(this);
@@ -236,6 +240,12 @@ class SearchDriverActivityScreenCore extends CustomerAdaptiveActivity {
         LinearLayout.LayoutParams secureLp = new LinearLayout.LayoutParams(-1, -2);
         secureLp.setMargins(0, 0, 0, dp(16));
         root.addView(secureLine, secureLp);
+
+        entertainmentButton = CustomerPasangAntar.launcher(this, this::openEntertainment);
+        entertainmentButton.setVisibility(View.GONE);
+        LinearLayout.LayoutParams entertainmentParams = new LinearLayout.LayoutParams(-1, -2);
+        entertainmentParams.bottomMargin = dp(9);
+        root.addView(entertainmentButton, entertainmentParams);
 
         cancelBtn = new Button(this);
         cancelBtn.setAllCaps(false);
@@ -647,7 +657,10 @@ class SearchDriverActivityScreenCore extends CustomerAdaptiveActivity {
                 JSONObject payload = new JSONObject();
                 payload.put("order_id", activeOrderId);
                 JSONObject res = postJson(BASE_URL + "server/check_order_status.php", payload);
-                if (!res.optBoolean("success", false)) return;
+                if (!res.optBoolean("success", false)) {
+                    featureRuntime.post(mainHandler, () -> { if (entertainment != null) entertainment.reconnecting(); });
+                    return;
+                }
 
                 JSONObject order = res.optJSONObject("order");
                 if (order == null) order = new JSONObject();
@@ -682,8 +695,10 @@ class SearchDriverActivityScreenCore extends CustomerAdaptiveActivity {
                     statusOrder.put("service_name", "TransShop");
                 }
                 featureRuntime.post(mainHandler, () -> {
-                    if (!isFinishing() && !isDestroyed() && searchStatus != null)
+                    if (!isFinishing() && !isDestroyed() && searchStatus != null) {
                         searchStatus.bind(statusOrder, "", "Pesanan sedang diproses");
+                        bindEntertainmentStatus(statusOrder);
+                    }
                 });
                 String orderType = firstNonEmpty(order.optString("order_type", ""), res.optString("order_type", "")).trim().toLowerCase(Locale.US);
                 cachedDriverType = normalizeDriverType(firstNonEmpty(
@@ -747,6 +762,7 @@ class SearchDriverActivityScreenCore extends CustomerAdaptiveActivity {
                     featureRuntime.post(mainHandler, () -> showDriver(res));
                 }
             } catch (Exception ignored) {
+                featureRuntime.post(mainHandler, () -> { if (entertainment != null) entertainment.reconnecting(); });
             } finally {
                 statusRequestInFlight.set(false);
             }
@@ -761,6 +777,8 @@ class SearchDriverActivityScreenCore extends CustomerAdaptiveActivity {
         CustomerRedispatchService.stop(this);
         if (isCanceling || driverFound || destroyed) return;
         driverFound = true;
+        closeEntertainment();
+        if (entertainmentButton != null) entertainmentButton.setVisibility(View.GONE);
         stopMatchCountdown();
         destroyLoopsKeepScreen();
         matchingView.stopMatching();
@@ -1180,7 +1198,38 @@ class SearchDriverActivityScreenCore extends CustomerAdaptiveActivity {
         return sb.toString();
     }
 
+    private void bindEntertainmentStatus(JSONObject order) {
+        String status = CustomerOrderState.normalize(order.optString("status"));
+        boolean waiting = !activeOrderId.isEmpty() && !driverFound && !destroyed && !isCanceling
+                && (CustomerOrderState.PENDING.equals(status) || CustomerOrderState.MERCHANT_ACCEPTED.equals(status))
+                && !"pending".equals(CustomerActivityOrderAction.foodCancellationState(order));
+        if (entertainmentButton != null) entertainmentButton.setVisibility(waiting ? View.VISIBLE : View.GONE);
+        if (!waiting) { closeEntertainment(); return; }
+        String merchant = order.optString("merchant_status");
+        if ("ready".equals(merchant) || "preparing".equals(merchant) || "merchant_accepted".equals(merchant)) {
+            entertainmentState = CustomerOrderState.MERCHANT_ACCEPTED;
+            entertainmentLabel = "ready".equals(merchant) ? "Pesanan siap dijemput" : "Pesanan sedang disiapkan";
+        } else {
+            entertainmentState = status;
+            entertainmentLabel = CustomerPasangAntar.label(status, order.optString("order_type"));
+        }
+        if (entertainment != null) entertainment.bind(entertainmentState, entertainmentLabel);
+    }
+
+    private void openEntertainment() {
+        if (isFinishing() || isDestroyed() || driverFound || isCanceling || destroyed
+                || entertainmentButton == null || entertainmentButton.getVisibility() != View.VISIBLE
+                || (entertainment != null && entertainment.isShowing())) return;
+        entertainment = new CustomerPasangAntar(this, entertainmentState, entertainmentLabel);
+    }
+
+    private void closeEntertainment() {
+        if (entertainment != null) entertainment.close();
+        entertainment = null;
+    }
+
     private void destroyLoops() {
+        closeEntertainment();
         stopMatchCountdown();
         destroyed = true;
         mainHandler.removeCallbacks(driverMatchRunnable);
@@ -1198,11 +1247,13 @@ class SearchDriverActivityScreenCore extends CustomerAdaptiveActivity {
     protected void onResume() {
         super.onResume();
         featureRuntime.onResume();
+        if (entertainment != null) entertainment.setForeground(true);
         if (matchingView != null) matchingView.setAnimatingEnabled(!driverFound && !isCanceling);
     }
 
     @Override
     protected void onPause() {
+        if (entertainment != null) entertainment.setForeground(false);
         if (matchingView != null) matchingView.setAnimatingEnabled(false);
         featureRuntime.onPause();
         super.onPause();

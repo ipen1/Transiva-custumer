@@ -15,10 +15,10 @@ public class CustomerFoodOrderStatusActivity extends CustomerAdaptiveActivity {
     private final CustomerFeatureRuntimeController runtime=new CustomerFeatureRuntimeController(CustomerRealtimeCoordinator.Role.FOOD);
     private LinearLayout root;
     private TextView countdown;
-    private AntarKilatGameView game;
+    private CustomerPasangAntar game;
     private JSONObject latestWaiting;
     private String orderId="",signature="";
-    private boolean foreground,terminal,inFlight,routed,rendered;
+    private boolean foreground,terminal,inFlight,routed,rendered,orderStatusStale;
     private final java.util.concurrent.atomic.AtomicBoolean heartbeatInFlight=new java.util.concurrent.atomic.AtomicBoolean();
     private long generation,remaining=8000,lastTick;
     private final Runnable poll=()->fetch();
@@ -31,8 +31,9 @@ public class CustomerFoodOrderStatusActivity extends CustomerAdaptiveActivity {
     @Override protected void onCreate(Bundle state){super.onCreate(state);registerCustomBackNavigation();if(state!=null)remaining=Math.max(1000,Math.min(8000,state.getLong("remaining",8000)));readIntent();}
     @Override protected void onNewIntent(Intent intent){super.onNewIntent(intent);setIntent(intent);generation++;handler.removeCallbacksAndMessages(null);inFlight=false;routed=false;rendered=false;terminal=false;signature="";remaining=8000;readIntent();if(foreground){fetch();startTick();}}
     private void readIntent(){
-        game = null;
+        closeGame();
         latestWaiting = null;
+        orderStatusStale = false;
         orderId=FoodOrderDecision.first(getIntent().getStringExtra("order_id"));
         restoreOrderBars();
         if(orderId.isEmpty()){shell();message("Pesanan belum ditemukan","Buka Aktivitas untuk memeriksa pesananmu.");return;}
@@ -62,7 +63,7 @@ public class CustomerFoodOrderStatusActivity extends CustomerAdaptiveActivity {
                 String status = FoodOrderDecision.status(response);
                 if (CustomerOrderState.hasDriver(status) || CustomerOrderState.isFinished(status)) {
                     routed = true;
-                    if (game != null) game.pauseRound();
+                    closeGame();
                     Intent trip = new Intent(this, CustomerTripActivity.class)
                             .putExtra("order_id", orderId)
                             .putExtra("source", "orders")
@@ -71,6 +72,7 @@ public class CustomerFoodOrderStatusActivity extends CustomerAdaptiveActivity {
                     finish();
                     return;
                 }
+                orderStatusStale = false;
                 showWaiting(response);if(foreground)handler.postDelayed(poll,4000);
             });
             // Preserve the existing redispatch heartbeat only for a still-active, unassigned food order.
@@ -83,8 +85,9 @@ public class CustomerFoodOrderStatusActivity extends CustomerAdaptiveActivity {
     }
     private void error(){
         if (!foreground) return;
-        if (game != null) {
-            game.updateOrderStatus("Memeriksa ulang status TransFood…");
+        if (latestWaiting != null && !terminal) {
+            orderStatusStale = true;
+            if (gameOpen()) game.reconnecting();
             handler.removeCallbacks(poll);
             handler.postDelayed(poll, 4000);
             return;
@@ -92,7 +95,7 @@ public class CustomerFoodOrderStatusActivity extends CustomerAdaptiveActivity {
         latestWaiting = null;
         if(terminal){if(foreground)startTick();return;}signature="";shell();message("Kabar pesanan belum bisa dimuat","Koneksi belum berhasil. Coba lagi atau periksa pesanan melalui Aktivitas.");}
     private void showOutcome(JSONObject res,boolean verified){
-        game = null;
+        closeGame();
         latestWaiting = null;
         restoreOrderBars();
         JSONObject order=FoodOrderDecision.order(res);terminal=true;handler.removeCallbacks(poll);
@@ -117,42 +120,49 @@ public class CustomerFoodOrderStatusActivity extends CustomerAdaptiveActivity {
         String merchantStatus=FoodOrderDecision.value(FoodOrderDecision.order(res),"merchant_status");boolean preparing="preparing".equals(merchantStatus)||"ready".equals(merchantStatus)||"merchant_accepted".equals(FoodOrderDecision.status(res));
         String cancelState=CustomerActivityOrderAction.foodCancellationState(FoodOrderDecision.order(res));
         latestWaiting = res;
-        if (game != null) {
-            if (preparing && !"pending".equals(cancelState)) {
-                game.updateOrderStatus(gameOrderLabel(merchantStatus));
-                return;
-            }
-            game = null;
-            signature = "";
-            restoreOrderBars();
+        if (gameOpen()) {
+            if (!"pending".equals(cancelState)) {
+                game.bind(gameOrderState(res, preparing), gameOrderLabel(merchantStatus, preparing));
+            } else closeGame();
         }
         String next="waiting:"+preparing+":"+merchantStatus+":"+cancelState;if(next.equals(signature))return;signature=next;shell();root.addView(new FoodOrderDecisionView(this,"waiting"),new LinearLayout.LayoutParams(-1,dp(190)));
         root.addView(text(preparing?"Pesananmu sedang diproses":"Menunggu konfirmasi toko",24,true));TextView copy=text(preparing?"Toko sudah menerima pesananmu. Informasi driver akan muncul setelah ada driver yang menerima pesanan.":"Toko sedang memeriksa pesananmu. Kabar terbaru akan muncul di sini dan melalui notifikasi.",15,false);copy.setPadding(0,dp(12),0,dp(16));root.addView(copy);
         if ("pending".equals(cancelState)) root.addView(text("Pengajuan pembatalan menunggu keputusan toko.",14,true));
         else if ("declined".equals(cancelState)) root.addView(text("Pengajuan pembatalan ditolak. Pesanan dilanjutkan.",14,true));
-        if (preparing && !"pending".equals(cancelState)) {
-            button("Main 30 Detik", () -> openGame(merchantStatus), true);
+        if (!"pending".equals(cancelState)) {
+            Button play = CustomerPasangAntar.launcher(this, this::openGame);
+            LinearLayout.LayoutParams buttonParams = new LinearLayout.LayoutParams(-1, -2);
+            buttonParams.topMargin = dp(10);
+            root.addView(play, buttonParams);
         }
         button("Ke beranda",this::home,!preparing || "pending".equals(cancelState));
     }
 
-    private static String gameOrderLabel(String merchantStatus) {
-        return "ready".equals(merchantStatus) ? "Pesanan siap dijemput" : "Pesanan sedang disiapkan";
+    private static String gameOrderLabel(String merchantStatus, boolean preparing) {
+        if ("ready".equals(merchantStatus)) return "Pesanan siap dijemput";
+        return preparing ? "Pesanan sedang disiapkan" : "Menunggu konfirmasi toko";
     }
 
-    private void openGame(String merchantStatus) {
-        if (game != null || latestWaiting == null || !foreground || terminal || routed) return;
-        game = new CustomerAntarKilatView(this, gameOrderLabel(merchantStatus), this::closeGame);
-        setContentView(game);
+    private static String gameOrderState(JSONObject response, boolean preparing) {
+        return preparing ? CustomerOrderState.MERCHANT_ACCEPTED : FoodOrderDecision.status(response);
+    }
+
+    private boolean gameOpen() { return game != null && game.isShowing(); }
+
+    private void openGame() {
+        if (gameOpen() || latestWaiting == null || !foreground || terminal || routed || isFinishing() || isDestroyed()) return;
+        JSONObject order = FoodOrderDecision.order(latestWaiting);
+        if ("pending".equals(CustomerActivityOrderAction.foodCancellationState(order))) return;
+        String merchant = FoodOrderDecision.value(order, "merchant_status");
+        boolean preparing = "preparing".equals(merchant) || "ready".equals(merchant)
+                || CustomerOrderState.MERCHANT_ACCEPTED.equals(FoodOrderDecision.status(latestWaiting));
+        game = new CustomerPasangAntar(this, gameOrderState(latestWaiting, preparing), gameOrderLabel(merchant, preparing));
+        if (orderStatusStale) game.reconnecting();
     }
 
     private void closeGame() {
-        if (game == null) return;
+        if (game != null) game.close();
         game = null;
-        signature = "";
-        restoreOrderBars();
-        showWaiting(latestWaiting);
-        if (!inFlight) fetch();
     }
 
     private void restoreOrderBars() {
@@ -166,10 +176,10 @@ public class CustomerFoodOrderStatusActivity extends CustomerAdaptiveActivity {
         CustomerRedispatchService.stop(this);try{stopService(new Intent(this,TripGuardianService.class));stopService(new Intent(this,AudioProtectService.class));}catch(Exception ignored){}
     }
     private void startTick(){handler.removeCallbacks(tick);if(foreground&&terminal){lastTick=SystemClock.elapsedRealtime();handler.post(tick);}}
-    private void home(){if(routed||!foreground)return;routed=true;handler.removeCallbacksAndMessages(null);Intent home=new Intent(this,CustomerDashboardActivity.class);home.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP|Intent.FLAG_ACTIVITY_SINGLE_TOP);startActivity(home);finish();}
-    @Override public void onBackPressed(){if(game!=null)closeGame();else home();}
-    @Override protected void onResume(){super.onResume();foreground=true;runtime.onResume();fetch();startTick();}
-    @Override protected void onPause(){if(game!=null)game.pauseRound();foreground=false;handler.removeCallbacks(tick);handler.removeCallbacks(poll);runtime.onPause();super.onPause();}
+    private void home(){if(routed||!foreground)return;closeGame();routed=true;handler.removeCallbacksAndMessages(null);Intent home=new Intent(this,CustomerDashboardActivity.class);home.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP|Intent.FLAG_ACTIVITY_SINGLE_TOP);startActivity(home);finish();}
+    @Override public void onBackPressed(){if(gameOpen())closeGame();else home();}
+    @Override protected void onResume(){super.onResume();foreground=true;if(gameOpen())game.setForeground(true);runtime.onResume();fetch();startTick();}
+    @Override protected void onPause(){if(gameOpen())game.setForeground(false);foreground=false;handler.removeCallbacks(tick);handler.removeCallbacks(poll);runtime.onPause();super.onPause();}
     @Override protected void onSaveInstanceState(Bundle out){super.onSaveInstanceState(out);out.putLong("remaining",remaining);}
-    @Override protected void onDestroy(){generation++;runtime.destroy();handler.removeCallbacksAndMessages(null);super.onDestroy();}
+    @Override protected void onDestroy(){closeGame();generation++;runtime.destroy();handler.removeCallbacksAndMessages(null);super.onDestroy();}
 }

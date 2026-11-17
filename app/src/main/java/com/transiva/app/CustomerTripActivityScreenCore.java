@@ -129,6 +129,9 @@ class CustomerTripActivityScreenCore extends CustomerAdaptiveActivity {
 
     protected String lastDriverName = "Driver";
     protected String lastStatus = "";
+    private CustomerPasangAntar entertainment;
+    private Button entertainmentButton;
+    private String entertainmentLabel = "";
     protected volatile boolean routeRequestInFlight = false;
     protected long lastRouteRequestAt = 0L;
     protected double lastRouteFromLat = 0d, lastRouteFromLng = 0d;
@@ -197,6 +200,7 @@ class CustomerTripActivityScreenCore extends CustomerAdaptiveActivity {
     }
 
     @Override protected void onNewIntent(Intent intent){
+        closeEntertainment();
         super.onNewIntent(intent);setIntent(intent);
         String incoming=firstNonEmpty(intent.getStringExtra("order_id"),intent.getStringExtra("active_order_id"));
         if((incoming.toUpperCase(Locale.ROOT).startsWith("FOOD-")||"merchant_rejected".equals(intent.getStringExtra("status")))&&!intent.getBooleanExtra("food_status_resolved",false)){
@@ -380,6 +384,9 @@ class CustomerTripActivityScreenCore extends CustomerAdaptiveActivity {
         statusText = text("Menghubungkan lokasi driver...", 12, "#536B83", false);
         statusText.setPadding(dp(2), dp(5), dp(2), dp(5));
         card.addView(statusText, new LinearLayout.LayoutParams(-1, -2));
+        entertainmentButton = CustomerPasangAntar.launcher(this, this::openEntertainment);
+        entertainmentButton.setVisibility(View.GONE);
+        card.addView(entertainmentButton, tripRow(7));
 
         waitingView = new SmartWaitingTextView(this);
         waitingView.setTripPresentation();
@@ -513,6 +520,7 @@ class CustomerTripActivityScreenCore extends CustomerAdaptiveActivity {
                     if (res.optBoolean("success", false)) {
                         handleStatusResponse(res);
                     } else if (statusText != null) {
+                        if (entertainment != null) entertainment.reconnecting();
                         statusText.setVisibility(View.VISIBLE);
                         String message = res.optString("message", "");
                         statusText.setText(tripLayoutBuilt && CustomerOrderState.isTrip(lastStatus)
@@ -526,6 +534,7 @@ class CustomerTripActivityScreenCore extends CustomerAdaptiveActivity {
                 featureRuntime.post(mainHandler, () -> {
                     if (generation != trackingGeneration.get() || isFinishing() || isDestroyed()) return;
                     setLoading(false);
+                    if (entertainment != null) entertainment.reconnecting();
                     if (statusText != null) { statusText.setVisibility(View.VISIBLE); statusText.setText("Koneksi tracking belum stabil. Mencoba lagi..."); }
                 });
             } finally {
@@ -542,7 +551,7 @@ class CustomerTripActivityScreenCore extends CustomerAdaptiveActivity {
 
 
     protected void handleStatusResponse(JSONObject res) {
-        if(!trackingOnly&&FoodOrderDecision.needsFoodScreen(res,orderId)){openFoodStatus(res);return;}
+        if(!trackingOnly&&FoodOrderDecision.needsFoodScreen(res,orderId)){closeEntertainment();openFoodStatus(res);return;}
         JSONObject driver = res.optJSONObject("driver");
         if (driver == null) driver = new JSONObject();
         JSONObject order = res.optJSONObject("order");
@@ -640,6 +649,7 @@ class CustomerTripActivityScreenCore extends CustomerAdaptiveActivity {
 
         String orderType = firstNonEmpty(order.optString("order_type", ""), res.optString("order_type", "")).trim().toLowerCase(Locale.US);
         String merchantStatus = firstNonEmpty(order.optString("merchant_status", ""), res.optString("merchant_status", "")).trim().toLowerCase(Locale.US);
+        bindEntertainmentStatus(status, orderType, order);
         int cookMinutes = Math.max(order.optInt("cook_minutes", 0), res.optInt("cook_minutes", 0));
         if ("food".equals(orderType) && !merchantStatus.isEmpty()) {
             String merchantLine = "";
@@ -942,7 +952,41 @@ class CustomerTripActivityScreenCore extends CustomerAdaptiveActivity {
     }
 
 
+    private void bindEntertainmentStatus(String state, String type, JSONObject order) {
+        String service = (type + " " + order.optString("service_name")).toLowerCase(Locale.ROOT);
+        boolean delivery = service.contains("food") || service.contains("shop") || service.contains("send")
+                || service.contains("pickup") || service.contains("laundry") || orderSource.contains("pickup");
+        boolean allowed = !trackingOnly && !orderId.isEmpty()
+                && !"pending".equals(CustomerActivityOrderAction.foodCancellationState(order))
+                && (CustomerOrderState.PENDING.equals(state) || CustomerOrderState.MERCHANT_ACCEPTED.equals(state)
+                    || CustomerOrderState.DRIVER_ACCEPTED.equals(state)
+                    || (delivery && (CustomerOrderState.ARRIVED_PICKUP.equals(state)
+                        || CustomerOrderState.ON_DELIVERY.equals(state))));
+        if (entertainmentButton != null) entertainmentButton.setVisibility(allowed ? View.VISIBLE : View.GONE);
+        if (!allowed) { closeEntertainment(); return; }
+        entertainmentLabel = CustomerPasangAntar.label(state, type);
+        if (delivery && !service.contains("food") && CustomerOrderState.ON_DELIVERY.equals(state)) {
+            entertainmentLabel = "Pesanan sedang diantar";
+        } else if (delivery && !service.contains("food") && CustomerOrderState.ARRIVED_PICKUP.equals(state)) {
+            entertainmentLabel = "Driver tiba di titik pengambilan";
+        }
+        if (entertainment != null) entertainment.bind(state, entertainmentLabel);
+    }
+
+    private void openEntertainment() {
+        if (!resumed || isFinishing() || isDestroyed() || finishedCountdownStarted
+                || entertainmentButton == null || entertainmentButton.getVisibility() != View.VISIBLE
+                || (entertainment != null && entertainment.isShowing())) return;
+        entertainment = new CustomerPasangAntar(this, lastStatus, entertainmentLabel);
+    }
+
+    private void closeEntertainment() {
+        if (entertainment != null) entertainment.close();
+        entertainment = null;
+    }
+
     private void showTripEnd(JSONObject order) {
+        closeEntertainment();
         if (finishedCountdownStarted) return;
         finishedCountdownStarted = true;
         trackingStarted = false;
@@ -1324,6 +1368,7 @@ class CustomerTripActivityScreenCore extends CustomerAdaptiveActivity {
     }
 
     @Override protected void onPause() {
+        if (entertainment != null) entertainment.setForeground(false);
         resumed = false;
         mainHandler.removeCallbacks(finishTick);
         featureRuntime.onPause();
@@ -1342,6 +1387,7 @@ class CustomerTripActivityScreenCore extends CustomerAdaptiveActivity {
     @Override protected void onResume() {
         super.onResume();
         resumed = true;
+        if (entertainment != null) entertainment.setForeground(true);
         featureRuntime.onResume();
         if (mapView != null) mapView.onResumeMap();
         CustomerAppSettings.apply(this);
@@ -1364,6 +1410,7 @@ class CustomerTripActivityScreenCore extends CustomerAdaptiveActivity {
     }
 
     @Override protected void onDestroy() {
+        closeEntertainment();
         routeGeneration.incrementAndGet();
         featureRuntime.destroy();
         trackingGeneration.incrementAndGet();

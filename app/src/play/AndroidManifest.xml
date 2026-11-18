@@ -4,6 +4,12 @@
 
     <!-- Google Play distribution hardening. Keep direct APK behavior unchanged. -->
 
+    <!-- Keep Google Play from filtering devices without Wi-Fi hardware. -->
+    <uses-feature
+        android:name="android.hardware.wifi"
+        android:required="false"
+        tools:node="replace" />
+
     <!-- Transiva Customer does not use advertising identifiers. -->
     <uses-permission
         android:name="com.google.android.gms.permission.AD_ID"

@@ -521,6 +521,7 @@ class RepeatFoodOrderActivityScreenCore extends CustomerAdaptiveFragmentActivity
         try {
             JSONObject row=new JSONObject(menu.toString());
             JSONArray choices=old.optJSONArray("selected_options");
+            if (FoodToppingSelection.required(menu) && !FoodToppingSelection.hasTopping(choices)) return null;
             if (choices==null) return row;
             JSONArray groups=menu.optJSONArray("options");
             JSONArray selected=new JSONArray();

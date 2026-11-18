@@ -603,7 +603,7 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
         }
     }
 
-    private String searchCardSignature(MenuSearchItem item){return item.menuName+":"+item.category+":"+item.price+":"+item.originalPrice+":"+item.image+":"+item.restaurant.toString()+":"+item.discountPercent+":"+item.discountActive+":"+item.stock+":"+item.trackStock+":"+item.active;}
+    private String searchCardSignature(MenuSearchItem item){return item.menuName+":"+item.category+":"+item.price+":"+item.originalPrice+":"+item.image+":"+item.restaurant.toString()+":"+item.discountPercent+":"+item.discountActive+":"+item.toppingRequired+":"+item.stock+":"+item.trackStock+":"+item.active;}
     protected void addMenuSearchCard(LinearLayout parent,MenuSearchItem item){
         FoodDeferredCard deferred=new FoodDeferredCard(this,"search:"+item.menuId,searchCardSignature(item),()->{
             LinearLayout plan=new LinearLayout(this);addMenuSearchCardNow(plan,item);View card=plan.getChildAt(0);plan.removeView(card);return card;
@@ -638,7 +638,7 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
         owner.setPadding(0, dp(3), 0, 0);
         body.addView(owner);
         if (item.discountActive) { TextView old=text(rupiah(item.originalPrice),11,"#94A3B8",false);old.setPaintFlags(old.getPaintFlags()|Paint.STRIKE_THRU_TEXT_FLAG);body.addView(old);body.addView(text("🏷️ -"+String.format(Locale.US,"%.0f%%",item.discountPercent)+" merchant",11,"#C2410C",true)); }
-        TextView price = text(rupiah(item.price), 14, "#0B7CFF", true);
+        TextView price = text((item.toppingRequired ? "Mulai " : "") + rupiah(item.price), 14, "#0B7CFF", true);
         price.setPadding(0, dp(4), 0, 0);
         body.addView(price);
         if (item.trackStock) {
@@ -1040,7 +1040,10 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
         if(IncrementalLinearRenderer.unchanged(renderLiveRoot,key,fingerprint)){
             View placeholder=new View(this);IncrementalLinearRenderer.mark(placeholder,key,fingerprint);addWithMargin(placeholder,0,0,0,dp(12));return;
         }
-        boolean active = m.optInt("is_active", 1) == 1;
+        JSONArray options = m.optJSONArray("options");
+        JSONArray toppings = bundleToppings(options);
+        boolean required = FoodToppingSelection.required(m);
+        boolean active = m.optInt("is_active", 1) == 1 && (!required || toppings != null);
         boolean trackStock = m.optInt("track_stock", 0) == 1;
         int stock = m.optInt("stock", -1);
         if (trackStock && stock <= 0) active = false;
@@ -1085,7 +1088,7 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
             oldPrice.setPaintFlags(oldPrice.getPaintFlags() | Paint.STRIKE_THRU_TEXT_FLAG); oldPrice.setPadding(0,dp(5),0,0); body.addView(oldPrice);
             TextView disc = text("🏷️ Diskon merchant " + String.format(Locale.US,"%.0f%%",m.optDouble("discount_percent",0)), 11, "#C2410C", true); body.addView(disc);
         }
-        TextView price = text(rupiah(m.optDouble("price", 0)), 15, "#0B7CFF", true);
+        TextView price = text((required ? "Mulai " : "") + rupiah(m.optDouble("price", 0)), 15, "#0B7CFF", true);
         price.setPadding(0, dp(merchantDiscount?2:6), 0, dp(4));
         body.addView(price);
 
@@ -1119,9 +1122,7 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
             body.addView(st);
         }
 
-        JSONArray options = m.optJSONArray("options");
-        JSONArray toppings = bundleToppings(options);
-        if (toppings == null && hasSelectableOptions(options)) {
+        if (!required && toppings == null && hasSelectableOptions(options)) {
             TextView opt = text(buildOptionPreview(options), 11, "#7C3AED", true);
             opt.setPadding(0, dp(2), 0, dp(5));
             body.addView(opt);
@@ -1371,6 +1372,9 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
         final TextView summary, heading, description, price;
         final ImageView photo;
         final LinearLayout choices;
+        LinearLayout portionRows;
+        Button moreToppings;
+        int nextTopping;
         final List<ToppingRow> rows=new ArrayList<>();
         String boundPhoto="";
         boolean populated;
@@ -1440,7 +1444,8 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
             heading.setText(latest==null || latest.optionText.isEmpty()?name:name+" · "+latest.optionText);
             description.setText(detail);
             description.setVisibility(detail.isEmpty()?GONE:VISIBLE);
-            price.setText(rupiah(shownPrice)+(latest==null?"":" / porsi"));
+            String prefix = latest == null && FoodToppingSelection.required(menu) ? "Mulai " : "";
+            price.setText(prefix + rupiah(shownPrice) + (latest == null ? "" : " / porsi"));
             String resolved=absoluteUrl(firstNonEmpty(photoUrl,"assets/no-image.png"));
             if (!resolved.equals(boundPhoto)) {
                 boundPhoto=resolved;
@@ -1466,18 +1471,25 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
             TextView label=text("Pilih jumlah per topping",12,"#47647F",true);
             label.setPadding(0,dp(9),0,dp(3));
             choices.addView(label);
-            addChoice(null);
-            for (int i=0;i<options.length();i++) {
-                JSONObject option=options.optJSONObject(i);
-                if (option!=null && !option.optString("name").trim().isEmpty() && option.optLong("display_price")>0) addChoice(option);
-            }
+            boolean required = FoodToppingSelection.required(menu);
+            portionRows = new LinearLayout(TransFoodActivityScreenCore.this);
+            portionRows.setOrientation(VERTICAL);
+            choices.addView(portionRows);
+            if (!required) addChoice(null);
+            moreToppings = choiceButton("Lihat topping berikutnya", false);
+            moreToppings.setOnClickListener(v -> {
+                addNextToppings();
+                bind();
+            });
+            choices.addView(moreToppings);
+            addNextToppings();
             JSONArray legacy=new JSONArray();
             JSONArray groups=menu.optJSONArray("options");
             if (groups!=null) for (int i=0;i<groups.length();i++) {
                 JSONObject group=groups.optJSONObject(i);
                 if (group!=null && !"bundle_topping".equals(group.optString("type"))) legacy.put(group);
             }
-            if (hasSelectableOptions(legacy)) {
+            if (!required && hasSelectableOptions(legacy)) {
                 Button other=choiceButton("Varian dan tambahan lain",false);
                 other.setOnClickListener(v->{
                     if (!canAddToppingPortion()) {
@@ -1491,6 +1503,16 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
             }
         }
 
+        private void addNextToppings() {
+            int end = Math.min(options.length(), nextTopping + 24);
+            while (nextTopping < end) {
+                JSONObject option = options.optJSONObject(nextTopping++);
+                if (option != null && !option.optString("name").trim().isEmpty()
+                        && option.optLong("display_price") > 0) addChoice(option);
+            }
+            moreToppings.setVisibility(nextTopping < options.length() ? VISIBLE : GONE);
+        }
+
         void addChoice(JSONObject option) {
             String name=option==null?"Tanpa topping":option.optString("name");
             double shown=option==null?menu.optDouble("price",0):option.optDouble("display_price",0);
@@ -1499,7 +1521,9 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
             JSONObject display;
             try {
                 if (option!=null) selection.put(new JSONObject().put("type","bundle_topping").put("name",name));
-                display=new JSONObject(menu.toString()).put("price",shown).put("image",image);
+                display = new JSONObject().put("id", id).put("name", menu.optString("name"))
+                        .put("restaurant_id", menu.optInt("restaurant_id", activeCart == null ? 0 : activeCart.restaurantId))
+                        .put("topping_required", FoodToppingSelection.required(menu)).put("price", shown).put("image", image);
             } catch (org.json.JSONException error) { return; }
             String key=id+"|"+selection.toString();
 
@@ -1551,7 +1575,7 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
             rows.add(new ToppingRow(key,quantity,minus,plus));
             LinearLayout.LayoutParams rowLp=new LinearLayout.LayoutParams(-1,-2);
             rowLp.bottomMargin=dp(4);
-            choices.addView(row,rowLp);
+            portionRows.addView(row,rowLp);
         }
     }
 
@@ -1577,6 +1601,10 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
     protected void addConfiguredItem(JSONObject menu, JSONArray selectedOptions, String optionText, double optionExtra) {
         int id = menu.optInt("id", 0);
         if (activeCart == null || id <= 0 || menu.optInt("restaurant_id", activeCart.restaurantId) != activeCart.restaurantId) return;
+        if (FoodToppingSelection.required(menu) && !FoodToppingSelection.hasTopping(selectedOptions)) {
+            showInfo("Pilih topping", "Menu ini wajib dipesan dengan topping.");
+            return;
+        }
         String key = id + "|" + selectedOptions.toString();
         CartItem found = findCartItem(key);
         if (found == null) {
@@ -2269,7 +2297,7 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
                     item.menuName=m.optString("name","Menu");item.category=m.optString("category","Menu");
                     item.description=m.optString("description","");item.image=m.optString("image","assets/no-image.png");
                     item.price=m.optDouble("price");item.originalPrice=m.optDouble("original_display_price",m.optDouble("original_price",item.price));
-                    item.discountPercent=m.optDouble("discount_percent");item.discountActive=m.optInt("discount_active")==1;
+                    item.discountPercent=m.optDouble("discount_percent");item.discountActive=m.optInt("discount_active")==1;item.toppingRequired=FoodToppingSelection.required(m);
                     item.restaurantRating=m.optDouble("restaurant_rating");item.restaurantDistanceKm=15d;
                     item.restaurant=m.optJSONObject("restaurant");if(item.restaurant!=null)item.restaurantDistanceKm=item.restaurant.optDouble("distance_km",15d);
                     item.active=m.optInt("is_active",1)==1;item.stock=m.optInt("stock",-1);item.trackStock=m.optInt("track_stock")==1;item.salesCount=m.optLong("sales_count");
@@ -2327,11 +2355,29 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
         JSONObject detail=response.optJSONObject("restaurant");if(detail!=null){java.util.Iterator<String> keys=detail.keys();while(keys.hasNext()){String key=keys.next();Object value=detail.opt(key);if(value instanceof String&&((String)value).trim().isEmpty()&&activeRestaurant.has(key))continue;try{activeRestaurant.put(key,value);}catch(Exception ignored){}}}
         java.util.LinkedHashMap<Integer,JSONObject> old=new java.util.LinkedHashMap<>(),merged=new java.util.LinkedHashMap<>();for(JSONObject menu:menus)old.put(menu.optInt("id"),menu);
         if(offset>0)merged.putAll(old);
+        java.util.Set<Integer> requiredMenus = new java.util.HashSet<>();
         JSONArray rows=response.optJSONArray("menus");
         for(int i=0;i<rows.length();i++){
             JSONObject row=rows.optJSONObject(i);if(row==null)continue;JSONObject previous=old.get(row.optInt("id"));
             if(previous!=null)for(String key:new String[]{"is_favorite","rating","review_count"})if(previous.has(key)&&!row.has(key))try{row.put(key,previous.opt(key));}catch(Exception ignored){}
-            merged.put(row.optInt("id"),row);
+            int id = row.optInt("id");
+            merged.put(id,row);
+            if (!cached && FoodToppingSelection.required(row)) requiredMenus.add(id);
+        }
+        if (!requiredMenus.isEmpty() && activeCart != null && activeCart.restaurantId == rid
+                && !ReliableOrderClient.hasPendingFoodDraft(this, activeCart.draftId)) {
+            boolean removed = false;
+            for (java.util.Iterator<CartItem> it = cart.iterator(); it.hasNext();) {
+                CartItem item = it.next();
+                if (requiredMenus.contains(item.id) && !FoodToppingSelection.hasTopping(item.selectedOptions)) {
+                    it.remove();
+                    removed = true;
+                }
+            }
+            if (removed) {
+                android.widget.Toast.makeText(this, "Pilih topping kembali untuk menu yang berubah.",
+                        android.widget.Toast.LENGTH_SHORT).show();
+            }
         }
         if(offset==0&&!newContext&&response.optBoolean("has_more"))for(int i=Math.min(limit,menus.size());i<menus.size();i++){JSONObject row=menus.get(i);if(!merged.containsKey(row.optInt("id")))merged.put(row.optInt("id"),row);}
         menus.clear();menus.addAll(merged.values());
@@ -3862,7 +3908,7 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
         return CustomerCommonFormatters.firstBasic(values);
     }
 
-    private static class MenuSearchItem { int restaurantId; int menuId; String restaurantName; String menuName; String category; String description; String image; double price; double originalPrice; double discountPercent; boolean discountActive; long salesCount; double restaurantRating; double restaurantDistanceKm; boolean active; boolean trackStock; int stock; JSONObject restaurant; }
+    private static class MenuSearchItem { int restaurantId; int menuId; String restaurantName; String menuName; String category; String description; String image; double price; double originalPrice; double discountPercent; boolean discountActive; boolean toppingRequired; long salesCount; double restaurantRating; double restaurantDistanceKm; boolean active; boolean trackStock; int stock; JSONObject restaurant; }
     private static class OptionSelection { String type; String label; JSONArray items; RadioGroup radioGroup; LinearLayout checkBoxContainer; }
 
 

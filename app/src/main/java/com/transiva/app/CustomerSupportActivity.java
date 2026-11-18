@@ -38,14 +38,102 @@ public class CustomerSupportActivity extends CustomerAdaptiveActivity {
  ScrollView scroll=new ScrollView(this);scroll.setFillViewport(true);scroll.setClipToPadding(false);scroll.setBackgroundColor(bg);root=column();root.setPadding(dp(14),dp(10),dp(14),dp(54));scroll.addView(root);setContentView(scroll);
  LinearLayout header=new LinearLayout(this);header.setGravity(Gravity.CENTER_VERTICAL);TextView back=txt("‹",32,blue,true);back.setGravity(Gravity.CENTER);back.setWidth(dp(40));header.addView(back);back.setOnClickListener(v->finish());TextView title=txt("Pusat Bantuan",22,ink,true);header.addView(title,new LinearLayout.LayoutParams(0,-2,1));TextView headset=txt("🎧",23,blue,false);header.addView(headset);add(root,header,9);
  LinearLayout intro=card();intro.setBackground(shape(0xffe9f3ff,17,0));add(intro,txt("Ada yang bisa kami bantu?",16,ink,true),4);add(intro,txt("Ceritakan kendala Anda kepada tim Transiva.",13,muted,false),5);add(intro,txt("✓ Laporan tersimpan dan ditindaklanjuti admin",11,0xff23835c,false),0);add(root,intro,12);
+ addBusinessContacts();
  add(root,txt("Buat laporan baru",17,ink,true),7);LinearLayout form=card();add(root,form,12);add(form,txt("Kategori keluhan",13,ink,true),7);category=new Spinner(this);String[] cats={"Pesanan / perjalanan","Pembayaran / saldo","Akun / login","Driver / merchant","Aplikasi / teknis","Lainnya"};ArrayAdapter<String> adapter=new ArrayAdapter<>(this,android.R.layout.simple_spinner_dropdown_item,cats);category.setAdapter(adapter);category.setBackground(shape(0xfff8fbff,12,0xffd8e4ef));add(form,category,9);int saved=draft.getInt("category",0);category.setSelection(Math.max(0,Math.min(saved,cats.length-1)));
  add(form,txt("Judul keluhan",13,ink,true),6);subject=field("Contoh: Saldo belum masuk",1);subject.setFilters(new android.text.InputFilter[]{new android.text.InputFilter.LengthFilter(150)});subject.setText(draft.getString("subject",getIntent().hasExtra("assistant_subject")?getIntent().getStringExtra("assistant_subject"):(linkedOrder.isEmpty()?"":"Keluhan order "+linkedOrder)));add(form,subject,9);add(form,txt("Detail kendala",13,ink,true),6);detail=field("Jelaskan kendala yang Anda alami...",3);detail.setFilters(new android.text.InputFilter[]{new android.text.InputFilter.LengthFilter(4000)});detail.setText(draft.getString("detail",getIntent().getStringExtra("assistant_detail")==null?"":getIntent().getStringExtra("assistant_detail")));add(form,detail,5);counter=txt("",11,muted,false);counter.setGravity(Gravity.RIGHT);add(form,counter,8);
  if(!linkedOrder.isEmpty())add(form,txt("Order "+linkedOrder+" • rincian pesanan dilampirkan otomatis",12,blue,true),8);
  attachmentLabel=txt("Bukti foto belum dipilih (opsional)",12,muted,false);add(form,attachmentLabel,6);
  TextView attach=action("Pilih Foto Bukti",false);add(form,attach,8);attach.setOnClickListener(v->{if(sending)return;Intent pick=new Intent(Intent.ACTION_OPEN_DOCUMENT);pick.setType("image/*");pick.addCategory(Intent.CATEGORY_OPENABLE);startActivityForResult(pick,PICK_EVIDENCE);});
  send=action("Kirim Keluhan",true);add(form,send,0);send.setOnClickListener(v->submit());TextWatcher watcher=new TextWatcher(){public void beforeTextChanged(CharSequence s,int st,int c,int a){}public void onTextChanged(CharSequence s,int st,int before,int count){updateSend();saveDraft();}public void afterTextChanged(Editable e){}};subject.addTextChangedListener(watcher);detail.addTextChangedListener(watcher);category.setOnItemSelectedListener(new android.widget.AdapterView.OnItemSelectedListener(){public void onNothingSelected(android.widget.AdapterView<?> p){}public void onItemSelected(android.widget.AdapterView<?> p,View v,int pos,long id){saveDraft();}});updateSend();
- TextView wa=action("Hubungi Admin via WhatsApp   ›",false);wa.setCompoundDrawablePadding(dp(8)); android.graphics.drawable.Drawable waIcon=new android.graphics.drawable.Drawable(){android.graphics.Paint paint=new android.graphics.Paint(3); public void draw(android.graphics.Canvas c){android.graphics.Rect b=getBounds();float x=b.exactCenterX(),y=b.exactCenterY(),r=Math.min(b.width(),b.height())*.40f;paint.setColor(0xff20a566);paint.setStyle(android.graphics.Paint.Style.STROKE);paint.setStrokeWidth(dp(2));c.drawCircle(x,y,r,paint);android.graphics.Path tail=new android.graphics.Path();tail.moveTo(x-r*.65f,y+r*.65f);tail.lineTo(x-r*.94f,y+r*1.08f);tail.lineTo(x-r*.12f,y+r*.85f);c.drawPath(tail,paint);paint.setStyle(android.graphics.Paint.Style.FILL);paint.setTextSize(dp(14));paint.setTypeface(Typeface.DEFAULT_BOLD);c.drawText("☎",x-dp(6),y+dp(5),paint);}public void setAlpha(int a){}public void setColorFilter(android.graphics.ColorFilter f){}public int getOpacity(){return android.graphics.PixelFormat.TRANSLUCENT;}};waIcon.setBounds(0,0,dp(25),dp(25));wa.setCompoundDrawables(waIcon,null,null,null);add(root,wa,13);wa.setOnClickListener(v->{try{startActivity(new Intent(Intent.ACTION_VIEW,Uri.parse("https://wa.me/6282393633393?text="+Uri.encode("Halo Admin Transiva, saya membutuhkan bantuan."))));}catch(Exception e){Toast.makeText(this,"Tidak dapat membuka WhatsApp",Toast.LENGTH_SHORT).show();}});
  LinearLayout hr=new LinearLayout(this);hr.setGravity(Gravity.CENTER_VERTICAL);TextView h=txt("Riwayat keluhan",17,ink,true);hr.addView(h,new LinearLayout.LayoutParams(0,-2,1));TextView refresh=txt("↻ Segarkan",13,blue,true);hr.addView(refresh);refresh.setOnClickListener(v->load());add(root,hr,10);history=column();add(root,history,0);load(); }
+ private static final String SUPPORT_EMAIL = "inyomanmeipen@transiva.my.id";
+ private static final String SUPPORT_GMAIL = "inyomanmeipenalfianto@gmail.com";
+ private static final String SUPPORT_PHONE = "082393633393";
+ private static final String SUPPORT_WHATSAPP = "6282393633393";
+ private static final String BUSINESS_ADDRESS = "Dekat 36RP+537 Narasa parimo, Jl. Trans Sulawesi, Masari, Kec. Parigi Sel., Kabupaten Parigi Moutong, Sulawesi Tengah 94471";
+
+ private void addBusinessContacts() {
+  LinearLayout contacts = card();
+  add(contacts, txt("Hubungi Transiva", 17, ink, true), 10);
+  addEmailContact(contacts, "Email bantuan", SUPPORT_EMAIL);
+  addEmailContact(contacts, "Email Gmail", SUPPORT_GMAIL);
+
+  LinearLayout phone = column();
+  phone.setPadding(0, dp(8), 0, dp(8));
+  add(phone, txt("Telepon / WhatsApp", 12, muted, false), 4);
+  TextView number = txt(SUPPORT_PHONE, 14, blue, true);
+  number.setMinHeight(dp(48));
+  number.setGravity(Gravity.CENTER_VERTICAL);
+  number.setContentDescription("WhatsApp Transiva " + SUPPORT_PHONE);
+  number.setOnClickListener(view -> openContact(new Intent(Intent.ACTION_VIEW,
+    Uri.parse("https://wa.me/" + SUPPORT_WHATSAPP + "?text="
+      + Uri.encode("Halo Admin Transiva, saya membutuhkan bantuan.")))));
+  add(phone, number, 6);
+  TextView call = action("Telepon Transiva", false);
+  call.setOnClickListener(view -> openContact(new Intent(Intent.ACTION_DIAL,
+    Uri.fromParts("tel", SUPPORT_PHONE, null))));
+  add(phone, call, 0);
+  add(contacts, phone, 0);
+
+  LinearLayout location = column();
+  location.setPadding(0, dp(8), 0, dp(4));
+  add(location, txt("Alamat usaha", 12, muted, false), 5);
+  TextView address = txt(BUSINESS_ADDRESS, 13, ink, false);
+  address.setLineSpacing(dp(3), 1f);
+  address.setTextIsSelectable(true);
+  add(location, address, 9);
+  TextView maps = action("Buka alamat di peta", false);
+  maps.setOnClickListener(view -> {
+   Uri destination = Uri.parse("https://www.google.com/maps/search/").buildUpon()
+     .appendQueryParameter("api", "1")
+     .appendQueryParameter("query", BUSINESS_ADDRESS)
+     .build();
+   openContact(new Intent(Intent.ACTION_VIEW, destination));
+  });
+  add(location, maps, 0);
+  add(contacts, location, 0);
+  add(root, contacts, 12);
+ }
+
+ private void addEmailContact(LinearLayout parent, String label, String email) {
+  LinearLayout contact = column();
+  contact.setPadding(0, dp(4), 0, dp(4));
+  add(contact, txt(label, 12, muted, false), 2);
+  TextView value = txt(email, 14, blue, true);
+  value.setMinHeight(dp(48));
+  value.setGravity(Gravity.CENTER_VERTICAL);
+  value.setContentDescription(label + " " + email);
+  value.setOnClickListener(view -> openContact(new Intent(Intent.ACTION_SENDTO,
+    Uri.fromParts("mailto", email, null))));
+  add(contact, value, 0);
+  add(parent, contact, 0);
+ }
+
+ private void openContact(Intent intent) {
+  try {
+   startActivity(intent);
+  } catch (ActivityNotFoundException unavailable) {
+   String message = Intent.ACTION_SENDTO.equals(intent.getAction())
+     ? "Aplikasi email belum tersedia. Alamat email disalin."
+     : Intent.ACTION_DIAL.equals(intent.getAction())
+       ? "Aplikasi telepon belum tersedia. Nomor telepon disalin."
+       : "Aplikasi tujuan belum tersedia. Informasi kontak disalin.";
+   String value = intent.getData() == null ? "" : intent.getData().toString();
+   if (intent.getData() != null && "mailto".equals(intent.getData().getScheme())) {
+    value = intent.getData().getSchemeSpecificPart();
+   } else if (Intent.ACTION_DIAL.equals(intent.getAction())) {
+    value = SUPPORT_PHONE;
+   } else if (value.startsWith("https://wa.me/")) {
+    value = SUPPORT_PHONE;
+   } else {
+    value = BUSINESS_ADDRESS;
+   }
+   ClipboardManager clipboard = (ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
+   if (clipboard != null) clipboard.setPrimaryClip(ClipData.newPlainText("Kontak Transiva", value));
+   Toast.makeText(this, message, Toast.LENGTH_LONG).show();
+  }
+ }
+
  private void saveDraft(){if(subject==null||detail==null||category==null)return;draft.edit().putString("subject",subject.getText().toString()).putString("detail",detail.getText().toString()).putInt("category",category.getSelectedItemPosition()).apply();}
  private void updateSend(){if(send==null)return;boolean valid=subject.getText().toString().trim().length()>=5&&detail.getText().toString().trim().length()>=15;send.setEnabled(valid&&!sending&&!preparingEvidence);send.setAlpha(valid&&!sending?1f:.48f);counter.setText(detail.length()+" / 4000 karakter");}
  private void submit(){if(sending||preparingEvidence)return;String a=subject.getText().toString().trim(),d=detail.getText().toString().trim();if(a.length()<5){subject.setError("Minimal 5 karakter");subject.requestFocus();return;}if(d.length()<15){detail.setError("Minimal 15 karakter");detail.requestFocus();return;}sending=true;send.setText("Mengirim laporan...");updateSend();try{JSONObject body=new JSONObject();body.put("category",category.getSelectedItem().toString());body.put("subject",a);body.put("detail",d);if(!linkedOrder.isEmpty()){body.put("order_id",linkedOrder);body.put("order_db_id",linkedDb);body.put("source",linkedSource);}if(!photoBase64.isEmpty())body.put("attachment_base64",photoBase64);request("POST",body,result->{sending=false;send.setText("Kirim Keluhan");if(result.optBoolean("success")){draft.edit().clear().apply();if(subject.getText().toString().trim().equals(a))subject.setText("");if(detail.getText().toString().trim().equals(d))detail.setText("");photoBase64="";attachmentLabel.setText("Bukti foto belum dipilih (opsional)");Toast.makeText(this,"Laporan berhasil dikirim",Toast.LENGTH_SHORT).show();load();}else Toast.makeText(this,result.optString("message","Gagal mengirim laporan. Coba lagi."),Toast.LENGTH_LONG).show();updateSend();});}catch(Exception e){sending=false;send.setText("Kirim Keluhan");updateSend();Toast.makeText(this,"Gagal menyiapkan laporan",Toast.LENGTH_SHORT).show();}}

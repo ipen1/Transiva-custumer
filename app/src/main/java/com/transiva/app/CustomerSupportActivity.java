@@ -128,7 +128,7 @@ public class CustomerSupportActivity extends CustomerAdaptiveActivity {
    } else {
     value = BUSINESS_ADDRESS;
    }
-   ClipboardManager clipboard = (ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
+   android.content.ClipboardManager clipboard = (android.content.ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
    if (clipboard != null) clipboard.setPrimaryClip(ClipData.newPlainText("Kontak Transiva", value));
    Toast.makeText(this, message, Toast.LENGTH_LONG).show();
   }

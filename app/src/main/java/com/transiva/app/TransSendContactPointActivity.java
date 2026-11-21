@@ -51,6 +51,10 @@ public final class TransSendContactPointActivity extends CustomerAdaptiveActivit
         });
         map.initialize(null, new TransivaGoogleMapView.Listener() {
             public void onReady(double mapLat, double mapLng) {
+                String kind=input.getStringExtra("point_kind");
+                if (kind==null && "Atur Titik Antar".equals(input.getStringExtra("title"))) kind="delivery";
+                if ("stop".equals(kind)) map.setWaypointSelectionMode(1);
+                else map.setSelectionMode(kind);
                 map.showCenterPin(true);
                 map.hideCenterAction();
                 usePoint.setEnabled(true);

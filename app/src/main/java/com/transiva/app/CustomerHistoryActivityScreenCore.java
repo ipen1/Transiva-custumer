@@ -1231,7 +1231,8 @@ class CustomerHistoryActivityScreenCore extends CustomerAdaptiveActivity {
         badgeLp.topMargin = dp(10); card.addView(badge, badgeLp);
 
         // Khusus TransSend: OTP ditampilkan kepada customer, bukan tombol konfirmasi terima.
-        String deliveryOtp = order.optString("delivery_otp", "").trim();
+        String deliveryOtp = "simpel".equals(CustomerHistoryPolicy.serviceKey(order))
+                ? "" : order.optString("delivery_otp", "").trim();
         if (isPickupOrder(order) && isActiveStatus(status) && !deliveryOtp.isEmpty()) {
             LinearLayout otpBox = new LinearLayout(this);
             otpBox.setOrientation(LinearLayout.VERTICAL);
@@ -2845,6 +2846,7 @@ class CustomerHistoryActivityScreenCore extends CustomerAdaptiveActivity {
     }
 
     protected boolean supportsReceiveButton(JSONObject order) {
+        if ("simpel".equals(CustomerHistoryPolicy.serviceKey(order))) return true;
         // Gunakan identitas layanan yang ditampilkan di kartu. Jangan memakai
         // nama tabel/source karena order TransRide/TransCar juga berasal dari
         // tabel orders dan beberapa respons lama memiliki field source ambigu.

@@ -21,7 +21,8 @@ public final class CustomerHistoryPolicy {
     /** UI aliases only. Never rewrites the order's service or database state. */
     public static String serviceKey(JSONObject order) {
         if (order == null) return "ride";
-        if (normalized(order.optString("service_type")).contains("simpel")
+        if (normalized(order.optString("order_type")).contains("simpel")
+                || normalized(order.optString("service_type")).contains("simpel")
                 || normalized(order.optString("service_name")).contains("simpel")) return "simpel";
         JSONObject note = order.optJSONObject("note");
         if (note == null) {

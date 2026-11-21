@@ -193,7 +193,8 @@ public class CustomerOrderDetailActivity extends CustomerAdaptiveActivity {
         routePanel.addView(divider());
         routePanel.addView(infoRow("Pembayaran", paymentLabel(order.optString("payment_method")), "💳"));
 
-        String deliveryOtp = order.optString("delivery_otp", "").trim();
+        String deliveryOtp = "simpel".equals(CustomerHistoryPolicy.serviceKey(order))
+                ? "" : order.optString("delivery_otp", "").trim();
         if (isPickupOrder() && !isFinishedStatus(statusRaw) && !deliveryOtp.isEmpty()) {
             routePanel.addView(divider());
             routePanel.addView(infoRow("Kode OTP TransSend", deliveryOtp, "🔐"));

@@ -62,30 +62,15 @@ public final class TransSendCourierDirectoryActivity extends CustomerAdaptiveAct
 
     static View homeCard(Context context) {
         FrameLayout card = new FrameLayout(context);
-        int inset = CustomerUiPrimitives.dp(context, 16);
-        card.setMinimumHeight(CustomerUiPrimitives.dp(context, 110));
         card.setBackground(CustomerUiPrimitives.round("#082B81", CustomerUiPrimitives.dp(context, 19)));
         card.setClipToOutline(true);
-
         ImageView art = new ImageView(context);
         art.setImageResource(R.drawable.trans_simpel_banner);
-        art.setScaleType(ImageView.ScaleType.CENTER_CROP);
+        art.setAdjustViewBounds(true);
+        art.setScaleType(ImageView.ScaleType.FIT_CENTER);
         art.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
-        card.addView(art, new FrameLayout.LayoutParams(-1, -1));
-
-        FrameLayout copyContainer = new FrameLayout(context);
-        card.addView(copyContainer, new FrameLayout.LayoutParams(-1, -2, Gravity.CENTER_VERTICAL));
-        LinearLayout columns = new LinearLayout(context);
-        columns.setGravity(Gravity.CENTER_VERTICAL);
-        copyContainer.addView(columns, new FrameLayout.LayoutParams(-1,-2));
-        LinearLayout copy = new LinearLayout(context);
-        copy.setOrientation(LinearLayout.VERTICAL);
-        copy.setPaddingRelative(inset, inset, 0, inset);
-        copy.addView(CustomerUiPrimitives.text(context, "Order Trans Simpel", 17, "#FFFFFF", true));
-        copy.addView(CustomerUiPrimitives.text(context, "Hubungi driver, atur rute di chat", 12, "#E9F4FF", false));
-        columns.addView(copy, new LinearLayout.LayoutParams(0, -2, 52));
-        columns.addView(new View(context), new LinearLayout.LayoutParams(0,1,48));
-        card.setContentDescription("Order Trans Simpel. Hubungi driver, atur rute di chat.");
+        card.addView(art, new FrameLayout.LayoutParams(-1, -2));
+        card.setContentDescription("Trans Simpel. Chat driver dulu, baru pesan. Buka Trans Simpel.");
         card.setFocusable(true);
         card.setOnClickListener(v -> open(context));
         return card;

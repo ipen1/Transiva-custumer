@@ -21,6 +21,8 @@ public final class CustomerHistoryPolicy {
     /** UI aliases only. Never rewrites the order's service or database state. */
     public static String serviceKey(JSONObject order) {
         if (order == null) return "ride";
+        if (normalized(order.optString("service_type")).contains("simpel")
+                || normalized(order.optString("service_name")).contains("simpel")) return "simpel";
         JSONObject note = order.optJSONObject("note");
         if (note == null) {
             try { note = new JSONObject(order.optString("note", "{}")); }
@@ -56,6 +58,7 @@ public final class CustomerHistoryPolicy {
             case "car": return "TransCar";
             case "food": return "TransFood";
             case "pickup": return "TransSend";
+            case "simpel": return "Trans Simpel";
             case "shop": return "TransShop";
             case "tour": return "TransTour";
             case "laundry": return "Laundry";
@@ -95,7 +98,7 @@ public final class CustomerHistoryPolicy {
 
     public static java.util.List<String> orderedServiceKeys(java.util.Map<String, Integer> counts) {
         java.util.List<String> keys = new java.util.ArrayList<>(java.util.Arrays.asList(
-                "ride", "car", "food", "pickup", "shop", "tour", "laundry", "other"));
+                "ride", "car", "food", "pickup", "simpel", "shop", "tour", "laundry", "other"));
         // Stable partition: populated services come immediately after Semua.
         java.util.Collections.sort(keys, (a, b) -> Boolean.compare(count(counts, b) > 0, count(counts, a) > 0));
         return keys;

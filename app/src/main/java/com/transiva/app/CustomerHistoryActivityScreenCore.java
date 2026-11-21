@@ -2669,7 +2669,7 @@ class CustomerHistoryActivityScreenCore extends CustomerAdaptiveActivity {
             );
         }
 
-        if (type.contains("pickup")) {
+        if (type.contains("pickup") || type.equals("simpel")) {
             return drawable(
                     "ic_service_pickup"
             );

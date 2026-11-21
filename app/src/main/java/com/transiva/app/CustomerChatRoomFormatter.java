@@ -15,6 +15,8 @@ public final class CustomerChatRoomFormatter {
     }
     public static String serviceName(String type) {
         String t = CustomerMessageStatus.normalize(type);
+        if (t.contains("simpel")) return "Trans Simpel";
+        if (t.contains("send") || t.contains("pickup")) return "TransSend";
         if (t.contains("food")) return "TransFood";
         if (t.contains("shop") || t.contains("mart")) return "TransShop";
         if (t.contains("car") || t.contains("mobil")) return "TransCar";

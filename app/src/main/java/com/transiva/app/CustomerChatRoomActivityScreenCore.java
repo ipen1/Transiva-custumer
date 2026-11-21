@@ -163,6 +163,7 @@ class CustomerChatRoomActivityScreenCore extends CustomerAdaptiveActivity {
     protected EditText input;
     private ChatRoomChrome chatChrome;
     private TransSendContactPanel courierPanel;
+    private TransSimpelRoutePanel simpelPanel;
     protected Button voiceButton;
     protected ProgressBar progress;
     protected LinearLayout inputCard;
@@ -234,7 +235,11 @@ class CustomerChatRoomActivityScreenCore extends CustomerAdaptiveActivity {
 
         readIntent();
         String contactId = getIntent().getStringExtra(TransSendContactClient.EXTRA_CONTACT);
-        if (contactId != null && contactId.equals(orderId) && !readOnly) {
+        String simpelId=TransSimpelRoutePanel.contactId(orderId,roomId);
+        if (orderType.toLowerCase(java.util.Locale.ROOT).contains("simpel") && !simpelId.isEmpty()) {
+            simpelPanel = new TransSimpelRoutePanel(this,simpelId);
+            simpelPanel.restore(savedInstanceState);
+        } else if (contactId != null && contactId.equals(orderId) && !readOnly) {
             courierPanel = new TransSendContactPanel(this, contactId, savedInstanceState);
         }
         CustomerMessageApi.initialize(this);
@@ -444,6 +449,7 @@ class CustomerChatRoomActivityScreenCore extends CustomerAdaptiveActivity {
                 query -> CustomerMessageApi.get(chatExtrasEndpoint()+query,chatRequests.session()),null);
         root.addView(header);
         root.addView(new ActiveCallBanner(this),new LinearLayout.LayoutParams(-1,-2));
+        if (simpelPanel != null) root.addView(simpelPanel.view(),new LinearLayout.LayoutParams(-1,-2));
         if (courierPanel != null) root.addView(courierPanel.view(), new LinearLayout.LayoutParams(-1, -2));
 
         olderMessagesButton=compactChatTool("Muat pesan sebelumnya", false);
@@ -680,6 +686,7 @@ class CustomerChatRoomActivityScreenCore extends CustomerAdaptiveActivity {
             int resultCode,
             Intent data
     ) {
+        if (simpelPanel != null && simpelPanel.result(requestCode,resultCode,data)) return;
         if (courierPanel != null && courierPanel.result(requestCode, resultCode, data)) return;
         super.onActivityResult(
                 requestCode,
@@ -980,6 +987,7 @@ class CustomerChatRoomActivityScreenCore extends CustomerAdaptiveActivity {
         );
 
         if (courierPanel != null) courierPanel.updateStatus(orderStatus);
+        if ("Trans Simpel".equals(response.optString("service_type"))) orderType = "Trans Simpel";
         boolean ended =
                 response.optBoolean(
                         "ended",
@@ -1790,6 +1798,7 @@ class CustomerChatRoomActivityScreenCore extends CustomerAdaptiveActivity {
     @Override
     protected void onResume() {
         super.onResume();
+        if (simpelPanel != null) simpelPanel.resume();
         androidx.core.content.ContextCompat.registerReceiver(this, chatPushRefresh,
                 new android.content.IntentFilter(FreshChatPush.ACTION_ROOM_CHANGED),
                 androidx.core.content.ContextCompat.RECEIVER_NOT_EXPORTED);
@@ -1814,6 +1823,7 @@ class CustomerChatRoomActivityScreenCore extends CustomerAdaptiveActivity {
 
     @Override
     protected void onPause() {
+        if (simpelPanel != null) simpelPanel.pause();
         unregisterReceiver(chatPushRefresh);
         if (stickerDialog != null) { stickerDialog.dismiss(); stickerDialog = null; }
         if (chatStability != null) chatStability.onPause();
@@ -1832,11 +1842,13 @@ class CustomerChatRoomActivityScreenCore extends CustomerAdaptiveActivity {
     protected void onSaveInstanceState(Bundle out) {
         super.onSaveInstanceState(out);
         if (courierPanel != null) courierPanel.save(out);
+        if (simpelPanel != null) simpelPanel.save(out);
     }
 
     @Override
     protected void onDestroy() {
         if (courierPanel != null) courierPanel.dispose();
+        if (simpelPanel != null) simpelPanel.close();
         if (chatStability != null) chatStability.destroy();
         if(chatRequests!=null)chatRequests.close();
         featureRuntime.destroy();

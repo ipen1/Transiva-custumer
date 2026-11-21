@@ -217,6 +217,6 @@ public final class UnifiedLiveOrderCenter {
         return result;
     }
     private static String normalizeDriverType(String s){String n=s==null?"":s.toLowerCase();return(n.contains("car")||n.contains("mobil"))?"car":"motor";}
-    private static String readableService(String s){String n=s==null?"":s.toLowerCase();if(n.contains("food"))return"TransFood";if(n.contains("shop")||n.contains("mart"))return"TransShop";if(n.contains("pickup")||n.contains("send"))return"TransSend";if(n.contains("car")||n.contains("mobil"))return"TransCar";return"TransRide";}
+    private static String readableService(String s){String n=s==null?"":s.toLowerCase();if(n.contains("simpel"))return"Trans Simpel";if(n.contains("food"))return"TransFood";if(n.contains("shop")||n.contains("mart"))return"TransShop";if(n.contains("pickup")||n.contains("send"))return"TransSend";if(n.contains("car")||n.contains("mobil"))return"TransCar";return"TransRide";}
     private static String first(String...v){if(v!=null)for(String x:v)if(x!=null&&!x.trim().isEmpty()&&!"null".equalsIgnoreCase(x.trim()))return x.trim();return"";}
 }

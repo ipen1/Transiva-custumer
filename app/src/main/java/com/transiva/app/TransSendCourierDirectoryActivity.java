@@ -34,7 +34,7 @@ import java.util.Locale;
 
 public final class TransSendCourierDirectoryActivity extends CustomerAdaptiveActivity {
     private static final int LOCATION_PERMISSION = 41;
-    private static final String TITLE = "Pilih Kurir di TransSend";
+    private static final String TITLE = "Trans Simpel";
     private static final Locale INDONESIAN = new Locale("id", "ID");
 
     private final Handler main = new Handler(Looper.getMainLooper());
@@ -43,6 +43,10 @@ public final class TransSendCourierDirectoryActivity extends CustomerAdaptiveAct
     private TextView status;
     private ProgressBar progress;
     private Button refresh;
+    private Button nextPage;
+    private JSONObject pageCursor;
+    private boolean pageLoading;
+    private final java.util.Set<Integer> shown = new java.util.HashSet<>();
     private CancellationTokenSource locationRequest;
     private Location directoryLocation;
     private Button contactStatus;
@@ -57,27 +61,31 @@ public final class TransSendCourierDirectoryActivity extends CustomerAdaptiveAct
     }
 
     static View homeCard(Context context) {
-        LinearLayout card = new LinearLayout(context);
-        card.setGravity(Gravity.CENTER_VERTICAL);
-        int inset = CustomerUiPrimitives.dp(context, 12);
-        card.setPadding(inset, inset, inset, inset);
-        card.setBackground(CustomerUiPrimitives.roundStroke(
-                context, "#EAF4FF", "#C8E1FF", CustomerUiPrimitives.dp(context, 18), 1));
+        FrameLayout card = new FrameLayout(context);
+        int inset = CustomerUiPrimitives.dp(context, 16);
+        card.setMinimumHeight(CustomerUiPrimitives.dp(context, 110));
+        card.setBackground(CustomerUiPrimitives.round("#082B81", CustomerUiPrimitives.dp(context, 19)));
+        card.setClipToOutline(true);
 
-        ImageView icon = new ImageView(context);
-        icon.setImageResource(R.drawable.ic_service_send_premium);
-        icon.setScaleType(ImageView.ScaleType.FIT_CENTER);
-        int iconSize = CustomerUiPrimitives.dp(context, 36);
-        card.addView(icon, new LinearLayout.LayoutParams(iconSize, iconSize));
+        ImageView art = new ImageView(context);
+        art.setImageResource(R.drawable.trans_simpel_banner);
+        art.setScaleType(ImageView.ScaleType.CENTER_CROP);
+        art.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+        card.addView(art, new FrameLayout.LayoutParams(-1, -1));
 
+        FrameLayout copyContainer = new FrameLayout(context);
+        card.addView(copyContainer, new FrameLayout.LayoutParams(-1, -2, Gravity.CENTER_VERTICAL));
+        LinearLayout columns = new LinearLayout(context);
+        columns.setGravity(Gravity.CENTER_VERTICAL);
+        copyContainer.addView(columns, new FrameLayout.LayoutParams(-1,-2));
         LinearLayout copy = new LinearLayout(context);
         copy.setOrientation(LinearLayout.VERTICAL);
-        copy.setPaddingRelative(inset, 0, inset, 0);
-        copy.addView(CustomerUiPrimitives.text(context, TITLE, 15, "#103769", true));
-        copy.addView(CustomerUiPrimitives.text(context, "Lihat kurir terdekat dan ratingnya", 12, "#315678", false));
-        card.addView(copy, new LinearLayout.LayoutParams(0, -2, 1));
-        card.addView(CustomerUiPrimitives.text(context, "›", 25, "#075BB8", true));
-        card.setContentDescription(TITLE + ". Lihat kurir terdekat dan ratingnya.");
+        copy.setPaddingRelative(inset, inset, 0, inset);
+        copy.addView(CustomerUiPrimitives.text(context, "Order Trans Simpel", 17, "#FFFFFF", true));
+        copy.addView(CustomerUiPrimitives.text(context, "Hubungi driver, atur rute di chat", 12, "#E9F4FF", false));
+        columns.addView(copy, new LinearLayout.LayoutParams(0, -2, 52));
+        columns.addView(new View(context), new LinearLayout.LayoutParams(0,1,48));
+        card.setContentDescription("Order Trans Simpel. Hubungi driver, atur rute di chat.");
         card.setFocusable(true);
         card.setOnClickListener(v -> open(context));
         return card;
@@ -140,6 +148,8 @@ public final class TransSendCourierDirectoryActivity extends CustomerAdaptiveAct
         Button back = new Button(this);
         back.setText("‹");
         back.setTextSize(24);
+        back.setTextColor(Color.parseColor("#075BB8"));
+        back.setBackground(CustomerUiPrimitives.round("#EAF4FF",dp(15)));
         back.setContentDescription("Kembali");
         back.setOnClickListener(v -> finish());
         header.addView(back, new LinearLayout.LayoutParams(dp(48), dp(48)));
@@ -151,14 +161,17 @@ public final class TransSendCourierDirectoryActivity extends CustomerAdaptiveAct
         body.setOrientation(LinearLayout.VERTICAL);
         body.setPadding(dp(16), dp(16), dp(16), 0);
         page.addView(body, new LinearLayout.LayoutParams(-1, -2));
-        body.addView(label("Kurir motor di sekitar Anda", 17, "#103769", true));
+        body.addView(label("Driver di regional Anda", 17, "#103769", true));
         status = label("", 14, "#315678", false);
         status.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);
         status.setPadding(0, dp(6), 0, dp(8));
         body.addView(status);
         refresh = new Button(this);
         refresh.setAllCaps(false);
-        refresh.setMinHeight(dp(48));
+        refresh.setMinHeight(dp(44));
+        refresh.setPadding(dp(14),dp(6),dp(14),dp(6));
+        refresh.setTextColor(Color.parseColor("#075BB8"));
+        refresh.setBackground(CustomerUiPrimitives.round("#E6F2FF",dp(14)));
         refresh.setOnClickListener(v -> {
             if (hasLocationPermission()) loadCouriers();
             else requestPermissions(new String[]{Manifest.permission.ACCESS_COARSE_LOCATION}, LOCATION_PERMISSION);
@@ -166,9 +179,14 @@ public final class TransSendCourierDirectoryActivity extends CustomerAdaptiveAct
         body.addView(refresh, new LinearLayout.LayoutParams(-2, -2));
         contactStatus = new Button(this);
         contactStatus.setAllCaps(false);
+        contactStatus.setMinHeight(dp(46));
+        contactStatus.setTextColor(Color.WHITE);
+        contactStatus.setBackground(CustomerUiPrimitives.gradient("#0759BF","#087AF2",dp(14)));
         contactStatus.setVisibility(View.GONE);
         contactStatus.setOnClickListener(v -> showContactActions());
-        body.addView(contactStatus, new LinearLayout.LayoutParams(-1, -2));
+        LinearLayout.LayoutParams chatSpace = new LinearLayout.LayoutParams(-1,-2);
+        chatSpace.topMargin = dp(8);
+        body.addView(contactStatus,chatSpace);
 
         progress = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
         progress.setIndeterminate(true);
@@ -181,7 +199,18 @@ public final class TransSendCourierDirectoryActivity extends CustomerAdaptiveAct
         results = new LinearLayout(this);
         results.setOrientation(LinearLayout.VERTICAL);
         results.setPadding(dp(16), dp(8), dp(16), dp(16));
-        scroll.addView(results);
+        LinearLayout list = new LinearLayout(this);
+        list.setOrientation(LinearLayout.VERTICAL);
+        list.addView(results, new LinearLayout.LayoutParams(-1,-2));
+        nextPage = new Button(this);
+        nextPage.setAllCaps(false);
+        nextPage.setText("Muat Driver Lain");
+        nextPage.setVisibility(View.GONE);
+        nextPage.setOnClickListener(v -> fetchCouriers(directoryLocation, true));
+        LinearLayout.LayoutParams nextSpace = new LinearLayout.LayoutParams(-1,-2);
+        nextSpace.setMargins(dp(16),0,dp(16),dp(16));
+        list.addView(nextPage,nextSpace);
+        scroll.addView(list);
         setContentView(page);
         CustomerAppSettings.apply(this);
     }
@@ -204,6 +233,9 @@ public final class TransSendCourierDirectoryActivity extends CustomerAdaptiveAct
 
     private void loadCouriers() {
         results.removeAllViews();
+        shown.clear();
+        pageCursor = null;
+        nextPage.setVisibility(View.GONE);
         status.setText("Mencari lokasi Anda…");
         refresh.setText("Perbarui Daftar");
         refresh.setEnabled(false);
@@ -221,7 +253,7 @@ public final class TransSendCourierDirectoryActivity extends CustomerAdaptiveAct
                     .addOnSuccessListener(location -> {
                         if (isFinishing() || network.isDestroyed()) return;
                         if (location == null) showLocationUnavailable();
-                        else fetchCouriers(location);
+                        else fetchCouriers(location, false);
                     })
                     .addOnFailureListener(error -> showLocationUnavailable());
         } catch (SecurityException error) {
@@ -234,39 +266,52 @@ public final class TransSendCourierDirectoryActivity extends CustomerAdaptiveAct
         finishLoading("Lokasi belum ditemukan. Aktifkan layanan lokasi lalu coba lagi.", "Coba Lagi");
     }
 
-    private void fetchCouriers(Location location) {
+    private void fetchCouriers(Location location, boolean append) {
+        if (location == null || pageLoading || (append && pageCursor == null)) return;
         directoryLocation = location;
-        status.setText("Memuat kurir terdekat…");
+        JSONObject cursor = append ? pageCursor : null;
+        pageLoading = true;
+        nextPage.setEnabled(false);
+        refresh.setEnabled(false);
+        progress.setVisibility(View.VISIBLE);
+        if (!append) status.setText("Memuat driver di regional…");
         network.execute(() -> {
             try {
-                JSONObject point = new JSONObject()
-                        .put("lat", location.getLatitude())
-                        .put("lng", location.getLongitude());
+                JSONObject point = new JSONObject().put("service","trans_simpel")
+                        .put("lat", location.getLatitude()).put("lng", location.getLongitude());
+                if (cursor != null) point.put("after_band",cursor.getInt("after_band"))
+                        .put("after_id",cursor.getInt("after_id"));
                 JSONObject response = TransivaHttpRepository.postJson(this,
                         ApiConfig.server("customer_transsend_couriers.php"), point, 7000);
                 JSONArray couriers = response.getJSONArray("couriers");
-                network.post(main, () -> showCouriers(couriers));
-            } catch (TransivaHttpRepository.ServerResponseException error) {
-                String message = error.status == 429
-                        ? "Terlalu sering memperbarui daftar. Tunggu sebentar lalu coba lagi."
-                        : "Daftar kurir belum dapat dimuat. Coba lagi.";
-                network.post(main, () -> finishLoading(message, "Coba Lagi"));
+                network.post(main, () -> showCouriers(couriers,response.optString("region"),
+                        response.optJSONObject("next")));
             } catch (Exception error) {
-                network.post(main, () -> finishLoading(
-                        "Daftar kurir belum dapat dimuat. Periksa koneksi lalu coba lagi.", "Coba Lagi"));
+                String message = error instanceof TransivaHttpRepository.ServerResponseException
+                        ? error.getMessage() : "Daftar driver belum dapat dimuat.";
+                network.post(main, () -> pageFailed(message,append));
             }
-        }, () -> network.post(main, () -> finishLoading(
-                "Daftar kurir belum dapat dimuat. Coba lagi.", "Coba Lagi")));
+        }, () -> network.post(main, () -> pageFailed("Daftar driver belum dapat dimuat.",append)));
     }
 
-    private void showCouriers(JSONArray couriers) {
+    private void pageFailed(String message, boolean append) {
+        pageLoading = false;
+        nextPage.setEnabled(true);
+        if (append) Toast.makeText(this,message,Toast.LENGTH_SHORT).show();
+        finishLoading(append ? status.getText().toString() : message, append ? "Perbarui Daftar" : "Coba Lagi");
+    }
+
+    private void showCouriers(JSONArray couriers, String region, JSONObject next) {
         for (int i = 0; i < couriers.length(); i++) {
             JSONObject courier = couriers.optJSONObject(i);
-            if (courier != null) addCourier(courier);
+            if (courier != null && shown.add(courier.optInt("id"))) addCourier(courier);
         }
-        finishLoading(results.getChildCount() == 0
-                ? "Belum ada kurir tersedia di sekitar Anda."
-                : "Jarak perkiraan dari lokasi Anda · Diurutkan dari yang terdekat", "Perbarui Daftar");
+        pageLoading = false;
+        pageCursor = next;
+        nextPage.setVisibility(next == null ? View.GONE : View.VISIBLE);
+        nextPage.setEnabled(true);
+        finishLoading(shown.isEmpty() ? "Belum ada driver tersedia di " + region + "."
+                : region + " · Diurutkan dari jarak terdekat", "Perbarui Daftar");
         CustomerAppSettings.apply(this);
     }
 
@@ -338,7 +383,7 @@ public final class TransSendCourierDirectoryActivity extends CustomerAdaptiveAct
                 .setPositiveButton("Kirim Permintaan", (d, w) -> {
                     Location origin = directoryLocation;
                     runContactAction(() -> TransSendContactClient.action("invite", "")
-                            .put("driver_id", courier.optInt("id"))
+                            .put("driver_id", courier.optInt("id")).put("service","trans_simpel")
                             .put("lat", origin.getLatitude()).put("lng", origin.getLongitude()), true);
                 }).show();
     }

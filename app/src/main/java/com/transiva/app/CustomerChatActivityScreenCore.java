@@ -1571,6 +1571,7 @@ class CustomerChatActivityScreenCore extends CustomerAdaptiveActivity {
             return "Laundry";
         }
 
+        if (type.contains("simpel")) return "Trans Simpel";
         if (type.contains("pickup")) {
             return "TransSend";
         }
@@ -1616,7 +1617,7 @@ class CustomerChatActivityScreenCore extends CustomerAdaptiveActivity {
             );
         }
 
-        if (type.contains("pickup")) {
+        if (type.contains("pickup") || type.contains("simpel")) {
             return drawable(
                     "ic_service_pickup"
             );

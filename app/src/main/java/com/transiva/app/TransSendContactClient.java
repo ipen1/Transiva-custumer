@@ -25,7 +25,7 @@ final class TransSendContactClient {
                 .putExtra("room_id", contact.optString("room_id"))
                 .putExtra("order_id", contact.optString("order_id"))
                 .putExtra("order_source", "pickup_orders")
-                .putExtra("order_type", "TransSend")
+                .putExtra("order_type", "trans_simpel".equals(contact.optString("service")) ? "Trans Simpel" : "TransSend")
                 .putExtra("order_status", "contact_accepted")
                 .putExtra("participant_name", contact.optString("peer_name"))
                 .putExtra("participant_photo", contact.optString("peer_photo")));

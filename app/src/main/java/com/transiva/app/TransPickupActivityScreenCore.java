@@ -64,6 +64,7 @@ class TransPickupActivityScreenCore extends CustomerAdaptiveFragmentActivity {
     protected TransivaGoogleMapView mapView;
     protected TextView mapModeText;
     private Button chooseCourier;
+    private String courierContactId = "";
     protected Button pickupMapBtn, deliveryMapBtn, confirmPointBtn, gpsMapBtn;
     protected boolean mapReady = false;
     protected String mapSelectionMode = "pickup";
@@ -115,10 +116,28 @@ class TransPickupActivityScreenCore extends CustomerAdaptiveFragmentActivity {
         }
         buildBase();
         buildForm();
+        String contactId = getIntent().getStringExtra(TransSendContactClient.EXTRA_CONTACT);
+        if (contactId != null && contactId.matches("PUD[0-9A-F]{24}")) courierContactId = contactId;
+        if (savedInstanceState == null && !courierContactId.isEmpty()) loadCourierPoints();
         restoreDraft(savedInstanceState);
         updateChoices();
         renderStage();
         startMap();
+    }
+
+    private void loadCourierPoints() {
+        Intent pickup = getIntent().getParcelableExtra("contact_pickup");
+        Intent delivery = getIntent().getParcelableExtra("contact_delivery");
+        if (pickup == null || delivery == null) return;
+        pickupLat = pickup.getDoubleExtra("lat", 0);
+        pickupLng = pickup.getDoubleExtra("lng", 0);
+        deliveryLat = delivery.getDoubleExtra("lat", 0);
+        deliveryLng = delivery.getDoubleExtra("lng", 0);
+        if (!hasRoutePoints()) return;
+        pickupAddress = firstNonEmpty(pickup.getStringExtra("address"), formatCoordinate(pickupLat, pickupLng));
+        deliveryAddress = firstNonEmpty(delivery.getStringExtra("address"), formatCoordinate(deliveryLat, deliveryLng));
+        mapSelectionMode = "order";
+        detailsOpen = true;
     }
 
     protected void loadSession() {
@@ -275,7 +294,7 @@ class TransPickupActivityScreenCore extends CustomerAdaptiveFragmentActivity {
         boolean checkout = isCheckout();
         boolean pickup = "pickup".equals(mapSelectionMode);
         mapModeText.setText(checkout ? "03 · Checkout" : pickup ? "01 · Jemput" : "02 · Tujuan");
-        chooseCourier.setVisibility(pickup ? View.VISIBLE : View.GONE);
+        chooseCourier.setVisibility(pickup && courierContactId.isEmpty() ? View.VISIBLE : View.GONE);
         setPointLabel(pickupMapBtn, "Jemput", pickupAddress, !checkout && pickup);
         setPointLabel(deliveryMapBtn, "Tujuan", deliveryAddress, !checkout && !pickup);
         confirmPointBtn.setText(pickup ? "Tetapkan titik jemput" : "Tetapkan titik tujuan");
@@ -577,7 +596,7 @@ class TransPickupActivityScreenCore extends CustomerAdaptiveFragmentActivity {
         orderBtn.setEnabled(!submittingOrder && !pending);
         orderBtn.setAlpha(orderBtn.isEnabled() ? 1f : .58f);
         orderBtn.setText(submittingOrder ? "Memproses…" : pending ? "Menghitung ongkir…"
-                : ready ? "Kirim paket" : "Hitung ulang ongkir");
+                : ready ? (courierContactId.isEmpty() ? "Kirim paket" : "Pesan dengan kurir ini") : "Hitung ulang ongkir");
     }
 
     private void setChoice(Button b, boolean active) {
@@ -732,7 +751,8 @@ class TransPickupActivityScreenCore extends CustomerAdaptiveFragmentActivity {
                 p.put("package_size", submittedSize); p.put("vehicle_type", submittedVehicle); p.put("fragile", submittedFragile ? 1 : 0);
                 p.put("receiver_name", receiverName); p.put("receiver_phone", receiverPhone); p.put("note", submittedNote);
                 p.put("payment_method", submittedPayment);
-                if ("balance".equals(submittedPayment)) p.put("approved_price", approvedPrice);
+                if ("balance".equals(submittedPayment) || !courierContactId.isEmpty()) p.put("approved_price", approvedPrice);
+                if (!courierContactId.isEmpty()) p.put("courier_contact_id", courierContactId);
                 JSONObject res = ReliableOrderClient.create(this, BASE_URL + "server/create_pickup_order.php", p, TIMEOUT_MS);
                 networkScope.post(mainHandler, () -> {
                     if (pickupScreenClosed || isFinishing() || isDestroyed()) return;
@@ -860,7 +880,9 @@ class TransPickupActivityScreenCore extends CustomerAdaptiveFragmentActivity {
         recoveryReceipt = new TransivaAlertDialogBuilder(this)
                 .setTitle("Paket siap dikirim")
                 .setCancelable(false)
-                .setMessage("Pengiriman berhasil dibuat.\n\nOrder ID: " + completedOrderId + "\n\n" + otpMessage)
+                .setMessage(("driver_accepted".equals(response.optString("status"))
+                        ? "Pesanan diterima kurir pilihan Anda." : "Pengiriman berhasil dibuat.")
+                        + "\n\nOrder ID: " + completedOrderId + "\n\n" + otpMessage)
                 .setPositiveButton("Lihat Aktivitas", (dialog, which) -> {
                     startActivity(new Intent(this, CustomerHistoryActivity.class).putExtra("order_id", completedOrderId));
                     ReliableOrderClient.acknowledgePickup(this, completedOrderId);

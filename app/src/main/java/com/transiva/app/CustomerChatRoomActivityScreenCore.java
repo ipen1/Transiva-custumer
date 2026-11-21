@@ -162,6 +162,7 @@ class CustomerChatRoomActivityScreenCore extends CustomerAdaptiveActivity {
     protected TextView statusText;
     protected EditText input;
     private ChatRoomChrome chatChrome;
+    private TransSendContactPanel courierPanel;
     protected Button voiceButton;
     protected ProgressBar progress;
     protected LinearLayout inputCard;
@@ -232,6 +233,10 @@ class CustomerChatRoomActivityScreenCore extends CustomerAdaptiveActivity {
         );
 
         readIntent();
+        String contactId = getIntent().getStringExtra(TransSendContactClient.EXTRA_CONTACT);
+        if (contactId != null && contactId.equals(orderId) && !readOnly) {
+            courierPanel = new TransSendContactPanel(this, contactId, savedInstanceState);
+        }
         CustomerMessageApi.initialize(this);
         chatRequests=new CustomerChatRequestGate(this,featureRuntime,() -> !destroyed&&!isFinishing()&&!isDestroyed());
         setContentView(buildScreen());
@@ -439,6 +444,7 @@ class CustomerChatRoomActivityScreenCore extends CustomerAdaptiveActivity {
                 query -> CustomerMessageApi.get(chatExtrasEndpoint()+query,chatRequests.session()),null);
         root.addView(header);
         root.addView(new ActiveCallBanner(this),new LinearLayout.LayoutParams(-1,-2));
+        if (courierPanel != null) root.addView(courierPanel.view(), new LinearLayout.LayoutParams(-1, -2));
 
         olderMessagesButton=compactChatTool("Muat pesan sebelumnya", false);
         olderMessagesButton.setText("Muat pesan sebelumnya");olderMessagesButton.setVisibility(View.GONE);
@@ -674,6 +680,7 @@ class CustomerChatRoomActivityScreenCore extends CustomerAdaptiveActivity {
             int resultCode,
             Intent data
     ) {
+        if (courierPanel != null && courierPanel.result(requestCode, resultCode, data)) return;
         super.onActivityResult(
                 requestCode,
                 resultCode,
@@ -972,6 +979,7 @@ class CustomerChatRoomActivityScreenCore extends CustomerAdaptiveActivity {
                 orderStatus
         );
 
+        if (courierPanel != null) courierPanel.updateStatus(orderStatus);
         boolean ended =
                 response.optBoolean(
                         "ended",
@@ -989,7 +997,7 @@ class CustomerChatRoomActivityScreenCore extends CustomerAdaptiveActivity {
             );
         } else {
             statusText.setText(CustomerChatRoomFormatter.serviceName(orderType) + " · "
-                    + CustomerMessageStatus.orderLabel(orderStatus, orderType));
+                    + ("contact_accepted".equals(orderStatus) ? "Chat dengan kurir" : CustomerMessageStatus.orderLabel(orderStatus, orderType)));
         }
 
         JSONObject driver =
@@ -1821,7 +1829,14 @@ class CustomerChatRoomActivityScreenCore extends CustomerAdaptiveActivity {
     }
 
     @Override
+    protected void onSaveInstanceState(Bundle out) {
+        super.onSaveInstanceState(out);
+        if (courierPanel != null) courierPanel.save(out);
+    }
+
+    @Override
     protected void onDestroy() {
+        if (courierPanel != null) courierPanel.dispose();
         if (chatStability != null) chatStability.destroy();
         if(chatRequests!=null)chatRequests.close();
         featureRuntime.destroy();

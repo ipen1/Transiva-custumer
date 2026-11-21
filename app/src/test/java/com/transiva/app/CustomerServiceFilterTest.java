@@ -35,9 +35,25 @@ public class CustomerServiceFilterTest {
     @Test public void populatedTabsMoveToFrontWithoutLosingOtherServices() throws Exception {
         List<JSONObject> orders = Arrays.asList(order("TransShop", "pending"), order("TransPickup", "on_delivery"), order("Transbike", "finished"));
         List<String> active = CustomerHistoryPolicy.orderedServiceKeys(orders, true);
-        assertEquals(Arrays.asList("pickup", "shop"), active.subList(0, 2));
-        assertEquals(8, active.size());
+        assertEquals(Arrays.asList("pickup", "shop", "ride", "car", "food", "simpel",
+                "tour", "laundry", "other"), active);
         assertEquals("ride", CustomerHistoryPolicy.orderedServiceKeys(orders, false).get(0));
+    }
+    @Test public void transSimpelHasItsOwnTabEvenWithPickupOrderType() throws Exception {
+        JSONObject simpel = order("pickup", "driver_accepted")
+                .put("service_type", "Trans Simpel")
+                .put("source", "pickup_orders");
+        JSONObject send = order("pickup", "on_delivery")
+                .put("service_name", "TransPickup")
+                .put("source", "pickup_orders");
+        List<JSONObject> orders = Arrays.asList(simpel, send);
+
+        assertEquals("Trans Simpel", CustomerHistoryPolicy.serviceName(simpel));
+        assertEquals("TransSend", CustomerHistoryPolicy.serviceName(send));
+        assertEquals(1, CustomerHistoryPolicy.serviceCount(orders, "simpel", true));
+        assertEquals(1, CustomerHistoryPolicy.serviceCount(orders, "pickup", true));
+        assertEquals(Arrays.asList("pickup", "simpel"),
+                CustomerHistoryPolicy.orderedServiceKeys(orders, true).subList(0, 2));
     }
     @Test public void countsAndFiltersPartitionEveryOrderExactlyOnce() throws Exception {
         List<JSONObject> orders = Arrays.asList(order("Transbike", "pending"), order("TransRide", "driver_accepted"),

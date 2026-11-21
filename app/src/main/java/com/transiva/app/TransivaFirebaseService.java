@@ -9,12 +9,13 @@ import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.media.AudioAttributes;
+import android.net.Uri;
 import android.os.Build;
 import android.os.PowerManager;
-import android.provider.Settings;
 import android.text.TextUtils;
 
 import androidx.core.app.NotificationCompat;
+import androidx.core.app.Person;
 import androidx.core.app.NotificationManagerCompat;
 import androidx.core.content.ContextCompat;
 
@@ -28,31 +29,13 @@ import java.net.HttpURLConnection;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.util.Map;
-
-public class TransivaFirebaseService extends FirebaseMessagingService {
-
-    public static final String BASE_URL =
-            "https://transiva.my.id/server/";
-
-    private static final String CH_ORDER =
-            "transiva_order_channel_v2";
-    private static final String CH_WALLET =
-            "transiva_wallet_channel";
-    private static final String CH_CHAT =
-            "transiva_chat_channel_v2";
-    private static final String CH_CALL =
-            "transiva_call_channel_v4";
-    private static final String CH_PROMO =
-            "transiva_promo_channel";
-    private static final String CH_BROADCAST =
-            "transiva_broadcast_channel";
-    private static final String CH_GENERAL =
-            "transiva_general_channel";
+public class TransivaFirebaseService extends TransivaFirebaseServiceLayer2 {
 
     @Override
     public void onCreate() {
         super.onCreate();
         createChannels();
+        TransivaRichNotificationManager.createChannel(this);
     }
 
     @Override
@@ -66,7 +49,8 @@ public class TransivaFirebaseService extends FirebaseMessagingService {
         }
 
         saveTokenLocal(cleanToken);
-        CustomerFcmTokenSync.syncTokenNow(this, cleanToken);
+        sendTokenToServer(cleanToken);
+
     }
 
     @Override
@@ -74,6 +58,10 @@ public class TransivaFirebaseService extends FirebaseMessagingService {
             RemoteMessage remoteMessage
     ) {
         super.onMessageReceived(remoteMessage);
+        processMessage(remoteMessage,false);
+    }
+
+    private void processMessage(RemoteMessage remoteMessage,boolean verifiedChat) {
         createChannels();
 
         Map<String, String> data =
@@ -81,7 +69,26 @@ public class TransivaFirebaseService extends FirebaseMessagingService {
 
         if(data!=null&&"webrtc_call".equalsIgnoreCase(data.get("type"))&&"incoming_call".equalsIgnoreCase(data.get("event")))CallDeliveryTrace.record(this,data,"PUSH_RECEIVED","");
         if(!FcmSessionTarget.accept(this,data))return;
+        if (data != null && "transsend_contact".equals(data.get("type"))) {
+            try {
+                if (Long.parseLong(data.get("contact_expires_epoch")) <= System.currentTimeMillis() / 1000L) return;
+            } catch (NumberFormatException error) {
+                return;
+            }
+        }
 
+        // Validate before consuming the FCM dedupe receipt. Side effects remain inside the same session.
+        if(!verifiedChat && data!=null && DriverChatNotificationPolicy.guarded(first(data.get("type"),data.get("notif_type"),data.get("category"),"general"))) {
+            DriverChatNotificationGate.dispatch(this,data,()->processMessage(remoteMessage,true));
+            return;
+        }
+
+        if (DriverFcmDeduplicator.isDuplicate(this, remoteMessage.getMessageId(), data)) {
+            return;
+        }
+
+        String pushType = data == null ? "" : first(data.get("type"), data.get("notif_type"), "");
+        if (isNewIncomingOrder(pushType, data)) DriverOrderTelemetry.push(this, data, "push_received");
         if (PushExpiryPolicy.expiredOrder(data,System.currentTimeMillis())) return;
 
         if (data == null || data.isEmpty()) {
@@ -118,20 +125,21 @@ public class TransivaFirebaseService extends FirebaseMessagingService {
                 "general"
         ).toLowerCase();
 
-        if (isChat(type)) {
-            traceChatPush(data, "RECEIVED");
-            if (!CustomerChatPushGuard.accept(this, data)) {
-                traceChatPush(data, "FILTERED");
-                return;
-            }
+        // Rich Notification 1.0 owns a completely separate path. Return immediately so
+        // promo/banner pushes cannot touch order, chat, call or session state machines.
+        if (TransivaRichNotificationManager.isRichType(type)) {
+            TransivaRichNotificationManager.show(this, data);
+            return;
         }
 
-        if ("split_bill_update".equals(type) || "split_bill_invite".equals(type)) {
-            Intent rt = new Intent("com.transiva.app.SPLIT_BILL_REALTIME");
-            rt.setPackage(getPackageName());
-            rt.putExtra("session_key", first(data.get("session_key"), ""));
-            rt.putExtra("event", first(data.get("event"), type));
-            sendBroadcast(rt);
+        if ("driver_global_mention".equals(type)) {
+            try {
+                long mentionId = Long.parseLong(first(data.get("message_id"), "0"));
+                DriverGlobalChatStore.onMentionPush(this, mentionId);
+            } catch (Throwable t) {
+                TransivaDiagnostics.error(this,"fcm","MENTION_PUSH_PARSE_FAILED",t);
+                DriverGlobalChatStore.onMentionPush(this, 0L);
+            }
         }
 
         if ("webrtc_call".equals(type) && "incoming_call".equalsIgnoreCase(first(data.get("event"),""))) {
@@ -170,25 +178,21 @@ public class TransivaFirebaseService extends FirebaseMessagingService {
 
             // SDP/candidate/ringing/update pushes are not UI launches. The active
             // call Activity already polls signaling from the backend.
-            if (!"incoming_call".equals(event)) {
+            if (!DriverFcmPolicy.shouldLaunchIncomingCall(type, data)) {
                 return;
             }
         }
 
 
         if ("security_policy_changed".equals(type)
-                || "customer_security_policy_changed".equals(type)) {
-            // Tidak mempercayai nilai ON/OFF dari push.
-            // Push hanya memerintahkan app untuk membaca policy terbaru dari server.
-            CustomerSecurityPolicy.invalidate(this);
-            TransivaCustomerApplication.onSecurityPolicyChanged();
+                || "driver_security_policy_changed".equals(type)) {
+            // FCM hanya trigger. Source of truth tetap database/server.
+            DriverSecurityPolicy.invalidate(this);
+            TransivaDriverApplication.onSecurityPolicyChanged();
             return;
         }
 
-        if (type.equals("force_logout")
-                || type.equals("device_reset")
-                || type.equals("device_banned")
-                || "1".equals(data.get("force_logout"))) {
+        if (DriverFcmPolicy.isTerminalSessionEvent(type, data)) {
             String reason = first(
                     data.get("reason"),
                     data.get("code"),
@@ -209,6 +213,8 @@ public class TransivaFirebaseService extends FirebaseMessagingService {
                 "Notifikasi baru"
         );
 
+        if ("merchant_driver_chat".equals(type)) body = first(data.get("chat_preview"), body);
+
         String orderId = first(
                 data.get("order_id"),
                 data.get("id_order"),
@@ -228,6 +234,32 @@ public class TransivaFirebaseService extends FirebaseMessagingService {
                 ""
         );
 
+        // Persist customer-chat unread state so navigation can recover the indicator
+        // even if it was briefly covered by the call screen/backgrounded. Merchant/global
+        // chat must not light the customer-message action.
+        if (isChat(type) && !isMerchantDriverChat(type, data) && !orderId.isEmpty()) {
+            DriverMessageUnreadRepository.markUnread(this, orderId, roomId);
+        }
+
+        // FCM adalah jalur utama real-time. Saat dashboard sedang terbuka,
+        // kirim sinyal lokal agar data langsung refresh tanpa menunggu polling berikutnya.
+        if (isDriverRealtimeType(type) || isChat(type)) {
+            try {
+                Intent changed = new Intent(ACTION_DRIVER_DATA_CHANGED);
+                changed.setPackage(getPackageName());
+                changed.putExtra("type", type);
+                changed.putExtra("order_id", orderId);
+                changed.putExtra("room_id", roomId);
+                changed.putExtra("source", data.get("source"));
+                sendBroadcast(changed);
+            } catch (Throwable ignored) {
+                // Push tetap diproses walau refresh lokal gagal.
+            }
+        }
+
+        if (isNewIncomingOrder(type, data)) DashboardOfferForeground.maybeOpen(this, orderId, data);
+        publishBubbleEvent(type, title, body, orderId, roomId, data);
+
         showNotification(
                 type,
                 title,
@@ -239,7 +271,42 @@ public class TransivaFirebaseService extends FirebaseMessagingService {
         );
     }
 
-    private void sendCallState(String callId, String status) {
+    protected void publishBubbleEvent(String type, String title, String body, String orderId, String roomId, Map<String, String> data) {
+        try {
+            if (!DriverBubbleController.enabled(this) || !DriverBubbleController.canOverlay(this)) return;
+            boolean newOrder = isNewIncomingOrder(type, data);
+            boolean mention = "driver_global_mention".equalsIgnoreCase(first(type, ""));
+            boolean customerChat = isChat(type) && !isMerchantDriverChat(type, data) && !mention;
+            if (!newOrder && !mention && !customerChat) return;
+
+            long mentionId = 0L;
+            if (mention) {
+                try { mentionId = Long.parseLong(data != null ? first(data.get("message_id"), "0") : "0"); } catch (Throwable ignored) {}
+            }
+
+            String text;
+            if (newOrder) {
+                text = "Orderan baru diterima";
+            } else if (mention) {
+                String sender = data != null ? first(data.get("sender_name"), data.get("name"), "") : "";
+                text = sender.isEmpty() ? first(body, "Nama kamu disebut di chat driver") : sender + " menyebut nama kamu";
+            } else {
+                String sender = data != null ? first(data.get("sender_name"), data.get("customer_name"), data.get("name"), "Customer") : "Customer";
+                String msg = first(body, data != null ? first(data.get("message"), "Pesan baru") : "Pesan baru");
+                text = sender + ": " + msg;
+            }
+            // FCM dapat menghidupkan proses ketika UI sudah dibuang dari Recent Apps.
+            // Jika driver masih ONLINE, pastikan foreground owner + bubble diminta hidup
+            // sebelum event dipublikasikan. Event sendiri di-queue oleh overlay service.
+            if (DriverBubbleController.driverOnline(this)) {
+                DriverServiceController.start(this);
+                DriverBubbleController.start(this);
+            }
+            DriverBubbleOverlayService.publish(this, first(type, "general").toLowerCase(), text, orderId, roomId, mentionId, newOrder);
+        } catch (Throwable ignored) {}
+    }
+
+    protected void sendCallState(String callId, String status) {
         if (callId == null || callId.trim().isEmpty()) return;
         try {
             Intent state = new Intent(WebRtcCallActivity.ACTION_CALL_STATE);
@@ -248,19 +315,20 @@ public class TransivaFirebaseService extends FirebaseMessagingService {
             state.putExtra(WebRtcCallActivity.EXTRA_CALL_STATUS, status);
             sendBroadcast(state);
         } catch (Throwable t) {
+            TransivaDiagnostics.error(this,"fcm","CALL_STATE_BROADCAST_FAILED",t);
         }
     }
 
-    private void cancelCallNotification(String callId) {
+    protected void cancelCallNotification(String callId) {
         if (callId == null || callId.trim().isEmpty()) return;
         try {
             NotificationManager nm =
                     (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
             if (nm != null) nm.cancel(Math.abs(("webrtc_call|" + callId).hashCode()));
-        } catch (Throwable ignored) {}
+        } catch (Throwable ignored) { TransivaDiagnostics.error(this,"fcm","NON_FATAL_EXCEPTION",ignored); }
     }
 
-    private void showNotification(
+    protected void showNotification(
             String type,
             String title,
             String body,
@@ -274,7 +342,6 @@ public class TransivaFirebaseService extends FirebaseMessagingService {
             return;
         }
 
-        body = CustomerChatPreviewFormatter.notificationText(body);
         TransivaNotificationStore.add(
                 this,
                 type,
@@ -282,32 +349,13 @@ public class TransivaFirebaseService extends FirebaseMessagingService {
                 body,
                 orderId,
                 roomId,
-                url,
-                data
+                url
         );
 
-        String event = data != null ? first(data.get("event"), data.get("status"), "").toLowerCase() : "";
-        boolean arrivalPickup = "arrived_pickup".equals(event);
-        boolean arrivalDelivery = "arrived_delivery".equals(event);
-        boolean arrivalEvent = arrivalPickup || arrivalDelivery;
+        boolean newIncomingOrder = isNewIncomingOrder(type, data);
+        String channelId = newIncomingOrder ? CH_NEW_ORDER : channelForType(type);
 
-        if (arrivalEvent) {
-            CustomerArrivalMessage.Content arrival = CustomerArrivalMessage.build(
-                    event,
-                    data != null ? first(data.get("order_type"), data.get("service_type"), "") : "",
-                    data != null ? first(data.get("source"), "") : "",
-                    data != null ? first(data.get("restaurant_name"), data.get("merchant_name"), "") : "",
-                    data != null ? first(data.get("driver"), data.get("driver_name"), "") : "",
-                    first(orderId, "")
-            );
-            title = arrival.title;
-            body = arrival.body;
-            if(data!=null && "1".equals(data.get("smart_waiting")))body += "\nLihat hitungan waktu tunggu dan tarifnya di detail perjalanan.";
-        }
-
-        String channelId = channelForType(type);
-
-        Intent intent = arrivalEvent ? buildArrivalIntent(event, orderId, data) : buildOpenIntent(
+        Intent intent = buildOpenIntent(
                 type,
                 orderId,
                 roomId,
@@ -315,6 +363,10 @@ public class TransivaFirebaseService extends FirebaseMessagingService {
                 data
         );
 
+        if (newIncomingOrder && data != null) {
+            intent.putExtra("order_db_id", first(data.get("order_db_id"), ""));
+            intent.putExtra("dashboard_offer_token", first(data.get("action_token"), ""));
+        }
         intent.addFlags(
                 Intent.FLAG_ACTIVITY_CLEAR_TOP
                         | Intent.FLAG_ACTIVITY_SINGLE_TOP
@@ -376,24 +428,40 @@ public class TransivaFirebaseService extends FirebaseMessagingService {
                                 NotificationCompat.VISIBILITY_PUBLIC
                         );
 
-        TransivaNotificationStyle.apply(this, builder, type);
 
-        builder.setDefaults(
+
+        boolean merchantDriverChatNotification = isMerchantDriverChat(type, data);
+        if (merchantDriverChatNotification) builder.setVisibility(NotificationCompat.VISIBILITY_PRIVATE);
+
+        if (newIncomingOrder) {
+            builder.setTimeoutAfter(Math.max(1,PushExpiryPolicy.remainingMillis(data,System.currentTimeMillis(),false)));
+            // Android 8+ mengambil suara dari NotificationChannel.
+            // Android 7 dan lebih lama mengambil suara langsung dari Builder.
+            if (Build.VERSION.SDK_INT < 26) {
+                builder.setSound(orderSoundUri())
+                        .setVibrate(new long[]{0L, 350L, 180L, 350L, 180L, 650L})
+                        .setLights(0xFF0B7CFF, 700, 700);
+            }
+            builder.setPriority(NotificationCompat.PRIORITY_MAX)
+                    .setCategory(NotificationCompat.CATEGORY_STATUS);
+        } else {
+            builder.setDefaults(
                     NotificationCompat.DEFAULT_SOUND
                             | NotificationCompat.DEFAULT_VIBRATE
                             | NotificationCompat.DEFAULT_LIGHTS
             );
-        
-
-        if (arrivalEvent) {
-            // Play policy: driver-arrival is a high-priority heads-up event, not a
-            // full-screen intent. Full-screen is reserved for incoming calls only.
-            builder.setPriority(NotificationCompat.PRIORITY_HIGH)
-                    .setCategory(NotificationCompat.CATEGORY_STATUS)
-                    .setTimeoutAfter(15000L);
-        } else if (isChat(type)) {
-            wakeScreen(5000L);
         }
+        if (merchantDriverChatNotification) {
+            // Chat may be high priority, but it must remain a normal heads-up
+            // notification. Full-screen intent is reserved for incoming calls.
+            builder.setCategory(NotificationCompat.CATEGORY_MESSAGE)
+                    .setPriority(NotificationCompat.PRIORITY_HIGH);
+        }
+
+        // For operationally urgent pushes, briefly wake the display so the
+        // heads-up notification can be noticed. Full-screen UI remains reserved
+        // for genuine incoming calls, matching modern Android restrictions.
+        wakeScreenForPriority(type, false);
 
         if (
                 Build.VERSION.SDK_INT >= 33
@@ -402,485 +470,44 @@ public class TransivaFirebaseService extends FirebaseMessagingService {
                                 Manifest.permission.POST_NOTIFICATIONS
                         ) != PackageManager.PERMISSION_GRANTED
         ) {
-            if (isChat(type)) traceChatPush(data, "POST_NOTIFICATIONS_DENIED");
+            if (newIncomingOrder) DriverOrderTelemetry.push(this, data, "notification_blocked");
             return;
         }
 
-        if (isChat(type)) {
-            String blockReason = CallDeliveryTrace.notificationBlockReason(this, channelId);
-            if (!blockReason.isEmpty()) {
-                traceChatPush(data, blockReason);
+        if (newIncomingOrder) {
+            NotificationManager manager = getSystemService(NotificationManager.class);
+            if (!NotificationManagerCompat.from(this).areNotificationsEnabled()
+                    || (Build.VERSION.SDK_INT >= 26 && manager != null
+                    && manager.getNotificationChannel(channelId) != null
+                    && manager.getNotificationChannel(channelId).getImportance() == NotificationManager.IMPORTANCE_NONE)) {
+                DriverOrderTelemetry.push(this, data, "notification_blocked");
                 return;
             }
         }
+        if(newIncomingOrder&&PushExpiryPolicy.remainingMillis(data,System.currentTimeMillis(),false)<=0)return;
         try {
             NotificationManagerCompat.from(this).notify(requestCode,builder.build());
-            if (isChat(type)) {traceChatPush(data, "POSTED"); ChatNotificationAck.posted(this,data,channelId);}
-        } catch (RuntimeException unavailable) {
+            ChatNotificationAck.posted(this,data,channelId);
+            if(newIncomingOrder)DriverOrderTelemetry.push(this,data,"notification_posted");
+        } catch (RuntimeException notificationError) {
+            TransivaDiagnostics.error(this,"notification","NOTIFICATION_FAILED",notificationError);
             try {
                 NotificationCompat.Builder fallback=new NotificationCompat.Builder(this,channelId)
                     .setSmallIcon(getSmallIcon()).setContentTitle(first(title,"Transiva"))
                     .setContentText(first(body,"Notifikasi baru")).setContentIntent(pendingIntent)
-                    .setPriority(priorityForType(type)).setAutoCancel(true);
+                    .setVisibility(merchantDriverChatNotification ? NotificationCompat.VISIBILITY_PRIVATE
+                            : NotificationCompat.VISIBILITY_PUBLIC)
+                    .setPriority(NotificationCompat.PRIORITY_HIGH).setAutoCancel(true);
+                if (merchantDriverChatNotification) fallback.setStyle(new NotificationCompat.BigTextStyle().bigText(body));
+                if(newIncomingOrder)fallback.setTimeoutAfter(Math.max(1,PushExpiryPolicy.remainingMillis(data,System.currentTimeMillis(),false)));
                 NotificationManagerCompat.from(this).notify(requestCode,fallback.build());
-                if (isChat(type)) {traceChatPush(data, "POSTED"); ChatNotificationAck.posted(this,data,channelId);}
-            } catch (RuntimeException failed) {
-                if (isChat(type)) traceChatPush(data, "POST_FAILED");
-                android.util.Log.w("TransivaNotification", "Notification unavailable", failed);
-            }
-        }
-    }
-
-    private static void traceChatPush(Map<String, String> data, String stage) {
-        String id = data == null ? null : data.get("chat_id");
-        if (id != null && id.matches("[1-9][0-9]{0,18}")) {
-            android.util.Log.i("TransivaChatPush", "id=" + id + " stage=" + stage
-                    + " device_at_ms=" + System.currentTimeMillis());
-        }
-    }
-
-    private Intent buildArrivalIntent(String event, String orderId, Map<String, String> data) {
-        Intent i = new Intent(this, CustomerArrivalAlertActivity.class);
-        i.putExtra("event", first(event, ""));
-        i.putExtra("order_id", first(orderId, ""));
-        i.putExtra("driver", data != null ? first(data.get("driver"), data.get("driver_name"), "") : "");
-        i.putExtra("order_type", data != null ? first(data.get("order_type"), data.get("service_type"), "") : "");
-        i.putExtra("source", data != null ? first(data.get("source"), "orders") : "orders");
-        i.putExtra("restaurant_name", data != null ? first(data.get("restaurant_name"), data.get("merchant_name"), "") : "");
-        i.putExtra("smart_waiting",data!=null?first(data.get("smart_waiting"),"0"):"0");
-        i.putExtra("from_fcm", true);
-        return i;
-    }
-
-    private void wakeScreen(long millis) {
-        try {
-            PowerManager pm = (PowerManager) getSystemService(Context.POWER_SERVICE);
-            if (pm == null || pm.isInteractive()) return;
-            PowerManager.WakeLock wl = pm.newWakeLock(
-                    PowerManager.SCREEN_BRIGHT_WAKE_LOCK
-                            | PowerManager.ACQUIRE_CAUSES_WAKEUP
-                            | PowerManager.ON_AFTER_RELEASE,
-                    "Transiva:CustomerFcmWake");
-            wl.acquire(Math.max(1500L, millis));
-        } catch (Throwable ignored) {}
-    }
-
-    private void openArrivalScreen(Intent intent) {
-        if (intent == null) return;
-        try {
-            Intent alert = new Intent(intent);
-            alert.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK
-                    | Intent.FLAG_ACTIVITY_CLEAR_TOP
-                    | Intent.FLAG_ACTIVITY_SINGLE_TOP
-                    | Intent.FLAG_ACTIVITY_NO_USER_ACTION);
-            startActivity(alert);
-        } catch (Throwable ignored) {
-            // Android may block background Activity starts; full-screen/heads-up notification remains as fallback.
-        }
-    }
-
-
-
-    private Intent buildOpenIntent(
-            String type,
-            String orderId,
-            String roomId,
-            String url,
-            Map<String, String> data
-    ) {
-        String screen =
-                data != null
-                        ? first(data.get("screen"), "")
-                        : "";
-
-
-        if ("webrtc_call".equals(type)) {
-            Intent intent = new Intent(this, WebRtcCallActivity.class);
-            intent.putExtra("call_id", data != null ? first(data.get("call_id"), "") : "");
-            intent.putExtra("order_id", orderId);
-            intent.putExtra("source", data != null ? first(data.get("source"), "orders") : "orders");
-            intent.putExtra("call_type",data!=null?first(data.get("call_type"),"audio"):"audio");
-            intent.putExtra("peer_photo", data == null ? "" : CallPeerIdentity.first(
-                    data.get("caller_photo"), data.get("caller_photo_url"), data.get("caller_avatar")));
-            intent.putExtra("caller_name", data != null ? first(data.get("caller_name"), "Transiva") : "Transiva");
-            intent.putExtra("incoming", data != null && "incoming_call".equalsIgnoreCase(first(data.get("event"), "")));
-            return intent;
+                ChatNotificationAck.posted(this,data,channelId);
+                if(newIncomingOrder)DriverOrderTelemetry.push(this,data,"notification_posted");
+            }catch(RuntimeException failed){TransivaDiagnostics.error(this,"notification","NOTIFICATION_FALLBACK_FAILED",failed);}
         }
 
-        if ("split_bill_invite".equals(type) || "split_bill".equalsIgnoreCase(screen)) {
-            Intent intent = new Intent(this, SplitBillInviteActivity.class);
-            intent.putExtra("session_key", data != null ? first(data.get("session_key"), "") : "");
-            intent.putExtra("from_fcm", true);
-            return intent;
-        }
-
-        if (isChat(type)) {
-            Intent intent = new Intent(this, CustomerChatActivity.class);
-            intent.putExtra("room_id", first(roomId, orderId));
-            intent.putExtra("order_id", orderId);
-            intent.putExtra("from_fcm", true);
-            return intent;
-        }
-
-        if ("merchant_order_status".equals(type) || "food_order_status".equalsIgnoreCase(screen)
-                || (isOrder(type) && orderId != null && orderId.toUpperCase(java.util.Locale.ROOT).startsWith("FOOD-"))) {
-            Intent intent = new Intent(this, CustomerFoodOrderStatusActivity.class);
-            intent.putExtra("order_id",orderId);intent.putExtra("from_fcm",true);
-            if(data!=null)for(String key:new String[]{"status","restaurant_name","merchant_reject_reason"})intent.putExtra(key,first(data.get(key),""));
-            return intent;
-        }
-
-        if (isOrder(type) || "customer_order".equalsIgnoreCase(screen)) {
-            Intent intent = new Intent(this, CustomerTripActivity.class);
-            intent.putExtra("order_id", orderId);
-            intent.putExtra("from_fcm", true);
-            return intent;
-        }
-
-        if (isWallet(type)) {
-            Intent intent = new Intent(this, CustomerTopUpActivity.class);
-            intent.putExtra("from_fcm", true);
-            return intent;
-        }
-
-        // Promo customer langsung membuka dashboard customer.
-        if (
-                type.contains("promo")
-                        || "customer_dashboard".equalsIgnoreCase(
-                                screen
-                        )
-        ) {
-            Intent intent = new Intent(
-                    this,
-                    CustomerDashboardActivity.class
-            );
-
-            intent.putExtra("from_fcm", true);
-            intent.putExtra("notif_type", type);
-            intent.putExtra(
-                    "promo_id",
-                    data != null
-                            ? first(data.get("promo_id"), "")
-                            : ""
-            );
-            return intent;
-        }
-
-        if (
-                !TextUtils.isEmpty(url)
-                        && (
-                        url.startsWith("http://")
-                                || url.startsWith("https://")
-                )
-        ) {
-            Intent intent =
-                    new Intent(this, CustomerDashboardActivity.class);
-
-            intent.putExtra("url", url);
-            intent.putExtra("from_fcm", true);
-            return intent;
-        }
-
-        Intent intent =
-                new Intent(this, CustomerDashboardActivity.class);
-
-        intent.putExtra("from_fcm", true);
-        intent.putExtra("notif_type", type);
-        return intent;
-    }
-
-    private void createChannels() {
-        if (Build.VERSION.SDK_INT < 26) {
-            return;
-        }
-
-        createChannel(
-                CH_ORDER,
-                "Order Transiva",
-                "Order baru dan pembaruan status",
-                NotificationManager.IMPORTANCE_HIGH
-        );
-
-        createChannel(
-                CH_WALLET,
-                "Financial Transiva",
-                "Saldo, deposit, dan penarikan",
-                NotificationManager.IMPORTANCE_HIGH
-        );
-
-        createChannel(
-                CH_CALL,
-                "Panggilan Transiva",
-                "Panggilan suara dan video Driver–Customer",
-                NotificationManager.IMPORTANCE_HIGH
-        );
-
-        createChannel(
-                CH_CHAT,
-                "Chat Transiva",
-                "Pesan customer dan driver",
-                NotificationManager.IMPORTANCE_HIGH
-        );
-
-        createChannel(
-                CH_PROMO,
-                "Promo Transiva",
-                "Promo dan penawaran Transiva",
-                NotificationManager.IMPORTANCE_HIGH
-        );
-
-        createChannel(
-                CH_BROADCAST,
-                "Broadcast Admin",
-                "Pengumuman admin Transiva",
-                NotificationManager.IMPORTANCE_HIGH
-        );
-
-        createChannel(
-                CH_GENERAL,
-                "Transiva",
-                "Notifikasi umum",
-                NotificationManager.IMPORTANCE_DEFAULT
-        );
-    }
-
-    private void createChannel(
-            String id,
-            String name,
-            String description,
-            int importance
-    ) {
-        if (Build.VERSION.SDK_INT < 26) {
-            return;
-        }
-
-        NotificationManager manager =
-                (NotificationManager)
-                        getSystemService(
-                                Context.NOTIFICATION_SERVICE
-                        );
-
-        if (manager == null) {
-            return;
-        }
-
-        NotificationChannel existing =
-                manager.getNotificationChannel(id);
-
-        if (existing != null) {
-            // Importance channel tidak bisa dinaikkan setelah dibuat.
-            // Hapus channel promo lama agar dibuat ulang HIGH.
-            if (
-                    CH_PROMO.equals(id)
-                            && existing.getImportance()
-                            < NotificationManager.IMPORTANCE_HIGH
-            ) {
-                manager.deleteNotificationChannel(id);
-            } else {
-                return;
-            }
-        }
-
-        NotificationChannel channel =
-                new NotificationChannel(
-                        id,
-                        name,
-                        importance
-                );
-
-        channel.setDescription(description);
-        channel.enableVibration(CustomerAppSettings.isVibrationEnabled(this));
-        channel.enableLights(true);
-
-        if (CH_CALL.equals(id)) {
-            // Silent channel; the full-screen Activity plays exactly one ringtone.
-            channel.setSound(null, null);
-            channel.enableVibration(false);
-        } else {
-            channel.setSound(
-                    android.provider.Settings.System.DEFAULT_NOTIFICATION_URI,
-                    new AudioAttributes.Builder()
-                            .setUsage(AudioAttributes.USAGE_NOTIFICATION)
-                            .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
-                            .build()
-            );
-        }
-
-        manager.createNotificationChannel(channel);
-    }
-
-    private String channelForType(String type) {
-        type = first(type, "general").toLowerCase();
-
-        if ("webrtc_call".equals(type)) {
-            return CH_CALL;
-        }
-
-        if (isChat(type)) {
-            return CH_CHAT;
-        }
-
-        if (isWallet(type)) {
-            return CH_WALLET;
-        }
-
-        if (isOrder(type)) {
-            return CH_ORDER;
-        }
-
-        if (type.contains("promo")) {
-            return CH_PROMO;
-        }
-
-        if (
-                type.contains("broadcast")
-                        || type.contains("admin")
-        ) {
-            return CH_BROADCAST;
-        }
-
-        return CH_GENERAL;
-    }
-
-    private int priorityForType(String type) {
-        type = first(type, "").toLowerCase();
-
-        if (
-                "webrtc_call".equals(type)
-                        || isChat(type)
-                        || isOrder(type)
-                        || isWallet(type)
-                        || type.contains("broadcast")
-                        || type.contains("promo")
-        ) {
-            return NotificationCompat.PRIORITY_HIGH;
-        }
-
-        return NotificationCompat.PRIORITY_DEFAULT;
-    }
-
-    private String categoryForType(String type) {
-        type = first(type, "").toLowerCase();
-
-        if ("webrtc_call".equals(type)) {
-            return NotificationCompat.CATEGORY_CALL;
-        }
-
-        if (isChat(type)) {
-            return NotificationCompat.CATEGORY_MESSAGE;
-        }
-
-        if (isOrder(type) || isWallet(type)) {
-            return NotificationCompat.CATEGORY_STATUS;
-        }
-
-        if (type.contains("promo")) {
-            return NotificationCompat.CATEGORY_PROMO;
-        }
-
-        return NotificationCompat.CATEGORY_MESSAGE;
-    }
-
-    private boolean isChat(String type) {
-        type = first(type, "").toLowerCase();
-
-        return type.contains("chat")
-                || type.contains("message");
-    }
-
-    private boolean isOrder(String type) {
-        type = first(type, "").toLowerCase();
-
-        return type.contains("order")
-                || type.contains("ride")
-                || type.contains("food")
-                || type.contains("pickup")
-                || type.contains("wisata")
-                || type.contains("merchant");
-    }
-
-    private boolean isWallet(String type) {
-        type = first(type, "").toLowerCase();
-
-        return type.contains("wallet")
-                || type.contains("financial")
-                || type.contains("deposit")
-                || type.contains("withdraw")
-                || type.contains("saldo")
-                || type.contains("balance");
-    }
-
-    private int getSmallIcon() {
-        try {
-            return R.drawable.ic_notification_bell;
-        } catch (Exception ignored) {
-            return android.R.drawable.ic_dialog_info;
-        }
-    }
-
-    private void saveTokenLocal(String token) {
-        String cleanToken = safe(token);
-
-        getSharedPreferences(
-                "transiva_fcm",
-                MODE_PRIVATE
-        )
-                .edit()
-                .putString("fcm_token", cleanToken)
-                .putLong(
-                        "fcm_token_saved_at",
-                        System.currentTimeMillis()
-                )
-                .apply();
-
-        getSharedPreferences(
-                "transiva_native_session",
-                MODE_PRIVATE
-        )
-                .edit()
-                .putString("fcm_token", cleanToken)
-                .putLong(
-                        "fcm_token_saved_at",
-                        System.currentTimeMillis()
-                )
-                .apply();
-    }
-
-    private void sendTokenToServer(String token) {
-        FcmTokenCoordinator.onNewToken(getApplicationContext(),token);
-    }
-
-    private String safe(String value) {
-        if (value == null) {
-            return "";
-        }
-
-        value = value.trim();
-
-        if (
-                value.isEmpty()
-                        || "null".equalsIgnoreCase(value)
-                        || "undefined".equalsIgnoreCase(value)
-        ) {
-            return "";
-        }
-
-        return value;
-    }
-
-    private String first(String... values) {
-        if (values == null) {
-            return "";
-        }
-
-        for (String value : values) {
-            value = safe(value);
-
-            if (!value.isEmpty()) {
-                return value;
-            }
-        }
-
-        return "";
+        // Do not start an Activity directly from background FCM. The notification
+        // is the sole entry point while backgrounded, so calls stay compliant with
+        // Android background-start and Google Play full-screen-intent restrictions.
     }
 }

@@ -2,48 +2,61 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
-    <!-- Explicitly strip Advertising ID permission contributed by transitive SDK manifests. -->
-    <uses-permission
-        android:name="com.google.android.gms.permission.AD_ID"
-        tools:node="remove" />
-
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.USE_BIOMETRIC" />
+
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
-    <uses-permission android:name="android.permission.HIDE_OVERLAY_WINDOWS" />
-    <!-- Reserved exclusively for genuine incoming WebRTC calls. Android 14+ may require user special access. -->
     <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
-<uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+    <uses-permission android:name="android.permission.HIDE_OVERLAY_WINDOWS" />
+
     <uses-permission android:name="android.permission.WAKE_LOCK" />
-    <uses-permission android:name="android.permission.VIBRATE" />
-    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CAMERA" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
+    <uses-permission android:name="android.permission.VIBRATE" />
+
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
-    <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
+
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
-<queries>
-        <intent><action android:name="android.intent.action.TTS_SERVICE" /></intent>
+
+    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
+    <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
+
+    <uses-permission
+        android:name="android.permission.READ_EXTERNAL_STORAGE"
+        android:maxSdkVersion="32" />
+
+    <uses-permission
+        android:name="android.permission.WRITE_EXTERNAL_STORAGE"
+        android:maxSdkVersion="28" />
+
+    <uses-feature
+        android:name="android.hardware.camera"
+        android:required="false" />
+
+    <uses-feature
+        android:name="android.hardware.location.gps"
+        android:required="false" />
+
+    
+    <queries>
         <package android:name="com.topjohnwu.magisk" />
+        <package android:name="io.github.vvb2060.magisk" />
         <package android:name="me.weishu.kernelsu" />
+        <package android:name="com.rifsxd.ksunext" />
         <package android:name="me.bmax.apatch" />
         <package android:name="org.lsposed.manager" />
         <package android:name="de.robv.android.xposed.installer" />
-        <package android:name="com.lexa.fakegps" />
-        <package android:name="com.blogspot.newapphorizons.fakegps" />
-        <package android:name="com.incorporateapps.fakegps.fre" />
     </queries>
 
-    <uses-feature android:name="android.hardware.camera" android:required="false" />
-    <uses-feature android:name="android.hardware.location.gps" android:required="false" />
-
     <application
-        android:name=".TransivaDriverApplication"
+        android:name=".TransivaCustomerApplication"
         android:allowBackup="false"
         android:hardwareAccelerated="true"
         android:icon="@mipmap/ic_launcher"
@@ -53,16 +66,40 @@
         android:supportsRtl="true"
         android:theme="@style/AppTheme"
         android:usesCleartextTraffic="false">
+        <!-- The ride/car screens use PlacesClient and their own search interface. -->
+        <activity android:name="com.google.android.libraries.places.widget.AutocompleteActivity"
+            tools:node="remove" />
+        <activity android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|uiMode" android:name=".CustomerFoodOrderStatusActivity" android:enableOnBackInvokedCallback="true" android:exported="false" android:theme="@style/AppTheme" />
+        <activity android:name=".TransPayApprovalActivity" android:exported="false"
+            android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|uiMode"
+            android:theme="@style/TransPayApprovalTheme" />
+        <activity android:name=".DuitkuSandboxPaymentActivity" android:exported="false" />
+        <activity android:name=".FcmRegistrationDiagnosticsActivity" android:exported="false" />
+        <meta-data android:name="firebase_crashlytics_collection_enabled" android:value="${transivaTelemetryEnabled}" />
+        <meta-data android:name="firebase_analytics_collection_enabled" android:value="${transivaTelemetryEnabled}" />
+        <meta-data android:name="firebase_messaging_auto_init_enabled" android:value="${transivaTelemetryEnabled}" />
 
-        <!-- Gunakan Maps SDK key yang sama dengan aplikasi customer yang sudah teruji.
-             Jangan memakai google_api_key dari google-services.json: itu Firebase API key
-             dan belum tentu diizinkan untuk Google Maps SDK for Android. -->
-        <activity android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout" android:name=".FcmRegistrationDiagnosticsActivity" android:exported="false" />
+        <activity android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|uiMode" android:name=".TransShopZoomActivity" android:exported="false" />
+        <activity android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|uiMode" android:name=".TransAssistantActivity" android:exported="false" android:theme="@style/AppTheme" />
+        <activity android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|uiMode" android:name=".TransAssistantTourActivity" android:exported="false" android:theme="@style/AppTheme" />
+        <activity android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|uiMode" android:name=".FamilyLiveActivity" android:exported="false" android:theme="@style/AppTheme" />
+        <activity android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|uiMode" android:name=".TransivaFamilyActivity" android:exported="false" android:theme="@style/AppTheme" />
+        <activity android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|uiMode" android:name=".GlobalSearchActivity" android:exported="false" android:theme="@style/AppTheme" />
+
+
         <meta-data
             android:name="com.google.android.geo.API_KEY"
             android:value="@string/google_maps_key" />
 
+                <service android:name=".TripGuardianService" android:exported="false" android:foregroundServiceType="dataSync" android:stopWithTask="false" />
+        <service android:name=".AudioProtectService" android:exported="false" android:foregroundServiceType="microphone" android:stopWithTask="false" />
         <service
+            android:name=".CustomerRedispatchService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync"
+            android:stopWithTask="false" />
+
+<service
             android:name=".TransivaFirebaseService"
             android:directBootAware="true"
             android:exported="false">
@@ -70,57 +107,6 @@
                 <action android:name="com.google.firebase.MESSAGING_EVENT" />
             </intent-filter>
         </service>
-
-        <receiver
-            android:name=".TransivaNotificationActionReceiver"
-            android:enabled="true"
-            android:exported="false" />
-
-        <receiver
-            android:name=".IncomingCallActionReceiver"
-            android:enabled="true"
-            android:exported="false" />
-
-        <!-- Legacy compatibility only. LocationService is the single long-running owner. -->
-        <service
-            android:name=".TransivaDriverForegroundService"
-            android:enabled="false"
-            android:exported="false"
-            android:stopWithTask="false" />
-
-        <service
-            android:name=".DriverBubbleOverlayService"
-            android:enabled="true"
-            android:exported="false"
-            android:stopWithTask="false" />
-
-        <service android:name=".NavigationGuidanceService" android:exported="false" android:foregroundServiceType="location" android:stopWithTask="true" />
-        <service
-            android:name=".LocationService"
-            android:enabled="true"
-            android:exported="false"
-            android:stopWithTask="false"
-            android:foregroundServiceType="location" />
-
-        <!-- Disabled to prevent a second polling/GPS/foreground loop. -->
-        <service
-            android:name=".BackgroundSyncService"
-            android:enabled="false"
-            android:exported="false"
-            android:stopWithTask="false" />
-
-        <receiver
-            android:name=".TransivaBootReceiver"
-            android:directBootAware="true"
-            android:enabled="true"
-            android:exported="true">
-            <intent-filter>
-                <action android:name="android.intent.action.BOOT_COMPLETED" />
-                <action android:name="android.intent.action.LOCKED_BOOT_COMPLETED" />
-                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
-                <action android:name="android.intent.action.QUICKBOOT_POWERON" />
-            </intent-filter>
-        </receiver>
 
         <provider
             android:name="androidx.core.content.FileProvider"
@@ -142,28 +128,283 @@
                 android:resource="@xml/chat_file_paths" />
         </provider>
 
-        <activity android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout"
+        <activity android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|uiMode"
             android:name=".SplashActivity"
             android:exported="true"
-            android:theme="@style/AppTheme">
+           
+        android:theme="@style/AppTheme">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
 
-        <activity android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout" android:name=".LoginActivity" android:exported="false" android:theme="@style/AppTheme" android:windowSoftInputMode="adjustResize" />
-        <activity android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout" android:name=".PinActivity" android:exported="false" android:theme="@style/AppTheme" />
-        <activity android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout" android:name=".ChangePinActivity" android:exported="false" android:theme="@style/AppTheme" android:windowSoftInputMode="adjustResize" />
-        <activity android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout" android:name=".DriverAccountSecurityActivity" android:exported="false" android:theme="@style/AppTheme" android:windowSoftInputMode="adjustResize" />
+        <activity android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|uiMode"
+            android:name=".PinActivity"
+            android:enableOnBackInvokedCallback="true"
+            android:exported="false"
+           
+            android:theme="@style/AppTheme" />
 
-        <activity android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout" android:name=".DriverEmergencyActivity" android:exported="false" />
-        <activity android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout" android:name=".DriverLocationActivity" android:exported="false" android:theme="@style/AppTheme" />
-        <activity android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout" android:name=".DriverDashboardActivity" android:exported="false" android:theme="@style/AppTheme" />
-        <activity android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout" android:name=".DriverMenuActivity" android:exported="false" android:theme="@style/AppTheme" />
-        <activity android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout" android:name=".DriverSettingsActivity" android:exported="false" android:theme="@style/AppTheme" />
-        <activity android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout" android:name=".DriverTripActivity" android:exported="false" android:theme="@style/AppTheme" />
-        <activity android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout" android:name=".DriverTripDetailsActivity" android:exported="false" android:theme="@style/AppTheme" />
+        <activity android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|uiMode"
+            android:name=".ChangePinActivity"
+            android:exported="false"
+           
+            android:theme="@style/AppTheme"
+            android:windowSoftInputMode="adjustResize" />
+
+        <activity android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|uiMode"
+            android:name=".LoginActivity"
+            android:enableOnBackInvokedCallback="true"
+            android:exported="false"
+           
+            android:theme="@style/AppTheme"
+            android:windowSoftInputMode="adjustResize" />
+
+        <activity android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|uiMode"
+            android:name=".RegisterActivity"
+            android:enableOnBackInvokedCallback="true"
+            android:exported="false"
+           
+            android:theme="@style/AppTheme"
+            android:windowSoftInputMode="adjustResize" />
+
+
+        <activity android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|uiMode" android:name=".SafetyCenterActivity" android:exported="false" android:theme="@style/AppTheme" />
+        <activity android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|uiMode" android:name=".SmartReorderActivity" android:exported="false" android:theme="@style/AppTheme" />
+        <activity android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|uiMode" android:name=".LiveOrderCenterActivity" android:exported="false" android:theme="@style/AppTheme" />
+        <activity android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|uiMode" android:name=".AllServicesActivity" android:exported="false" android:theme="@style/AppTheme" />
+        <activity android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|uiMode" android:name=".CustomerLoyaltyActivity" android:exported="false" android:theme="@style/AppTheme" />
+        <activity android:name=".CustomerReferralLinkActivity" android:exported="true" android:launchMode="singleTop" android:theme="@style/AppTheme">
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="https" android:host="transiva.my.id" android:path="/referral.php" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="transiva" android:host="referral" />
+            </intent-filter>
+        </activity>
+        <activity android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|uiMode" android:name=".CustomerReferralActivity" android:exported="false" android:theme="@style/AppTheme" />
+
+        <activity android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|uiMode"
+            android:name=".CustomerDashboardActivity"
+            android:exported="false"
+           
+            android:theme="@style/AppTheme" />
+
+
+        <activity android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|uiMode"
+            android:name=".UpdateDownloadActivity"
+            android:enableOnBackInvokedCallback="true"
+            android:exported="false"
+           
+            android:theme="@style/AppTheme" />
+        <activity android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|uiMode"
+            android:name=".FavoritePlacesActivity"
+            android:exported="false"
+           
+            android:theme="@style/AppTheme" />
+
+        <activity android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|uiMode"
+            android:name=".CustomerSettingsActivity"
+            android:exported="false"
+           
+            android:theme="@style/AppTheme" />
+
+        <activity android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|uiMode" android:name=".CustomerSupportActivity" android:exported="false" />
+        <activity android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|uiMode"
+            android:name=".CustomerNotificationActivity"
+            android:exported="false"
+           
+            android:theme="@style/AppTheme" />
+
+        <activity android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|uiMode"
+            android:name=".CustomerChatActivity"
+            android:exported="false"
+           
+            android:theme="@style/AppTheme"
+            android:windowSoftInputMode="adjustResize" />
+
+        <activity android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|uiMode"
+            android:name=".CustomerTopUpActivity"
+            android:exported="false"
+           
+            android:theme="@style/AppTheme" />
+
+        <activity android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|uiMode"
+            android:name=".ProfileActivity"
+            android:exported="false"
+           
+            android:theme="@style/AppTheme"
+            android:windowSoftInputMode="adjustResize" />
+
+
+        <activity android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|uiMode"
+            android:name=".SharedLocationActivity"
+            android:exported="true"
+           
+            android:theme="@style/AppTheme">
+
+            <!-- Tautan lokasi yang diketuk dari WhatsApp/Google Maps -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="geo" />
+            </intent-filter>
+
+            <intent-filter android:autoVerify="false">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="https" android:host="maps.google.com" />
+                <data android:scheme="https" android:host="www.google.com" android:pathPrefix="/maps" />
+                <data android:scheme="https" android:host="google.com" android:pathPrefix="/maps" />
+                <data android:scheme="https" android:host="maps.app.goo.gl" />
+                <data android:scheme="https" android:host="goo.gl" android:pathPrefix="/maps" />
+            </intent-filter>
+
+            <!-- Saat lokasi/link dibagikan melalui menu Share -->
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/plain" />
+            </intent-filter>
+        </activity>
+
+        <activity android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|uiMode" android:name=".TransShopProductActivity" android:exported="false" />
+        <activity android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|uiMode" android:name=".TransShopStoreActivity" android:exported="false" android:theme="@style/AppTheme" />
+        <activity android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|uiMode" android:name=".TransShopCatalogActivity" android:exported="false" android:theme="@style/AppTheme" />
+        <activity android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|uiMode" android:name=".TransShopLegacyActivity" android:exported="false" android:theme="@style/AppTheme" />
+        <activity android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|uiMode" android:name=".TransShopActivity" android:exported="false" android:theme="@style/AppTheme" />
+
+        <activity android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|uiMode"
+            android:name=".TransRideActivity"
+            android:enableOnBackInvokedCallback="true"
+            android:exported="false"
+           
+            android:theme="@style/AppTheme"
+            android:windowSoftInputMode="adjustResize" />
+
+        <activity android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|uiMode"
+            android:name=".PassengerCarActivity"
+            android:enableOnBackInvokedCallback="true"
+            android:exported="false"
+           
+            android:theme="@style/AppTheme"
+            android:windowSoftInputMode="adjustResize" />
+
+        <activity android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|uiMode|fontScale"
+            android:name=".TransFoodActivity"
+            android:enableOnBackInvokedCallback="true"
+            android:exported="false"
+           
+            android:theme="@style/AppTheme" />
+
+        <activity android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|uiMode"
+            android:name=".TranstourActivity"
+            android:enableOnBackInvokedCallback="true"
+           
+            android:exported="false"
+            android:theme="@style/AppTheme" />
+
+        <activity android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|uiMode"
+            android:name=".CustomerHistoryActivity"
+           
+            android:exported="false"
+            android:theme="@style/AppTheme" />
+
+        <activity android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|uiMode"
+            android:name=".SearchDriverActivity"
+            android:exported="false"
+           
+            android:theme="@style/AppTheme" />
+
+        <activity android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|uiMode"
+            android:name=".CustomerOrderDetailActivity"
+           
+            android:exported="false" />
+
+        <activity android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|uiMode"
+            android:name=".CustomerTripActivity"
+            android:enableOnBackInvokedCallback="true"
+            android:exported="true"
+           
+            android:theme="@style/AppTheme">
+
+            <!-- Deep link perjalanan live Transiva -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="transiva" android:host="trip" />
+            </intent-filter>
+
+            <!-- Link web dibagikan melalui WhatsApp; dapat langsung diarahkan ke aplikasi. -->
+            <intent-filter android:autoVerify="false">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data
+                    android:scheme="https"
+                    android:host="transiva.my.id"
+                    android:pathPrefix="/share_trip.php" />
+            </intent-filter>
+        </activity>
+
+        <activity android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|uiMode"
+            android:name=".CustomerLiveDriverActivity"
+            android:exported="false"
+           
+            android:theme="@style/AppTheme" />
+
+
+        <activity
+            android:name=".TransSendContactPointActivity"
+            android:exported="false"
+            android:theme="@style/AppTheme" />
+
+        <activity
+            android:name=".TransSendCourierDirectoryActivity"
+            android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|uiMode"
+            android:exported="false"
+            android:theme="@style/AppTheme" />
+
+        <activity android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|uiMode"
+            android:name=".TransPickupActivity"
+            android:enableOnBackInvokedCallback="true"
+            android:exported="false"
+           
+            android:theme="@style/AppTheme"
+            android:windowSoftInputMode="adjustResize" />
+
+        <activity android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|uiMode"
+            android:name=".RecommendationDetailActivity"
+            android:exported="false"
+           
+            android:theme="@style/AppTheme"
+            android:windowSoftInputMode="adjustResize" />
+
+        <activity android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|uiMode"
+            android:name=".RepeatRideOrderActivity"
+            android:exported="false"
+           
+            android:theme="@style/AppTheme"
+            android:windowSoftInputMode="adjustResize" />
+
+        <activity android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|uiMode"
+            android:name=".RepeatFoodOrderActivity"
+            android:exported="false"
+           
+            android:theme="@style/AppTheme"
+            android:windowSoftInputMode="adjustResize" />
+
+        <receiver android:name=".IncomingCallActionReceiver" android:exported="false" />
         <service android:name=".IncomingCallRingingService" android:exported="false" android:foregroundServiceType="shortService" android:stopWithTask="false" />
         <service android:name=".WebRtcCallForegroundService" android:exported="false" android:foregroundServiceType="microphone|camera" android:stopWithTask="false" />
         <activity
@@ -179,30 +420,35 @@
             android:turnScreenOn="true"
             android:configChanges="density|fontScale|keyboard|keyboardHidden|orientation|screenLayout|screenSize|smallestScreenSize|uiMode"
             android:theme="@style/AppTheme" />
-        <activity android:name=".DriverTransSendContactsActivity" android:exported="false" android:theme="@style/AppTheme" />
-        <activity android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout" android:name=".DriverChatRoomActivity" android:exported="false" android:theme="@style/AppTheme" android:windowSoftInputMode="adjustResize" />
-        <activity android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout" android:name=".DriverGlobalChatActivity" android:exported="false" android:theme="@style/AppTheme" android:windowSoftInputMode="adjustResize" />
-        <activity android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout" android:name=".DriverMerchantChatActivity" android:exported="false" android:theme="@style/AppTheme" android:windowSoftInputMode="adjustResize" />
-        <activity
-            android:name=".DriverNavigationActivity"
+        <activity android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|uiMode"
+            android:name=".CustomerChatRoomActivity"
             android:exported="false"
-            android:supportsPictureInPicture="true"
-            android:configChanges="density|fontScale|keyboardHidden|orientation|screenLayout|screenSize|smallestScreenSize|uiMode"
+           
+            android:theme="@style/AppTheme"
+            android:windowSoftInputMode="adjustResize" />
+        <activity android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|uiMode"
+            android:name=".ChatCameraActivity"
+            android:exported="false"
+           
             android:theme="@style/AppTheme" />
-        <activity android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout" android:name=".DriverChatActivity" android:exported="false" android:theme="@style/AppTheme" />
-        <activity android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout" android:name=".DriverActivityHistoryActivity" android:exported="false" android:theme="@style/AppTheme" />
-        <activity android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout" android:name=".DriverTransferActivity" android:exported="false" android:theme="@style/AppTheme" />
-        <activity android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout" android:name=".DriverEarningsActivity" android:exported="false" android:theme="@style/AppTheme" />
-        <activity android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout" android:name=".DriverBpjsActivity" android:exported="false" android:theme="@style/AppTheme" />
-        <activity android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout" android:name=".DriverProfileActivity" android:exported="false" android:theme="@style/AppTheme" />
-        <activity android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout" android:name=".DriverReceiptHistoryActivity" android:exported="false" android:theme="@style/AppTheme" />
-        <activity android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout" android:name=".DriverReceiptDetailActivity" android:exported="false" android:theme="@style/AppTheme" />
-        <activity android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout" android:name=".DriverTopUpActivity" android:exported="false" android:theme="@style/AppTheme" />
-        <activity android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout" android:name=".DriverMidtransPaymentActivity" android:exported="false" android:theme="@style/AppTheme" />
-        <activity android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout" android:name=".DriverDuitkuPaymentActivity" android:exported="false" android:theme="@style/AppTheme" />
-        <activity android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout" android:name=".DriverWithdrawActivity" android:exported="false" android:theme="@style/AppTheme" />
+        <activity android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|uiMode"
+            android:name=".CustomerBalanceHistoryActivity"
+            android:exported="false"
+           
+            android:theme="@style/AppTheme"
+            android:windowSoftInputMode="adjustResize" />
 
-        <activity android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout" android:name=".ChatCameraActivity" android:exported="false" android:theme="@style/AppTheme" />
 
-    </application>
+    
+        <activity android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|uiMode"
+            android:name=".CustomerArrivalAlertActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:showWhenLocked="true"
+            android:turnScreenOn="true"
+            android:theme="@style/AppTheme" />
+            <activity android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|uiMode" android:name=".SplitBillInviteActivity" android:exported="false" />
+            <activity android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|uiMode" android:name=".SplitBillSessionActivity" android:exported="false" />
+</application>
+
 </manifest>

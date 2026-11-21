@@ -443,6 +443,9 @@ class CustomerDashboardActivityScreenCore extends CustomerAdaptiveActivity
         // Header sudah memuat identitas, saldo dan royalti dalam satu card responsif.
         buildSmartDestinationSection();
         buildServiceSection();
+        LinearLayout.LayoutParams courierCard = new LinearLayout.LayoutParams(-1, -2);
+        courierCard.setMargins(0, dp(8), 0, dp(12));
+        content.addView(TransSendCourierDirectoryActivity.homeCard(this), courierCard);
         buildOrderSection();
         // Fitur lanjutan dipindahkan ke "Lihat Semua" agar Dashboard tetap sederhana.
 

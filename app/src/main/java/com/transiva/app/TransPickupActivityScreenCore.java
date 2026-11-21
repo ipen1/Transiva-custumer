@@ -63,6 +63,7 @@ class TransPickupActivityScreenCore extends CustomerAdaptiveFragmentActivity {
     protected ProgressBar progressBar;
     protected TransivaGoogleMapView mapView;
     protected TextView mapModeText;
+    private Button chooseCourier;
     protected Button pickupMapBtn, deliveryMapBtn, confirmPointBtn, gpsMapBtn;
     protected boolean mapReady = false;
     protected String mapSelectionMode = "pickup";
@@ -223,6 +224,9 @@ class TransPickupActivityScreenCore extends CustomerAdaptiveFragmentActivity {
         mapModeText = text("", 11, "#536B83", true);
         mapModeText.setGravity(Gravity.END);
         titleRow.addView(mapModeText, new LinearLayout.LayoutParams(-2, -2));
+        chooseCourier = outlineButton("Pilih Kurir");
+        chooseCourier.setOnClickListener(v -> TransSendCourierDirectoryActivity.open(this));
+        header.addView(chooseCourier, new LinearLayout.LayoutParams(-1, dp(48)));
         LinearLayout pointRow = row();
         header.addView(pointRow, new LinearLayout.LayoutParams(-1, -2));
         pickupMapBtn = choiceButton("", false);
@@ -271,6 +275,7 @@ class TransPickupActivityScreenCore extends CustomerAdaptiveFragmentActivity {
         boolean checkout = isCheckout();
         boolean pickup = "pickup".equals(mapSelectionMode);
         mapModeText.setText(checkout ? "03 · Checkout" : pickup ? "01 · Jemput" : "02 · Tujuan");
+        chooseCourier.setVisibility(pickup ? View.VISIBLE : View.GONE);
         setPointLabel(pickupMapBtn, "Jemput", pickupAddress, !checkout && pickup);
         setPointLabel(deliveryMapBtn, "Tujuan", deliveryAddress, !checkout && !pickup);
         confirmPointBtn.setText(pickup ? "Tetapkan titik jemput" : "Tetapkan titik tujuan");

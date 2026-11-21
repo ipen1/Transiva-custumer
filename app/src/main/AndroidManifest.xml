@@ -365,6 +365,11 @@
 
 
         <activity
+            android:name=".TivaSimpelActivity"
+            android:exported="false"
+            android:theme="@style/AppTheme" />
+
+        <activity
             android:name=".TransSendContactPointActivity"
             android:exported="false"
             android:theme="@style/AppTheme" />

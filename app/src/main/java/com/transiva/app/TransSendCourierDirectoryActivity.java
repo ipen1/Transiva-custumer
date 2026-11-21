@@ -344,12 +344,12 @@ public final class TransSendCourierDirectoryActivity extends CustomerAdaptiveAct
         details.addView(label("Terakhir menerima: " + ago, 12, "#315678", false));
         Button contact = new Button(this);
         contact.setAllCaps(false);
-        contact.setText("Hubungi");
+        contact.setText("Pilih Driver");
         contact.setTextColor(Color.WHITE);
         contact.setMinHeight(dp(46));
         contact.setPadding(dp(14), dp(8), dp(14), dp(8));
         contact.setBackground(CustomerUiPrimitives.gradient("#0759BF", "#087AF2", dp(13)));
-        contact.setOnClickListener(v -> confirmContact(courier));
+        contact.setOnClickListener(v -> selectDriver(courier));
         LinearLayout.LayoutParams actionSpace = new LinearLayout.LayoutParams(-2, -2);
         actionSpace.topMargin = dp(6);
         details.addView(contact, actionSpace);
@@ -360,17 +360,13 @@ public final class TransSendCourierDirectoryActivity extends CustomerAdaptiveAct
         results.addView(row, spacing);
     }
 
-    private void confirmContact(JSONObject courier) {
-        if (directoryLocation == null || contactBusy) return;
-        new TransivaAlertDialogBuilder(this).setTitle("Hubungi " + courier.optString("name"))
-                .setMessage("Kurir harus menyetujui permintaan sebelum chat dan panggilan dapat digunakan.")
-                .setNegativeButton("Kembali", null)
-                .setPositiveButton("Kirim Permintaan", (d, w) -> {
-                    Location origin = directoryLocation;
-                    runContactAction(() -> TransSendContactClient.action("invite", "")
-                            .put("driver_id", courier.optInt("id")).put("service","trans_simpel")
-                            .put("lat", origin.getLatitude()).put("lng", origin.getLongitude()), true);
-                }).show();
+    private void selectDriver(JSONObject courier) {
+        if (directoryLocation == null) return;
+        startActivity(new Intent(this, TivaSimpelActivity.class)
+                .putExtra("driver_id", courier.optInt("id"))
+                .putExtra("driver_name", courier.optString("name"))
+                .putExtra("lat", directoryLocation.getLatitude())
+                .putExtra("lng", directoryLocation.getLongitude()));
     }
 
     private void showContactActions() {

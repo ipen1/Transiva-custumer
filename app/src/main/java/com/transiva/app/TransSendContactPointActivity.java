@@ -9,6 +9,7 @@ import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.widget.Button;
+import android.widget.Toast;
 import android.widget.LinearLayout;
 
 import com.google.android.gms.maps.model.LatLng;
@@ -23,6 +24,8 @@ public final class TransSendContactPointActivity extends CustomerAdaptiveActivit
     private Button usePoint;
     private boolean moved;
     private boolean resolving;
+    private boolean locating;
+    private static final int LOCATION_PERMISSION=724;
 
     @Override protected void onCreate(Bundle saved) {
         super.onCreate(saved);
@@ -37,6 +40,13 @@ public final class TransSendContactPointActivity extends CustomerAdaptiveActivit
         usePoint.setText("Pakai Titik Ini");
         usePoint.setEnabled(false);
         usePoint.setOnClickListener(v -> confirm());
+        if (getIntent().getBooleanExtra("tiva_location",false)) {
+            Button current=new Button(this);
+            current.setAllCaps(false);
+            current.setText("Ambil lokasi");
+            current.setOnClickListener(v->useCurrentPosition(true));
+            page.addView(current);
+        }
         page.addView(usePoint);
         setContentView(page);
         CustomerAppSettings.apply(this);
@@ -58,24 +68,41 @@ public final class TransSendContactPointActivity extends CustomerAdaptiveActivit
                 map.showCenterPin(true);
                 map.hideCenterAction();
                 usePoint.setEnabled(true);
-                if (!valid(lat, lng)) useCurrentPosition();
+                if (!valid(lat, lng)) useCurrentPosition(false);
             }
             public void onCenterChanged(double mapLat, double mapLng) {}
         });
     }
 
-    private void useCurrentPosition() {
+    private void useCurrentPosition(boolean explicit) {
+        if (resolving || locating) return;
         if (checkSelfPermission(Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED
-                && checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) return;
+                && checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+            if (explicit) requestPermissions(new String[]{Manifest.permission.ACCESS_COARSE_LOCATION}, LOCATION_PERMISSION);
+            return;
+        }
+        locating=true;
+        if (explicit) moved=false;
         try {
             TransivaFreshLocation.request(this, new TransivaFreshLocation.Callback() {
                 public void onLocation(android.location.Location location, boolean fresh) {
-                    if (!moved && !isFinishing() && !isDestroyed())
+                    locating=false;
+                    if (!moved && !resolving && !isFinishing() && !isDestroyed())
                         map.centerOnInitialLocation(location.getLatitude(), location.getLongitude(), 17f);
                 }
-                public void onFailure(String message) {}
+                public void onFailure(String message) {
+                    locating=false;
+                    if (explicit && !isFinishing() && !isDestroyed())
+                        Toast.makeText(TransSendContactPointActivity.this,"Lokasi belum ditemukan. Geser peta untuk memilih titik.",Toast.LENGTH_SHORT).show();
+                }
             });
-        } catch (SecurityException ignored) { }
+        } catch (SecurityException ignored) { locating=false; }
+    }
+
+    @Override public void onRequestPermissionsResult(int request,String[] permissions,int[] results) {
+        super.onRequestPermissionsResult(request,permissions,results);
+        if (request==LOCATION_PERMISSION && results.length>0 && results[0]==PackageManager.PERMISSION_GRANTED)
+            useCurrentPosition(true);
     }
 
     private void confirm() {

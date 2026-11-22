@@ -130,7 +130,7 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
     protected String serviceName() { return isCarService() ? "Transcar" : "TransRide"; }
     protected String offerService() { return isCarService() ? "TransCar" : "TransRide"; }
     protected String driverType() { return isCarService() ? "car" : "bike"; }
-    protected String serviceTitle() { return isCarService() ? "Transcar" : "TransRide"; }
+    protected String serviceTitle() { return isCarService() ? "TransCar" : "TransRide"; }
     protected String orderButtonText() { return isCarService() ? "🚘 Order Mobil" : "🏍️ Order Motor"; }
     protected String orderNoun() { return isCarService() ? "mobil" : "motor"; }
 
@@ -228,6 +228,8 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
     private boolean checkoutRouteExpanded, checkoutRouteVisible;
     private ScrollView routeEditor;
     private LinearLayout collapsedRoute;
+    private LinearLayout pickPointBar;
+    private Button pickPointAction;
     private TextView routePickup, routeDestination;
     private Button editRouteButton, stopChip, fitRouteButton;
     private Runnable checkoutOptions;
@@ -252,7 +254,7 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
         initializePlacesAutocomplete();
         splitBillManager = new SplitBillManager(this, (key,size,ready) -> { ecosystemFeatures.groupSize=size; ecosystemFeatures.splitFareMode=size>1?"custom":"none"; if(groupRideBtn!=null) groupRideBtn.setText(size>1 ? (ready?"✅ Split "+size:"⏳ Split "+size) : "💳 Split Pay"); });
         try {
-            CustomerWindowPolicy.status(getWindow(), Color.parseColor("#071426"));
+            CustomerWindowPolicy.status(getWindow(), Color.parseColor("#072450"));
             CustomerWindowPolicy.navigation(getWindow(), Color.parseColor("#071426"));
         } catch (Exception ignored) {}
 
@@ -371,21 +373,24 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
          * ========================= */
         LinearLayout topCard = new LinearLayout(this);
         topCard.setOrientation(LinearLayout.VERTICAL);
-        topCard.setPadding(dp(10), dp(3), dp(10), dp(7));
+        topCard.setPadding(0, 0, 0, dp(6));
         topCard.setBackgroundColor(Color.WHITE);
         root.addView(topCard, new LinearLayout.LayoutParams(-1, -2));
 
         LinearLayout titleRow = new LinearLayout(this);
         titleRow.setGravity(Gravity.CENTER_VERTICAL);
+        titleRow.setBackground(new GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT,
+                new int[]{0xFF072450,0xFF075FE3}));
+        titleRow.setPadding(0,dp(2),dp(8),dp(2));
         topCard.addView(titleRow, new LinearLayout.LayoutParams(-1, -2));
-        backBtn = smallButton("‹", "#FFFFFF", "#122D50", "#FFFFFF");
+        backBtn = smallButton("‹", "#00000000", "#FFFFFF", "#00000000");
         backBtn.setTextSize(27);
         backBtn.setMinWidth(0);
         backBtn.setPadding(0, 0, 0, 0);
         backBtn.setElevation(0);
         titleRow.addView(backBtn, new LinearLayout.LayoutParams(dp(48), dp(48)));
 
-        TextView title = text(serviceTitle(), compactScreen ? 19 : 21, "#122D50", true);
+        TextView title = text(serviceTitle(), compactScreen ? 19 : 21, "#FFFFFF", true);
         titleRow.addView(title, new LinearLayout.LayoutParams(0, -2, 1));
         editRouteButton = smallButton("Ubah rute", "#FFFFFF", "#075BDD", "#A9CCFF");
         compactBookingButton(editRouteButton);
@@ -403,7 +408,7 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
         collapsedRoute = new LinearLayout(this);
         collapsedRoute.setGravity(Gravity.CENTER_VERTICAL);
         collapsedRoute.setPadding(dp(9), dp(4), dp(6), dp(4));
-        collapsedRoute.setBackground(roundStroke("#FFFFFF", "#D7E6F8", dp(14), 1));
+        collapsedRoute.setBackground(roundStroke("#FFFDFC", "#D7E6F8", dp(14), 1));
         LinearLayout routeLabels = new LinearLayout(this);
         routeLabels.setOrientation(LinearLayout.VERTICAL);
         routePickup = checkoutEndpoint("Jemput", "#15803D", "pickup");
@@ -430,6 +435,8 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
             }
         };
         routeEditor.setFillViewport(false);
+        routeEditor.setPadding(dp(10),dp(5),dp(10),0);
+        routeEditor.setClipToPadding(false);
         topCard.addView(routeEditor, new LinearLayout.LayoutParams(-1, -2));
         LinearLayout pointRow = new LinearLayout(this);
         pointFields = pointRow;
@@ -438,8 +445,12 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
 
         pickupBtn = compactPointButton("●  Jemput", "Lokasi Anda • ketuk untuk ubah   ›", "#16A34A");
         deliveryBtn = compactPointButton("●  Mau ke mana?", "Cari tujuan / tempel link Maps   ›", "#EF4444");
-        pointRow.addView(pickupBtn, new LinearLayout.LayoutParams(-1, dp(44)));
-        LinearLayout.LayoutParams deliveryLp = new LinearLayout.LayoutParams(-1, dp(44));
+        pickupBtn.setBackground(roundStroke("#F0FAF5","#D4EBDD",dp(13),1));
+        deliveryBtn.setBackground(roundStroke("#FFF2EE","#F6DBD4",dp(13),1));
+        pickupBtn.setMinimumHeight(dp(48));
+        deliveryBtn.setMinimumHeight(dp(48));
+        pointRow.addView(pickupBtn, new LinearLayout.LayoutParams(-1, -2));
+        LinearLayout.LayoutParams deliveryLp = new LinearLayout.LayoutParams(-1, -2);
         deliveryLp.setMargins(0, dp(4), 0, 0);
         waypointHeaderRows = new LinearLayout(this);
         waypointHeaderRows.setOrientation(LinearLayout.VERTICAL);
@@ -447,13 +458,13 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
         pointRow.addView(deliveryBtn, deliveryLp);
         pointUtilityRow = new LinearLayout(this);
         pointUtilityRow.setGravity(Gravity.CENTER_VERTICAL);
-        pickupGpsBadge = text("GPS sedang mencari…", 10, "#64748B", false);
+        pickupGpsBadge = text("GPS sedang mencari…", 11, "#875217", false);
         pickupGpsBadge.setSingleLine(true);
         pickupGpsBadge.setEllipsize(android.text.TextUtils.TruncateAt.END);
         pickupGpsBadge.setPadding(dp(4), 0, dp(4), 0);
         pickupGpsBadge.setOnClickListener(v -> showGpsPickupDialog());
         pointUtilityRow.addView(pickupGpsBadge, new LinearLayout.LayoutParams(0, dp(36), 1));
-        waypointHeaderAdd = smallButton("＋ Singgah", "#F0F7FF", "#0B7CFF", "#D7E6F8");
+        waypointHeaderAdd = smallButton("＋ Singgah", "#FFF7E8", "#95510C", "#EAC987");
         waypointHeaderAdd.setTextSize(10);
         waypointHeaderAdd.setMinHeight(0); waypointHeaderAdd.setMinimumHeight(0);
         waypointHeaderAdd.setPadding(dp(8), 0, dp(8), 0);
@@ -498,6 +509,7 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
         mapView.initialize(null, new TransivaGoogleMapView.Listener() {
             @Override public void onReady(double lat, double lng) {
                 mapReady = true;
+                if (pickPointAction != null) pickPointAction.setEnabled(!ordering);
                 centerLat = lat; centerLng = lng; pickLat = lat; pickLng = lng;
                 if (smartFavoriteIntent && validCoord(deliveryLat, deliveryLng) && mapView != null) {
                     mapView.setDelivery(deliveryLat, deliveryLng, deliveryAddress);
@@ -572,6 +584,7 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
             }
         });
 
+        mapView.useExternalPickerAction();
         mapView.setCenterActionListener(() -> {
             if (editingCheckoutPoint) {
                 confirmCheckoutPoint();
@@ -609,6 +622,16 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
         mapBox.addView(fitRouteButton, fitParams);
 
 
+        pickPointBar=new LinearLayout(this);
+        pickPointBar.setPadding(dp(12),dp(6),dp(12),dp(6));
+        pickPointBar.setBackground(roundStroke("#FFFFFF","#D7E6F8",dp(16),1));
+        pickPointAction=smallButton("Pilih lokasi ini","#075EE2","#FFFFFF","#075EE2");
+        pickPointAction.setTextSize(14);
+        pickPointAction.setMinimumHeight(dp(48));
+        pickPointAction.setOnClickListener(v->mapView.confirmPickerCenter());
+        pickPointBar.addView(pickPointAction,new LinearLayout.LayoutParams(-1,-2));
+        root.addView(pickPointBar,new LinearLayout.LayoutParams(-1,-2));
+
         /* =========================
          * DRAIV-STYLE BOTTOM CARD
          * ========================= */
@@ -640,22 +663,30 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
         stopPricingText = text("", 12, "#64748B", false);
         stopPricingText.setVisibility(View.GONE);
         LinearLayout quickRow = new LinearLayout(this);
-        quickRow.setGravity(Gravity.CENTER_VERTICAL);
+        quickRow.setOrientation(LinearLayout.VERTICAL);
+        LinearLayout quickTop=new LinearLayout(this);
+        LinearLayout quickBottom=new LinearLayout(this);
+        quickRow.addView(quickTop,new LinearLayout.LayoutParams(-1,-2));
+        quickRow.addView(quickBottom,new LinearLayout.LayoutParams(-1,-2));
         paymentChoiceBtn = checkoutAction(paymentButtonLabel());
         voucherChoiceBtn = checkoutAction("Voucher");
         Button fareDetails = checkoutAction("Rincian");
         fareDetails.setContentDescription("Lihat rincian biaya dan opsi perjalanan");
         fareDetails.setOnClickListener(v -> showFinalFareDetails());
-        quickRow.addView(paymentChoiceBtn, new LinearLayout.LayoutParams(0, -2, 1));
-        quickRow.addView(voucherChoiceBtn, new LinearLayout.LayoutParams(0, -2, 1));
-        quickRow.addView(fareDetails, new LinearLayout.LayoutParams(0, -2, 1));
 
         Button scheduleBtn = checkoutAction("Sekarang");
         scheduleBtn.setOnClickListener(v -> showScheduleDialog(scheduleBtn));
 
         noteChoiceBtn=checkoutAction(driverNoteDraft.isEmpty()?"Catatan":"Catatan ✓");
         noteChoiceBtn.setContentDescription("Catatan untuk driver");
-        quickRow.addView(noteChoiceBtn,new LinearLayout.LayoutParams(0,-2,1));
+        Button[] checkoutActions={paymentChoiceBtn,voucherChoiceBtn,fareDetails,noteChoiceBtn};
+        placeCheckoutActions(quickTop,quickBottom,checkoutActions,
+                getResources().getConfiguration().screenWidthDp<320 || getResources().getConfiguration().fontScale>1.25f);
+        quickRow.addOnLayoutChangeListener((v,l,t,r,b,ol,ot,or,ob)->{
+            boolean wrap=r-l<dp(296) || getResources().getConfiguration().fontScale>1.25f;
+            if ((quickBottom.getVisibility()==View.VISIBLE)!=wrap)
+                placeCheckoutActions(quickTop,quickBottom,checkoutActions,wrap);
+        });
         Button hematBtn = smallButton("Pakai poin", "#EAF4FF", "#0B7CFF", "#9DCAFF");
         hematBtn.setTextSize(11);
         hematBtn.setMinWidth(0); hematBtn.setMinimumWidth(0);
@@ -743,7 +774,7 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
         paymentSummaryText.setVisibility(View.GONE);
 
         // CTA wizard selalu berada di posisi yang sama pada bagian bawah kartu.
-        orderBtn = smallButton("LANJUT — PILIH TUJUAN", "#0B7CFF", "#FFFFFF", "#0B7CFF");
+        orderBtn = smallButton("LANJUT — PILIH TUJUAN", "#075EE2", "#FFFFFF", "#075EE2");
         orderBtn.setTextSize(14);
         orderBtn.setVisibility(View.GONE);
         orderBtn.setEnabled(false);
@@ -776,6 +807,18 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
         view.setFocusable(true);
         view.setOnClickListener(v -> onPointCardClicked(point));
         return view;
+    }
+
+    private void placeCheckoutActions(LinearLayout top,LinearLayout bottom,Button[] buttons,boolean wrap) {
+        top.removeAllViews();
+        bottom.removeAllViews();
+        for (int i=0;i<buttons.length;i++) {
+            LinearLayout row=wrap && i>=2?bottom:top;
+            LinearLayout.LayoutParams space=new LinearLayout.LayoutParams(0,-2,1);
+            space.setMargins(dp(2),dp(2),dp(2),0);
+            row.addView(buttons[i],space);
+        }
+        bottom.setVisibility(wrap?View.VISIBLE:View.GONE);
     }
 
     private Button checkoutAction(String label) {
@@ -3013,6 +3056,11 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
         if (checkoutRouteVisible != routeComplete) checkoutRouteExpanded = false;
         checkoutRouteVisible = routeComplete;
         if (bookingDetailsCard != null) bookingDetailsCard.setVisibility(routeComplete ? View.VISIBLE : View.GONE);
+        if (pickPointBar != null) {
+            pickPointBar.setVisibility(routeComplete || waypointDraft&&!selectingWaypoint ? View.GONE : View.VISIBLE);
+            pickPointAction.setEnabled(mapReady && !ordering);
+            pickPointAction.setText(selectingWaypoint?"Pilih lokasi singgah":"Pilih lokasi ini");
+        }
         renderCheckoutRoute();
         if (pickupBtn != null) pickupBtn.setContentDescription("Ubah titik jemput. " + pickupAddress);
         if (deliveryBtn != null) deliveryBtn.setContentDescription("Ubah titik tujuan. " + deliveryAddress);
@@ -3153,8 +3201,8 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
         orderBtn.setEnabled(ready);
         orderBtn.setAlpha(1f);
         if (wizardStepText != null) setWizardProgress(ready ? 2 : (locationReady() ? 1 : 0));
-        if (ready) orderBtn.setText(DuitkuSandboxCheckout.METHOD.equals(paymentMethod) ? "BAYAR QRIS"
-                : "PESAN " + serviceName().toUpperCase(Locale.US));
+        if (ready) orderBtn.setText(DuitkuSandboxCheckout.METHOD.equals(paymentMethod) ? "Bayar QRIS"
+                : "Pesan " + serviceTitle());
     }
 
     private void resetOrderButton() { ordering = false; setLoading(false); orderBtn.setEnabled(true); updateWizardState(); }

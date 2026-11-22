@@ -69,6 +69,7 @@ public final class TransivaGoogleMapView extends FrameLayout implements OnMapRea
     private View pinShadow;
     private boolean droppingPin;
     private final TextView centerAction;
+    private boolean externalPickerAction;
     private final TextView centerLocationCard;
     private final android.view.View focusShade;
     private final TextView networkBadge;
@@ -337,8 +338,17 @@ public final class TransivaGoogleMapView extends FrameLayout implements OnMapRea
             int n = Math.max(1, Math.min(2, sequence));
             centerAction.setText(actionLabel == null ? "TAMBAH STOP " + n : actionLabel);
             centerAction.setBackground(actionBackground("#F59E0B"));
-            centerAction.setVisibility(VISIBLE);
+            centerAction.setVisibility(externalPickerAction ? GONE : VISIBLE);
         }
+    }
+
+    void useExternalPickerAction() {
+        externalPickerAction=true;
+        hideCenterAction();
+    }
+
+    void confirmPickerCenter() {
+        if (pickerVisible && isReady()) chooseCenter();
     }
 
     private void chooseCenter() {
@@ -389,7 +399,7 @@ public final class TransivaGoogleMapView extends FrameLayout implements OnMapRea
             centerPin.setVisibility(show ? VISIBLE : GONE);
         }
         if (centerAction != null && !"order".equals(selectionMode)) {
-            centerAction.setVisibility(show ? VISIBLE : GONE);
+            centerAction.setVisibility(show && !externalPickerAction ? VISIBLE : GONE);
         }
         if (centerLocationCard != null) centerLocationCard.setVisibility(show ? VISIBLE : GONE);
         syncPickerMarkers();
@@ -411,7 +421,7 @@ public final class TransivaGoogleMapView extends FrameLayout implements OnMapRea
         if (centerAction != null) {
             centerAction.setText(text == null || text.trim().isEmpty() ? "PESAN SEKARANG" : text);
             centerAction.setBackground(actionBackground("#0B7CFF"));
-            centerAction.setVisibility(show ? VISIBLE : GONE);
+            centerAction.setVisibility(show && !externalPickerAction ? VISIBLE : GONE);
         }
     }
 

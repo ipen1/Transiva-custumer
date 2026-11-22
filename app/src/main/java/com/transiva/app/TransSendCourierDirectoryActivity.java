@@ -53,6 +53,10 @@ public final class TransSendCourierDirectoryActivity extends CustomerAdaptiveAct
     private Location directoryLocation;
     private LinearLayout activeList;
     private String activitySnapshot;
+    private LinearLayout syncStatus;
+    private boolean readingActivity;
+    private int activityMutation;
+    private String followingActivity;
     private String followContact = "";
     private boolean visible;
     private boolean contactBusy;
@@ -183,6 +187,18 @@ public final class TransSendCourierDirectoryActivity extends CustomerAdaptiveAct
         activeList.setOrientation(LinearLayout.VERTICAL);
         activeList.setPadding(dp(16),dp(8),dp(16),0);
         activeList.setVisibility(View.GONE);
+        syncStatus=new LinearLayout(this);
+        syncStatus.setGravity(Gravity.CENTER_VERTICAL);
+        syncStatus.setPadding(dp(16),0,dp(16),0);
+        syncStatus.setVisibility(View.GONE);
+        syncStatus.addView(label("Belum tersinkron",13,"#805009",true),new LinearLayout.LayoutParams(0,-2,1));
+        Button retry=new Button(this);
+        retry.setAllCaps(false);
+        retry.setText("Coba lagi");
+        retry.setMinHeight(dp(48));
+        retry.setOnClickListener(v->refreshContact());
+        syncStatus.addView(retry,new LinearLayout.LayoutParams(-2,-2));
+        list.addView(syncStatus,new LinearLayout.LayoutParams(-1,-2));
         list.addView(activeList,new LinearLayout.LayoutParams(-1,-2));
         list.addView(results, new LinearLayout.LayoutParams(-1,-2));
         nextPage = new Button(this);
@@ -386,6 +402,7 @@ public final class TransSendCourierDirectoryActivity extends CustomerAdaptiveAct
             return;
         }
         contactBusy = true;
+        activityMutation++;
         network.execute(() -> {
             try {
                 JSONObject entry = TransSendContactClient.contact(this, payload.body()).getJSONObject("contact");
@@ -403,33 +420,55 @@ public final class TransSendCourierDirectoryActivity extends CustomerAdaptiveAct
     }
 
     private void refreshContact() {
+        if (!visible) return;
+        fetchFollowedContact();
+        if (!readingActivity && !contactBusy) {
+            readingActivity=true;
+            int mutation=activityMutation;
+            network.execute(()->{
+                try {
+                    JSONObject response=TransSendContactClient.contact(this,TransSendContactClient.action("active_list",""));
+                    network.post(main,()->finishActivityRead(response,mutation));
+                } catch (Exception error) {
+                    network.post(main,()->finishActivityRead(null,mutation));
+                }
+            },()->network.post(main,()->finishActivityRead(null,mutation)));
+        }
+        scheduleContactPoll();
+    }
+
+    private void finishActivityRead(JSONObject response,int mutation) {
+        readingActivity=false;
         if (!visible || contactBusy) return;
-        contactBusy = true;
-        String id = followContact;
-        network.execute(() -> {
+        if (mutation!=activityMutation) { refreshContact(); return; }
+        boolean synced=response!=null && response.optBoolean("success")
+                && response.optJSONArray("contacts")!=null && response.optJSONArray("orders")!=null;
+        syncStatus.setVisibility(synced?View.GONE:View.VISIBLE);
+        if (synced) renderActivity(response);
+    }
+
+    private void fetchFollowedContact() {
+        String id=followContact;
+        if (id.isEmpty() || id.equals(followingActivity) || contactBusy) return;
+        followingActivity=id;
+        network.execute(()->{
             try {
-                JSONObject response=TransSendContactClient.contact(this,TransSendContactClient.action("active_list",""));
-                JSONObject followed=id.isEmpty()?null:TransSendContactClient.contact(this,
+                JSONObject entry=TransSendContactClient.contact(this,
                         TransSendContactClient.action("get",id)).optJSONObject("contact");
-                network.post(main, () -> {
-                    contactBusy=false;
-                    if (visible) {
-                        renderActivity(response);
-                        if (id.equals(followContact)) presentFollowedContact(followed);
-                    }
-                    scheduleContactPoll();
-                });
+                network.post(main,()->finishFollowedRead(id,entry,false));
             } catch (Exception error) {
-                network.post(main, () -> {
-                    contactBusy = false;
-                    if (error instanceof TransivaHttpRepository.ServerResponseException) {
-                        int statusCode = ((TransivaHttpRepository.ServerResponseException) error).status;
-                        if (statusCode == 404) followContact = "";
-                    }
-                    scheduleContactPoll();
-                });
+                boolean missing=error instanceof TransivaHttpRepository.ServerResponseException
+                        && ((TransivaHttpRepository.ServerResponseException)error).status==404;
+                network.post(main,()->finishFollowedRead(id,null,missing));
             }
-        }, () -> network.post(main, () -> { contactBusy = false; scheduleContactPoll(); }));
+        },()->network.post(main,()->finishFollowedRead(id,null,false)));
+    }
+
+    private void finishFollowedRead(String id,JSONObject entry,boolean missing) {
+        if (id.equals(followingActivity)) followingActivity=null;
+        if (!visible || contactBusy || !id.equals(followContact)) return;
+        if (missing) followContact="";
+        else presentFollowedContact(entry);
     }
 
     private void presentFollowedContact(JSONObject entry) {
@@ -477,10 +516,20 @@ public final class TransSendCourierDirectoryActivity extends CustomerAdaptiveAct
             LinearLayout row=activityCard(service+" · #"+order.optString("order_id"),state);
             addActivityAction(row,"Lacak",false,()->openActiveOrder(order));
             JSONObject chat=order.optJSONObject("chat");
-            if (chat!=null) addActivityAction(row,"Chat",false,()->TransSendContactClient.openChat(this,chat));
+            if (chat!=null) addActivityAction(row,"Chat",false,()->{
+                if (chat.has("source")) TransSendContactClient.openAssignedOrderChat(this,chat);
+                else TransSendContactClient.openChat(this,chat);
+            });
             if (order.optBoolean("can_cancel")) {
                 boolean ask=order.optBoolean("needs_merchant");
                 addActivityAction(row,ask?"Ajukan batal":"Batalkan",true,()->confirmOrderCancellation(order,ask));
+            }
+            JSONObject previousChat=order.optJSONObject("previous_chat");
+            if (previousChat!=null) {
+                LinearLayout historyRow=new LinearLayout(this);
+                ((LinearLayout)row.getParent()).addView(historyRow);
+                addActivityAction(historyRow,"Riwayat chat driver sebelumnya",false,
+                        ()->TransSendContactClient.openChatHistory(this,previousChat));
             }
         }
     }
@@ -542,6 +591,7 @@ public final class TransSendCourierDirectoryActivity extends CustomerAdaptiveAct
             return;
         }
         contactBusy=true;
+        activityMutation++;
         network.execute(()->{
             try {
                 JSONObject data=new JSONObject().put("order_id",order.optString("order_id"))

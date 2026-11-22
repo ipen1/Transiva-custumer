@@ -19,8 +19,27 @@ final class TransSendContactClient {
         return new JSONObject().put("action", action).put("contact_id", id);
     }
 
-    static void openChat(Activity activity, JSONObject contact) {
+    static void openAssignedOrderChat(Activity activity, JSONObject chat) {
         activity.startActivity(new Intent(activity, CustomerChatRoomActivity.class)
+                .putExtra("assigned_order_chat", true)
+                .putExtra("order_id", chat.optString("order_id"))
+                .putExtra("order_source", chat.optString("source"))
+                .putExtra("order_type", chat.optString("service"))
+                .putExtra("order_status", chat.optString("status")));
+    }
+
+    static void openChatHistory(Activity activity, JSONObject contact) {
+        activity.startActivity(contactIntent(activity, contact)
+                .putExtra("order_status", "expired")
+                .putExtra("read_only", true));
+    }
+
+    static void openChat(Activity activity, JSONObject contact) {
+        activity.startActivity(contactIntent(activity, contact));
+    }
+
+    private static Intent contactIntent(Activity activity, JSONObject contact) {
+        return new Intent(activity, CustomerChatRoomActivity.class)
                 .putExtra(EXTRA_CONTACT, contact.optString("id"))
                 .putExtra("room_id", contact.optString("room_id"))
                 .putExtra("order_id", contact.optString("order_id"))
@@ -28,7 +47,7 @@ final class TransSendContactClient {
                 .putExtra("order_type", "trans_simpel".equals(contact.optString("service")) ? "Trans Simpel" : "TransSend")
                 .putExtra("order_status", "contact_accepted")
                 .putExtra("participant_name", contact.optString("peer_name"))
-                .putExtra("participant_photo", contact.optString("peer_photo")));
+                .putExtra("participant_photo", contact.optString("peer_photo"));
     }
 
     static JSONObject quote(Context context, Intent pickup, Intent delivery) throws Exception {

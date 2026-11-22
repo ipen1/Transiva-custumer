@@ -173,6 +173,7 @@ class CustomerChatRoomActivityScreenCore extends CustomerAdaptiveActivity {
     protected String orderDbId = "";
     protected String orderSource = "orders";
     protected String roomId = "";
+    private boolean assignedOrderChat, assignedRoomReady;
     protected String participantName = "";
     private String participantPhoto = "";
     private final OrderChatStyle chatStyle = new OrderChatStyle(this);
@@ -314,6 +315,7 @@ class CustomerChatRoomActivityScreenCore extends CustomerAdaptiveActivity {
         );
 
         orderDbId = first(getIntent().getStringExtra("order_db_id"), getIntent().getStringExtra("id"), "");
+        assignedOrderChat=getIntent().getBooleanExtra("assigned_order_chat",false);
         orderSource = first(getIntent().getStringExtra("order_source"), getIntent().getStringExtra("source"), "orders");
 
         roomId = CustomerChatRoomFormatter.normalizeRoom(
@@ -431,13 +433,13 @@ class CustomerChatRoomActivityScreenCore extends CustomerAdaptiveActivity {
         titleBox.setOrientation(LinearLayout.VERTICAL);
         titleBox.setPaddingRelative(dp(8), 0, dp(2), 0);
         participantText = text(participantName, 16, "#0F172A", true);
-        chatStyle.theme(participantText, view -> view.setTextColor(chatChrome.textColor()));
+        participantText.setTextColor(0xFFFFFFFF);
         participantText.setSingleLine(true);
         participantText.setEllipsize(android.text.TextUtils.TruncateAt.END);
         titleBox.addView(participantText);
 
         statusText = text(readOnly ? "Riwayat percakapan" : "Menghubungkan chat…", 11, "#64748B", false);
-        chatStyle.theme(statusText, view -> view.setTextColor(chatChrome.secondaryColor()));
+        statusText.setTextColor(0xFFDCEEFF);
         statusText.setMaxLines(2);
         statusText.setEllipsize(android.text.TextUtils.TruncateAt.END);
         titleBox.addView(statusText);
@@ -451,7 +453,12 @@ class CustomerChatRoomActivityScreenCore extends CustomerAdaptiveActivity {
                 query -> CustomerMessageApi.get(chatExtrasEndpoint()+query,chatRequests.session()),null);
         root.addView(header);
         root.addView(new ActiveCallBanner(this),new LinearLayout.LayoutParams(-1,-2));
-        if (simpelPanel != null) root.addView(simpelPanel.view(),new LinearLayout.LayoutParams(-1,-2));
+        if (simpelPanel != null) {
+            LinearLayout.LayoutParams routeParams=new LinearLayout.LayoutParams(-1,-2);
+            routeParams.topMargin=dp(5);
+            root.addView(simpelPanel.view(),routeParams);
+            simpelPanel.fitOnResize(root);
+        }
         if (courierPanel != null) root.addView(courierPanel.view(), new LinearLayout.LayoutParams(-1, -2));
 
         olderMessagesButton=compactChatTool("Muat pesan sebelumnya", false);
@@ -516,7 +523,7 @@ class CustomerChatRoomActivityScreenCore extends CustomerAdaptiveActivity {
         chatChrome.addDraftActions(inputCard);
         voiceButton = chatChrome.voiceButton();
         setupVoiceRecorder();
-        chatChrome.setComposerAvailable(!readOnly);
+        syncComposer();
 
         chatChrome.sendButton().setOnClickListener(v -> {
             v.performHapticFeedback(android.view.HapticFeedbackConstants.VIRTUAL_KEY);
@@ -831,7 +838,8 @@ class CustomerChatRoomActivityScreenCore extends CustomerAdaptiveActivity {
     }
 
     private void syncComposer() {
-        chatChrome.setComposerAvailable(!readOnly && !sending && !uploading);
+        chatChrome.setComposerAvailable(!readOnly && !sending && !uploading
+                && (!assignedOrderChat || assignedRoomReady));
     }
 
 
@@ -959,7 +967,7 @@ class CustomerChatRoomActivityScreenCore extends CustomerAdaptiveActivity {
         final String receipts=receiptIdQuery();
         chatRequests.execute("read",() -> {
             try {
-                String endpoint=GET_CHAT_URL+"?room_id="+URLEncoder.encode(roomId,"UTF-8")
+                String endpoint=GET_CHAT_URL+"?room_id="+URLEncoder.encode(assignedOrderChat?"":roomId,"UTF-8")
                         +"&source="+URLEncoder.encode(orderSource,"UTF-8")+"&order_id="+URLEncoder.encode(orderId,"UTF-8")
                         +"&order_db_id="+URLEncoder.encode(orderDbId,"UTF-8")+"&chat_ui=1&page_mode="+mode+"&limit=60"
                         +("older".equals(mode)?"&before_id=":"&last_id=")+cursor+"&receipt_ids="+receipts;
@@ -990,6 +998,27 @@ class CustomerChatRoomActivityScreenCore extends CustomerAdaptiveActivity {
                 orderStatus
         );
 
+        if (assignedOrderChat && response.optBoolean("success")) {
+            String canonical=CustomerChatRoomFormatter.normalizeRoom(response.optString("room_id"));
+            boolean changed=!firstLoad && !canonical.isEmpty() && !canonical.equals(roomId);
+            if (!canonical.isEmpty()) roomId=canonical;
+            assignedRoomReady=!canonical.isEmpty() && CustomerMessageStatus.canSend(orderStatus);
+            syncComposer();
+            if (changed && !reset) {
+                clearEmptyConversation();
+                messagesBox.removeAllViews();
+                acknowledgedBubbles.clear();
+                displayedMessageIds.clear();
+                messageViews.clear();
+                receiptViews.clear();
+                chatStyle.reset();
+                lastId=0;
+                oldestId=0;
+                firstLoad=true;
+                loadMessages(false);
+                return;
+            }
+        }
         if (courierPanel != null) courierPanel.updateStatus(orderStatus);
         if ("Trans Simpel".equals(response.optString("service_type"))) orderType = "Trans Simpel";
         boolean ended =
@@ -1009,7 +1038,7 @@ class CustomerChatRoomActivityScreenCore extends CustomerAdaptiveActivity {
             );
         } else {
             statusText.setText(CustomerChatRoomFormatter.serviceName(orderType) + " · "
-                    + ("contact_accepted".equals(orderStatus) ? "Chat dengan kurir" : CustomerMessageStatus.orderLabel(orderStatus, orderType)));
+                    + ("contact_accepted".equals(orderStatus) ? "Chat dengan driver" : CustomerMessageStatus.orderLabel(orderStatus, orderType)));
         }
 
         JSONObject driver =
@@ -1564,7 +1593,8 @@ class CustomerChatRoomActivityScreenCore extends CustomerAdaptiveActivity {
     private void sendMessage() { sendChatContent(input.getText().toString().trim(), true); }
     protected void sendSticker(String wire) { sendChatContent(wire, false); }
     private void sendChatContent(String message, boolean clearDraft) {
-        if (readOnly || sending || uploading || chatChrome.isRecording() || !chatRequests.current()) return;
+        if (readOnly || sending || uploading || chatChrome.isRecording() || !chatRequests.current()
+                || (assignedOrderChat && !assignedRoomReady)) return;
 
         if (message.isEmpty()) return;
 

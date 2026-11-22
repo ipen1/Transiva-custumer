@@ -357,7 +357,7 @@ public final class TivaSimpelActivity extends CustomerAdaptiveActivity {
             JSONObject group=raw.optJSONObject(i);
             if (group!=null) groups.add(group);
         }
-        groups.sort((first,second)->Boolean.compare(
+        java.util.Collections.sort(groups, (first, second) -> Boolean.compare(
                 !"bundle_topping".equals(first.optString("type")),
                 !"bundle_topping".equals(second.optString("type"))));
         chooseOptions(item,groups,0,new JSONArray(),false);

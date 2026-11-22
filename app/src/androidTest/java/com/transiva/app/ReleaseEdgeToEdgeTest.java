@@ -142,4 +142,46 @@ public class ReleaseEdgeToEdgeTest {
             });
         } finally {i.runOnMainSync(activity::finish);}
     }
+    @Test public void compactTransSimpelPanelLeavesSpaceForComposerAfterResize() {
+        Instrumentation instrumentation=InstrumentationRegistry.getInstrumentation();
+        RegisterActivity activity=(RegisterActivity)instrumentation.startActivitySync(
+                new Intent(instrumentation.getTargetContext(),RegisterActivity.class)
+                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+        try {
+            instrumentation.runOnMainSync(()->{
+                TransSimpelRoutePanel panel=new TransSimpelRoutePanel(activity,"PUD000000000000000000000000");
+                try {
+                    android.widget.LinearLayout column=new android.widget.LinearLayout(activity);
+                    column.setOrientation(android.widget.LinearLayout.VERTICAL);
+                    View route=panel.view();
+                    route.setVisibility(View.VISIBLE);
+                    column.addView(route,new android.widget.LinearLayout.LayoutParams(-1,-2));
+                    panel.fitOnResize(column);
+                    View messages=new View(activity);
+                    column.addView(messages,new android.widget.LinearLayout.LayoutParams(-1,0,1));
+                    View composer=new View(activity);
+                    float density=activity.getResources().getDisplayMetrics().density;
+                    int composerHeight=Math.round(56*density);
+                    column.addView(composer,new android.widget.LinearLayout.LayoutParams(-1,composerHeight));
+                    for(int heightDp:new int[]{720,300,580}) {
+                        int width=Math.round(320*density);
+                        int height=Math.round(heightDp*density);
+                        for(int pass=0;pass<2;pass++) {
+                            column.measure(View.MeasureSpec.makeMeasureSpec(width,View.MeasureSpec.EXACTLY),
+                                    View.MeasureSpec.makeMeasureSpec(height,View.MeasureSpec.EXACTLY));
+                            column.layout(0,0,width,height);
+                        }
+                        assertTrue(route.getHeight()<=Math.round(height*.42f));
+                        assertTrue(messages.getHeight()>0);
+                        assertEquals(composerHeight,composer.getHeight());
+                        assertEquals(height,composer.getBottom());
+                    }
+                } finally {
+                    panel.close();
+                }
+            });
+        } finally {
+            instrumentation.runOnMainSync(activity::finish);
+        }
+    }
 }

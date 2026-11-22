@@ -133,6 +133,8 @@ class TransPickupActivityScreenCore extends CustomerAdaptiveFragmentActivity {
         deliveryLat = delivery.getDoubleExtra("lat", 0);
         deliveryLng = delivery.getDoubleExtra("lng", 0);
         if (!hasRoutePoints()) return;
+        String item=getIntent().getStringExtra("tiva_item");
+        if (item!=null) itemNameInput.setText(item);
         pickupAddress = firstNonEmpty(pickup.getStringExtra("address"), formatCoordinate(pickupLat, pickupLng));
         deliveryAddress = firstNonEmpty(delivery.getStringExtra("address"), formatCoordinate(deliveryLat, deliveryLng));
         mapSelectionMode = "order";

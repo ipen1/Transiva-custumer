@@ -117,7 +117,9 @@ public class CustomerFoodOrderStatusActivity extends CustomerAdaptiveActivity {
         if(!rendered){root.setAlpha(0);root.setTranslationY(dp(12));root.animate().alpha(1).translationY(0).setDuration(250).start();rendered=true;}startTick();
     }
     private void showWaiting(JSONObject res){
-        String merchantStatus=FoodOrderDecision.value(FoodOrderDecision.order(res),"merchant_status");boolean preparing="preparing".equals(merchantStatus)||"ready".equals(merchantStatus)||"merchant_accepted".equals(FoodOrderDecision.status(res));
+        String merchantStatus=FoodOrderDecision.value(FoodOrderDecision.order(res),"merchant_status");
+        boolean lookingForDriver="offered".equals(FoodOrderDecision.status(res));
+        boolean preparing="preparing".equals(merchantStatus)||"ready".equals(merchantStatus)||"merchant_accepted".equals(FoodOrderDecision.status(res));
         String cancelState=CustomerActivityOrderAction.foodCancellationState(FoodOrderDecision.order(res));
         latestWaiting = res;
         if (gameOpen()) {
@@ -125,8 +127,8 @@ public class CustomerFoodOrderStatusActivity extends CustomerAdaptiveActivity {
                 game.bind(gameOrderState(res, preparing), gameOrderLabel(merchantStatus, preparing));
             } else closeGame();
         }
-        String next="waiting:"+preparing+":"+merchantStatus+":"+cancelState;if(next.equals(signature))return;signature=next;shell();root.addView(new FoodOrderDecisionView(this,"waiting"),new LinearLayout.LayoutParams(-1,dp(190)));
-        root.addView(text(preparing?"Pesananmu sedang diproses":"Menunggu konfirmasi toko",24,true));TextView copy=text(preparing?"Toko sudah menerima pesananmu. Informasi driver akan muncul setelah ada driver yang menerima pesanan.":"Toko sedang memeriksa pesananmu. Kabar terbaru akan muncul di sini dan melalui notifikasi.",15,false);copy.setPadding(0,dp(12),0,dp(16));root.addView(copy);
+        String next="waiting:"+lookingForDriver+":"+preparing+":"+merchantStatus+":"+cancelState;if(next.equals(signature))return;signature=next;shell();root.addView(new FoodOrderDecisionView(this,"waiting"),new LinearLayout.LayoutParams(-1,dp(190)));
+        root.addView(text(lookingForDriver?"Sedang mencari driver":preparing?"Pesananmu sedang diproses":"Menunggu konfirmasi toko",24,true));TextView copy=text(lookingForDriver?"Pesanan dikirim ke restoran setelah driver menerimanya.":preparing?"Toko sudah menerima pesananmu. Informasi perjalanan akan tampil di sini.":"Toko sedang memeriksa pesananmu. Kabar terbaru akan muncul di sini.",15,false);copy.setPadding(0,dp(12),0,dp(16));root.addView(copy);
         if ("pending".equals(cancelState)) root.addView(text("Pengajuan pembatalan menunggu keputusan toko.",14,true));
         else if ("declined".equals(cancelState)) root.addView(text("Pengajuan pembatalan ditolak. Pesanan dilanjutkan.",14,true));
         if (!"pending".equals(cancelState)) {

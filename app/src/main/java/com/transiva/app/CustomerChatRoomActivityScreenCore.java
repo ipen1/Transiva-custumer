@@ -236,7 +236,8 @@ class CustomerChatRoomActivityScreenCore extends CustomerAdaptiveActivity {
         readIntent();
         String contactId = getIntent().getStringExtra(TransSendContactClient.EXTRA_CONTACT);
         String simpelId=TransSimpelRoutePanel.contactId(orderId,roomId);
-        if (orderType.toLowerCase(java.util.Locale.ROOT).contains("simpel") && !simpelId.isEmpty()) {
+        if (!simpelId.isEmpty() && (orderType.toLowerCase(java.util.Locale.ROOT).contains("simpel")
+                || !orderId.equals(simpelId))) {
             simpelPanel = new TransSimpelRoutePanel(this,simpelId);
             simpelPanel.restore(savedInstanceState);
         } else if (contactId != null && contactId.equals(orderId) && !readOnly) {

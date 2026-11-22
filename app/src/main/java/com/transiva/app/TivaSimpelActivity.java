@@ -28,7 +28,8 @@ public final class TivaSimpelActivity extends CustomerAdaptiveActivity {
     private LinearLayout messages, actions;
     private ScrollView scroll;
     private String kind="", detail="", contact="", key=UUID.randomUUID().toString();
-    private String status="", problem="";
+    private String status="", problem="", topping="";
+    private boolean typing;
     private JSONObject pickup, delivery, restaurant, menu;
     private int driver, quantity=1, nextOffset;
     private double lat,lng;
@@ -54,9 +55,11 @@ public final class TivaSimpelActivity extends CustomerAdaptiveActivity {
             restaurant=parse(state,"tiva.restaurant");
             menu=parse(state,"tiva.menu");
             quantity=state.getInt("tiva.quantity",1);
+            topping=state.getString("tiva.topping","");
         }
         buildScreen();
-        render();
+        if (state==null) showTyping(this::render);
+        else render();
     }
 
     private void buildScreen() {
@@ -129,6 +132,7 @@ public final class TivaSimpelActivity extends CustomerAdaptiveActivity {
         out.putString("tiva.status",status);
         out.putString("tiva.key",key);
         out.putInt("tiva.quantity",quantity);
+        out.putString("tiva.topping",topping);
         save(out,"tiva.pickup",pickup);
         save(out,"tiva.delivery",delivery);
         save(out,"tiva.restaurant",restaurant);
@@ -150,7 +154,7 @@ public final class TivaSimpelActivity extends CustomerAdaptiveActivity {
         bubble("Hai! Aku Tiva AI. Mau kubantu pesan apa?",false);
         if (kind.isEmpty()) {
             bubble("Setelah alamat dipilih, percakapan ini ikut dikirim ke driver.",false);
-            for (String option:new String[]{"food","ride","send","shop"}) addAction(question(option),()->selectKind(option));
+            for (String option:new String[]{"food","ride","send","shop"}) addAction(question(option),()->showTyping(()->selectKind(option)));
             return;
         }
         bubble(question(kind),true);
@@ -212,7 +216,7 @@ public final class TivaSimpelActivity extends CustomerAdaptiveActivity {
 
     private void reset() {
         if (loading || !contact.isEmpty()) return;
-        kind="";detail="";problem="";status="";
+        kind="";detail="";problem="";status="";topping="";
         restaurant=null;menu=null;pickup=null;delivery=null;quantity=1;more=false;
         clearOptions();
         key=UUID.randomUUID().toString();
@@ -230,7 +234,7 @@ public final class TivaSimpelActivity extends CustomerAdaptiveActivity {
             if (item==null) continue;
             if (restaurant==null) {
                 addAction(item.optString("name")+" · "+item.optDouble("distance_km")+" km",()->{
-                    restaurant=item;loadFood(item.optInt("id"),0);
+                    restaurant=item;showTyping(()->loadFood(item.optInt("id"),0));
                 });
             } else {
                 addMenu(item);
@@ -256,14 +260,57 @@ public final class TivaSimpelActivity extends CustomerAdaptiveActivity {
         image.rightMargin=dp(8);
         row.addView(photo,image);
         row.addView(button(item.optString("name")+
-                (item.optBoolean("requires_topping")?" · topping dibahas di chat":""),()->pickQuantity(item)),
+                (item.optBoolean("requires_topping")?" · pilih topping":""),()->chooseTopping(item)),
                 new LinearLayout.LayoutParams(0,-2,1));
         LinearLayout.LayoutParams space=new LinearLayout.LayoutParams(-1,-2);
         space.topMargin=dp(6);
         actions.addView(row,space);
     }
 
-    private void pickQuantity(JSONObject item) {
+    private void showTyping(Runnable reply) {
+        if (typing || loading || opened) return;
+        typing=true;
+        actions.removeAllViews();
+        TextView indicator=label("Tiva AI sedang mengetik •",13,"#526E90",false);
+        indicator.setPadding(dp(8),dp(7),dp(8),dp(7));
+        indicator.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);
+        messages.addView(indicator);
+        scroll.post(()->scroll.fullScroll(View.FOCUS_DOWN));
+        main.postDelayed(()->indicator.setText("Tiva AI sedang mengetik ••"),220);
+        main.postDelayed(()->indicator.setText("Tiva AI sedang mengetik •••"),440);
+        main.postDelayed(()->{
+            typing=false;
+            if (isFinishing() || isDestroyed()) return;
+            messages.removeView(indicator);
+            reply.run();
+        },650);
+    }
+
+    private void chooseTopping(JSONObject item) {
+        java.util.ArrayList<String> choices=new java.util.ArrayList<>();
+        boolean required=item.optBoolean("requires_topping");
+        if (!required) choices.add("Tanpa topping");
+        JSONArray groups=item.optJSONArray("options");
+        if (groups!=null) for (int i=0;i<groups.length();i++) {
+            JSONObject group=groups.optJSONObject(i);
+            if (group==null || !"bundle_topping".equals(group.optString("type"))) continue;
+            JSONArray entries=group.optJSONArray("items");
+            if (entries!=null) for (int j=0;j<entries.length();j++) {
+                JSONObject option=entries.optJSONObject(j);
+                if (option!=null && !option.optString("name").isEmpty()) choices.add(option.optString("name"));
+            }
+        }
+        if (choices.size()==1 && !required) {pickQuantity(item,"");return;}
+        if (choices.isEmpty()) {
+            android.widget.Toast.makeText(this,"Topping sedang habis.",android.widget.Toast.LENGTH_SHORT).show();
+            return;
+        }
+        new TransivaAlertDialogBuilder(this).setTitle("Pilih topping")
+                .setItems(choices.toArray(new String[0]),(d,position)->pickQuantity(item,!required&&position==0?"":choices.get(position)))
+                .setNegativeButton("Kembali",null).show();
+    }
+
+    private void pickQuantity(JSONObject item,String selectedTopping) {
         int limit=item.isNull("stock")?20:Math.min(20,item.optInt("stock",20));
         if (limit<1) return;
         android.widget.NumberPicker picker=new android.widget.NumberPicker(this);
@@ -274,14 +321,15 @@ public final class TivaSimpelActivity extends CustomerAdaptiveActivity {
                     picker.clearFocus();
                     quantity=picker.getValue();
                     menu=item;
+                    topping=selectedTopping;
                     problem="";
-                    render();
+                    showTyping(this::render);
                 }).show();
     }
 
     private String foodSelection() {
         return quantity+" × "+menu.optString("name")+" · "+restaurant.optString("name")
-                +(menu.optBoolean("requires_topping")?" (pilihan topping dibahas di chat)":"");
+                +(topping.isEmpty()?"":" · Topping "+topping);
     }
 
     private void detailControls() {
@@ -296,7 +344,7 @@ public final class TivaSimpelActivity extends CustomerAdaptiveActivity {
             detail=value;
             ((android.view.inputmethod.InputMethodManager)getSystemService(INPUT_METHOD_SERVICE))
                     .hideSoftInputFromWindow(field.getWindowToken(),0);
-            render();
+            showTyping(this::render);
         });
         addAction("Ganti pilihan",this::reset);
     }
@@ -315,7 +363,7 @@ public final class TivaSimpelActivity extends CustomerAdaptiveActivity {
         try {
             JSONObject point=new JSONObject().put("lat",data.getDoubleExtra("lat",0))
                     .put("lng",data.getDoubleExtra("lng",0)).put("address",data.getStringExtra("address"));
-            if (request==PICKUP) {pickup=point;render();}
+            if (request==PICKUP) {pickup=point;showTyping(this::render);}
             else {
                 if (pickup!=null && point.optDouble("lat")==pickup.optDouble("lat")
                         && point.optDouble("lng")==pickup.optDouble("lng")) {
@@ -324,7 +372,7 @@ public final class TivaSimpelActivity extends CustomerAdaptiveActivity {
                 }
                 if (delivery!=null && !delivery.toString().equals(point.toString())) key=UUID.randomUUID().toString();
                 delivery=point;
-                submit();
+                showTyping(this::submit);
             }
         } catch (org.json.JSONException error) {
             problem="Titik belum tersimpan. Coba pilih lagi.";
@@ -357,7 +405,7 @@ public final class TivaSimpelActivity extends CustomerAdaptiveActivity {
         perform(()->{
             JSONObject draft=new JSONObject().put("key",key).put("kind",kind).put("delivery",delivery);
             if ("food".equals(kind)) draft.put("restaurant_id",restaurant.optInt("id"))
-                    .put("menu_id",menu.optInt("id")).put("quantity",quantity);
+                    .put("menu_id",menu.optInt("id")).put("quantity",quantity).put("topping",topping);
             else draft.put("pickup",pickup).put("detail",detail);
             JSONObject data=TransSendContactClient.action("invite","").put("service","trans_simpel")
                     .put("driver_id",driver).put("lat",lat).put("lng",lng).put("tiva",draft);

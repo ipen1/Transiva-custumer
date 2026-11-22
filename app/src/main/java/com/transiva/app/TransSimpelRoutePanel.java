@@ -203,7 +203,10 @@ final class TransSimpelRoutePanel {
         boolean editable="accepted".equals(state);
         boolean ordered="ordered".equals(state);
         view.setVisibility(editable || ordered ? View.VISIBLE : View.GONE);
-        pickup.setEnabled(editable && !busy);
+        boolean food="food".equals(kind());
+        boolean send="send".equals(kind());
+        pickup.setEnabled(editable && !busy && !food);
+        stop.setVisibility(kind().isEmpty() || "ride".equals(kind())?View.VISIBLE:View.GONE);
         delivery.setEnabled(editable && !busy);
         stop.setEnabled(editable && !busy);
         boolean hasStop=route.optJSONObject("stop")!=null;
@@ -217,10 +220,10 @@ final class TransSimpelRoutePanel {
         stopAddress.setText("Singgah  ·  "+address("stop"));
         stopAddress.setVisibility(hasStop?View.VISIBLE:View.GONE);
         deliveryAddress.setText("Antar  ·  "+address("delivery"));
-        summary.setText(amount>0?(ordered?"Total":"Estimasi")+"  Rp "
+        summary.setText(amount>0?(food?"Total makanan + ongkir":ordered?"Total":"Estimasi")+"  Rp "
                 +NumberFormat.getIntegerInstance(new Locale("id","ID")).format(amount)+" · Tunai":"");
         boolean assistedPurchase=tivaBrief!=null
-                && ("food".equals(tivaBrief.optString("kind")) || "shop".equals(tivaBrief.optString("kind")));
+                && "shop".equals(kind());
         purchaseHint.setVisibility(assistedPurchase?View.VISIBLE:View.GONE);
         if (amount>0 && assistedPurchase) {
             summary.setText("Ongkir  Rp "+NumberFormat.getIntegerInstance(new Locale("id","ID")).format(amount)+" · Tunai");
@@ -229,7 +232,8 @@ final class TransSimpelRoutePanel {
         boolean both=route.optJSONObject("pickup")!=null && route.optJSONObject("delivery")!=null;
         quoteRetry.setVisibility(editable && both && amount==0 && quotedRevision==revision ? View.VISIBLE : View.GONE);
         quoteRetry.setEnabled(!busy);
-        order.setVisibility(editable && amount>0 ? View.VISIBLE : View.GONE);
+        order.setText(send?"Lanjut ke TransSend":food?"Pesan TransFood":"Order");
+        order.setVisibility(editable && (amount>0 || (send && both)) ? View.VISIBLE : View.GONE);
         order.setEnabled(!busy);
     }
 
@@ -238,14 +242,21 @@ final class TransSimpelRoutePanel {
         return point==null?"Belum diatur":point.optString("address").replace('\n',' ');
     }
 
+    private String kind() {
+        return tivaBrief==null?"":tivaBrief.optString("kind");
+    }
+
     private void calculateIfReady() {
+        if ("send".equals(kind())) return;
+
         if (!active || busy || route==null || !"accepted".equals(route.optString("state"))
                 || route.optJSONObject("pickup")==null || route.optJSONObject("delivery")==null
                 || !route.isNull("total")) return;
         int revision=route.optInt("revision");
         if (revision==quotedRevision) return;
         quotedRevision=revision;
-        send("quote",null);
+        try {send("quote",new JSONObject().put("revision",revision));}
+        catch (org.json.JSONException ignored) {quotedRevision=-1;}
     }
 
     private void openPicker(int which) {
@@ -281,7 +292,17 @@ final class TransSimpelRoutePanel {
     private JSONObject queuedPoint;
 
     private void submitOrder() {
-        if (busy || route==null || route.optLong("total")<=0) return;
+        if (busy || route==null) return;
+        if ("send".equals(kind())) {
+            JSONObject from=route.optJSONObject("pickup"), to=route.optJSONObject("delivery");
+            if (from==null || to==null) return;
+            activity.startActivity(new Intent(activity,TransPickupActivity.class)
+                    .putExtra(TransSendContactClient.EXTRA_CONTACT,id)
+                    .putExtra("contact_pickup",pointIntent(from)).putExtra("contact_delivery",pointIntent(to))
+                    .putExtra("tiva_item",tivaBrief.optString("detail")));
+            return;
+        }
+        if (route.optLong("total")<=0) return;
         try {
             send("order",new JSONObject().put("revision",route.optInt("revision")).put("total",route.optLong("total")));
         } catch (org.json.JSONException error) {
@@ -353,7 +374,23 @@ final class TransSimpelRoutePanel {
         if (!activity.isFinishing()) Toast.makeText(activity,message,Toast.LENGTH_LONG).show();
     }
 
+    private Intent pointIntent(JSONObject point) {
+        return new Intent().putExtra("lat",point.optDouble("lat")).putExtra("lng",point.optDouble("lng"))
+                .putExtra("address",point.optString("address"));
+    }
+
     private JSONObject request(JSONObject data) throws Exception {
+        String action=data.optString("action");
+        if ("food".equals(kind()) && ("order".equals(action) || "quote".equals(action))) {
+            boolean quote="quote".equals(action);
+            JSONObject payload=new JSONObject().put("tiva_contact_id",id).put("quote_only",quote)
+                    .put("revision",data.optInt("revision")).put("payment_method","cash");
+            if (quote) return TransivaHttpRepository.postJson(activity,ApiConfig.server("create_food_order.php"),payload,14000);
+            long total=data.optLong("total");
+            String key="tiva-food-"+id+"-"+data.optInt("revision")+"-"+total;
+            payload.put("total",total).put("id",key);
+            return TransivaHttpRepository.postJsonIdempotent(activity,ApiConfig.server("create_food_order.php"),payload,15000,key);
+        }
         return TransivaHttpRepository.postJson(activity,ApiConfig.server("trans_simpel.php"),data,12000);
     }
     private boolean submit(Runnable work,Runnable failure) {

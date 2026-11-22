@@ -17,6 +17,10 @@ public class OrderStatusPresentationTest {
         assertEquals("Menunggu Konfirmasi Merchant", OrderStatusPresentation.label("pending", "transfood"));
     }
 
+    @Test public void offeredFood_waitsForDriver() {
+        assertEquals("Sedang Mencari Driver", OrderStatusPresentation.label("offered", "transfood"));
+    }
+
     @Test public void completedAliases_areRenderedAsFinished() {
         assertEquals("Pesanan Selesai 🎉", OrderStatusPresentation.label("finish", "transride"));
         assertEquals("Pesanan Selesai 🎉", OrderStatusPresentation.label("finished", "transride"));

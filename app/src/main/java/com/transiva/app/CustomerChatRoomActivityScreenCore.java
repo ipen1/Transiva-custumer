@@ -406,7 +406,7 @@ class CustomerChatRoomActivityScreenCore extends CustomerAdaptiveActivity {
         chatChrome = new ChatRoomChrome(this, chatStyle);
 
         LinearLayout root =
-                new LinearLayout(this);
+                simpelPanel == null ? new LinearLayout(this) : simpelPanel.createLayout();
 
         root.setOrientation(
                 LinearLayout.VERTICAL
@@ -457,7 +457,6 @@ class CustomerChatRoomActivityScreenCore extends CustomerAdaptiveActivity {
             LinearLayout.LayoutParams routeParams=new LinearLayout.LayoutParams(-1,-2);
             routeParams.topMargin=dp(5);
             root.addView(simpelPanel.view(),routeParams);
-            simpelPanel.fitOnResize(root);
         }
         if (courierPanel != null) root.addView(courierPanel.view(), new LinearLayout.LayoutParams(-1, -2));
 

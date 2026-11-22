@@ -34,6 +34,7 @@ final class TransSimpelRoutePanel {
     private final Runnable poll = this::refresh;
     private final LinearLayout view;
     private final android.widget.ScrollView routeScroll;
+    private int routeHeightLimit;
     private final LinearLayout fareRow;
     private final Button pickup;
     private final Button delivery;
@@ -69,11 +70,7 @@ final class TransSimpelRoutePanel {
         view.setBackground(surface("#FFFFFF", "#DCE8F5"));
         routeScroll=new android.widget.ScrollView(activity) {
             @Override protected void onMeasure(int widthSpec,int heightSpec) {
-                android.view.ViewParent parent=getParent();
-                int available=parent instanceof View && ((View)parent).getHeight()>0
-                        ? ((View)parent).getHeight()
-                        : dp(activity.getResources().getConfiguration().screenHeightDp);
-                int cap=Math.max(dp(48),Math.round(available*.42f));
+                int cap=routeHeightLimit;
                 if (MeasureSpec.getMode(heightSpec)!=MeasureSpec.UNSPECIFIED) cap=Math.min(cap,MeasureSpec.getSize(heightSpec));
                 super.onMeasure(widthSpec,MeasureSpec.makeMeasureSpec(cap,MeasureSpec.AT_MOST));
             }
@@ -159,10 +156,24 @@ final class TransSimpelRoutePanel {
 
     View view() { return routeScroll; }
 
-    void fitOnResize(View parent) {
-        parent.addOnLayoutChangeListener((v,l,t,r,b,ol,ot,or,ob)->{
-            if (b-t!=ob-ot) routeScroll.requestLayout();
-        });
+    LinearLayout createLayout() {
+        LinearLayout column=new LinearLayout(activity) {
+            @Override protected void onMeasure(int widthSpec,int heightSpec) {
+                int height=MeasureSpec.getMode(heightSpec)==MeasureSpec.UNSPECIFIED
+                        ? dp(activity.getResources().getConfiguration().screenHeightDp)
+                        : MeasureSpec.getSize(heightSpec);
+                int contentHeight=Math.max(0,height-getPaddingTop()-getPaddingBottom());
+                int limit=Math.round(contentHeight*.42f);
+                if (limit!=routeHeightLimit) {
+                    routeHeightLimit=limit;
+                    // Recheck the scroll view even when LinearLayout reuses its child MeasureSpecs.
+                    routeScroll.forceLayout();
+                }
+                super.onMeasure(widthSpec,heightSpec);
+            }
+        };
+        column.setOrientation(LinearLayout.VERTICAL);
+        return column;
     }
 
     void resume() { active = true; refresh(); }

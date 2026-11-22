@@ -33,6 +33,8 @@ import java.text.NumberFormat;
 import java.util.Locale;
 
 public final class TransSendCourierDirectoryActivity extends CustomerAdaptiveActivity {
+    private static final int TIVA_REQUEST=725;
+    private Bundle tivaDraft;
     private static final int LOCATION_PERMISSION = 41;
     private static final String TITLE = "Trans Simpel";
     private static final Locale INDONESIAN = new Locale("id", "ID");
@@ -78,6 +80,7 @@ public final class TransSendCourierDirectoryActivity extends CustomerAdaptiveAct
 
     @Override protected void onCreate(Bundle state) {
         super.onCreate(state);
+        if (state!=null) tivaDraft=state.getBundle(TivaSimpelActivity.EXTRA_DRAFT);
         buildScreen();
         followContact = state == null ? getIntent().getStringExtra(TransSendContactClient.EXTRA_CONTACT)
                 : state.getString(TransSendContactClient.EXTRA_CONTACT, "");
@@ -110,6 +113,7 @@ public final class TransSendCourierDirectoryActivity extends CustomerAdaptiveAct
 
     @Override protected void onSaveInstanceState(Bundle out) {
         super.onSaveInstanceState(out);
+        out.putBundle(TivaSimpelActivity.EXTRA_DRAFT,tivaDraft);
         out.putString(TransSendContactClient.EXTRA_CONTACT, followContact);
     }
 
@@ -362,11 +366,21 @@ public final class TransSendCourierDirectoryActivity extends CustomerAdaptiveAct
 
     private void selectDriver(JSONObject courier) {
         if (directoryLocation == null) return;
-        startActivity(new Intent(this, TivaSimpelActivity.class)
+        startActivityForResult(new Intent(this, TivaSimpelActivity.class)
                 .putExtra("driver_id", courier.optInt("id"))
                 .putExtra("driver_name", courier.optString("name"))
                 .putExtra("lat", directoryLocation.getLatitude())
-                .putExtra("lng", directoryLocation.getLongitude()));
+                .putExtra("lng", directoryLocation.getLongitude())
+                .putExtra(TivaSimpelActivity.EXTRA_DRAFT,tivaDraft),TIVA_REQUEST);
+        tivaDraft=null;
+    }
+
+    @Override protected void onActivityResult(int request,int result,Intent data) {
+        super.onActivityResult(request,result,data);
+        if (request==TIVA_REQUEST && result==RESULT_OK && data!=null) {
+            tivaDraft=data.getBundleExtra(TivaSimpelActivity.EXTRA_DRAFT);
+            if (tivaDraft!=null) Toast.makeText(this,"Draf tersimpan. Pilih driver untuk melanjutkan.",Toast.LENGTH_SHORT).show();
+        }
     }
 
     private void showContactActions() {

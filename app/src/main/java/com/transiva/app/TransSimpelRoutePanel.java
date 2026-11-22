@@ -348,6 +348,13 @@ final class TransSimpelRoutePanel {
         if (reply != null && reply.optJSONObject("route") != null) render(reply.optJSONObject("route"));
         else if (route!=null) render(route);
         if (failure!=null && !"get".equals(action)) notice(failure);
+        if (reply!=null && "order".equals(action) && "food".equals(kind())) {
+            order.setVisibility(View.GONE);
+            activity.startActivity(new Intent(activity, CustomerFoodOrderStatusActivity.class)
+                    .putExtra("order_id",reply.optString("order_id")).putExtra("status",reply.optString("status")));
+            activity.finish();
+            return;
+        }
         if (reply!=null && "order".equals(action)) {
             order.setVisibility(View.GONE);
             new AlertDialog.Builder(activity).setTitle("Order berhasil")

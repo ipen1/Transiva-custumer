@@ -2787,7 +2787,7 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
         CustomerWindowPolicy.status(getWindow(), dark ? 0xff05101d : 0xff0b7cff);
         CustomerWindowPolicy.navigation(getWindow(), dark ? 0xff05101d : 0xff071426);
         successOrderIds = new ArrayList<>(orderIds);
-        long duration = Math.min(9000, 4400 + Math.max(0, orderIds.size() - 2) * 300L);
+        long duration = 1000L;
         successActivityAt = due > 0 ? due : android.os.SystemClock.elapsedRealtime() + duration;
         mainHandler.removeCallbacks(realtimeFoodRefresh);
         mainHandler.removeCallbacks(storyExpiryTick);
@@ -2823,10 +2823,10 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
             receipts.setTranslationY(dp(10));
             receipts.animate().alpha(1f).translationY(0f).setStartDelay(300).setDuration(430).start();
         }
-        TextView hint = text("Membuka Aktivitas sebentar lagi…", 12, "#64748B", false);
+        TextView hint = text("Membuka status pencarian driver…", 12, "#64748B", false);
         hint.setGravity(Gravity.CENTER);
         addWithMargin(hint, 0, 0, 0, dp(8));
-        Button activity = primaryButton("Lihat Aktivitas");
+        Button activity = primaryButton("Lihat pencarian driver");
         activity.setOnClickListener(v -> openOrderActivity());
         root.addView(activity, new LinearLayout.LayoutParams(-1, dp(46)));
         foodScroll.scrollTo(0, 0);
@@ -2842,8 +2842,19 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
     private void openOrderActivity() {
         if (isFinishing() || currentScreen != 3) return;
         mainHandler.removeCallbacks(activityAfterFood);
-        startActivity(new android.content.Intent(this, CustomerHistoryActivity.class));
+        ArrayList<String> confirmed=new ArrayList<>();
+        for (String id : successOrderIds) if (id!=null && !id.trim().isEmpty()) confirmed.add(id);
+        if (confirmed.isEmpty()) startActivity(new android.content.Intent(this, CustomerHistoryActivity.class));
+        else openFoodTracking(confirmed.get(0), confirmed);
         finish();
+    }
+
+    private void openFoodTracking(String id, ArrayList<String> confirmed) {
+        if (isFinishing()) return;
+        startActivity(new Intent(this, CustomerFoodOrderStatusActivity.class)
+                .putExtra("order_id", id).putExtra("status", "offered")
+                .putExtra("return_to_checkout", currentScreen == COMBINED_RESULT)
+                .putStringArrayListExtra("checkout_order_ids", confirmed));
     }
 
     @Override protected void onSaveInstanceState(Bundle out) {
@@ -3693,13 +3704,21 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
         summary.addView(text(status, 19, "#0F172A", true));
         if (!result.problem.isEmpty()) summary.addView(text(result.problem, 13, "#64748B", false));
         if (!result.orderIds.isEmpty()) {
-            for (String orderId : result.orderIds) {
+            ArrayList<String> confirmed = new ArrayList<>(result.orderIds);
+            for (String orderId : confirmed) {
                 Button track = checkoutChoice(orderId + "  ›", false);
-                track.setOnClickListener(v -> startActivity(new android.content.Intent(this, CustomerFoodOrderStatusActivity.class)
-                        .putExtra("order_id", orderId)));
+                track.setOnClickListener(v -> openFoodTracking(orderId, confirmed));
                 summary.addView(track, new LinearLayout.LayoutParams(-1, dp(46)));
             }
-            if (!result.recoveredPrevious) summary.addView(summaryLine("Total pesanan terkonfirmasi", result.total));
+            if (!result.recoveredPrevious) {
+                summary.addView(summaryLine("Total pesanan terkonfirmasi", result.total));
+                summary.addView(text("Membuka pencarian driver untuk pesanan yang sudah tercatat.", 12, "#64748B", false));
+                mainHandler.postDelayed(() -> {
+                    if (foodForeground && currentScreen == COMBINED_RESULT && hasWindowFocus()) {
+                        openFoodTracking(confirmed.get(0), confirmed);
+                    }
+                }, 1000L);
+            }
         }
         summary.addView(text("Periksa Aktivitas bila hasil pesanan belum pasti. Item yang belum terkonfirmasi masih dapat diperiksa lewat Keranjang.", 12, "#64748B", false));
         addWithMargin(summary, 0, 0, 0, dp(10));

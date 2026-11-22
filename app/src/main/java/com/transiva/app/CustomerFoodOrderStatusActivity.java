@@ -29,7 +29,8 @@ public class CustomerFoodOrderStatusActivity extends CustomerAdaptiveActivity {
         if(remaining<=0){home();return;}handler.postDelayed(this,200);
     }};
     @Override protected void onCreate(Bundle state){super.onCreate(state);registerCustomBackNavigation();if(state!=null)remaining=Math.max(1000,Math.min(8000,state.getLong("remaining",8000)));readIntent();}
-    @Override protected void onNewIntent(Intent intent){super.onNewIntent(intent);setIntent(intent);generation++;handler.removeCallbacksAndMessages(null);inFlight=false;routed=false;rendered=false;terminal=false;signature="";remaining=8000;readIntent();if(foreground){fetch();startTick();}}
+    @Override protected void onNewIntent(Intent intent){super.onNewIntent(intent);switchOrder(intent);}
+    private void switchOrder(Intent intent){setIntent(intent);generation++;handler.removeCallbacksAndMessages(null);inFlight=false;routed=false;rendered=false;terminal=false;signature="";remaining=8000;readIntent();if(foreground){fetch();startTick();}}
     private void readIntent(){
         closeGame();
         latestWaiting = null;
@@ -39,7 +40,11 @@ public class CustomerFoodOrderStatusActivity extends CustomerAdaptiveActivity {
         if(orderId.isEmpty()){shell();message("Pesanan belum ditemukan","Buka Aktivitas untuk memeriksa pesananmu.");return;}
         if("merchant_rejected".equals(getIntent().getStringExtra("status"))){
             try{JSONObject o=new JSONObject().put("order_id",orderId).put("order_type","food").put("status","merchant_rejected").put("restaurant_name",FoodOrderDecision.first(getIntent().getStringExtra("restaurant_name"),"Toko" )).put("merchant_reject_reason",FoodOrderDecision.first(getIntent().getStringExtra("merchant_reject_reason")));showOutcome(new JSONObject().put("order",o),false);}catch(Exception ignored){loading();}
-        }else loading();
+        } else if ("offered".equals(getIntent().getStringExtra("status"))) {
+            orderStatusStale=true;
+            try { showWaiting(new JSONObject().put("status","offered")); }
+            catch (org.json.JSONException ignored) { loading(); }
+        } else loading();
     }
     private int dp(int n){return Math.round(n*getResources().getDisplayMetrics().density);}
     private int ink(){return CustomerAppSettings.isDarkMode(this)?0xFFEEF5FF:0xFF133152;}
@@ -51,7 +56,7 @@ public class CustomerFoodOrderStatusActivity extends CustomerAdaptiveActivity {
         root.setBackgroundColor(CustomerAppSettings.isDarkMode(this)?0xFF071426:0xFFF7FAFF);scroll.addView(root,new ScrollView.LayoutParams(-1,-1));setContentView(scroll);
         TextView brand=text("TRANSFOOD",12,true);brand.setTextColor(0xFF268CFF);brand.setLetterSpacing(.12f);root.addView(brand);
     }
-    private void loading(){shell();root.addView(new ProgressBar(this),new LinearLayout.LayoutParams(dp(36),dp(36)));root.addView(text("Memeriksa kabar pesananmu…",16,true));button("Ke beranda",this::home,false);}
+    private void loading(){shell();root.addView(new ProgressBar(this),new LinearLayout.LayoutParams(dp(36),dp(36)));root.addView(text("Memeriksa kabar pesananmu…",16,true));root.addView(text("Nomor pesanan "+orderId,13,true));button("Ke beranda",this::home,false);}
     private void message(String title,String body){root.addView(text(title,23,true));TextView detail=text(body,14,false);detail.setPadding(0,dp(12),0,dp(16));root.addView(detail);button("Coba lagi",()->fetch(),true);button("Ke beranda",this::home,false);}
     private void button(String label,Runnable action,boolean primary){Button b=new Button(this);b.setText(label);b.setAllCaps(false);b.setTextSize(14);b.setMinHeight(dp(48));b.setMinimumHeight(dp(48));b.setTextColor(primary?Color.WHITE:ink());GradientDrawable d=new GradientDrawable();d.setCornerRadius(dp(16));d.setColor(primary?0xFF0B7CFF:CustomerAppSettings.isDarkMode(this)?0xFF162B43:0xFFE8F2FE);b.setBackground(d);b.setOnClickListener(v->action.run());LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-1,-2);lp.topMargin=dp(10);root.addView(b,lp);}
     private void fetch(){
@@ -129,6 +134,9 @@ public class CustomerFoodOrderStatusActivity extends CustomerAdaptiveActivity {
         }
         String next="waiting:"+lookingForDriver+":"+preparing+":"+merchantStatus+":"+cancelState;if(next.equals(signature))return;signature=next;shell();root.addView(new FoodOrderDecisionView(this,"waiting"),new LinearLayout.LayoutParams(-1,dp(190)));
         root.addView(text(lookingForDriver?"Sedang mencari driver":preparing?"Pesananmu sedang diproses":"Menunggu konfirmasi toko",24,true));TextView copy=text(lookingForDriver?"Pesanan dikirim ke restoran setelah driver menerimanya.":preparing?"Toko sudah menerima pesananmu. Informasi perjalanan akan tampil di sini.":"Toko sedang memeriksa pesananmu. Kabar terbaru akan muncul di sini.",15,false);copy.setPadding(0,dp(12),0,dp(16));root.addView(copy);
+        TextView orderNumber=text("Nomor pesanan "+orderId,13,true);
+        orderNumber.setTextIsSelectable(true);
+        root.addView(orderNumber);
         if ("pending".equals(cancelState)) root.addView(text("Pengajuan pembatalan menunggu keputusan toko.",14,true));
         else if ("declined".equals(cancelState)) root.addView(text("Pengajuan pembatalan ditolak. Pesanan dilanjutkan.",14,true));
         if (!"pending".equals(cancelState)) {
@@ -137,7 +145,23 @@ public class CustomerFoodOrderStatusActivity extends CustomerAdaptiveActivity {
             buttonParams.topMargin = dp(10);
             root.addView(play, buttonParams);
         }
+        java.util.ArrayList<String> siblingOrders=getIntent().getStringArrayListExtra("checkout_order_ids");
+        if (siblingOrders!=null && siblingOrders.size()>1) {
+            button("Lihat pesanan lain",()->selectCheckoutOrder(siblingOrders),false);
+        }
+        if (getIntent().getBooleanExtra("return_to_checkout",false)) button("Kembali ke hasil checkout",this::finish,false);
         button("Ke beranda",this::home,!preparing || "pending".equals(cancelState));
+    }
+
+    private void selectCheckoutOrder(java.util.ArrayList<String> orders) {
+        java.util.ArrayList<String> other=new java.util.ArrayList<>(orders);
+        other.remove(orderId);
+        new TransivaAlertDialogBuilder(this).setTitle("Pesanan TransFood")
+                .setItems(other.toArray(new String[0]),(dialog,index)->switchOrder(new Intent(this,CustomerFoodOrderStatusActivity.class)
+                        .putExtra("order_id",other.get(index)).putExtra("status","offered")
+                        .putExtra("return_to_checkout",getIntent().getBooleanExtra("return_to_checkout",false))
+                        .putStringArrayListExtra("checkout_order_ids",orders)))
+                .setNegativeButton("Tutup",null).show();
     }
 
     private static String gameOrderLabel(String merchantStatus, boolean preparing) {
@@ -152,7 +176,7 @@ public class CustomerFoodOrderStatusActivity extends CustomerAdaptiveActivity {
     private boolean gameOpen() { return game != null && game.isShowing(); }
 
     private void openGame() {
-        if (gameOpen() || latestWaiting == null || !foreground || terminal || routed || isFinishing() || isDestroyed()) return;
+        if (gameOpen() || latestWaiting == null || orderStatusStale || !foreground || terminal || routed || isFinishing() || isDestroyed()) return;
         JSONObject order = FoodOrderDecision.order(latestWaiting);
         if ("pending".equals(CustomerActivityOrderAction.foodCancellationState(order))) return;
         String merchant = FoodOrderDecision.value(order, "merchant_status");
@@ -179,7 +203,7 @@ public class CustomerFoodOrderStatusActivity extends CustomerAdaptiveActivity {
     }
     private void startTick(){handler.removeCallbacks(tick);if(foreground&&terminal){lastTick=SystemClock.elapsedRealtime();handler.post(tick);}}
     private void home(){if(routed||!foreground)return;closeGame();routed=true;handler.removeCallbacksAndMessages(null);Intent home=new Intent(this,CustomerDashboardActivity.class);home.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP|Intent.FLAG_ACTIVITY_SINGLE_TOP);startActivity(home);finish();}
-    @Override public void onBackPressed(){if(gameOpen())closeGame();else home();}
+    @Override public void onBackPressed(){if(gameOpen())closeGame();else if(getIntent().getBooleanExtra("return_to_checkout",false))finish();else home();}
     @Override protected void onResume(){super.onResume();foreground=true;if(gameOpen())game.setForeground(true);runtime.onResume();fetch();startTick();}
     @Override protected void onPause(){if(gameOpen())game.setForeground(false);foreground=false;handler.removeCallbacks(tick);handler.removeCallbacks(poll);runtime.onPause();super.onPause();}
     @Override protected void onSaveInstanceState(Bundle out){super.onSaveInstanceState(out);out.putLong("remaining",remaining);}

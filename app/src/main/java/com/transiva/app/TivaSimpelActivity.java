@@ -62,12 +62,15 @@ public final class TivaSimpelActivity extends CustomerAdaptiveActivity {
     private void buildScreen() {
         LinearLayout page=new LinearLayout(this);
         page.setOrientation(LinearLayout.VERTICAL);
-        page.setBackgroundColor(0xFFF2F7FD);
+        page.setBackgroundColor(0xFFEAF5FF);
         LinearLayout header=new LinearLayout(this);
         header.setGravity(Gravity.CENTER_VERTICAL);
         header.setPadding(dp(8),dp(8),dp(14),dp(8));
-        header.setBackgroundColor(0xFFFFFFFF);
+        header.setBackground(CustomerUiPrimitives.gradient("#082D79","#0877DF",0));
         Button back=button("‹",this::finish);
+        back.setBackgroundColor(0x00000000);
+        back.setTextColor(0xFFFFFFFF);
+        back.setTextSize(28);
         back.setContentDescription("Kembali");
         header.addView(back,new LinearLayout.LayoutParams(dp(44),dp(44)));
         ImageView avatar=new ImageView(this);
@@ -79,8 +82,8 @@ public final class TivaSimpelActivity extends CustomerAdaptiveActivity {
         LinearLayout identity=new LinearLayout(this);
         identity.setOrientation(LinearLayout.VERTICAL);
         identity.setPadding(dp(10),0,0,0);
-        identity.addView(label("Tiva AI",18,"#123259",true));
-        identity.addView(label("Trans Simpel · "+driverName,12,"#526E90",false));
+        identity.addView(label("Tiva AI",22,"#FFFFFF",true));
+        identity.addView(label("Trans Simpel · "+driverName,13,"#E0F0FF",false));
         header.addView(identity,new LinearLayout.LayoutParams(0,-2,1));
         page.addView(header);
         scroll=new ScrollView(this);
@@ -171,8 +174,14 @@ public final class TivaSimpelActivity extends CustomerAdaptiveActivity {
         actions.removeAllViews();
         bubble("Hai! Aku Tiva AI. Mau kubantu pesan apa?",false);
         if (kind.isEmpty()) {
-            bubble("Setelah alamat dipilih, percakapan ini ikut dikirim ke driver.",false);
-            for (String option:new String[]{"food","ride","send","shop"}) addAction(question(option),()->showTyping(()->selectKind(option)));
+            TextView info=label("Setelah alamat dipilih, percakapan ini ikut dikirim ke driver.",14,"#194979",false);
+            info.setPadding(dp(12),dp(10),dp(12),dp(10));
+            info.setBackground(CustomerUiPrimitives.round("#D5EBFF",dp(14)));
+            messages.addView(info,new LinearLayout.LayoutParams(-1,-2));
+            serviceRow("food","Pesan makan",R.drawable.ic_service_food_premium,"#FFF0DC",
+                    "ride","Pesan ojek",R.drawable.ic_service_ride_premium,"#DCEFFF");
+            serviceRow("send","Kirim barang",R.drawable.ic_service_send_premium,"#EEE7FF",
+                    "shop","Belanja",R.drawable.ic_service_shop_premium,"#DCF8E9");
             return;
         }
         bubble(question(kind),true);
@@ -268,15 +277,26 @@ public final class TivaSimpelActivity extends CustomerAdaptiveActivity {
         if (!problem.isEmpty()) bubble(problem,false);
         if (options.length()==0 && problem.isEmpty()) bubble(restaurant==null
                 ?"Belum ada restoran yang tersedia di halaman ini.":"Menu di sini lagi kosong.",false);
+        if (options.length()>0) {
+            TextView heading=label(restaurant==null?"Restoran sekitar":"Menu "+restaurant.optString("name"),19,"#10294A",true);
+            heading.setPadding(0,dp(6),0,dp(3));
+            actions.addView(heading);
+        }
         for (int i=0;i<options.length();i++) {
             JSONObject item=options.optJSONObject(i);
             if (item==null) continue;
             if (restaurant==null) {
-                addAction(item.optString("name")+" · "+item.optDouble("distance_km")+" km",()->{
-                    restaurant=item;showTyping(()->loadFood(item.optInt("id"),0));
+                String distance=String.format(new java.util.Locale("id","ID"),"%.1f km",item.optDouble("distance_km",0));
+                addFoodCard(item,distance,R.drawable.ic_service_food_premium,true,()->{
+                    restaurant=item;
+                    showTyping(()->loadFood(item.optInt("id"),0));
                 });
             } else {
-                addMenu(item);
+                boolean required=item.optBoolean("requires_topping");
+                long price=item.optLong("price");
+                String cost=price>0?"Rp "+java.text.NumberFormat.getIntegerInstance(new java.util.Locale("id","ID")).format(price):"";
+                if (required) cost=cost.isEmpty()?"Pilih topping":"Mulai "+cost+" · pilih topping";
+                addFoodCard(item,cost,R.drawable.ic_service_food_premium,false,()->startMenu(item));
             }
         }
         int restaurantId=restaurant==null?0:restaurant.optInt("id");
@@ -292,21 +312,66 @@ public final class TivaSimpelActivity extends CustomerAdaptiveActivity {
         addAction("Ganti pilihan",this::reset);
     }
 
-    private void addMenu(JSONObject item) {
+    private void serviceRow(String leftKind,String leftLabel,int leftArt,String leftColor,
+                            String rightKind,String rightLabel,int rightArt,String rightColor) {
+        LinearLayout row=new LinearLayout(this);
+        actions.addView(row,new LinearLayout.LayoutParams(-1,-2));
+        addService(row,leftKind,leftLabel,leftArt,leftColor,0);
+        addService(row,rightKind,rightLabel,rightArt,rightColor,8);
+    }
+
+    private void addService(LinearLayout row,String service,String title,int art,String color,int gap) {
+        LinearLayout card=new LinearLayout(this);
+        card.setOrientation(LinearLayout.VERTICAL);
+        card.setPadding(dp(10),dp(8),dp(10),dp(10));
+        card.setGravity(Gravity.CENTER_VERTICAL);
+        card.setBackground(CustomerUiPrimitives.roundStroke(this,color,"#FFFFFF",dp(16),1));
+        ImageView image=new ImageView(this);
+        image.setImageResource(art);
+        image.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        image.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+        card.addView(image,new LinearLayout.LayoutParams(-1,dp(65)));
+        card.addView(label(title+" ›",16,"#10294A",true));
+        card.setFocusable(true);
+        card.setOnClickListener(v->showTyping(()->selectKind(service)));
+        LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(0,-1,1);
+        lp.setMargins(dp(gap),dp(8),0,0);
+        row.addView(card,lp);
+    }
+
+    private void addFoodCard(JSONObject item,String caption,int placeholder,boolean store,Runnable click) {
         LinearLayout row=new LinearLayout(this);
         row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setPadding(dp(8),dp(7),dp(9),dp(7));
+        row.setMinimumHeight(dp(66));
+        row.setBackground(CustomerUiPrimitives.roundStroke(this,"#FFFFFF","#D8E8F8",dp(15),1));
         ImageView photo=new ImageView(this);
         photo.setScaleType(ImageView.ScaleType.CENTER_CROP);
-        photo.setBackground(CustomerUiPrimitives.round("#E1EFFF",dp(9)));
+        photo.setImageResource(placeholder);
+        photo.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+        photo.setBackground(CustomerUiPrimitives.round("#E6F1FD",dp(11)));
         photo.setClipToOutline(true);
         String url=ImageUrlResolver.resolve(item.optString("image"));
-        if (url!=null && !url.isEmpty()) RemoteImageLoader.loadCenterCrop(photo,url,0);
-        LinearLayout.LayoutParams image=new LinearLayout.LayoutParams(dp(44),dp(44));
-        image.rightMargin=dp(8);
-        row.addView(photo,image);
-        row.addView(button(item.optString("name")+
-                (item.optBoolean("requires_topping")?" · pilih topping":""),()->startMenu(item)),
-                new LinearLayout.LayoutParams(0,-2,1));
+        if (url!=null && !url.isEmpty()) RemoteImageLoader.loadCenterCrop(photo,url,placeholder);
+        LinearLayout.LayoutParams photoParams=new LinearLayout.LayoutParams(dp(48),dp(48));
+        photoParams.rightMargin=dp(10);
+        row.addView(photo,photoParams);
+        LinearLayout labels=new LinearLayout(this);
+        labels.setOrientation(LinearLayout.VERTICAL);
+        labels.addView(label(item.optString("name"),16,"#10294A",true));
+        if (!store && !caption.isEmpty()) labels.addView(label(caption,13,"#215D43",true));
+        row.addView(labels,new LinearLayout.LayoutParams(0,-2,1));
+        if (store) {
+            TextView distance=label(caption,13,"#16513F",true);
+            distance.setPadding(dp(8),dp(4),dp(8),dp(4));
+            distance.setBackground(CustomerUiPrimitives.round("#DEF6EB",dp(16)));
+            row.addView(distance);
+        }
+        TextView arrow=label(store?" ›":" +",21,"#075DCF",true);
+        arrow.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+        row.addView(arrow);
+        row.setFocusable(true);
+        row.setOnClickListener(v->click.run());
         LinearLayout.LayoutParams space=new LinearLayout.LayoutParams(-1,-2);
         space.topMargin=dp(6);
         actions.addView(row,space);
@@ -488,10 +553,15 @@ public final class TivaSimpelActivity extends CustomerAdaptiveActivity {
 
     private void pick(int request) {
         boolean isPickup=request==PICKUP;
-        startActivityForResult(new Intent(this,TransSendContactPointActivity.class)
+        JSONObject seed=isPickup?pickup:delivery;
+        Intent picker=new Intent(this,TransSendContactPointActivity.class)
                 .putExtra("point_kind",isPickup?"pickup":"delivery")
-                .putExtra("title",isPickup?"Atur Titik Jemput":"Tentukan alamat pengantaran")
-                .putExtra("tiva_location",true).putExtra("lat",lat).putExtra("lng",lng),request);
+                .putExtra("lat",seed==null?lat:seed.optDouble("lat"))
+                .putExtra("lng",seed==null?lng:seed.optDouble("lng"));
+        JSONObject origin=pickup!=null?pickup:restaurant==null?null:restaurant.optJSONObject("pickup");
+        if (origin!=null) picker.putExtra("saved_pickup",origin.toString());
+        if (delivery!=null) picker.putExtra("saved_delivery",delivery.toString());
+        startActivityForResult(picker,request);
     }
 
     @Override protected void onActivityResult(int request,int result,Intent data) {

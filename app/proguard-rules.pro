@@ -104,7 +104,7 @@
 -keep class com.transiva.app.TransSimpelRoutePanel {
     <init>(android.app.Activity, java.lang.String);
     android.view.View view();
-    void fitOnResize(android.view.View);
+    android.widget.LinearLayout createLayout();
     void close();
 }
 

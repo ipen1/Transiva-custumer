@@ -151,30 +151,28 @@ public class ReleaseEdgeToEdgeTest {
             instrumentation.runOnMainSync(()->{
                 TransSimpelRoutePanel panel=new TransSimpelRoutePanel(activity,"PUD000000000000000000000000");
                 try {
-                    android.widget.LinearLayout column=new android.widget.LinearLayout(activity);
-                    column.setOrientation(android.widget.LinearLayout.VERTICAL);
+                    android.widget.LinearLayout column=panel.createLayout();
                     View route=panel.view();
                     route.setVisibility(View.VISIBLE);
                     column.addView(route,new android.widget.LinearLayout.LayoutParams(-1,-2));
-                    panel.fitOnResize(column);
                     View messages=new View(activity);
                     column.addView(messages,new android.widget.LinearLayout.LayoutParams(-1,0,1));
                     View composer=new View(activity);
                     float density=activity.getResources().getDisplayMetrics().density;
                     int composerHeight=Math.round(56*density);
                     column.addView(composer,new android.widget.LinearLayout.LayoutParams(-1,composerHeight));
-                    for(int heightDp:new int[]{720,300,580}) {
+                    for(int heightDp:new int[]{720,300,580,240,720}) {
                         int width=Math.round(320*density);
                         int height=Math.round(heightDp*density);
-                        for(int pass=0;pass<2;pass++) {
-                            column.measure(View.MeasureSpec.makeMeasureSpec(width,View.MeasureSpec.EXACTLY),
-                                    View.MeasureSpec.makeMeasureSpec(height,View.MeasureSpec.EXACTLY));
-                            column.layout(0,0,width,height);
-                        }
-                        assertTrue(route.getHeight()<=Math.round(height*.42f));
-                        assertTrue(messages.getHeight()>0);
-                        assertEquals(composerHeight,composer.getHeight());
-                        assertEquals(height,composer.getBottom());
+                        column.measure(View.MeasureSpec.makeMeasureSpec(width,View.MeasureSpec.EXACTLY),
+                                View.MeasureSpec.makeMeasureSpec(height,View.MeasureSpec.EXACTLY));
+                        column.layout(0,0,width,height);
+                        int limit=Math.round(height*.42f);
+                        assertTrue("Route height "+route.getHeight()+" exceeds "+limit+" at "+heightDp+"dp",
+                                route.getHeight()>0 && route.getHeight()<=limit);
+                        assertTrue("Messages have no space at "+heightDp+"dp",messages.getHeight()>0);
+                        assertEquals("Composer height at "+heightDp+"dp",composerHeight,composer.getHeight());
+                        assertEquals("Composer bottom at "+heightDp+"dp",height,composer.getBottom());
                     }
                 } finally {
                     panel.close();

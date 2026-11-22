@@ -14,8 +14,18 @@ public final class OrderStatusPresentation {
     public static String label(String rawStatus, String rawType) {
         String s = CustomerOrderState.normalize(rawStatus), t = n(rawType);
         switch (s) {
+            case "offered":
             case "pending":
-                return isFood(t) ? "Menunggu Konfirmasi Merchant" : "Mencari Driver Terdekat";
+                return "Sedang Mencari Driver";
+            case "preparing":
+                return "Pesanan Sedang Disiapkan";
+            case "ready":
+                return "Pesanan Siap Diambil";
+            case "no_driver":
+            case "driver_not_found":
+                return "Driver Belum Ditemukan";
+            case "refunded":
+                return "Dana Sudah Dikembalikan";
             case "merchant_accepted":
                 return "Merchant Menyiapkan Pesananmu";
             case "merchant_rejected":
@@ -52,7 +62,7 @@ public final class OrderStatusPresentation {
             case "scheduled":
                 return "Pesanan Terjadwal";
             default:
-                return readable(s);
+                return "Status Sedang Diperbarui";
         }
     }
 
@@ -64,10 +74,9 @@ public final class OrderStatusPresentation {
         String d = first(o.optString("driver_name"), o.optString("driver"),
                 o.optString("driver_username"), "Driver");
         switch (s) {
+            case "offered":
             case "pending":
-                return isFood(t)
-                        ? "Merchant sedang kami hubungi untuk mengonfirmasi pesananmu"
-                        : "Kami sedang mencarikan driver terdekat untukmu";
+                return "Kami sedang mencarikan driver terdekat untukmu";
             case "merchant_accepted":
                 return "Merchant sudah menerima dan sedang menyiapkan pesananmu";
             case "merchant_rejected":
@@ -126,5 +135,4 @@ public final class OrderStatusPresentation {
     private static boolean isFood(String t){return t.contains("food");}
     private static String n(String v){return v==null?"":v.trim().toLowerCase(Locale.ROOT).replace('-','_').replace(' ','_');}
     private static String first(String...v){for(String x:v)if(x!=null&&!x.trim().isEmpty()&&!"null".equalsIgnoreCase(x.trim()))return x.trim();return "";}
-    private static String readable(String v){if(v.isEmpty())return "Status Sedang Diperbarui";StringBuilder b=new StringBuilder();for(String w:v.replace('_',' ').split("\\s+")){if(w.isEmpty())continue;if(b.length()>0)b.append(' ');b.append(Character.toUpperCase(w.charAt(0)));if(w.length()>1)b.append(w.substring(1));}return b.toString();}
 }

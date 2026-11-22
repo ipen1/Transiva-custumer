@@ -51,8 +51,8 @@ public final class TransSendCourierDirectoryActivity extends CustomerAdaptiveAct
     private final java.util.Set<Integer> shown = new java.util.HashSet<>();
     private CancellationTokenSource locationRequest;
     private Location directoryLocation;
-    private Button contactStatus;
-    private JSONObject activeContact;
+    private LinearLayout activeList;
+    private String activitySnapshot;
     private String followContact = "";
     private boolean visible;
     private boolean contactBusy;
@@ -166,17 +166,6 @@ public final class TransSendCourierDirectoryActivity extends CustomerAdaptiveAct
             else requestPermissions(new String[]{Manifest.permission.ACCESS_COARSE_LOCATION}, LOCATION_PERMISSION);
         });
         body.addView(refresh, new LinearLayout.LayoutParams(-2, -2));
-        contactStatus = new Button(this);
-        contactStatus.setAllCaps(false);
-        contactStatus.setMinHeight(dp(46));
-        contactStatus.setTextColor(Color.WHITE);
-        contactStatus.setBackground(CustomerUiPrimitives.gradient("#0759BF","#087AF2",dp(14)));
-        contactStatus.setVisibility(View.GONE);
-        contactStatus.setOnClickListener(v -> showContactActions());
-        LinearLayout.LayoutParams chatSpace = new LinearLayout.LayoutParams(-1,-2);
-        chatSpace.topMargin = dp(8);
-        body.addView(contactStatus,chatSpace);
-
         progress = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
         progress.setIndeterminate(true);
         progress.setVisibility(View.GONE);
@@ -190,6 +179,11 @@ public final class TransSendCourierDirectoryActivity extends CustomerAdaptiveAct
         results.setPadding(dp(16), dp(8), dp(16), dp(16));
         LinearLayout list = new LinearLayout(this);
         list.setOrientation(LinearLayout.VERTICAL);
+        activeList=new LinearLayout(this);
+        activeList.setOrientation(LinearLayout.VERTICAL);
+        activeList.setPadding(dp(16),dp(8),dp(16),0);
+        activeList.setVisibility(View.GONE);
+        list.addView(activeList,new LinearLayout.LayoutParams(-1,-2));
         list.addView(results, new LinearLayout.LayoutParams(-1,-2));
         nextPage = new Button(this);
         nextPage.setAllCaps(false);
@@ -383,33 +377,14 @@ public final class TransSendCourierDirectoryActivity extends CustomerAdaptiveAct
         }
     }
 
-    private void showContactActions() {
-        if (activeContact == null || contactBusy) return;
-        JSONObject entry = activeContact;
-        String state = entry.optString("state");
-        if ("ordered".equals(state)) {
-            TransSendContactClient.openChat(this, entry);
-            return;
-        }
-        android.app.AlertDialog dialog = new TransivaAlertDialogBuilder(this)
-                .setTitle(entry.optString("peer_name", "Kurir TransSend"))
-                .setMessage("accepted".equals(state) ? "Chat sudah siap dibuka."
-                        : "Menunggu konfirmasi kurir. Permintaan berlaku 90 detik.")
-                .setNegativeButton("Tutup", null)
-                .setNeutralButton("Batalkan Permintaan", (d,w) -> runContactAction(
-                        () -> TransSendContactClient.action("cancel", entry.optString("id")), false))
-                .setPositiveButton("accepted".equals(state) ? "Buka Chat" : "Perbarui",
-                        (d,w) -> {
-                            if ("accepted".equals(state)) TransSendContactClient.openChat(this, entry);
-                            else refreshContact();
-                        }).create();
-        dialog.show();
-    }
-
     private interface Payload { JSONObject body() throws Exception; }
 
     private void runContactAction(Payload payload, boolean follow) {
-        if (contactBusy) return;
+        if (contactBusy) {
+            main.removeCallbacks(contactPoll);
+            main.postDelayed(()->{if (visible) runContactAction(payload,follow);},300);
+            return;
+        }
         contactBusy = true;
         network.execute(() -> {
             try {
@@ -417,7 +392,8 @@ public final class TransSendCourierDirectoryActivity extends CustomerAdaptiveAct
                 network.post(main, () -> {
                     contactBusy = false;
                     followContact = follow ? entry.optString("id") : "";
-                    presentContact(entry);
+                    presentFollowedContact(entry);
+                    refreshContact();
                     scheduleContactPoll();
                 });
             } catch (Exception error) {
@@ -432,15 +408,15 @@ public final class TransSendCourierDirectoryActivity extends CustomerAdaptiveAct
         String id = followContact;
         network.execute(() -> {
             try {
-                JSONObject response = TransSendContactClient.contact(this,
-                        TransSendContactClient.action(id.isEmpty() ? "list" : "get", id));
-                JSONObject entry = response.optJSONObject("contact");
-                JSONArray list = response.optJSONArray("contacts");
-                if (entry == null && list != null) entry = list.optJSONObject(0);
-                JSONObject result = entry;
+                JSONObject response=TransSendContactClient.contact(this,TransSendContactClient.action("active_list",""));
+                JSONObject followed=id.isEmpty()?null:TransSendContactClient.contact(this,
+                        TransSendContactClient.action("get",id)).optJSONObject("contact");
                 network.post(main, () -> {
-                    contactBusy = false;
-                    if (visible) presentContact(result);
+                    contactBusy=false;
+                    if (visible) {
+                        renderActivity(response);
+                        if (id.equals(followContact)) presentFollowedContact(followed);
+                    }
                     scheduleContactPoll();
                 });
             } catch (Exception error) {
@@ -456,28 +432,133 @@ public final class TransSendCourierDirectoryActivity extends CustomerAdaptiveAct
         }, () -> network.post(main, () -> { contactBusy = false; scheduleContactPoll(); }));
     }
 
-    private void presentContact(JSONObject entry) {
-        activeContact = entry;
-        String state = entry == null ? "" : entry.optString("state");
-        if ("accepted".equals(state) || "ordered".equals(state)) {
-            contactStatus.setText("Buka Chat · " + entry.optString("peer_name"));
-            contactStatus.setVisibility(View.VISIBLE);
-            if (visible && followContact.equals(entry.optString("id"))) {
-                followContact = "";
-                TransSendContactClient.openChat(this, entry);
-            }
-        } else if ("pending".equals(state)) {
-            contactStatus.setText("Menunggu jawaban · " + entry.optString("peer_name"));
-            contactStatus.setVisibility(View.VISIBLE);
-            followContact = entry.optString("id");
-        } else {
-            contactStatus.setVisibility(View.GONE);
-            if (!followContact.isEmpty() && !state.isEmpty()) {
-                String message = "rejected".equals(state) ? "Kurir menolak permintaan Anda." : "Waktu permintaan sudah habis.";
-                Toast.makeText(this, message, Toast.LENGTH_SHORT).show();
-            }
-            followContact = "";
+    private void presentFollowedContact(JSONObject entry) {
+        if (entry==null || !entry.optString("id").equals(followContact)) return;
+        String state=entry.optString("state");
+        if ("pending".equals(state)) return;
+        followContact="";
+        if (visible && ("accepted".equals(state) || "ordered".equals(state))) {
+            TransSendContactClient.openChat(this,entry);
+        } else if (visible && "rejected".equals(state)) {
+            Toast.makeText(this,"Driver belum bisa menerima permintaan.",Toast.LENGTH_SHORT).show();
         }
+    }
+
+    private void renderActivity(JSONObject response) {
+        JSONArray contacts=response.optJSONArray("contacts");
+        JSONArray orders=response.optJSONArray("orders");
+        String snapshot=String.valueOf(contacts)+String.valueOf(orders);
+        if (snapshot.equals(activitySnapshot)) return;
+        activitySnapshot=snapshot;
+        activeList.removeAllViews();
+        boolean hasContacts=contacts!=null && contacts.length()>0;
+        boolean hasOrders=orders!=null && orders.length()>0;
+        activeList.setVisibility(hasContacts || hasOrders?View.VISIBLE:View.GONE);
+        if (!hasContacts && !hasOrders) return;
+        activeList.addView(label("Trans Simpel aktif",17,"#103769",true));
+        if (hasContacts) for (int i=0;i<contacts.length();i++) {
+            JSONObject entry=contacts.optJSONObject(i);
+            if (entry==null) continue;
+            boolean accepted="accepted".equals(entry.optString("state"));
+            LinearLayout row=activityCard(entry.optString("peer_name","Driver"),accepted?"Chat siap dibuka":"Menunggu jawaban driver");
+            if (accepted) addActivityAction(row,"Buka chat",false,()->TransSendContactClient.openChat(this,entry));
+            addActivityAction(row,"Batalkan",true,()->new TransivaAlertDialogBuilder(this)
+                    .setTitle("Batalkan permintaan?")
+                    .setNegativeButton("Kembali",null)
+                    .setPositiveButton("Batalkan",(d,w)->runContactAction(
+                            ()->TransSendContactClient.action("cancel",entry.optString("id")),false)).show());
+        }
+        if (hasOrders) for (int i=0;i<orders.length();i++) {
+            JSONObject order=orders.optJSONObject(i);
+            if (order==null) continue;
+            String service=order.optString("service_name");
+            String state=order.optBoolean("cancel_pending")?"Menunggu persetujuan pembatalan dari toko"
+                    :OrderStatusPresentation.label(order.optString("status"),service);
+            LinearLayout row=activityCard(service+" · #"+order.optString("order_id"),state);
+            addActivityAction(row,"Lacak",false,()->openActiveOrder(order));
+            JSONObject chat=order.optJSONObject("chat");
+            if (chat!=null) addActivityAction(row,"Chat",false,()->TransSendContactClient.openChat(this,chat));
+            if (order.optBoolean("can_cancel")) {
+                boolean ask=order.optBoolean("needs_merchant");
+                addActivityAction(row,ask?"Ajukan batal":"Batalkan",true,()->confirmOrderCancellation(order,ask));
+            }
+        }
+    }
+
+    private LinearLayout activityCard(String title,String state) {
+        LinearLayout card=new LinearLayout(this);
+        card.setOrientation(LinearLayout.VERTICAL);
+        card.setPadding(dp(12),dp(10),dp(12),dp(5));
+        card.setBackground(CustomerUiPrimitives.round("#FFFFFF",dp(16)));
+        LinearLayout.LayoutParams space=new LinearLayout.LayoutParams(-1,-2);
+        space.topMargin=dp(8);
+        activeList.addView(card,space);
+        card.addView(label(title,15,"#103769",true));
+        card.addView(label(state,13,"#315678",false));
+        LinearLayout row=new LinearLayout(this);
+        card.addView(row);
+        return row;
+    }
+
+    private void addActivityAction(LinearLayout row,String title,boolean destructive,Runnable action) {
+        Button button=new Button(this);
+        button.setAllCaps(false);
+        button.setMinWidth(0);
+        button.setMinimumWidth(0);
+        button.setMinHeight(dp(48));
+        button.setPadding(dp(5),0,dp(5),0);
+        button.setTextSize(13);
+        button.setText(title);
+        button.setTextColor(Color.parseColor(destructive?"#9B2441":"#075BB8"));
+        button.setBackground(CustomerUiPrimitives.round(destructive?"#FFF0F3":"#EAF4FF",dp(11)));
+        LinearLayout.LayoutParams space=new LinearLayout.LayoutParams(0,-2,1);
+        space.setMargins(0,dp(5),dp(4),dp(4));
+        row.addView(button,space);
+        button.setOnClickListener(v->action.run());
+    }
+
+    private void openActiveOrder(JSONObject order) {
+        String id=order.optString("order_id");
+        String source=order.optString("source");
+        String service=order.optString("service_name");
+        String status=order.optString("status");
+        Class<?> screen="TransFood".equals(service)?CustomerFoodOrderStatusActivity.class
+                : ("offered".equals(status) || "pending".equals(status))?SearchDriverActivity.class:CustomerTripActivity.class;
+        startActivity(new Intent(this,screen).putExtra("order_id",id).putExtra("source",source)
+                .putExtra("order_source",source).putExtra("order_type",service).putExtra("status",status));
+    }
+
+    private void confirmOrderCancellation(JSONObject order,boolean ask) {
+        new TransivaAlertDialogBuilder(this)
+                .setTitle(ask?"Ajukan pembatalan ke toko?":"Batalkan pesanan?")
+                .setNegativeButton("Kembali",null)
+                .setPositiveButton(ask?"Ajukan":"Batalkan",(d,w)->cancelActiveOrder(order)).show();
+    }
+
+    private void cancelActiveOrder(JSONObject order) {
+        if (contactBusy) {
+            main.removeCallbacks(contactPoll);
+            main.postDelayed(()->{if (visible) cancelActiveOrder(order);},300);
+            return;
+        }
+        contactBusy=true;
+        network.execute(()->{
+            try {
+                JSONObject data=new JSONObject().put("order_id",order.optString("order_id"))
+                        .put("table",order.optString("source")).put("food_cancel_request_supported",true)
+                        .put("trans_simpel_list",true);
+                JSONObject response=TransivaHttpRepository.postJson(this,ApiConfig.server("cancel_order.php"),data,15000);
+                network.post(main,()->{
+                    contactBusy=false;
+                    if (visible) {
+                        Toast.makeText(this,response.optString("message"),Toast.LENGTH_LONG).show();
+                        refreshContact();
+                    }
+                });
+            } catch (Exception error) {
+                network.post(main,()->contactFailed(error));
+            }
+        },()->network.post(main,()->contactFailed(null)));
     }
 
     private void contactFailed(Exception error) {
@@ -492,7 +573,7 @@ public final class TransSendCourierDirectoryActivity extends CustomerAdaptiveAct
 
     private void scheduleContactPoll() {
         main.removeCallbacks(contactPoll);
-        if (visible && !followContact.isEmpty()) main.postDelayed(contactPoll, 3000);
+        if (visible) main.postDelayed(contactPoll,followContact.isEmpty()?7000:3000);
     }
 
     private void finishLoading(String message, String action) {

@@ -33,7 +33,7 @@ public final class TivaSimpelActivity extends CustomerAdaptiveActivity {
     private String status="", problem="";
     private boolean typing, reviewFood;
     private JSONArray foodCart=new JSONArray();
-    private JSONObject pickup, delivery, restaurant, foodQuote;
+    private JSONObject pickup, delivery, restaurant, foodQuote, routeQuote;
     private long quotedAt;
     private int driver, nextOffset;
     private double lat,lng;
@@ -108,6 +108,8 @@ public final class TivaSimpelActivity extends CustomerAdaptiveActivity {
         visible=true;
         if (!contact.isEmpty()) checkContact();
         else if ("food".equals(kind) && reviewFood && delivery!=null && foodQuote==null && !typing && problem.isEmpty()) quoteFood();
+        else if (requiresRouteReview() && pickup!=null && delivery!=null && routeQuote==null
+                && contact.isEmpty() && !typing && problem.isEmpty()) quoteRoute();
         else if ("food".equals(kind) && !reviewFood && options.length()==0 && !loading && problem.isEmpty()) {
             loadFood(restaurant==null?0:restaurant.optInt("id"),0);
         }
@@ -214,15 +216,23 @@ public final class TivaSimpelActivity extends CustomerAdaptiveActivity {
             addAction("Ganti pilihan",this::reset);
         } else {
             bubble(delivery.optString("address"),true);
-            if (status.isEmpty() && contact.isEmpty()) bubble("Alamatnya sudah siap. Kirim ke "+driverName+" kalau semuanya sudah pas.",false);
+            if (status.isEmpty() && problem.isEmpty() && contact.isEmpty() && !loading) {
+                bubble(requiresRouteReview()?"Cek dulu rinciannya. Kalau sudah pas, aku kirim ke "+driverName+"."
+                        :"Alamatnya sudah siap. Kirim ke "+driverName+" kalau semuanya sudah pas.",false);
+            }
             if (!status.isEmpty()) bubble(status,false);
             if (!problem.isEmpty()) bubble(problem,false);
-            if ("food".equals(kind) && foodQuote!=null) addFoodSummary();
+            if (contact.isEmpty() && "food".equals(kind) && foodQuote!=null) addFoodSummary();
+            if (contact.isEmpty() && requiresRouteReview()) addRouteSummary();
             if (contact.isEmpty() && !loading) {
                 if ("food".equals(kind) && foodQuote==null) addPrimary("Hitung subtotal dan ongkir",this::quoteFood);
-                else addPrimary(problem.isEmpty()?"Kirim ke "+driverName:"Coba kirim lagi",this::submit);
+                else if (requiresRouteReview() && routeQuote==null) addPrimary("Hitung estimasi ongkir",this::quoteRoute);
+                else addPrimary("Kirim ke "+driverName,this::submit);
                 if ("food".equals(kind)) addAction("Ubah keranjang",this::editCart);
-                addAction("Ubah alamat pengantaran",()->pick(DELIVERY));
+                if (requiresRouteReview()) {
+                    addRouteEdits();
+                    if ("shop".equals(kind)) addAction("Ubah daftar belanja",()->{detail="";routeQuote=null;render();});
+                } else addAction("Ubah alamat pengantaran",()->pick(DELIVERY));
                 addAction("Ganti pilihan",this::reset);
             }
             if (!contact.isEmpty() && !terminal()) addAction("Batalkan permintaan",this::cancel);
@@ -252,6 +262,7 @@ public final class TivaSimpelActivity extends CustomerAdaptiveActivity {
         restaurant=null;pickup=null;delivery=null;more=false;reviewFood=false;
         foodCart=new JSONArray();
         foodQuote=null;
+        routeQuote=null;
         clearOptions();
         key=UUID.randomUUID().toString();
         render();
@@ -370,6 +381,7 @@ public final class TivaSimpelActivity extends CustomerAdaptiveActivity {
             line.put("qty",quantity).put("label",cartLabel(line));
         } catch (org.json.JSONException error) { throw new IllegalStateException(error); }
         foodQuote=null;
+        routeQuote=null;
         key=UUID.randomUUID().toString();
         render();
     }
@@ -384,9 +396,53 @@ public final class TivaSimpelActivity extends CustomerAdaptiveActivity {
         return copy.toString();
     }
 
+    private boolean requiresRouteReview() {
+        return "ride".equals(kind) || "shop".equals(kind);
+    }
+
+    private void quoteRoute() {
+        if (!requiresRouteReview() || pickup==null || delivery==null || loading || !contact.isEmpty()) return;
+        routeQuote=null;
+        status="Aku hitung estimasi ongkirnya dulu, ya.";
+        perform(()->TransivaHttpRepository.postJson(this,ApiConfig.server("trans_simpel.php"),
+                new JSONObject().put("action","preview_route").put("kind",kind)
+                        .put("origin",new JSONObject().put("lat",lat).put("lng",lng))
+                        .put("pickup",pickup).put("delivery",delivery),14000),response->{
+            status="";
+            routeQuote=response.optJSONObject("quote");
+            quotedAt=android.os.SystemClock.elapsedRealtime();
+            if (routeQuote==null) problem="Estimasi ongkir belum tersedia. Coba lagi.";
+        },true);
+    }
+
+    private void addRouteEdits() {
+        LinearLayout row=new LinearLayout(this);
+        actions.addView(row,new LinearLayout.LayoutParams(-1,-2));
+        Button from=button("shop".equals(kind)?"Ubah toko":"Ubah jemput",()->pick(PICKUP));
+        Button to=button("Ubah tujuan",()->pick(DELIVERY));
+        LinearLayout.LayoutParams space=new LinearLayout.LayoutParams(0,-2,1);
+        space.setMargins(0,dp(5),dp(6),0);
+        row.addView(from,space);
+        LinearLayout.LayoutParams end=new LinearLayout.LayoutParams(0,-2,1);
+        end.topMargin=dp(5);
+        row.addView(to,end);
+    }
+
+    private void addRouteSummary() {
+        boolean shopping="shop".equals(kind);
+        LinearLayout card=detailCard(actions,shopping?"Tinjau pesanan belanja":"Tinjau perjalanan","#E3F7EE");
+        card.addView(label((shopping?"Toko":"Jemput")+" · "+pickup.optString("address"),14,"#164F40",true));
+        card.addView(label("Antar · "+delivery.optString("address"),14,"#164F40",false));
+        if (shopping) card.addView(label("Daftar belanja · "+detail,14,"#164F40",false));
+        if (routeQuote==null) return;
+        addMoney(card,shopping?"Estimasi ongkir":"Estimasi tarif",routeQuote.optLong("total"),true);
+        if (shopping) card.addView(label("Di luar harga barang belanjaan.",13,"#164F40",false));
+    }
+
     private void quoteFood() {
         if (!reviewFood || restaurant==null || delivery==null || foodCart.length()==0 || loading) return;
         foodQuote=null;
+        routeQuote=null;
         status="Menghitung subtotal dan ongkir…";
         perform(()->{
             JSONObject draft=new JSONObject().put("restaurant_id",restaurant.optInt("id"))
@@ -513,6 +569,7 @@ public final class TivaSimpelActivity extends CustomerAdaptiveActivity {
         restaurant=null;
         foodCart=new JSONArray();
         foodQuote=null;
+        routeQuote=null;
         key=UUID.randomUUID().toString();
         loadFood(0,0);
     }
@@ -616,6 +673,7 @@ public final class TivaSimpelActivity extends CustomerAdaptiveActivity {
             throw new IllegalStateException(error);
         }
         foodQuote=null;
+        routeQuote=null;
         key=UUID.randomUUID().toString();
         problem="";
         showTyping(this::render);
@@ -634,10 +692,12 @@ public final class TivaSimpelActivity extends CustomerAdaptiveActivity {
         addAction("Lanjut",()->{
             String value=field.getText().toString().trim();
             if (value.isEmpty()) {field.setError("Isi dulu, ya.");return;}
+            if (!detail.equals(value)) key=UUID.randomUUID().toString();
             detail=value;
+            routeQuote=null;
             ((android.view.inputmethod.InputMethodManager)getSystemService(INPUT_METHOD_SERVICE))
                     .hideSoftInputFromWindow(field.getWindowToken(),0);
-            showTyping(this::render);
+            showTyping(requiresRouteReview() && pickup!=null && delivery!=null?this::quoteRoute:this::render);
         });
         addAction("Ganti pilihan",this::reset);
     }
@@ -661,7 +721,12 @@ public final class TivaSimpelActivity extends CustomerAdaptiveActivity {
         try {
             JSONObject point=new JSONObject().put("lat",data.getDoubleExtra("lat",0))
                     .put("lng",data.getDoubleExtra("lng",0)).put("address",data.getStringExtra("address"));
-            if (request==PICKUP) {pickup=point;showTyping(this::render);}
+            if (request==PICKUP) {
+                if (pickup!=null && !pickup.toString().equals(point.toString())) key=UUID.randomUUID().toString();
+                pickup=point;
+                routeQuote=null;
+                showTyping(requiresRouteReview() && delivery!=null?this::quoteRoute:this::render);
+            }
             else {
                 if (pickup!=null && point.optDouble("lat")==pickup.optDouble("lat")
                         && point.optDouble("lng")==pickup.optDouble("lng")) {
@@ -670,7 +735,8 @@ public final class TivaSimpelActivity extends CustomerAdaptiveActivity {
                 }
                 if (delivery!=null && !delivery.toString().equals(point.toString())) key=UUID.randomUUID().toString();
                 delivery=point;
-                showTyping("food".equals(kind)?this::quoteFood:this::submit);
+                routeQuote=null;
+                showTyping("food".equals(kind)?this::quoteFood:requiresRouteReview()?this::quoteRoute:this::submit);
             }
         } catch (org.json.JSONException error) {
             problem="Titik belum tersimpan. Coba pilih lagi.";
@@ -701,6 +767,10 @@ public final class TivaSimpelActivity extends CustomerAdaptiveActivity {
         if (delivery==null || loading || !contact.isEmpty()) return;
         if ("food".equals(kind) && (foodQuote==null || android.os.SystemClock.elapsedRealtime()-quotedAt>120000L)) {
             quoteFood();
+            return;
+        }
+        if (requiresRouteReview() && (routeQuote==null || android.os.SystemClock.elapsedRealtime()-quotedAt>120000L)) {
+            quoteRoute();
             return;
         }
         status="Sedang mengirim permintaan ke "+driverName+"…";

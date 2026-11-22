@@ -486,6 +486,12 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
         root.addView(mapBox, mapLp);
 
         mapView = new TransivaGoogleMapView(this, TransivaGoogleMapView.Mode.PICKER);
+        mapView.addOnLayoutChangeListener((v,l,t,r,b,oldL,oldT,oldR,oldB)->{
+            if (checkoutRouteVisible && !editingCheckoutPoint && !selectingWaypoint
+                    && (r-l!=oldR-oldL || b-t!=oldB-oldT)) mapView.post(()->{
+                if (!destroyed && !editingCheckoutPoint && checkoutRouteVisible) mapView.fitAll();
+            });
+        });
         FrameLayout.LayoutParams webLp = new FrameLayout.LayoutParams(-1, -1);
         mapView.useNumberedRideStops();
         mapBox.addView(mapView, webLp);
@@ -647,7 +653,9 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
         Button scheduleBtn = checkoutAction("Sekarang");
         scheduleBtn.setOnClickListener(v -> showScheduleDialog(scheduleBtn));
 
-        noteChoiceBtn = smallButton(driverNoteDraft.isEmpty()?"📝 Catatan":"📝 Catatan tersimpan", "#FFFFFF", "#0B3A78", "#C8D9EC");
+        noteChoiceBtn=checkoutAction(driverNoteDraft.isEmpty()?"Catatan":"Catatan ✓");
+        noteChoiceBtn.setContentDescription("Catatan untuk driver");
+        quickRow.addView(noteChoiceBtn,new LinearLayout.LayoutParams(0,-2,1));
         Button hematBtn = smallButton("Pakai poin", "#EAF4FF", "#0B7CFF", "#9DCAFF");
         hematBtn.setTextSize(11);
         hematBtn.setMinWidth(0); hematBtn.setMinimumWidth(0);
@@ -665,7 +673,6 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
         checkoutOptions = () -> showCheckoutOptions(advancedBox);
 
 
-        advancedBox.addView(noteChoiceBtn, new LinearLayout.LayoutParams(-1, -2));
         advancedBox.addView(hematBtn, new LinearLayout.LayoutParams(-1, -2));
         advancedBox.addView(familyBtn, new LinearLayout.LayoutParams(-1, -2));
 
@@ -772,8 +779,8 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
     }
 
     private Button checkoutAction(String label) {
-        Button button = smallButton(label, "#FFFFFF", "#122D50", "#FFFFFF");
-        button.setTextSize(12);
+        Button button = smallButton(label, "#F1F7FF", "#122D50", "#D5E5F8");
+        button.setTextSize(11);
         button.setElevation(0);
         button.setMinWidth(0);
         button.setMinimumWidth(0);
@@ -873,7 +880,7 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
             if(orderAfterNote && note.isEmpty()) { input.setError("Isi petunjuk singkat untuk driver"); input.requestFocus(); return; }
             driverNoteDraft=note;
             if(noteInput!=null) noteInput.setText(note);
-            if(noteChoiceBtn!=null) noteChoiceBtn.setText(note.isEmpty()?"📝 Catatan":"📝 Catatan tersimpan");
+            if(noteChoiceBtn!=null) noteChoiceBtn.setText(note.isEmpty()?"Catatan":"Catatan ✓");
             boolean resumeOrder=orderAfterNote; orderAfterNote=false; noteDialog.dismiss();
             if(resumeOrder) createOrder();
         });

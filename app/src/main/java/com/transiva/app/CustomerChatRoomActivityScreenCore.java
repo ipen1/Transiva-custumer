@@ -99,6 +99,7 @@ class CustomerChatRoomActivityScreenCore extends CustomerAdaptiveActivity {
     private Button olderMessagesButton, retryMessageButton;
     private int oldestId;
     private boolean searchFocus;
+    private final android.util.SparseArray<View> acknowledgedBubbles=new android.util.SparseArray<>();
     private final android.util.SparseArray<View> messageViews=new android.util.SparseArray<>();
     private boolean hasOlderMessages;
     private final java.util.HashSet<Integer> displayedMessageIds=new java.util.HashSet<>();
@@ -937,6 +938,7 @@ class CustomerChatRoomActivityScreenCore extends CustomerAdaptiveActivity {
         if (content.startsWith(TraviSivaStickers.PREFIX)) wrapper.addView(TraviSivaStickers.bubble(this, content));
         else { TextView bubble = text(content, 13, "#FFFFFF", false); bubble.setPadding(dp(13), dp(9), dp(13), dp(9)); bubble.setBackground(gradient("#086BFF", "#2EA2FF", 17)); wrapper.addView(bubble, new LinearLayout.LayoutParams(-2, -2)); }
         TextView state = text("Pending…", 9, "#94A3B8", false); state.setPadding(dp(7), dp(2), dp(7), 0); wrapper.addView(state, new LinearLayout.LayoutParams(-2, -2));
+        wrapper.setTag(ChatPhotoTile.PENDING_TEXT_TAG);
         animateMessage(wrapper, true);
         scrollBottom();
         return new PendingText(wrapper, state);
@@ -1073,7 +1075,12 @@ class CustomerChatRoomActivityScreenCore extends CustomerAdaptiveActivity {
             ChatPhotoTile.reconcile(messagesBox, id);
             if(!displayedMessageIds.add(id)){updateReceipt(message);continue;}
             lastId=Math.max(lastId,id);oldestId=oldestId==0?id:Math.min(oldestId,id);
-            int count=messagesBox.getChildCount();addBubble(message,!reset&&!older);
+            View acknowledged=acknowledgedBubbles.get(id);
+            if (acknowledged!=null) {
+                messagesBox.removeView(acknowledged);
+                acknowledgedBubbles.remove(id);
+            }
+            int count=messagesBox.getChildCount();addBubble(message,!reset&&!older&&acknowledged==null);
             if(older&&messagesBox.getChildCount()>count){View bubble=messagesBox.getChildAt(count);messagesBox.removeView(bubble);messagesBox.addView(bubble,insertion++);}
             added=true;
         }
@@ -1348,6 +1355,24 @@ class CustomerChatRoomActivityScreenCore extends CustomerAdaptiveActivity {
     }
 
     protected void animateMessage(View view, boolean mine) {
+        if (android.os.Build.VERSION.SDK_INT>=26 && !android.animation.ValueAnimator.areAnimatorsEnabled()) return;
+        if (mine && view instanceof LinearLayout) {
+            View content=((LinearLayout)view).getChildAt(0);
+            if (content!=null) {
+                content.setAlpha(0f);
+                content.setTranslationY(dp(18));
+                content.post(()->{
+                    float diameter=dp(20);
+                    content.setPivotX(content.getWidth()-dp(12));
+                    content.setPivotY(content.getHeight());
+                    content.setScaleX(Math.min(.7f,diameter/Math.max(1,content.getWidth())));
+                    content.setScaleY(Math.min(.78f,diameter/Math.max(1,content.getHeight())));
+                    content.animate().alpha(1f).translationY(0f).scaleX(1f).scaleY(1f)
+                            .setDuration(270).setInterpolator(new DecelerateInterpolator()).start();
+                });
+                return;
+            }
+        }
         view.setAlpha(0f);
         view.setTranslationX(dp(mine ? 18 : -18));
         view.setScaleX(0.97f);
@@ -1573,7 +1598,15 @@ class CustomerChatRoomActivityScreenCore extends CustomerAdaptiveActivity {
                     if (response.optBoolean("success", false)) {
                         sending = false;
                         syncComposer();
-                        if (pending != null) messagesBox.removeView(pending.root);
+                        JSONObject sent=response.optJSONObject("chat");
+                        int sentId=sent==null?0:sent.optInt("id");
+                        if (pending!=null) {
+                            if (sentId<=0 || displayedMessageIds.contains(sentId)) messagesBox.removeView(pending.root);
+                            else {
+                                pending.state.setText("Terkirim");
+                                acknowledgedBubbles.put(sentId,pending.root);
+                            }
+                        }
                         loadMessages(false);
                     } else {
                         sending = false;

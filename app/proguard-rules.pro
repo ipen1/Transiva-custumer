@@ -100,6 +100,14 @@
     public static void install(android.view.Window);
 }
 
+# ReleaseEdgeToEdgeTest measures the real Trans Simpel panel from the test APK.
+-keep class com.transiva.app.TransSimpelRoutePanel {
+    <init>(android.app.Activity, java.lang.String);
+    android.view.View view();
+    void fitOnResize(android.view.View);
+    void close();
+}
+
 # FoodCartStoreTest calls these members from the separate release test APK.
 -keep class com.transiva.app.FoodCartStore {
     <init>(android.content.Context, int);

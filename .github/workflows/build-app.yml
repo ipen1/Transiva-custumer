@@ -2,6 +2,11 @@ name: Build Transiva Signed Release
 
 on:
   workflow_dispatch:
+    inputs:
+      require_release_server:
+        description: Require linked server source and cross-app checks
+        type: boolean
+        default: false
   push:
     branches:
       - main
@@ -45,9 +50,13 @@ jobs:
         id: release_server
         shell: bash
         run: |
-          if [[ -f server/config.php ]]; then
+          if [[ -f server/transsend_contact.php && -f server/migrations/trans_simpel.sql ]]; then
             echo "present=true" >> "$GITHUB_OUTPUT"
           else
+            if [[ "${{ inputs.require_release_server }}" == "true" ]]; then
+              echo "::error::Commit ini belum memuat server/ untuk rilis terkoordinasi."
+              exit 1
+            fi
             echo "present=false" >> "$GITHUB_OUTPUT"
             echo "Server source is managed separately. Running the bundled backend regression tests."
           fi
@@ -57,17 +66,29 @@ jobs:
           TEST_DB_PASSWORD: integration-only
         run: |
           set -euo pipefail
-          test -f server/config.php
           find server -type f -name '*.php' -print0 | xargs -0 -n1 -P4 php -l > server-php-lint.log
           php tools/reliability/release_transpay_checkout_test.php
           (
             cd server
-            zip -qr "$RUNNER_TEMP/transiva-server-${GITHUB_SHA}.zip" .
+            zip -qr "$RUNNER_TEMP/transiva-server-${GITHUB_SHA}.zip" . -x "config.php" ".env*" "uploads/*"
           )
           (
             cd "$RUNNER_TEMP"
             sha256sum "transiva-server-${GITHUB_SHA}.zip" > "transiva-server-${GITHUB_SHA}.sha256"
           )
+      - name: Verify Trans Simpel handoff and TransFood against release server
+        if: steps.release_server.outputs.present == 'true'
+        env:
+          TRANSIVA_TEST_DB_PASSWORD: integration-only
+        run: |
+          bash tools/reliability/trans-simpel-release/run.sh server "$RUNNER_TEMP/transiva-tested-server.txt"
+      - name: Upload tested server source manifest
+        if: steps.release_server.outputs.present == 'true'
+        uses: actions/upload-artifact@v6
+        with:
+          name: transiva-tested-server-${{ github.sha }}
+          path: ${{ runner.temp }}/transiva-tested-server.txt
+          if-no-files-found: error
       - name: Upload verified server for this commit
         if: steps.release_server.outputs.present == 'true'
         uses: actions/upload-artifact@v6

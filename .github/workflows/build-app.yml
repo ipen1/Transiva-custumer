@@ -37,12 +37,8 @@ jobs:
               fwrite(STDERR, "Runner PHP requires mysqli/mysqlnd, mbstring and sqlite3. Missing: " . implode(", ", $missing) . PHP_EOL);
               exit(1);
           }'
-          json_jar="$RUNNER_TEMP/transiva-backend-json-20240303.jar"
-          json_path="maven2/org/json/json/20240303/json-20240303.jar"
-          curl --fail --silent --show-error --location --retry 2 --connect-timeout 10 --max-time 45 \
-            "https://repo.maven.apache.org/$json_path" --output "$json_jar" ||
-            curl --fail --silent --show-error --location --retry 2 --connect-timeout 10 --max-time 45 \
-              "https://repo1.maven.org/$json_path" --output "$json_jar"
+          # Keep backend fixtures independent of Maven availability during release.
+          json_jar="$GITHUB_WORKSPACE/tools/reliability/vendor/json-20240303.jar"
           echo "3cf6cd6892e32e2b4c1c39e0f52f5248a2f5b37646fdfbb79a66b46b618414ed  $json_jar" | sha256sum --check --strict
           echo "JSON_JAR=$json_jar" >> "$GITHUB_ENV"
       - name: Detect full release server source

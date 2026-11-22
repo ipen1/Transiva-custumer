@@ -15,8 +15,9 @@ public final class OrderStatusPresentation {
         String s = CustomerOrderState.normalize(rawStatus), t = n(rawType);
         switch (s) {
             case "offered":
-            case "pending":
                 return "Sedang Mencari Driver";
+            case "pending":
+                return isFood(t) ? "Menunggu Konfirmasi Merchant" : "Mencari Driver Terdekat";
             case "preparing":
                 return "Pesanan Sedang Disiapkan";
             case "ready":
@@ -75,8 +76,11 @@ public final class OrderStatusPresentation {
                 o.optString("driver_username"), "Driver");
         switch (s) {
             case "offered":
-            case "pending":
                 return "Kami sedang mencarikan driver terdekat untukmu";
+            case "pending":
+                return isFood(t)
+                        ? "Merchant sedang kami hubungi untuk mengonfirmasi pesananmu"
+                        : "Kami sedang mencarikan driver terdekat untukmu";
             case "merchant_accepted":
                 return "Merchant sudah menerima dan sedang menyiapkan pesananmu";
             case "merchant_rejected":

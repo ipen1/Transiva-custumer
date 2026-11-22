@@ -33,7 +33,8 @@ public final class TivaSimpelActivity extends CustomerAdaptiveActivity {
     private String status="", problem="";
     private boolean typing, reviewFood;
     private JSONArray foodCart=new JSONArray();
-    private JSONObject pickup, delivery, restaurant;
+    private JSONObject pickup, delivery, restaurant, foodQuote;
+    private long quotedAt;
     private int driver, nextOffset;
     private double lat,lng;
     private String driverName;
@@ -106,6 +107,7 @@ public final class TivaSimpelActivity extends CustomerAdaptiveActivity {
         super.onResume();
         visible=true;
         if (!contact.isEmpty()) checkContact();
+        else if ("food".equals(kind) && reviewFood && delivery!=null && foodQuote==null && !typing && problem.isEmpty()) quoteFood();
         else if ("food".equals(kind) && !reviewFood && options.length()==0 && !loading && problem.isEmpty()) {
             loadFood(restaurant==null?0:restaurant.optInt("id"),0);
         }
@@ -188,9 +190,8 @@ public final class TivaSimpelActivity extends CustomerAdaptiveActivity {
         if ("food".equals(kind)) {
             bubble("Sebentar, aku cek dulu apa yang ada di sekitar kamu, ya.",false);
             if (!reviewFood) { foodControls();return; }
-            String selection=foodSelection();
-            bubble(selection,true);
-            bubble("Oke, aku catat "+selection+". Mau diantar ke mana?",false);
+            showCart(false);
+            if (delivery==null) bubble("Mau diantar ke mana?",false);
         } else {
             boolean cargo=!"ride".equals(kind);
             if (cargo) {
@@ -208,7 +209,7 @@ public final class TivaSimpelActivity extends CustomerAdaptiveActivity {
             bubble("ride".equals(kind)?"Sip, sudah aku catat. Tujuannya ke mana?":"Sudah aku catat. Mau diantar ke mana?",false);
         }
         if (delivery==null) {
-            addAction("Tentukan alamat pengantaran",()->pick(DELIVERY));
+            addPrimary("Tentukan alamat pengantaran",()->pick(DELIVERY));
             if ("food".equals(kind)) addAction("Ubah keranjang",this::editCart);
             addAction("Ganti pilihan",this::reset);
         } else {
@@ -216,8 +217,10 @@ public final class TivaSimpelActivity extends CustomerAdaptiveActivity {
             if (status.isEmpty() && contact.isEmpty()) bubble("Alamatnya sudah siap. Kirim ke "+driverName+" kalau semuanya sudah pas.",false);
             if (!status.isEmpty()) bubble(status,false);
             if (!problem.isEmpty()) bubble(problem,false);
+            if ("food".equals(kind) && foodQuote!=null) addFoodSummary();
             if (contact.isEmpty() && !loading) {
-                addAction(problem.isEmpty()?"Kirim ke "+driverName:"Coba kirim lagi",this::submit);
+                if ("food".equals(kind) && foodQuote==null) addPrimary("Hitung subtotal dan ongkir",this::quoteFood);
+                else addPrimary(problem.isEmpty()?"Kirim ke "+driverName:"Coba kirim lagi",this::submit);
                 if ("food".equals(kind)) addAction("Ubah keranjang",this::editCart);
                 addAction("Ubah alamat pengantaran",()->pick(DELIVERY));
                 addAction("Ganti pilihan",this::reset);
@@ -248,6 +251,7 @@ public final class TivaSimpelActivity extends CustomerAdaptiveActivity {
         kind="";detail="";problem="";status="";
         restaurant=null;pickup=null;delivery=null;more=false;reviewFood=false;
         foodCart=new JSONArray();
+        foodQuote=null;
         clearOptions();
         key=UUID.randomUUID().toString();
         render();
@@ -257,21 +261,10 @@ public final class TivaSimpelActivity extends CustomerAdaptiveActivity {
         if (restaurant!=null) bubble("Kamu pilih "+restaurant.optString("name")+". Mau pesan menu apa?",false);
         if (loading) { bubble("Lagi memuat pilihan…",false);return; }
         if (foodCart.length()>0) {
-            bubble("Keranjangmu",false);
-            for (int i=0;i<foodCart.length();i++) {
-                JSONObject line=foodCart.optJSONObject(i);
-                if (line==null) continue;
-                int position=i;
-                bubble(line.optString("label"),true);
-                addAction("Hapus "+line.optString("name"),()->{
-                    foodCart.remove(position);
-                    key=UUID.randomUUID().toString();
-                    render();
-                });
-            }
-            addAction(delivery==null?"Lanjut ke alamat":"Tinjau pesanan",()->showTyping(()->{
+            showCart(true);
+            addPrimary(delivery==null?"Lanjut ke alamat":"Tinjau pesanan",()->showTyping(()->{
                 reviewFood=true;
-                render();
+                if (delivery==null) render(); else quoteFood();
             }));
         }
         if (!problem.isEmpty()) bubble(problem,false);
@@ -310,6 +303,118 @@ public final class TivaSimpelActivity extends CustomerAdaptiveActivity {
                     .setPositiveButton("Ganti restoran",(dialog,choice)->changeRestaurant()).show();
         });
         addAction("Ganti pilihan",this::reset);
+    }
+
+    private LinearLayout detailCard(LinearLayout parent,String title,String color) {
+        LinearLayout card=new LinearLayout(this);
+        card.setOrientation(LinearLayout.VERTICAL);
+        card.setPadding(dp(12),dp(9),dp(12),dp(9));
+        card.setBackground(CustomerUiPrimitives.roundStroke(this,color,"#CDE0F5",dp(16),1));
+        card.addView(label(title,16,"#153A60",true));
+        LinearLayout.LayoutParams gap=new LinearLayout.LayoutParams(-1,-2);
+        gap.bottomMargin=dp(7);
+        parent.addView(card,gap);
+        return card;
+    }
+
+    private void showCart(boolean editable) {
+        LinearLayout card=detailCard(editable?actions:messages,editable?"Keranjang · "+restaurant.optString("name"):
+                "Ringkasan · "+restaurant.optString("name"),"#FFFFFF");
+        for (int i=0;i<foodCart.length();i++) {
+            JSONObject line=foodCart.optJSONObject(i);
+            if (line==null) continue;
+            int position=i;
+            LinearLayout row=new LinearLayout(this);
+            row.setGravity(Gravity.CENTER_VERTICAL);
+            row.setPadding(0,dp(4),0,dp(3));
+            row.addView(label(cartLabel(line),14,"#173A60",true),new LinearLayout.LayoutParams(0,-2,1));
+            if (editable) {
+                Button minus=button("−",()->changeQuantity(position,-1));
+                minus.setContentDescription((line.optInt("qty")==1?"Hapus ":"Kurangi ")+line.optString("name"));
+                Button plus=button("+",()->changeQuantity(position,1));
+                plus.setContentDescription("Tambah "+line.optString("name"));
+                plus.setEnabled(canIncrease(line));
+                for (Button control:new Button[]{minus,plus}) {
+                    control.setPadding(0,0,0,0);
+                    LinearLayout.LayoutParams gap=new LinearLayout.LayoutParams(dp(48),-2);
+                    gap.setMarginStart(dp(4));
+                    row.addView(control,gap);
+                }
+            }
+            card.addView(row);
+        }
+    }
+
+    private boolean canIncrease(JSONObject line) {
+        if (line.optInt("qty")>=20) return false;
+        int menuId=line.optInt("id");
+        int stock=line.optInt("stock",Integer.MAX_VALUE);
+        for (int i=0;i<options.length();i++) {
+            JSONObject item=options.optJSONObject(i);
+            if (item!=null && item.optInt("id")==menuId && !item.isNull("stock")) stock=item.optInt("stock");
+        }
+        int ordered=0;
+        for (int i=0;i<foodCart.length();i++) {
+            JSONObject item=foodCart.optJSONObject(i);
+            if (item!=null && item.optInt("id")==menuId) ordered+=item.optInt("qty");
+        }
+        return ordered<stock;
+    }
+
+    private void changeQuantity(int position,int delta) {
+        JSONObject line=foodCart.optJSONObject(position);
+        if (line==null || loading || (delta>0 && !canIncrease(line))) return;
+        int quantity=line.optInt("qty")+delta;
+        if (quantity==0) foodCart.remove(position);
+        else try {
+            line.put("qty",quantity).put("label",cartLabel(line));
+        } catch (org.json.JSONException error) { throw new IllegalStateException(error); }
+        foodQuote=null;
+        key=UUID.randomUUID().toString();
+        render();
+    }
+
+    private String cartLabel(JSONObject line) {
+        StringBuilder copy=new StringBuilder().append(line.optInt("qty")).append(" × ").append(line.optString("name"));
+        JSONArray choices=line.optJSONArray("selected_options");
+        if (choices!=null) for (int i=0;i<choices.length();i++) {
+            JSONObject choice=choices.optJSONObject(i);
+            if (choice!=null) copy.append(" · ").append(choice.optString("name"));
+        }
+        return copy.toString();
+    }
+
+    private void quoteFood() {
+        if (!reviewFood || restaurant==null || delivery==null || foodCart.length()==0 || loading) return;
+        foodQuote=null;
+        status="Menghitung subtotal dan ongkir…";
+        perform(()->{
+            JSONObject draft=new JSONObject().put("restaurant_id",restaurant.optInt("id"))
+                    .put("origin",new JSONObject().put("lat",lat).put("lng",lng).put("address","Lokasi pencarian"))
+                    .put("delivery",delivery).put("food_items",foodCart);
+            return TransivaHttpRepository.postJson(this,ApiConfig.server("create_food_order.php"),
+                    new JSONObject().put("quote_only",true).put("tiva_preview",draft),14000);
+        },response->{
+            status="";
+            foodQuote=response.optJSONObject("quote");
+            quotedAt=android.os.SystemClock.elapsedRealtime();
+            if (foodQuote==null) problem="Rincian harga belum tersedia. Coba lagi.";
+        },true);
+    }
+
+    private void addFoodSummary() {
+        LinearLayout card=detailCard(actions,"Estimasi dari server","#E3F7EE");
+        addMoney(card,"Subtotal menu",foodQuote.optLong("food_total"),false);
+        addMoney(card,"Ongkir",foodQuote.optLong("delivery_fee"),false);
+        addMoney(card,"Total estimasi",foodQuote.optLong("total"),true);
+    }
+
+    private void addMoney(LinearLayout card,String title,long amount,boolean bold) {
+        LinearLayout row=new LinearLayout(this);
+        row.addView(label(title,14,"#164F40",bold),new LinearLayout.LayoutParams(0,-2,1));
+        row.addView(label("Rp "+java.text.NumberFormat.getIntegerInstance(new java.util.Locale("id","ID")).format(amount),
+                14,"#164F40",true));
+        card.addView(row);
     }
 
     private void serviceRow(String leftKind,String leftLabel,int leftArt,String leftColor,
@@ -407,6 +512,7 @@ public final class TivaSimpelActivity extends CustomerAdaptiveActivity {
     private void changeRestaurant() {
         restaurant=null;
         foodCart=new JSONArray();
+        foodQuote=null;
         key=UUID.randomUUID().toString();
         loadFood(0,0);
     }
@@ -501,33 +607,18 @@ public final class TivaSimpelActivity extends CustomerAdaptiveActivity {
     }
 
     private void addCartLine(JSONObject item,JSONArray selected,int quantity) {
-        String name=item.optString("name");
-        StringBuilder line=new StringBuilder().append(quantity).append(" × ").append(name);
-        for (int i=0;i<selected.length();i++) {
-            JSONObject option=selected.optJSONObject(i);
-            if (option!=null) line.append(" · ").append(option.optString("name"));
-        }
         try {
-            foodCart.put(new JSONObject().put("id",item.optInt("id")).put("name",name)
-                    .put("qty",quantity).put("selected_options",selected).put("label",line.toString()));
+            JSONObject line=new JSONObject().put("id",item.optInt("id")).put("name",item.optString("name"))
+                    .put("qty",quantity).put("selected_options",selected);
+            if (!item.isNull("stock")) line.put("stock",item.optInt("stock"));
+            foodCart.put(line.put("label",cartLabel(line)));
         } catch (org.json.JSONException error) {
             throw new IllegalStateException(error);
         }
+        foodQuote=null;
         key=UUID.randomUUID().toString();
         problem="";
-        showTyping(()->{
-            render();
-            bubble("Sudah masuk keranjang. Mau tambah menu lain?",false);
-        });
-    }
-
-    private String foodSelection() {
-        StringBuilder selection=new StringBuilder(restaurant.optString("name"));
-        for (int i=0;i<foodCart.length();i++) {
-            JSONObject line=foodCart.optJSONObject(i);
-            if (line!=null) selection.append("\n").append(line.optString("label"));
-        }
-        return selection.toString();
+        showTyping(this::render);
     }
 
     private void toast(String text) {
@@ -579,7 +670,7 @@ public final class TivaSimpelActivity extends CustomerAdaptiveActivity {
                 }
                 if (delivery!=null && !delivery.toString().equals(point.toString())) key=UUID.randomUUID().toString();
                 delivery=point;
-                showTyping(this::submit);
+                showTyping("food".equals(kind)?this::quoteFood:this::submit);
             }
         } catch (org.json.JSONException error) {
             problem="Titik belum tersimpan. Coba pilih lagi.";
@@ -608,6 +699,10 @@ public final class TivaSimpelActivity extends CustomerAdaptiveActivity {
 
     private void submit() {
         if (delivery==null || loading || !contact.isEmpty()) return;
+        if ("food".equals(kind) && (foodQuote==null || android.os.SystemClock.elapsedRealtime()-quotedAt>120000L)) {
+            quoteFood();
+            return;
+        }
         status="Sedang mengirim permintaan ke "+driverName+"…";
         perform(()->{
             JSONObject draft=new JSONObject().put("key",key).put("kind",kind).put("delivery",delivery);
@@ -709,14 +804,24 @@ public final class TivaSimpelActivity extends CustomerAdaptiveActivity {
         actions.addView(option,lp);
     }
 
+    private void addPrimary(String name,Runnable click) {
+        Button action=button(name,click);
+        action.setTextColor(0xFFFFFFFF);
+        action.setBackground(CustomerUiPrimitives.gradient("#093AAE","#087CE4",dp(15)));
+        LinearLayout.LayoutParams gap=new LinearLayout.LayoutParams(-1,-2);
+        gap.topMargin=dp(6);
+        actions.addView(action,gap);
+    }
+
     private Button button(String name,Runnable click) {
         Button button=new Button(this);
         button.setAllCaps(false);
         button.setTextColor(0xFF084992);
         button.setText(name);
+        button.setTypeface(null,android.graphics.Typeface.BOLD);
         button.setMinHeight(dp(46));
-        button.setPadding(dp(12),dp(7),dp(12),dp(7));
-        button.setBackground(CustomerUiPrimitives.roundStroke(this,"#E9F3FF","#BAD8F9",dp(12),1));
+        button.setPadding(dp(12),dp(6),dp(12),dp(6));
+        button.setBackground(CustomerUiPrimitives.roundStroke(this,"#FFFFFF","#B9D3EF",dp(13),1));
         button.setOnClickListener(v->click.run());
         return button;
     }

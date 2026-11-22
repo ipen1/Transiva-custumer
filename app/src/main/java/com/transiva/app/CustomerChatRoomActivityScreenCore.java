@@ -931,6 +931,7 @@ class CustomerChatRoomActivityScreenCore extends CustomerAdaptiveActivity {
     }
 
     protected PendingText addPendingText(String content) {
+        clearEmptyConversation();
         LinearLayout wrapper = new LinearLayout(this); wrapper.setOrientation(LinearLayout.VERTICAL); wrapper.setGravity(Gravity.RIGHT);
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, -2); lp.setMargins(0, dp(4), 0, dp(4)); messagesBox.addView(wrapper, lp);
         if (content.startsWith(TraviSivaStickers.PREFIX)) wrapper.addView(TraviSivaStickers.bubble(this, content));
@@ -1022,7 +1023,7 @@ class CustomerChatRoomActivityScreenCore extends CustomerAdaptiveActivity {
 
             if (!serverName.isEmpty()) {
                 participantName = serverName;
-                participantText.setText(serverName);
+                if (!android.text.TextUtils.equals(participantText.getText(),serverName)) participantText.setText(serverName);
             }
         }
 
@@ -1057,15 +1058,14 @@ class CustomerChatRoomActivityScreenCore extends CustomerAdaptiveActivity {
         if(peer!=null){
             participantName=first(peer.optString("name"),participantName);
             participantPhoto=first(peer.optString("photo"),participantPhoto);
-            participantText.setText(participantName);
+            if (!android.text.TextUtils.equals(participantText.getText(),participantName)) participantText.setText(participantName);
         }
         chatStyle.profile(response,participantName,participantPhoto);
         boolean older="older".equals(response.optString("page_mode"));
         int oldHeight=messagesBox.getHeight(),oldScroll=messagesScroll.getScrollY();
         boolean nearBottom=oldHeight-oldScroll-messagesScroll.getHeight()<dp(100);
-        if(reset){ChatPhotoTile.clearServerRows(messagesBox);chatStyle.reset();messageViews.clear();receiptViews.clear();displayedMessageIds.clear();lastId=0;oldestId=0;}
-        if(!reset&&displayedMessageIds.isEmpty()&&array.length()>0&&messagesBox.getChildCount()==1
-                &&messagesBox.getChildAt(0) instanceof TextView)messagesBox.removeAllViews();
+        if(reset){clearEmptyConversation();ChatPhotoTile.clearServerRows(messagesBox);chatStyle.reset();messageViews.clear();receiptViews.clear();displayedMessageIds.clear();lastId=0;oldestId=0;}
+
         boolean added=false;int insertion=0;
         for(int i=0;i<array.length();i++) {
             JSONObject message=array.optJSONObject(i);if(message==null)continue;
@@ -1080,7 +1080,11 @@ class CustomerChatRoomActivityScreenCore extends CustomerAdaptiveActivity {
         JSONArray receipts=response.optJSONArray("receipt_updates");
         if(receipts!=null)for(int i=0;i<receipts.length();i++){JSONObject item=receipts.optJSONObject(i);if(item!=null)updateReceipt(item);}
         added=chatStyle.mergeCalls(messagesBox,response)||added;
-        if(reset&&messagesBox.getChildCount()==0)addSystemMessage("Belum ada pesan pada percakapan ini.");
+        if (added) clearEmptyConversation();
+        else if (reset && messagesBox.getChildCount()==0) {
+            addSystemMessage("Belum ada pesan pada percakapan ini.");
+            emptyConversation=messagesBox.getChildAt(0);
+        }
         if(reset||older)hasOlderMessages=response.optBoolean("has_more_older",false);
         olderMessagesButton.setVisibility(hasOlderMessages?View.VISIBLE:View.GONE);
         firstLoad=false;
@@ -1200,6 +1204,7 @@ class CustomerChatRoomActivityScreenCore extends CustomerAdaptiveActivity {
 
 
     protected void addBubble(JSONObject message, boolean animate) {
+        clearEmptyConversation();
         String sender = CustomerMessageStatus.normalize(
                 message.optString("sender_type", "")
         );
@@ -1512,6 +1517,13 @@ class CustomerChatRoomActivityScreenCore extends CustomerAdaptiveActivity {
 
         loadingHd.setVisibility(View.GONE);
         RemoteImageLoader.loadPreserveScale(zoomImage, fixed, android.R.drawable.ic_menu_report_image);
+    }
+
+    private View emptyConversation;
+
+    private void clearEmptyConversation() {
+        if (emptyConversation!=null && emptyConversation.getParent()==messagesBox) messagesBox.removeView(emptyConversation);
+        emptyConversation=null;
     }
 
     protected void addSystemMessage(String value) {

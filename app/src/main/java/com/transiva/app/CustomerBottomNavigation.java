@@ -40,8 +40,9 @@ public final class CustomerBottomNavigation {
         nav.setOrientation(LinearLayout.HORIZONTAL);
         nav.setGravity(Gravity.CENTER);
         nav.setPadding(dp(activity, 7), dp(activity, 5), dp(activity, 7), dp(activity, 5));
-        nav.setElevation(dp(activity, 14));
-        nav.setBackground(navBackground(activity, dark));
+        boolean home = activeIndex == CustomerPageTransition.HOME;
+        nav.setElevation(dp(activity, home ? 4 : 14));
+        nav.setBackground(navBackground(activity, dark, home));
 
         add(nav, item(activity, "Beranda", "ic_nav2_home", CustomerDashboardActivity.class,
                 CustomerPageTransition.HOME, activeIndex, false, dark));
@@ -109,8 +110,9 @@ public final class CustomerBottomNavigation {
 
         if (active && !center) {
             GradientDrawable pill = new GradientDrawable();
-            pill.setColor(Color.parseColor(dark ? "#253B69FF" : "#EAF4FF"));
-            pill.setStroke(dp(activity, 1), Color.parseColor(dark ? "#5A7DCBFF" : "#B7D8FF"));
+            boolean home = activeIndex == CustomerPageTransition.HOME;
+            pill.setColor(Color.parseColor(dark ? "#253B69FF" : home ? "#D9EAFC" : "#EAF4FF"));
+            if (!home) pill.setStroke(dp(activity, 1), Color.parseColor(dark ? "#5A7DCBFF" : "#B7D8FF"));
             pill.setCornerRadius(dp(activity, 18));
             item.setBackground(pill);
         }
@@ -130,7 +132,7 @@ public final class CustomerBottomNavigation {
                     Color.parseColor(active ? "#A9D7FF" : "#65B8FF"));
             iconWrap.setBackground(centerBg);
             iconWrap.setElevation(dp(activity, active ? 8 : 5));
-        } else if (active) {
+        } else if (active && activeIndex != CustomerPageTransition.HOME) {
             GradientDrawable activeCircle = new GradientDrawable();
             activeCircle.setShape(GradientDrawable.OVAL);
             activeCircle.setColor(Color.parseColor(dark ? "#1D5DAFFF" : "#D9ECFF"));
@@ -184,15 +186,15 @@ public final class CustomerBottomNavigation {
         return item;
     }
 
-    private static GradientDrawable navBackground(Activity activity, boolean dark) {
+    private static GradientDrawable navBackground(Activity activity, boolean dark, boolean home) {
         GradientDrawable bg = new GradientDrawable(
                 GradientDrawable.Orientation.TOP_BOTTOM,
                 new int[]{
                         Color.parseColor(dark ? "#F2142940" : "#FFFFFFFF"),
-                        Color.parseColor(dark ? "#F208182B" : "#EAF2FD")
+                        Color.parseColor(dark ? "#F208182B" : home ? "#FFFFFFFF" : "#EAF2FD")
                 }
         );
-        bg.setStroke(dp(activity, 1), Color.parseColor(dark ? "#355A83A8" : "#C7D8EC"));
+        bg.setStroke(dp(activity, 1), Color.parseColor(dark ? "#355A83A8" : home ? "#ECF2F9" : "#C7D8EC"));
         bg.setCornerRadii(new float[]{
                 dp(activity, 22), dp(activity, 22),
                 dp(activity, 22), dp(activity, 22),

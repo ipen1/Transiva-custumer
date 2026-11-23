@@ -228,14 +228,6 @@ class CustomerDashboardActivityScreenCore extends CustomerAdaptiveActivity
         dashboardController = new DashboardController(this);
         dashboardController.onCreate();
 
-        CustomerWindowPolicy.status(getWindow(), 
-                Color.parseColor("#081F54")
-        );
-
-        CustomerWindowPolicy.navigation(getWindow(), 
-                Color.parseColor("#071426")
-        );
-
         readSession();
         dashboardSession = CustomerSessionGuard.capture(this);
         lastDashboardNetworkState = TransivaNetworkMonitor.state();
@@ -388,7 +380,7 @@ class CustomerDashboardActivityScreenCore extends CustomerAdaptiveActivity
     protected View buildScreen() {
         FrameLayout page = new FrameLayout(this);
         page.setBackgroundColor(
-                Color.parseColor("#F7FAFF")
+                Color.parseColor("#F1F7FE")
         );
 
         LinearLayout shell = new LinearLayout(this);
@@ -410,21 +402,35 @@ class CustomerDashboardActivityScreenCore extends CustomerAdaptiveActivity
                 new LinearLayout.LayoutParams(-1, 0, 1)
         );
 
-        content = new LinearLayout(this);
+        content = new LinearLayout(this) {
+            @Override protected void onMeasure(int widthSpec, int heightSpec) {
+                if (MeasureSpec.getMode(widthSpec) != MeasureSpec.UNSPECIFIED) {
+                    int width = Math.min(MeasureSpec.getSize(widthSpec), dp(640));
+                    widthSpec = MeasureSpec.makeMeasureSpec(width, MeasureSpec.EXACTLY);
+                }
+                super.onMeasure(widthSpec, heightSpec);
+            }
+        };
         content.setOrientation(LinearLayout.VERTICAL);
         content.setPadding(
-                dp(14),
                 dp(12),
-                dp(14),
-                dp(20)
+                0,
+                dp(12),
+                dp(8)
         );
 
-        scroll.addView(
-                content,
-                new ScrollView.LayoutParams(-1, -2)
-        );
+        scroll.addView(content, new ScrollView.LayoutParams(-1, -2, Gravity.TOP | Gravity.CENTER_HORIZONTAL));
 
-        buildHeader();
+        LinearLayout hero = new LinearLayout(this);
+        hero.setOrientation(LinearLayout.VERTICAL);
+        hero.setClipChildren(false);
+        LinearLayout.LayoutParams heroLp = new LinearLayout.LayoutParams(-1, -2);
+        heroLp.setMargins(-dp(12), 0, -dp(12), dp(8));
+        content.setClipChildren(false);
+        content.setClipToPadding(false);
+        content.addView(hero, heroLp);
+        buildHeader(hero);
+        buildSmartDestinationSection(hero);
 
         dashboardRetry = text("", 12, "#075BB8", true);
         dashboardRetry.setPadding(dp(12), dp(8), dp(12), dp(8));
@@ -441,10 +447,9 @@ class CustomerDashboardActivityScreenCore extends CustomerAdaptiveActivity
 
         // Dashboard 4.0: urutan dibuat seperti super-app modern dan lebih fokus pada aksi utama.
         // Header sudah memuat identitas, saldo dan royalti dalam satu card responsif.
-        buildSmartDestinationSection();
         buildServiceSection();
         LinearLayout.LayoutParams courierCard = new LinearLayout.LayoutParams(-1, -2);
-        courierCard.setMargins(0, dp(8), 0, dp(12));
+        courierCard.setMargins(0, dp(5), 0, dp(9));
         content.addView(TransSendCourierDirectoryActivity.homeCard(this), courierCard);
         buildOrderSection();
         // Fitur lanjutan dipindahkan ke "Lihat Semua" agar Dashboard tetap sederhana.
@@ -461,7 +466,7 @@ class CustomerDashboardActivityScreenCore extends CustomerAdaptiveActivity
 
         shell.addView(
                 buildBottomNavigation(),
-                new LinearLayout.LayoutParams(-1, dp(64))
+                new LinearLayout.LayoutParams(-1, dp(getResources().getConfiguration().fontScale > 1.25f ? 68 : 56))
         );
 
         loading = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
@@ -481,23 +486,13 @@ class CustomerDashboardActivityScreenCore extends CustomerAdaptiveActivity
         return page;
     }
 
-    protected void buildHeader() {
+    private void buildHeader(LinearLayout hero) {
         LinearLayout header = new LinearLayout(this);
         header.setOrientation(LinearLayout.VERTICAL);
-        header.setPadding(dp(14), dp(8), dp(14), dp(8));
-        header.setBackground(
-                new android.graphics.drawable.GradientDrawable(
-                        android.graphics.drawable.GradientDrawable.Orientation.TL_BR,
-                        new int[]{0xFF081F54,0xFF073EB5,0xFF0574DD})
-        );
-        header.setElevation(0);
+        header.setPadding(dp(16), dp(15), dp(16), dp(43));
+        header.setBackground(new CustomerHomeBackdrop(false, dp(20)));
         CustomerAppSettings.preserveArtwork(header);
-        ((android.graphics.drawable.GradientDrawable)header.getBackground()).setCornerRadius(dp(22));
-
-        LinearLayout.LayoutParams headerLp =
-                new LinearLayout.LayoutParams(-1, -2);
-        headerLp.setMargins(0, 0, 0, dp(9));
-        content.addView(header, headerLp);
+        hero.addView(header, new LinearLayout.LayoutParams(-1, -2));
 
         LinearLayout topRow = new LinearLayout(this);
         topRow.setOrientation(LinearLayout.HORIZONTAL);
@@ -506,9 +501,10 @@ class CustomerDashboardActivityScreenCore extends CustomerAdaptiveActivity
 
         LinearLayout identity = new LinearLayout(this);
         identity.setOrientation(LinearLayout.VERTICAL);
+        identity.setPadding(dp(7),0,dp(4),0);
         topRow.addView(identity, new LinearLayout.LayoutParams(0, -2, 1));
 
-        greetingText = text(CustomerDashboardFormatters.timeGreeting(), 11, "#EAF4FF", false);
+        greetingText = text(CustomerDashboardFormatters.timeGreeting(), 12, "#EAF4FF", false);
         identity.addView(greetingText);
 
         TextView name = text(CustomerDashboardFormatters.displayName(username), 24, "#FFFFFF", true);
@@ -546,18 +542,18 @@ class CustomerDashboardActivityScreenCore extends CustomerAdaptiveActivity
         actions.setGravity(Gravity.CENTER_VERTICAL);
         topRow.addView(actions, new LinearLayout.LayoutParams(-2, -2));
 
-        actions.addView(headerIconAction("ic_notification_bell", "Pemberitahuan", () ->
+        actions.addView(headerIconAction(R.drawable.ic_home_bell, "Pemberitahuan", () ->
                 startActivity(new Intent(this, CustomerNotificationActivity.class))));
 
-        LinearLayout.LayoutParams settingsLp = new LinearLayout.LayoutParams(dp(44), dp(48));
+        LinearLayout.LayoutParams settingsLp = new LinearLayout.LayoutParams(dp(40), dp(42));
         settingsLp.setMargins(dp(4), 0, 0, 0);
-        View settings = headerIconAction("ic_home_settings", "Pengaturan", () ->
+        View settings = headerIconAction(R.drawable.ic_home_settings, "Pengaturan", () ->
                 startActivity(new Intent(this, CustomerSettingsActivity.class)));
         actions.addView(settings, settingsLp);
 
-        LinearLayout.LayoutParams chatLp = new LinearLayout.LayoutParams(dp(44), dp(48));
+        LinearLayout.LayoutParams chatLp = new LinearLayout.LayoutParams(dp(40), dp(42));
         chatLp.setMargins(dp(4), 0, 0, 0);
-        View chat = headerIconAction("ic_home_headset", "Customer Service", () ->
+        View chat = headerIconAction(R.drawable.ic_home_headset, "Customer Service", () ->
                 startActivity(new Intent(this, CustomerSupportActivity.class)));
         actions.addView(chat, chatLp);
 
@@ -566,12 +562,12 @@ class CustomerDashboardActivityScreenCore extends CustomerAdaptiveActivity
         financeRow.setOrientation(LinearLayout.HORIZONTAL);
         financeRow.setGravity(Gravity.CENTER_VERTICAL);
         LinearLayout.LayoutParams financeRowLp = new LinearLayout.LayoutParams(-1, -2);
-        financeRowLp.setMargins(0, dp(7), 0, 0);
+        financeRowLp.setMargins(0, dp(10), 0, 0);
         header.addView(financeRow, financeRowLp);
         financeRow.setBackground(Shape.roundStroke("#1DFFFFFF","#50FFFFFF",dp(15),1));
 
         View balanceMini = buildHeaderBalanceCard();
-        LinearLayout.LayoutParams balanceMiniLp = new LinearLayout.LayoutParams(0, -2, 1.12f);
+        LinearLayout.LayoutParams balanceMiniLp = new LinearLayout.LayoutParams(0, -2, 1.06f);
         balanceMiniLp.setMargins(0, 0, dp(5), 0);
         financeRow.addView(balanceMini, balanceMiniLp);
         View financeDivider=new View(this);
@@ -579,7 +575,7 @@ class CustomerDashboardActivityScreenCore extends CustomerAdaptiveActivity
         financeRow.addView(financeDivider,new LinearLayout.LayoutParams(dp(1),dp(36)));
 
         View loyaltyMini = buildHeaderLoyaltyCard();
-        LinearLayout.LayoutParams loyaltyMiniLp = new LinearLayout.LayoutParams(0, -2, 0.88f);
+        LinearLayout.LayoutParams loyaltyMiniLp = new LinearLayout.LayoutParams(0, -2, 0.94f);
         loyaltyMiniLp.setMargins(dp(5), 0, 0, 0);
         financeRow.addView(loyaltyMini, loyaltyMiniLp);
 
@@ -591,7 +587,7 @@ class CustomerDashboardActivityScreenCore extends CustomerAdaptiveActivity
         LinearLayout card = new LinearLayout(this);
         card.setOrientation(LinearLayout.HORIZONTAL);
         card.setGravity(Gravity.CENTER_VERTICAL);
-        card.setPadding(dp(11), dp(7), dp(9), dp(7));
+        card.setPadding(dp(15), dp(6), dp(8), dp(6));
         card.setMinimumHeight(dp(54));
         card.setClickable(true);
         card.setFocusable(true);
@@ -602,8 +598,8 @@ class CustomerDashboardActivityScreenCore extends CustomerAdaptiveActivity
         body.setGravity(Gravity.CENTER_VERTICAL);
         card.addView(body, new LinearLayout.LayoutParams(0, -2, 1f));
 
-        body.addView(text("Saldo", 9, "#D9EDFF", true));
-        balanceText = text("Memuat saldo...", 16, "#FFFFFF", true);
+        body.addView(text("Saldo", 11, "#BBDFFF", false));
+        balanceText = text("Memuat saldo...", 18, "#FFFFFF", true);
         balanceText.setMaxLines(2);
         balanceText.setEllipsize(android.text.TextUtils.TruncateAt.END);
         body.addView(balanceText);
@@ -690,13 +686,13 @@ class CustomerDashboardActivityScreenCore extends CustomerAdaptiveActivity
     protected View buildHeaderLoyaltyCard() {
         LinearLayout card=new LinearLayout(this);card.setOrientation(LinearLayout.HORIZONTAL);card.setGravity(Gravity.CENTER_VERTICAL);card.setPadding(dp(9),dp(6),dp(9),dp(6));
         card.setMinimumHeight(dp(54));card.setClickable(true);card.setFocusable(true);
-        loyaltyTierBadge=PoinTransivaUi.icon(this,36);card.addView(loyaltyTierBadge,new LinearLayout.LayoutParams(dp(36),dp(36)));
+        loyaltyTierBadge=PoinTransivaUi.icon(this,40);card.addView(loyaltyTierBadge,new LinearLayout.LayoutParams(dp(40),dp(40)));
         loyaltyTierText=text("…",19,"#FFFFFF",true);loyaltyTierText.setSingleLine(true);loyaltyTierText.setEllipsize(android.text.TextUtils.TruncateAt.END);
         if(android.os.Build.VERSION.SDK_INT>=26)loyaltyTierText.setAutoSizeTextTypeUniformWithConfiguration(12,19,1,android.util.TypedValue.COMPLEX_UNIT_SP);
         LinearLayout points=new LinearLayout(this);
         points.setOrientation(LinearLayout.VERTICAL);
         LinearLayout.LayoutParams amount=new LinearLayout.LayoutParams(0,-2,1);
-        amount.leftMargin=dp(7);
+        amount.leftMargin=dp(9);
         card.addView(points,amount);
         points.addView(loyaltyTierText);
         points.addView(text("Poin",10,"#D6EAFF",false));
@@ -714,11 +710,11 @@ class CustomerDashboardActivityScreenCore extends CustomerAdaptiveActivity
         return button;
     }
 
-    protected View headerIconAction(String iconName, String description, Runnable action) {
+    private View headerIconAction(int icon, String description, Runnable action) {
         ImageView button = new ImageView(this);
-        button.setImageResource(drawable(iconName));
+        button.setImageResource(icon);
         button.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
-        button.setPadding(dp(11), dp(11), dp(11), dp(11));
+        button.setPadding(dp(9), dp(9), dp(9), dp(9));
         button.setContentDescription(description);
         button.setBackground(Shape.roundStroke("#1AFFFFFF", "#55FFFFFF", dp(14), 1));
         button.setOnClickListener(view -> {
@@ -728,7 +724,7 @@ class CustomerDashboardActivityScreenCore extends CustomerAdaptiveActivity
                         action.run();
                     }).start();
         });
-        button.setLayoutParams(new LinearLayout.LayoutParams(dp(44), dp(44)));
+        button.setLayoutParams(new LinearLayout.LayoutParams(dp(40), dp(42)));
         return button;
     }
 
@@ -1864,15 +1860,15 @@ class CustomerDashboardActivityScreenCore extends CustomerAdaptiveActivity
     }
 
     /** Smart Dashboard 5.1: compact destination-first entry point. */
-    protected void buildSmartDestinationSection() {
+    private void buildSmartDestinationSection(LinearLayout hero) {
         LinearLayout card = new LinearLayout(this);
         card.setOrientation(LinearLayout.VERTICAL);
         card.setPadding(dp(9), dp(7), dp(9), dp(7));
         card.setBackground(Shape.roundStroke("#FFFFFF", "#D8E8F8", dp(18), 1));
-        card.setElevation(dp(2));
+        card.setElevation(dp(3));
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, -2);
-        lp.setMargins(0, 0, 0, dp(7));
-        content.addView(card, lp);
+        lp.setMargins(dp(12), -dp(29), dp(12), 0);
+        hero.addView(card, lp);
 
         LinearLayout search = new LinearLayout(this);
         search.setGravity(Gravity.CENTER_VERTICAL);
@@ -1886,7 +1882,7 @@ class CustomerDashboardActivityScreenCore extends CustomerAdaptiveActivity
         LinearLayout copy = new LinearLayout(this);
         copy.setOrientation(LinearLayout.VERTICAL);
         copy.setGravity(Gravity.CENTER_VERTICAL);
-        copy.addView(text("Mau ke mana?", 14, "#0B3A78", true));
+        copy.addView(text("Mau ke mana?", 16, "#0B3A78", true));
         TextView sub = text("Cari alamat atau tempel link Google Maps", 10, "#516781", false);
         sub.setMaxLines(2);
         sub.setEllipsize(android.text.TextUtils.TruncateAt.END);
@@ -1898,7 +1894,7 @@ class CustomerDashboardActivityScreenCore extends CustomerAdaptiveActivity
             recordServiceUsage("TransRide");
             startActivity(new Intent(this, TransRideActivity.class).putExtra("focus_destination_search", true));
         });
-        search.setMinimumHeight(dp(48));
+        search.setMinimumHeight(dp(40));
         card.addView(search, new LinearLayout.LayoutParams(-1, -2));
 
         LinearLayout quick = new LinearLayout(this);
@@ -1924,7 +1920,7 @@ class CustomerDashboardActivityScreenCore extends CustomerAdaptiveActivity
     protected View smartQuickAction(String iconName, String label, Runnable action) {
         LinearLayout item = new LinearLayout(this);
         item.setGravity(Gravity.CENTER);
-        item.setBackground(Shape.round("#EEF6FF", dp(12)));
+        item.setBackground(Shape.round("#E3F1FE", dp(12)));
         ImageView icon = new ImageView(this);
         icon.setImageResource(drawable(iconName));
         icon.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
@@ -1933,6 +1929,8 @@ class CustomerDashboardActivityScreenCore extends CustomerAdaptiveActivity
         LinearLayout.LayoutParams tlp = new LinearLayout.LayoutParams(-2, -2);
         tlp.setMargins(dp(3), 0, 0, 0);
         item.addView(t, tlp);
+        t.setSingleLine(true);
+        t.setEllipsize(android.text.TextUtils.TruncateAt.END);
         item.setOnClickListener(v -> action.run());
         return item;
     }
@@ -1949,10 +1947,10 @@ class CustomerDashboardActivityScreenCore extends CustomerAdaptiveActivity
     protected void buildServiceSection() {
         LinearLayout section = new LinearLayout(this);
         section.setOrientation(LinearLayout.VERTICAL);
-        section.setPadding(dp(2), dp(2), dp(2), dp(4));
+        section.setPadding(0, dp(2), 0, dp(1));
 
         LinearLayout.LayoutParams sectionLp = new LinearLayout.LayoutParams(-1, -2);
-        sectionLp.setMargins(0, 0, 0, dp(8));
+        sectionLp.setMargins(0, 0, 0, dp(6));
         content.addView(section, sectionLp);
 
         LinearLayout titleRow = new LinearLayout(this);
@@ -1968,7 +1966,7 @@ class CustomerDashboardActivityScreenCore extends CustomerAdaptiveActivity
         TextView seeAll = text("Lihat semua  ›", 11, "#075EC9", true);
         seeAll.setGravity(Gravity.CENTER);
         seeAll.setPadding(dp(8), dp(6), dp(7), dp(6));
-        seeAll.setBackground(Shape.round("#EEF6FF", dp(14)));
+        seeAll.setMinHeight(dp(34));
         seeAll.setOnClickListener(v -> startActivity(new Intent(this, AllServicesActivity.class)));
         titleRow.addView(seeAll, new LinearLayout.LayoutParams(-2, -2));
 
@@ -2061,7 +2059,7 @@ class CustomerDashboardActivityScreenCore extends CustomerAdaptiveActivity
         }
 
         LinearLayout.LayoutParams rowLp = new LinearLayout.LayoutParams(-1, -2);
-        rowLp.setMargins(0, 0, 0, dp(8));
+        rowLp.setMargins(0, 0, 0, 0);
         row.setLayoutParams(rowLp);
         return row;
     }
@@ -2095,8 +2093,8 @@ class CustomerDashboardActivityScreenCore extends CustomerAdaptiveActivity
         LinearLayout card = new LinearLayout(this);
         card.setOrientation(LinearLayout.VERTICAL);
         card.setGravity(Gravity.TOP | Gravity.CENTER_HORIZONTAL);
-        card.setPadding(dp(2), dp(4), dp(2), dp(4));
-        card.setMinimumHeight(dp(72));
+        card.setPadding(0, dp(1), 0, dp(3));
+        card.setMinimumHeight(dp(64));
         card.setBackground(Shape.round("#00FFFFFF", dp(16)));
         card.setClickable(true);
         card.setFocusable(true);
@@ -2118,20 +2116,21 @@ class CustomerDashboardActivityScreenCore extends CustomerAdaptiveActivity
                 break;
         }
 
-        int tint;
+        int art;
         switch (icon) {
-            case "ic_service_ride_premium": tint=0xffcceaff; break;
-            case "ic_service_car_premium": tint=0xffc5f1f6; break;
-            case "ic_service_food_premium": tint=0xffffe7d8; break;
-            case "ic_service_shop_premium": tint=0xffe5dfff; break;
-            case "ic_service_send_premium": tint=0xffffedc8; break;
-            default: tint=0xfff8fbff;
+            case "ic_service_ride_premium": art = R.drawable.home_ic_service_ride_premium; break;
+            case "ic_service_car_premium": art = R.drawable.home_ic_service_car_premium; break;
+            case "ic_service_food_premium": art = R.drawable.home_ic_service_food_premium; break;
+            case "ic_service_shop_premium": art = R.drawable.home_ic_service_shop_premium; break;
+            case "ic_service_send_premium": art = R.drawable.home_ic_service_send_premium; break;
+            default: art = 0;
         }
-        CustomerServiceArtworkView artwork = new CustomerServiceArtworkView(this, drawable(icon), iconSize, tint);
+        CustomerServiceArtworkView artwork = new CustomerServiceArtworkView(
+                this, art == 0 ? drawable(icon) : art, iconSize, art != 0);
         // AT_MOST width from the weighted menu column bounds the complete square tile.
         card.addView(artwork, new LinearLayout.LayoutParams(-2, -2));
 
-        TextView label = text(title, 9, "#0B3A78", true);
+        TextView label = text(title, 10, "#102B57", true);
         label.setGravity(Gravity.CENTER);
         label.setMaxLines(2);
         label.setSingleLine(false);
@@ -2212,12 +2211,12 @@ class CustomerDashboardActivityScreenCore extends CustomerAdaptiveActivity
 
     private void buildOrderSection() {
         orderCard = new FrameLayout(this);
-        premiumOrder = new PremiumOrderStatusView(this, true);
+        premiumOrder = new PremiumOrderStatusView(this, true, true);
         premiumOrder.setAction(v -> openActiveOrder());
         premiumOrder.bind(null, "Memuat status pesanan…", "Lihat pusat pesanan  ›");
         orderCard.addView(premiumOrder, new FrameLayout.LayoutParams(-1, -2));
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, -2);
-        lp.setMargins(0, dp(4), 0, dp(10)); content.addView(orderCard, lp);
+        lp.setMargins(0, dp(1), 0, dp(8)); content.addView(orderCard, lp);
         // Keep inherited references compatible; presentation now belongs to the shared card.
         orderText = text("", 12, "#64748B", false);
         orderHint = text("", 12, "#64748B", false);
@@ -2335,7 +2334,7 @@ class CustomerDashboardActivityScreenCore extends CustomerAdaptiveActivity
         loc.setOrientation(LinearLayout.VERTICAL);
         loc.setGravity(Gravity.CENTER_VERTICAL);
         loc.setPadding(dp(11), dp(6), dp(11), dp(6));
-        loc.setBackground(Shape.gradient("#1243B1","#077FEA",dp(16)));
+        loc.setBackground(new CustomerHomeBackdrop(true, dp(16)));
         CustomerAppSettings.preserveArtwork(loc);
         TextView locTitle = text(currentLocation, 14, "#FFFFFF", true);
         locTitle.setTag("fallback_location_title");
@@ -2353,22 +2352,30 @@ class CustomerDashboardActivityScreenCore extends CustomerAdaptiveActivity
 
         LinearLayout popular = new LinearLayout(this);
         popular.setOrientation(LinearLayout.VERTICAL);
-        popular.setPadding(dp(10), dp(5), dp(10), dp(5));
+        popular.setPadding(dp(12), dp(2), dp(10), dp(2));
         popular.setBackground(Shape.roundStroke("#FFFFFF", "#E1EAF4", dp(16), 1));
         fallbackAlfamidiDistance = addPopularPlace(popular, "Alfamidi");
+        addNearbyDivider(popular);
         fallbackSpbuDistance = addPopularPlace(popular, "SPBU");
+        addNearbyDivider(popular);
         fallbackPasarDistance = addPopularPlace(popular, "Pasar");
         row.addView(popular, new LinearLayout.LayoutParams(0, -2, 0.57f));
 
         content.addView(locationPopularFallback, new LinearLayout.LayoutParams(-1, -2));
     }
 
+    private void addNearbyDivider(LinearLayout group) {
+        View divider = new View(this);
+        divider.setBackgroundColor(0xFFDCE5F2);
+        group.addView(divider, new LinearLayout.LayoutParams(-1, dp(1)));
+    }
+
     private TextView addPopularPlace(LinearLayout parent, String name) {
         LinearLayout item = new LinearLayout(this);
         item.setGravity(Gravity.CENTER_VERTICAL);
         item.setPadding(0, dp(1), 0, dp(1));
-        item.addView(text(name, 10, "#123A68", true), new LinearLayout.LayoutParams(0, -2, 1));
-        TextView distance = text("— km", 8, "#718096", false);
+        item.addView(text(name, 11, "#123A68", true), new LinearLayout.LayoutParams(0, -2, 1));
+        TextView distance = text("— km", 10, "#536681", false);
         LinearLayout.LayoutParams distanceLp = new LinearLayout.LayoutParams(-2, -2);
         distanceLp.setMargins(dp(4), 0, dp(5), 0);
         item.addView(distance, distanceLp);
@@ -2379,7 +2386,7 @@ class CustomerDashboardActivityScreenCore extends CustomerAdaptiveActivity
             i.putExtra("destination_query", name);
             startActivity(i);
         });
-        item.setMinimumHeight(dp(34));
+        item.setMinimumHeight(dp(28));
         parent.addView(item, new LinearLayout.LayoutParams(-1, -2));
         return distance;
     }

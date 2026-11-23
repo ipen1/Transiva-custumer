@@ -20,19 +20,29 @@ public final class PremiumOrderStatusView extends LinearLayout {
     private final android.widget.ImageView serviceIcon;
     private final TextView emblem;
     private final boolean compact;
+    private final boolean home;
     private String fingerprint = "";
     private String progressStatus = null;
 
     public PremiumOrderStatusView(Context context, boolean compact) {
-        super(context); this.compact = compact;
-        setOrientation(VERTICAL); setPadding(dp(12), dp(10), dp(12), dp(10));
-        setBackground(surface("#FFFFFF", "#DCE8F6", 16)); setElevation(dp(1));
+        this(context, compact, false);
+    }
+
+    PremiumOrderStatusView(Context context, boolean compact, boolean home) {
+        super(context);
+        this.compact = compact;
+        this.home = home;
+        setOrientation(VERTICAL);
+        setPadding(dp(12), dp(home ? 2 : 10), dp(12), dp(home ? 2 : 10));
+        setBackground(surface("#FFFFFF", home ? "#EDF2FA" : "#DCE8F6", home ? 14 : 16));
+        setElevation(dp(home ? 3 : 1));
         LinearLayout header = new LinearLayout(context); header.setGravity(Gravity.CENTER_VERTICAL);
         emblemFrame = new android.widget.FrameLayout(context);
         emblem = label("T", 18, "#FFFFFF", true); emblem.setGravity(Gravity.CENTER);
         GradientDrawable gradient = new GradientDrawable(GradientDrawable.Orientation.TL_BR,
                 new int[]{Color.parseColor("#075DDF"), Color.parseColor("#27AEFA")});
-        gradient.setCornerRadius(dp(14)); emblemFrame.setBackground(gradient);
+        gradient.setCornerRadius(dp(14));
+        emblemFrame.setBackground(gradient);
         emblemFrame.addView(emblem, new android.widget.FrameLayout.LayoutParams(-1, -1));
         serviceIcon = new android.widget.ImageView(context);
         serviceIcon.setScaleType(android.widget.ImageView.ScaleType.FIT_CENTER);
@@ -40,7 +50,7 @@ public final class PremiumOrderStatusView extends LinearLayout {
         serviceIcon.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
         emblemFrame.addView(serviceIcon, new android.widget.FrameLayout.LayoutParams(-1, -1));
         emblem.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
-        header.addView(emblemFrame, new LayoutParams(dp(32), dp(32)));
+        header.addView(emblemFrame, new LayoutParams(dp(home ? 30 : 32), dp(home ? 30 : 32)));
         LinearLayout headings = new LinearLayout(context); headings.setOrientation(VERTICAL);
         service = label("Status pesanan", 14, "#123B65", true);
         reference = label("Semua perjalanan dalam satu tempat", 11, "#64748B", false);
@@ -87,11 +97,17 @@ public final class PremiumOrderStatusView extends LinearLayout {
                 : iconType.contains("ride") || iconType.contains("motor") ? "ic_service_ride_premium" : "";
         int iconId = resource.isEmpty() ? 0 : getResources().getIdentifier(resource, "drawable", getContext().getPackageName());
         serviceIcon.setVisibility(iconId == 0 ? GONE : VISIBLE); emblem.setVisibility(iconId == 0 ? VISIBLE : GONE);
-        if (iconId != 0) { serviceIcon.setImageResource(iconId); emblemFrame.setBackground(surface("#EDF5FF", "", 10)); }
+        if (iconId != 0) {
+            serviceIcon.setImageResource(iconId);
+            emblemFrame.setBackground(surface("#EDF5FF", "", 10));
+        } else if (home) {
+            emblem.setTextColor(Color.parseColor("#536782"));
+            emblemFrame.setBackground(surface("#E2F0FF", "", 10));
+        }
         String fullId = empty ? "" : first(order.optString("order_id"), order.optString("id_order"), order.optString("id"));
         String shortId = fullId.length() > 14 ? fullId.substring(0, 10) + "…" + fullId.substring(fullId.length() - 4) : fullId;
         String driver = empty ? "" : first(order.optString("driver_name"), order.optString("driver"), order.optString("driver_username"));
-        reference.setText(empty ? "Ketuk untuk melihat pesanan" : compact ? (driver.isEmpty() ? "Pantau perkembangan pesanan" : "Driver: " + driver) : (driver.isEmpty() ? "Order #" + shortId : "Driver: " + driver + " • #" + shortId));
+        reference.setText(empty ? (home ? "Lihat pesanan" : "Ketuk untuk melihat pesanan") : compact ? (driver.isEmpty() ? "Pantau perkembangan pesanan" : "Driver: " + driver) : (driver.isEmpty() ? "Order #" + shortId : "Driver: " + driver + " • #" + shortId));
         reference.setContentDescription(empty ? "Belum ada pesanan aktif" : "Order " + fullId + (driver.isEmpty() ? "" : ", driver " + driver));
         status.setVisibility(empty && compact ? GONE : VISIBLE);
         status.setText(empty ? first(fallback, "Belum ada pesanan aktif") : OrderStatusPresentation.label(raw, type));

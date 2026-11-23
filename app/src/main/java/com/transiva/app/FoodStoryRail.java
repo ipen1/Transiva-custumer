@@ -1,7 +1,6 @@
 package com.transiva.app;
 
 import android.app.Activity;
-import android.graphics.Color;
 import android.graphics.drawable.GradientDrawable;
 import android.view.Gravity;
 import android.view.View;
@@ -12,27 +11,76 @@ import java.util.HashSet;
 /** Favorite/header remain attached; only changed/expired story tiles are reconciled. */
 final class FoodStoryRail extends LinearLayout {
     private final Activity activity;private final KabarMitraUi ui;
-    private final LinearLayout favorite,row;private final FrameLayout circle;private final ImageView heart;private final TextView favoriteLabel,hint;
-    private final HorizontalScrollView scroll;private String signature="";
-    FoodStoryRail(Activity activity,Runnable onFavorite){
-        super(activity);this.activity=activity;ui=new KabarMitraUi(activity);setOrientation(HORIZONTAL);setGravity(Gravity.CENTER_VERTICAL);setPadding(0,ui.dp(5),0,ui.dp(7));
-        favorite=new LinearLayout(activity);favorite.setOrientation(VERTICAL);favorite.setGravity(Gravity.CENTER);favorite.setPadding(0,ui.dp(3),ui.dp(8),0);
-        circle=new FrameLayout(activity);heart=new ImageView(activity);heart.setPadding(ui.dp(14),ui.dp(14),ui.dp(14),ui.dp(14));circle.addView(heart,new FrameLayout.LayoutParams(-1,-1));favorite.addView(circle,new LinearLayout.LayoutParams(ui.dp(54),ui.dp(54)));
-        favoriteLabel=ui.text("Favorit",11,true);favoriteLabel.setGravity(Gravity.CENTER);favorite.addView(favoriteLabel);favorite.setOnClickListener(v->onFavorite.run());addView(favorite,new LinearLayout.LayoutParams(ui.dp(70),-2));
-        hint=ui.text("Menyiapkan cerita mitra…",12,false);hint.setTextColor(ui.muted);hint.setMaxLines(3);hint.setPadding(ui.dp(6),0,ui.dp(3),0);addView(hint,new LinearLayout.LayoutParams(0,-2,1));
-        scroll=new HorizontalScrollView(activity);scroll.setHorizontalScrollBarEnabled(false);row=new LinearLayout(activity);scroll.addView(row);addView(scroll,new LinearLayout.LayoutParams(0,-2,1));scroll.setVisibility(GONE);
+    private final LinearLayout favorite, row;
+    private final ImageView heart;
+    private final TextView favoriteLabel, hint;
+    private final View divider;
+    private final HorizontalScrollView scroll;
+    private String signature = "";
+
+    FoodStoryRail(Activity activity, Runnable onFavorite) {
+        super(activity);
+        this.activity = activity;
+        ui = new KabarMitraUi(activity);
+        setOrientation(HORIZONTAL);
+        setGravity(Gravity.CENTER_VERTICAL);
+        setMinimumHeight(ui.dp(44));
+        setPadding(ui.dp(10), 0, ui.dp(10), 0);
+
+        GradientDrawable band = new GradientDrawable();
+        band.setColor(ui.dark ? 0xff223b58 : 0xffe0effe);
+        band.setCornerRadius(ui.dp(15));
+        setBackground(band);
+        CustomerAppSettings.preserveArtwork(this);
+
+        favorite = new LinearLayout(activity);
+        favorite.setGravity(Gravity.CENTER_VERTICAL);
+        favorite.setMinimumHeight(ui.dp(44));
+        favorite.setPadding(0, 0, ui.dp(8), 0);
+        heart = new ImageView(activity);
+        favorite.addView(heart, new LinearLayout.LayoutParams(ui.dp(22), ui.dp(22)));
+        favoriteLabel = ui.text("Favorit", 12, true);
+        favoriteLabel.setPadding(ui.dp(7), 0, 0, 0);
+        favorite.addView(favoriteLabel);
+        favorite.setFocusable(true);
+        favorite.setOnClickListener(v -> onFavorite.run());
+        addView(favorite, new LinearLayout.LayoutParams(-2, -2));
+
+        divider = new View(activity);
+        divider.setBackgroundColor(ui.dark ? 0xff536b87 : 0xffa5bed8);
+        addView(divider, new LinearLayout.LayoutParams(ui.dp(1), ui.dp(16)));
+        hint = ui.text("Menyiapkan cerita mitra…", 11, false);
+        hint.setTextColor(ui.muted);
+        hint.setMaxLines(2);
+        hint.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        hint.setPadding(ui.dp(8), 0, 0, 0);
+        addView(hint, new LinearLayout.LayoutParams(0, -2, 1));
+
+        scroll = new HorizontalScrollView(activity);
+        scroll.setHorizontalScrollBarEnabled(false);
+        row = new LinearLayout(activity);
+        scroll.addView(row);
+        addView(scroll, new LinearLayout.LayoutParams(0, -2, 1));
+        scroll.setVisibility(GONE);
     }
     void update(JSONObject feed,long now,boolean selected,boolean hasMore,boolean loading,Runnable loadMore){
         JSONArray all=feed==null?null:feed.optJSONArray("stories"),live=new JSONArray();
         if(all!=null)for(int i=0;i<all.length();i++){JSONObject story=all.optJSONObject(i);if(story!=null&&story.optLong("expires_at")>now)live.put(story);}
-        JSONArray followed=feed==null?null:feed.optJSONArray("followed");boolean hasFollowing=followed!=null&&followed.length()>0;
-        String next=selected+":"+hasFollowing+":"+live+":"+hasMore+":"+loading+":"+(feed==null);
-        if(next.equals(signature))return;signature=next;
-        GradientDrawable shape=new GradientDrawable();shape.setShape(GradientDrawable.OVAL);shape.setColor(selected?ui.blue:ui.bg);shape.setStroke(ui.dp(1),ui.blue);circle.setBackground(shape);
-        heart.setImageResource(selected?R.drawable.ic_favorite_filled:R.drawable.ic_favorite_outline);heart.setColorFilter(selected?Color.WHITE:ui.blue);favoriteLabel.setTextColor(selected?ui.blue:ui.ink);
-        favorite.setContentDescription(selected?"Favorit aktif. Tekan untuk melihat semua toko":"Lihat toko dan menu favorit");
-        boolean empty=live.length()==0&&!hasMore;hint.setVisibility(empty?VISIBLE:GONE);scroll.setVisibility(empty?GONE:VISIBLE);
-        if(empty){hint.setText(feed==null?(loading?"Memuat cerita mitra…":"Cerita belum dimuat. Tarik untuk mencoba lagi."):hasFollowing?"Belum ada cerita baru dari toko yang kamu ikuti. Mampir lagi nanti, ya!":"Ikuti toko yang kamu suka. Cerita menu harian dan promo mereka bakal muncul di sini.");return;}
+        String next = selected + ":" + live + ":" + hasMore + ":" + loading + ":" + (feed == null);
+        if (next.equals(signature)) return;
+        signature = next;
+        heart.setImageResource(selected ? R.drawable.ic_favorite_filled : R.drawable.ic_favorite_outline);
+        heart.setColorFilter(ui.dark ? 0xff92c9ff : 0xff0756d8);
+        favoriteLabel.setTextColor(selected ? (ui.dark ? 0xff92c9ff : 0xff0756d8) : ui.ink);
+        favorite.setContentDescription(selected ? "Favorit aktif. Tekan untuk melihat semua toko" : "Lihat toko dan menu favorit");
+        boolean empty = live.length() == 0 && !hasMore;
+        divider.setVisibility(empty ? VISIBLE : GONE);
+        hint.setVisibility(empty ? VISIBLE : GONE);
+        scroll.setVisibility(empty ? GONE : VISIBLE);
+        if (empty) {
+            hint.setText(feed == null ? (loading ? "Memuat cerita mitra…" : "Cerita belum dimuat") : "Belum ada cerita baru");
+            return;
+        }
         int scrollX=scroll.getScrollX();LinearLayout plan=new LinearLayout(activity);HashSet<Integer> ids=new HashSet<>();IncrementalLinearRenderer.begin(row);
         try{
             for(int i=0;i<live.length();i++){

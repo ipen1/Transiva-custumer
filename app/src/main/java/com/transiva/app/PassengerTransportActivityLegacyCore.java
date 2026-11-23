@@ -279,7 +279,10 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
         buildLayout();
         loadStopPricing();
         String royaltyVoucher=getIntent()==null?"":getIntent().getStringExtra("royalty_voucher_code");
-        if(royaltyVoucher!=null&&!royaltyVoucher.isEmpty()&&voucherInput!=null){voucherInput.setText(royaltyVoucher);if(voucherChoiceBtn!=null)voucherChoiceBtn.setText("🏷 Voucher dipilih");}
+        if (royaltyVoucher != null && !royaltyVoucher.isEmpty() && voucherInput != null) {
+            voucherInput.setText(royaltyVoucher);
+            updateVoucherAction(true, 0);
+        }
 
         applySmartFavoriteIntent();
         CustomerBestOffer.load(this, offerService(), offer -> featureRuntime.post(mainHandler, () -> {
@@ -287,7 +290,7 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
                 String code = offer.optString("promo_code", "").trim();
                 if (!code.isEmpty()) {
                     voucherInput.setText(code);
-                    if (voucherChoiceBtn != null) voucherChoiceBtn.setText("🏷 " + code);
+                    updateVoucherAction(true, 0);
                 }
             }
         }));
@@ -685,6 +688,7 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
         quickRow.addView(quickBottom,new LinearLayout.LayoutParams(-1,-2));
         paymentChoiceBtn = checkoutAction(paymentButtonLabel());
         voucherChoiceBtn = checkoutAction("Voucher");
+        updateVoucherAction(false, 0);
         Button fareDetails = checkoutAction("Rincian");
         fareDetails.setContentDescription("Lihat rincian biaya dan opsi perjalanan");
         fareDetails.setOnClickListener(v -> showFinalFareDetails());
@@ -695,6 +699,7 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
         noteChoiceBtn=checkoutAction(driverNoteDraft.isEmpty()?"Catatan":"Catatan ✓");
         noteChoiceBtn.setContentDescription("Catatan untuk driver");
         bookingControlIcon(paymentChoiceBtn, R.drawable.ic_nav2_wallet);
+        paymentChoiceBtn.getCompoundDrawablesRelative()[0].mutate().setTint(0xff118044);
         bookingControlIcon(voucherChoiceBtn, R.drawable.ic_booking_voucher);
         bookingControlIcon(fareDetails, R.drawable.ic_booking_receipt);
         bookingControlIcon(noteChoiceBtn, R.drawable.ic_booking_note);
@@ -828,6 +833,17 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
         button.setCompoundDrawablesRelative(pointGlyph(id, 13), null, null, null);
     }
 
+    private void updateVoucherAction(boolean selected, int discount) {
+        if (voucherChoiceBtn == null) return;
+        boolean dark = CustomerAppSettings.isDarkMode(this);
+        voucherChoiceBtn.setTextColor(dark ? 0xffEEF5FF : 0xff122D50);
+        voucherChoiceBtn.setBackground(selected
+                ? roundStroke(dark ? "#4A361A" : "#FFF4DD", dark ? "#805A28" : "#ECCB8E", dp(11), 1)
+                : roundStroke(dark ? "#1C2D42" : "#FAFCFE", dark ? "#314A65" : "#E4E9F0", dp(11), 1));
+        voucherChoiceBtn.setContentDescription(discount > 0 ? "Voucher aktif, hemat Rp" + formatMoney(discount)
+                : selected ? "Voucher dipilih" : "Pilih voucher");
+    }
+
     private void updatePickerLabel(String title) {
         android.text.SpannableString caption = new android.text.SpannableString("◉  " + title);
         android.graphics.drawable.Drawable pin = pointGlyph(R.drawable.ic_booking_confirm, 16);
@@ -883,9 +899,11 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
     private void placeCheckoutActions(LinearLayout top,LinearLayout bottom,Button[] buttons,boolean wrap) {
         top.removeAllViews();
         bottom.removeAllViews();
+        top.setBaselineAligned(false);
+        bottom.setBaselineAligned(false);
         for (int i=0;i<buttons.length;i++) {
             LinearLayout row=wrap && i>=2?bottom:top;
-            LinearLayout.LayoutParams space=new LinearLayout.LayoutParams(0,-2,1);
+            LinearLayout.LayoutParams space=new LinearLayout.LayoutParams(0,-1,1);
             space.setMargins(dp(2),dp(2),dp(2),0);
             row.addView(buttons[i],space);
         }
@@ -902,6 +920,7 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
         button.setMinimumHeight(dp(44));
         button.setPadding(dp(4), dp(3), dp(4), dp(3));
         button.setMaxLines(2);
+        button.setEllipsize(android.text.TextUtils.TruncateAt.END);
         return button;
     }
 
@@ -967,7 +986,7 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
     protected void showVoucherDialog() {
         RoyaltyVoucherPicker.show(this,royaltyOriginalFare,royaltyOriginalFare,voucherInput==null?"":voucherInput.getText().toString(),(code,discount)->{
             if(voucherInput!=null)voucherInput.setText(code);
-            voucherChoiceBtn.setText(code.isEmpty()?"🏷 Voucher":"🏷 Voucher dipilih");
+            updateVoucherAction(!code.isEmpty(), 0);
             requestPaymentQuote();
         });
     }
@@ -2983,7 +3002,7 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
                     int discount = jsonInt(res, "discount", 0);
                     int voucherDiscount = jsonInt(res, "voucher_discount", Math.max(0,discount-jsonInt(res,"hemat_discount",0)));
                     String appliedVoucher=res.optString("voucher_code", "");
-                    if(voucherChoiceBtn!=null)voucherChoiceBtn.setText(appliedVoucher.isEmpty()?"🏷 Voucher":"🏷 Hemat Rp"+formatMoney(voucherDiscount));
+                    updateVoucherAction(!appliedVoucher.isEmpty(), voucherDiscount);
                     int total = jsonInt(
                             res,
                             "price",

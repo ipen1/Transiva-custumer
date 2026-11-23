@@ -30,6 +30,7 @@ import android.widget.RadioButton;
 import android.widget.RadioGroup;
 import android.widget.RatingBar;
 import android.text.Editable;
+import android.text.TextUtils;
 import android.text.TextWatcher;
 
 import org.json.JSONArray;
@@ -282,7 +283,15 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
             if (width == checkoutWidth && narrow == checkoutNarrow) return;
             checkoutWidth = width;
             checkoutNarrow = narrow;
-            page.post(this::refreshCheckoutLayout);
+            page.post(() -> {
+                if (isDestroyed()) return;
+                if (currentScreen == 0) {
+                    updateFoodHeaderPadding();
+                    renderHomeResults();
+                } else {
+                    refreshCheckoutLayout();
+                }
+            });
         });
         CustomerAppSettings.apply(this);
     }
@@ -293,8 +302,13 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
         }
 
         @Override public void onCustomerThemeChanged(boolean dark) {
-            if (currentScreen == 2 || currentScreen == COMBINED_CHECKOUT) applyCheckoutSystemBars(dark);
+            if (currentScreen == 0) applyFoodHomeSystemBars();
+            else if (currentScreen == 2 || currentScreen == COMBINED_CHECKOUT) applyCheckoutSystemBars(dark);
         }
+    }
+
+    private void applyFoodHomeSystemBars() {
+        CustomerWindowPolicy.setBarColorsIfChanged(getWindow(), 0xff061e51, 0xff071b39);
     }
 
     private void applyCheckoutSystemBars(boolean dark) {
@@ -318,7 +332,7 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
         addDeliveryLocationRow();
         addHomeSearchBar();
         addQuickMenus();
-        addHomeSectionHeader();
+        if ("favorites".equals(homeMode)) addHomeSectionHeader();
 
         homeResultsBox = new LinearLayout(this);
         homeResultsBox.setOrientation(LinearLayout.VERTICAL);
@@ -348,18 +362,44 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
     protected void addDeliveryLocationRow() {
         LinearLayout row = new LinearLayout(this);
         row.setGravity(Gravity.CENTER_VERTICAL);
-        row.setPadding(dp(12), dp(9), dp(12), dp(9));
-        row.setBackground(roundStroke("#FFFFFF", "#D7E6F8", dp(14), 1));
-        String address = DeliveryAddressGate.address(this);
-        TextView location = text("📍 Antar ke · " + firstNonEmpty(address, "Lokasi akun / titik antar"), 12, "#123B6B", true);
-        location.setMaxLines(2);
-        location.setEllipsize(android.text.TextUtils.TruncateAt.END);
-        row.addView(location, new LinearLayout.LayoutParams(-1, -2));
+        row.setMinimumHeight(dp(46));
+        row.setPadding(dp(12), dp(5), dp(10), dp(5));
+        row.setBackground(roundStroke("#FFFFFF", "#CEE0F5", dp(14), 1));
 
-        row.setClickable(true);
+        String address = firstNonEmpty(DeliveryAddressGate.address(this));
+        String[] parts = address.split(",", 3);
+        String compact = parts.length > 1 ? parts[0].trim() + ", " + parts[1].trim() : address;
+        row.addView(foodGlyph(R.drawable.ic_checkout_pin, "#0756D8"),
+                new LinearLayout.LayoutParams(dp(24), dp(24)));
+        LinearLayout words = new LinearLayout(this);
+        words.setOrientation(LinearLayout.VERTICAL);
+        words.setPadding(dp(10), 0, dp(6), 0);
+        words.addView(text("Antar ke", 11, "#0F172A", true));
+        TextView location = text(firstNonEmpty(compact, "Pilih lokasi antar"), 14, "#0F172A", true);
+        limitFoodText(location, 2);
+        words.addView(location);
+        row.addView(words, new LinearLayout.LayoutParams(0, -2, 1));
+        row.addView(foodGlyph(R.drawable.ic_food_home_chevron, "#354C68"),
+                new LinearLayout.LayoutParams(dp(18), dp(18)));
+
+        row.setFocusable(true);
+        row.setContentDescription("Antar ke. " + firstNonEmpty(address, "Pilih lokasi antar"));
         row.setOnClickListener(v -> DeliveryAddressGate.edit(this,"TransFood"));
-        addWithMargin(row, 0, 0, 0, dp(10));
+        addWithMargin(row, 0, 0, 0, dp(9));
+    }
 
+    private ImageView foodGlyph(int resource, String color) {
+        ImageView icon = new ImageView(this);
+        icon.setImageResource(resource);
+        icon.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        icon.setColorFilter(Color.parseColor(color));
+        icon.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+        return icon;
+    }
+
+    private void limitFoodText(TextView view, int lines) {
+        view.setMaxLines(lines);
+        view.setEllipsize(TextUtils.TruncateAt.END);
     }
 
     protected void addQuickMenus() {
@@ -418,13 +458,20 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
         search.setSingleLine(true);
         search.setText(homeSearchQuery);
         search.setTextSize(14);
-        search.setHint("Cari makanan atau nama merchant...");
-        search.setHintTextColor(Color.parseColor("#94A3B8"));
-        search.setTextColor(Color.parseColor("#0F172A"));
+        search.setHint("Cari makanan atau nama toko");
+        boolean dark = CustomerAppSettings.isDarkMode(this);
+        int searchInk = Color.parseColor(dark ? "#BED2EC" : "#53647B");
+        search.setHintTextColor(searchInk);
+        search.setTextColor(Color.parseColor(dark ? "#EEF5FF" : "#0F172A"));
         search.setGravity(Gravity.CENTER_VERTICAL);
-        search.setMinHeight(0);
-        search.setPadding(dp(18), 0, dp(18), 0);
-        search.setBackground(roundStroke("#FFFFFF", "#D7E6F8", dp(20), 1));
+        search.setMinimumHeight(dp(44));
+        search.setPadding(dp(12), dp(6), dp(12), dp(6));
+        android.graphics.drawable.Drawable glyph = getDrawable(R.drawable.ic_smart_search).mutate();
+        glyph.setTint(searchInk);
+        glyph.setBounds(0, 0, dp(20), dp(20));
+        search.setCompoundDrawablesRelative(glyph, null, null, null);
+        search.setCompoundDrawablePadding(dp(9));
+        search.setBackground(roundStroke(dark ? "#16273E" : "#F6F8FC", dark ? "#435879" : "#C7D4E6", dp(18), 1));
         search.setSelection(search.getText().length());
         search.addTextChangedListener(new TextWatcher() {
             @Override public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
@@ -438,9 +485,7 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
             }
             @Override public void afterTextChanged(Editable e) {}
         });
-        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, dp(42));
-        lp.setMargins(0, 0, 0, dp(8));
-        root.addView(search, lp);
+        addWithMargin(search, 0, 0, 0, dp(9));
     }
 
     protected void renderHomeResults() {
@@ -486,15 +531,17 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
         if (q.length() == 0 && !allMenuSearchItems.isEmpty()) {
             List<MenuSearchItem> smart = new ArrayList<>(allMenuSearchItems);
             java.util.Collections.sort(smart, (a,b) -> Double.compare(smartMenuScore(b), smartMenuScore(a)));
-            TextView smartTitle = text("Menu yang mungkin kamu suka", 14, "#0B3A78", true);
-            addWithMarginTo(homeResultsBox, smartTitle, 0, 0, 0, dp(4));
+            TextView smartTitle = text("Menu yang mungkin kamu suka", 17, "#0F172A", true);
+            addWithMarginTo(homeResultsBox, smartTitle, 0, 0, 0, dp(8));
 
             int smartLimit = Math.min(3, smart.size());
             for (int i=0;i<smartLimit;i++) addMenuSearchCard(homeResultsBox, smart.get(i));
-            TextView restoTitleSmart = text("Toko di sekitarmu", 14, "#0B3A78", true);
-            addWithMarginTo(homeResultsBox, restoTitleSmart, 0, dp(8), 0, dp(10));
         }
 
+        if (q.isEmpty()) {
+            TextView stores = text("Toko di sekitarmu", 17, "#0F172A", true);
+            addWithMarginTo(homeResultsBox, stores, 0, dp(4), 0, dp(10));
+        }
         if (q.length() > 0) {
             TextView menuTitle = text("Hasil menu makanan", 15, "#0B3A78", true);
             addWithMarginTo(homeResultsBox, menuTitle, 0, 0, 0, dp(10));
@@ -592,22 +639,46 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
         if(!shown)addStatusTo(homeResultsBox,query.isEmpty()?"Belum ada favorit di sekitarmu. Tekan ikon hati pada toko atau menu yang kamu suka, ya.":"Belum ketemu favorit yang cocok dengan pencarianmu.");
     }
 
-    protected void addRestaurantGrid(LinearLayout parent,List<JSONObject> data){
-        for(int i=0;i<data.size();i+=2){
-            final JSONObject left=data.get(i),right=i+1<data.size()?data.get(i+1):null;
-            FoodDeferredCard row=new FoodDeferredCard(this,"merchant-row:"+left.optInt("id"),left.toString()+(right==null?"":right.toString()),()->{
-                LinearLayout box=new LinearLayout(this);box.setOrientation(LinearLayout.HORIZONTAL);box.setGravity(Gravity.TOP);
-                LinearLayout.LayoutParams a=new LinearLayout.LayoutParams(0,-2,1);a.setMargins(0,0,dp(7),dp(14));box.addView(createRestaurantCard(left),a);
-                LinearLayout.LayoutParams b=new LinearLayout.LayoutParams(0,right==null?1:-2,1);b.setMargins(dp(7),0,0,dp(14));box.addView(right==null?new View(this):createRestaurantCard(right),b);return box;
-            });parent.addView(row,new LinearLayout.LayoutParams(-1,-2));
+    private int foodHomeInset() {
+        return dp(12) + Math.max(0, checkoutWidth - dp(680)) / 2;
+    }
+
+    private int merchantColumns() {
+        float width = checkoutWidth > 0 ? (checkoutWidth - 2 * foodHomeInset())
+                / getResources().getDisplayMetrics().density : getResources().getConfiguration().screenWidthDp - 24;
+        float fontScale = getResources().getConfiguration().fontScale;
+        if (width < 270 || fontScale >= 1.6f) return 1;
+        return width >= 550 && fontScale <= 1.2f ? 3 : 2;
+    }
+
+    protected void addRestaurantGrid(LinearLayout parent, List<JSONObject> data) {
+        int columns = merchantColumns();
+        for (int i = 0; i < data.size(); i += columns) {
+            List<JSONObject> stores = new ArrayList<>(data.subList(i, Math.min(i + columns, data.size())));
+            String key = "merchant-row:" + stores.get(0).optInt("id");
+            FoodDeferredCard row = new FoodDeferredCard(this, key, columns + ":" + stores, () -> {
+                LinearLayout group = new LinearLayout(this);
+                group.setBaselineAligned(false);
+                LinearLayout.LayoutParams groupParams = new LinearLayout.LayoutParams(-1, -2);
+                groupParams.bottomMargin = dp(10);
+                group.setLayoutParams(groupParams);
+                for (int col = 0; col < columns; col++) {
+                    View cell = col < stores.size() ? createRestaurantCard(stores.get(col)) : new View(this);
+                    LinearLayout.LayoutParams slot = new LinearLayout.LayoutParams(0, -1, 1);
+                    if (col > 0) slot.setMarginStart(dp(10));
+                    group.addView(cell, slot);
+                }
+                return group;
+            });
+            addWithMarginTo(parent, row, 0, 0, 0, dp(10));
         }
     }
 
-    private String searchCardSignature(MenuSearchItem item){return item.menuName+":"+item.category+":"+item.price+":"+item.originalPrice+":"+item.image+":"+item.restaurant.toString()+":"+item.discountPercent+":"+item.discountActive+":"+item.toppingRequired+":"+item.stock+":"+item.trackStock+":"+item.active;}
+    private String searchCardSignature(MenuSearchItem item){return (checkoutWidth < dp(330))+":"+item.menuName+":"+item.category+":"+item.price+":"+item.originalPrice+":"+item.image+":"+item.restaurant.toString()+":"+item.discountPercent+":"+item.discountActive+":"+item.toppingRequired+":"+item.stock+":"+item.trackStock+":"+item.active;}
     protected void addMenuSearchCard(LinearLayout parent,MenuSearchItem item){
         FoodDeferredCard deferred=new FoodDeferredCard(this,"search:"+item.menuId,searchCardSignature(item),()->{
             LinearLayout plan=new LinearLayout(this);addMenuSearchCardNow(plan,item);View card=plan.getChildAt(0);plan.removeView(card);return card;
-        });addWithMarginTo(parent,deferred,0,0,0,dp(10));
+        });addWithMarginTo(parent,deferred,0,0,0,dp(7));
     }
     private void addMenuSearchCardNow(LinearLayout parent, MenuSearchItem item) {
         String key="search:"+item.menuId,fingerprint=searchCardSignature(item);
@@ -615,9 +686,12 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
             View placeholder=new View(this);IncrementalLinearRenderer.mark(placeholder,key,fingerprint);addWithMarginTo(parent,placeholder,0,0,0,dp(10));return;
         }
         LinearLayout card = card();
-        card.setBackground(foodBlueCard());
+        card.setBackground(roundStroke("#FFFFFF", "#DFE7F0", dp(13), 1));
         card.setOrientation(LinearLayout.HORIZONTAL);
-        card.setPadding(dp(10), dp(10), dp(10), dp(10));
+        card.setBaselineAligned(false);
+        card.setGravity(Gravity.CENTER_VERTICAL);
+        card.setPadding(dp(8), dp(6), dp(8), dp(6));
+        card.setFocusable(true);
         card.setClickable(true);
         card.setOnClickListener(v -> openRestaurantFromSearch(item));
 
@@ -625,21 +699,28 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
         img.setScaleType(ImageView.ScaleType.CENTER_CROP);
         img.setBackground(round("#EAF4FF",dp(12)));
         img.setClipToOutline(true);
-        card.addView(img, new LinearLayout.LayoutParams(dp(76), dp(76)));
+        boolean narrow = (checkoutWidth > 0 && checkoutWidth < dp(330))
+                || getResources().getConfiguration().fontScale > 1.3f;
+        card.addView(img, new LinearLayout.LayoutParams(dp(narrow ? 62 : 86), dp(62)));
         loadImage(img, absoluteUrl(firstNonEmpty(item.image, "assets/no-image.png")));
 
         LinearLayout body = new LinearLayout(this);
         body.setOrientation(LinearLayout.VERTICAL);
-        body.setPadding(dp(12), 0, 0, 0);
+        body.setPadding(dp(9), 0, dp(5), 0);
         card.addView(body, new LinearLayout.LayoutParams(0, -2, 1));
 
-        body.addView(text(firstNonEmpty(item.menuName, "Menu"), 16, "#0F172A", true));
-        TextView owner = text(firstNonEmpty(item.restaurantName, "Merchant") + " • " + Math.max(0,(int)Math.round(item.restaurantDistanceKm)) + " km", 12, "#64748B", false);
-        owner.setPadding(0, dp(3), 0, 0);
+        TextView title = text(firstNonEmpty(item.menuName, "Menu"), 14, "#0F172A", true);
+        limitFoodText(title, 2);
+        body.addView(title);
+        String distance = Double.isNaN(item.restaurantDistanceKm) ? ""
+                : " · " + Math.max(0, Math.round(item.restaurantDistanceKm)) + " km";
+        TextView owner = text(firstNonEmpty(item.restaurantName, "Toko") + distance, 11, "#64748B", false);
+        limitFoodText(owner, 2);
         body.addView(owner);
         if (item.discountActive) { TextView old=text(rupiah(item.originalPrice),11,"#94A3B8",false);old.setPaintFlags(old.getPaintFlags()|Paint.STRIKE_THRU_TEXT_FLAG);body.addView(old);body.addView(text("🏷️ -"+String.format(Locale.US,"%.0f%%",item.discountPercent)+" merchant",11,"#C2410C",true)); }
-        TextView price = text((item.toppingRequired ? "Mulai " : "") + rupiah(item.price), 14, "#0B7CFF", true);
-        price.setPadding(0, dp(4), 0, 0);
+        boolean dark = CustomerAppSettings.isDarkMode(this);
+        TextView price = text((item.toppingRequired ? "Mulai " : "") + rupiah(item.price).replace("Rp ", "Rp"),
+                14, dark ? "#8FC8FF" : "#0955C4", true);
         body.addView(price);
         if (item.trackStock) {
             TextView stock = text(item.stock <= 0 ? "Habis" : ("Stok " + item.stock), 11, item.stock <= 0 ? "#EF4444" : "#16A34A", true);
@@ -647,12 +728,13 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
             body.addView(stock);
         }
 
-        TextView open = text("Buka menu", 11, "#0B7CFF", true);
-        open.setPadding(0, dp(5), 0, 0);
-        body.addView(open);
+        ImageView arrow = foodGlyph(R.drawable.ic_food_home_chevron, dark ? "#D8ECFF" : "#13395F");
+        arrow.setBackground(round(dark ? "#263E5A" : "#E5F1FF", dp(20)));
+        arrow.setPadding(dp(5), dp(5), dp(5), dp(5));
+        card.addView(arrow, new LinearLayout.LayoutParams(dp(24), dp(24)));
 
         IncrementalLinearRenderer.mark(card,"search:"+item.menuId,searchCardSignature(item));
-        addWithMarginTo(parent, card, 0, 0, 0, dp(10));
+        addWithMarginTo(parent, card, 0, 0, 0, dp(7));
     }
 
     protected double smartMenuScore(MenuSearchItem item) {
@@ -736,99 +818,113 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
 
 
 
-    protected LinearLayout createRestaurantCard(JSONObject r) {
-        boolean open = r.optInt("is_open", 1) == 1;
+    protected LinearLayout createRestaurantCard(JSONObject restaurant) {
+        boolean open = restaurant.optInt("is_open", 1) == 1;
+        String name = firstNonEmpty(restaurant.optString("name"), "Toko");
         LinearLayout card = card();
-        card.setPadding(0, 0, 0, dp(12));
-        card.setClickable(true);
-        card.setAlpha(open ? 1f : 0.62f);
+        card.setBackground(roundStroke("#FFFFFF", "#DFE7F0", dp(14), 1));
+        card.setClipToOutline(true);
+        card.setFocusable(true);
         card.setOnClickListener(v -> {
             if (!open) {
-                showInfo("Merchant Tutup", "Merchant sedang tidak menerima orderan.");
+                showInfo("Toko tutup", firstNonEmpty(restaurant.optString("availability_reason"),
+                        "Toko sedang tidak menerima pesanan."));
                 return;
             }
-            selectRestaurant(r);
+            selectRestaurant(restaurant);
             menuSearchQuery = "";
             showMenuPage();
-            loadMenus(r.optInt("id", 0));
+            loadMenus(restaurant.optInt("id", 0));
         });
-
-        FrameLayout portrait = new FrameLayout(this);
-        ImageView backdrop = new ImageView(this) {
-            @Override public void setImageBitmap(android.graphics.Bitmap bitmap) {
-                if (bitmap != null && android.os.Build.VERSION.SDK_INT < 31) {
-                    bitmap = android.graphics.Bitmap.createScaledBitmap(
-                            android.graphics.Bitmap.createScaledBitmap(bitmap, 12, 8, true), 144, 96, true);
-                }
-                super.setImageBitmap(bitmap);
-            }
-        };
-        backdrop.setScaleType(ImageView.ScaleType.CENTER_CROP);
-        backdrop.setBackgroundColor(Color.parseColor("#BBD9F5"));
-        if (android.os.Build.VERSION.SDK_INT >= 31) {
-            backdrop.setRenderEffect(android.graphics.RenderEffect.createBlurEffect(
-                    dp(11), dp(11), android.graphics.Shader.TileMode.CLAMP));
-        }
-        portrait.addView(backdrop, new FrameLayout.LayoutParams(-1, dp(66)));
-        loadImage(backdrop, firstNonEmpty(r.optString("banner"), "assets/default-food.png"));
-        View veil = new View(this);
-        veil.setBackground(roundGradient("#006FAFDD", "#446FAFDD", 0));
-        portrait.addView(veil, new FrameLayout.LayoutParams(-1, dp(66)));
-        KabarMitraUi.Avatar profile = merchantAvatar(r, 70);
-        FrameLayout.LayoutParams profileLp = new FrameLayout.LayoutParams(dp(70), dp(70), Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL);
-        portrait.addView(profile, profileLp);
-        card.addView(portrait, new LinearLayout.LayoutParams(-1, dp(93)));
-        card.setClipToOutline(true);
+        card.addView(merchantCover(restaurant, name, open), new LinearLayout.LayoutParams(-1, -2));
 
         LinearLayout body = new LinearLayout(this);
         body.setOrientation(LinearLayout.VERTICAL);
-        body.setPadding(dp(10), dp(10), dp(10), 0);
-        card.addView(body);
-
-        TextView name = text(firstNonEmpty(r.optString("name"), "Merchant"), 15, "#0F172A", true);
-        name.setMaxLines(2);
-        body.addView(name);
-
-        String availabilityReason = firstNonEmpty(r.optString("availability_reason"), open ? "" : "Merchant sedang tidak menerima pesanan");
-        String todayHours = firstNonEmpty(r.optString("today_hours"), "");
-        TextView info = text(open ? ("⭐ " + r.optString("rating", "0.0") + " (" + r.optInt("review_count",0) + ") • " + firstNonEmpty(r.optString("duration"), "15 menit")) : ("🔴 " + availabilityReason), 11, "#64748B", false);
-        info.setPadding(0, dp(5), 0, 0);
-        body.addView(info);
-        if (!r.isNull("distance_rounded_km")) {
-            int roundedKm = Math.max(0, r.optInt("distance_rounded_km", 0));
-            TextView dist = text("📍 " + roundedKm + " km dari titik antar", 11, "#475569", true);
-            dist.setPadding(0, dp(4), 0, 0); body.addView(dist);
+        body.setPadding(dp(10), dp(8), dp(10), dp(10));
+        card.addView(body, new LinearLayout.LayoutParams(-1, -2));
+        TextView title = text(name, 14, "#0F172A", true);
+        limitFoodText(title, 2);
+        body.addView(title);
+        if (open) {
+            int reviews = restaurant.optInt("review_count", 0);
+            String duration = firstNonEmpty(restaurant.optString("duration"), "15 menit");
+            TextView info = text(reviews > 0 ? "★ " + restaurant.optString("rating")
+                    + " (" + reviews + ") · " + duration : duration, 11, "#64748B", false);
+            body.addView(info);
         }
-        if (!todayHours.isEmpty()) {
-            TextView hours = text("🕒 " + todayHours, 10, "#64748B", false);
-            hours.setPadding(0, dp(4), 0, 0);
-            body.addView(hours);
+        if (!restaurant.isNull("distance_rounded_km")) {
+            TextView distance = text(Math.max(0, restaurant.optInt("distance_rounded_km")) + " km",
+                    11, "#0F172A", true);
+            android.graphics.drawable.Drawable pin = getDrawable(R.drawable.ic_checkout_pin).mutate();
+            pin.setTint(0xffC63642);
+            pin.setBounds(0, 0, dp(13), dp(13));
+            distance.setCompoundDrawablesRelative(pin, null, null, null);
+            distance.setCompoundDrawablePadding(dp(3));
+            body.addView(distance);
         }
-
-        if (r.optBoolean("has_food_promo", false)) {
-            TextView promo = text("💸 " + firstNonEmpty(r.optString("promo_label"), "Promo tersedia"), 10, "#B45309", true);
-            promo.setPadding(0, dp(6), 0, 0);
-            body.addView(promo);
+        String hours = firstNonEmpty(restaurant.optString("today_hours"), "");
+        if (!hours.isEmpty()) body.addView(text(hours, 10, "#64748B", false));
+        if (restaurant.optBoolean("has_food_promo", false)) {
+            body.addView(text(firstNonEmpty(restaurant.optString("promo_label"), "Promo tersedia"), 10, "#A34C09", true));
         }
-        if (r.optBoolean("has_merchant_discount", false)) {
-            TextView promo = text("🏷️ " + firstNonEmpty(r.optString("merchant_discount_label"), "Diskon merchant"), 10, "#C2410C", true);
-            promo.setPadding(0, dp(5), 0, 0); body.addView(promo);
+        if (restaurant.optBoolean("has_merchant_discount", false)) {
+            body.addView(text(firstNonEmpty(restaurant.optString("merchant_discount_label"), "Diskon toko"), 10, "#A34C09", true));
         }
-        if (r.optInt("review_count",0) >= 10 && r.optDouble("rating",0) >= 4.5) {
-            TextView hot = text("🔥 Favorit customer", 10, "#DC2626", true);
-            hot.setPadding(0, dp(4), 0, 0);
-            body.addView(hot);
-        }
-
-        TextView badge = text(open ? "Buka" : "Tutup", 10, open ? "#0B7CFF" : "#EF4444", true);
-        badge.setGravity(Gravity.CENTER);
-        badge.setPadding(dp(8), dp(4), dp(8), dp(4));
-        badge.setBackground(roundStroke(open ? "#EAF4FF" : "#FFF1F2", open ? "#B9DBFF" : "#FECACA", dp(20), 1));
-        LinearLayout.LayoutParams badgeLp = new LinearLayout.LayoutParams(-2, -2);
-        badgeLp.setMargins(0, dp(8), 0, 0);
-        body.addView(badge, badgeLp);
-
         return card;
+    }
+
+    private View merchantCover(JSONObject restaurant, String name, boolean open) {
+        FrameLayout cover = new FrameLayout(this) {
+            @Override protected void onMeasure(int widthSpec, int heightSpec) {
+                int width = MeasureSpec.getSize(widthSpec);
+                int height = Math.max(dp(82), Math.min(dp(122), Math.round(width * .62f)));
+                super.onMeasure(widthSpec, MeasureSpec.makeMeasureSpec(height, MeasureSpec.EXACTLY));
+            }
+        };
+        cover.setBackground(roundGradient(open ? "#B3F0E9" : "#C9E5FE",
+                open ? "#77D0CA" : "#90BBED", 0));
+        ImageView storefront = foodGlyph(R.drawable.ic_food_home_store, open ? "#25968D" : "#578DC5");
+        cover.addView(storefront, new FrameLayout.LayoutParams(dp(72), dp(63), Gravity.CENTER));
+        TextView letter = text(name.substring(0, name.offsetByCodePoints(0, 1)).toUpperCase(new Locale("id", "ID")),
+                17, open ? "#08695F" : "#235C94", true);
+        letter.setGravity(Gravity.CENTER);
+        letter.setBackground(round("#F4FCFF", dp(30)));
+        letter.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+        FrameLayout.LayoutParams letterParams = new FrameLayout.LayoutParams(dp(36), dp(36),
+                Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL);
+        letterParams.bottomMargin = dp(6);
+        cover.addView(letter, letterParams);
+
+        String banner = restaurant.optString("banner", "").trim();
+        if (!banner.isEmpty() && !"null".equalsIgnoreCase(banner)
+                && !banner.endsWith("/default-food.png") && !banner.endsWith("/no-image.png")) {
+            ImageView photo = new ImageView(this);
+            photo.setScaleType(ImageView.ScaleType.CENTER_CROP);
+            cover.addView(photo, new FrameLayout.LayoutParams(-1, -1));
+            loadImage(photo, banner);
+            if (open) {
+                if (android.os.Build.VERSION.SDK_INT >= 31) {
+                    photo.setRenderEffect(android.graphics.RenderEffect.createBlurEffect(
+                            dp(8), dp(8), android.graphics.Shader.TileMode.CLAMP));
+                }
+                KabarMitraUi.Avatar profile = merchantAvatar(restaurant, 67);
+                FrameLayout.LayoutParams profileParams = new FrameLayout.LayoutParams(dp(67), dp(67),
+                        Gravity.CENTER_HORIZONTAL | Gravity.BOTTOM);
+                profileParams.bottomMargin = dp(5);
+                cover.addView(profile, profileParams);
+            }
+        }
+
+        TextView status = text(open ? "Buka" : "Tutup", 11, "#FFFFFF", true);
+        GradientDrawable pill = round(open ? "#087A3A" : "#B92952", dp(16));
+        status.setBackground(pill);
+        status.setPadding(dp(9), dp(2), dp(9), dp(2));
+        CustomerAppSettings.preserveArtwork(status);
+        FrameLayout.LayoutParams badge = new FrameLayout.LayoutParams(-2, -2, Gravity.TOP | Gravity.START);
+        badge.setMarginStart(dp(8));
+        badge.topMargin = dp(7);
+        cover.addView(status, badge);
+        return cover;
     }
 
     private LinearLayout renderLiveRoot,renderLiveHome;
@@ -925,7 +1021,12 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
     }
 
     private void leaveVirtualFood(){if(virtualFood!=null&&virtualFood.isPresented()&&foodScroll!=null&&root!=null)virtualFood.leave(foodScroll,root);}
-    private void presentHomeList(){if(virtualFood!=null&&currentScreen==0)virtualFood.present(foodScroll,root,FoodVirtualList.take(homeResultsBox,0),"home:"+homeMode+":"+homeSearchQuery,dp(16),dp(18),dp(16),dp(28));}
+    private void presentHomeList() {
+        if (virtualFood == null || currentScreen != 0) return;
+        int inset = foodHomeInset();
+        virtualFood.present(foodScroll, root, FoodVirtualList.take(homeResultsBox, 0),
+                "home:" + homeMode + ":" + homeSearchQuery, inset, dp(9), inset, dp(20));
+    }
     private void presentMenuList(){if(virtualFood!=null&&currentScreen==1&&activeRestaurant!=null)virtualFood.present(foodScroll,root,FoodVirtualList.take(root,0),"menu:"+activeRestaurant.optInt("id")+":"+menuSearchQuery,dp(16),dp(18),dp(16),stickyCartBar==null?dp(28):stickyCartBar.getHeight()+dp(28));}
     private void setFoodPadding(int l,int t,int r,int b){if(virtualFood!=null&&virtualFood.isPresented())virtualFood.bottomPadding(l,t,r,b,root);else if(root!=null)root.setPadding(l,t,r,b);}
 
@@ -3746,8 +3847,11 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
         LinearLayout row = new LinearLayout(this);
         row.setGravity(Gravity.CENTER_VERTICAL);
         boolean checkout = currentScreen == 2 || currentScreen == COMBINED_CHECKOUT;
+        boolean home = currentScreen == 0;
         boolean dark = CustomerAppSettings.isDarkMode(this);
-        if (checkout) {
+        if (home) {
+            applyFoodHomeSystemBars();
+        } else if (checkout) {
             applyCheckoutSystemBars(dark);
         } else {
             CustomerWindowPolicy.status(getWindow(), dark ? 0xff05101d : 0xff0b7cff);
@@ -3755,11 +3859,15 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
         }
         int inset = checkout ? checkoutSideInset() : dp(14);
         row.setPadding(inset, dp(checkout ? 4 : 8), inset, dp(checkout ? 4 : 8));
-        foodHeader.setElevation(dp(checkout ? 0 : 3));
+        foodHeader.setElevation(dp(checkout || home ? 0 : 3));
+        if (home) {
+            row.setBackground(roundGradient("#0756C5", "#062D79", 0));
+            CustomerAppSettings.preserveArtwork(row);
+        }
         if (back) {
-            TextView b = text("‹", 34, "#0B3A78", true);
+            TextView b = text("‹", 32, home ? "#FFFFFF" : "#0B3A78", true);
             b.setGravity(Gravity.CENTER);
-            b.setBackground(checkout ? checkoutRipple(null) : round("#FFFFFF", dp(18)));
+            if (!home) b.setBackground(checkout ? checkoutRipple(null) : round("#FFFFFF", dp(18)));
             b.setContentDescription("Kembali");
             b.setFocusable(true);
             b.setOnClickListener(v -> handleBack());
@@ -3767,10 +3875,16 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
         }
         LinearLayout col = new LinearLayout(this);
         col.setOrientation(LinearLayout.VERTICAL);
-        col.setPadding(dp(checkout ? 6 : 12), 0, 0, 0);
-        col.addView(checkout ? checkoutText(title, 23, "#0F172A", true) : text(title, 23, "#0B3A78", true));
+        col.setPadding(dp(home ? 4 : checkout ? 6 : 12), 0, dp(home ? 5 : 0), 0);
+        TextView heading = checkout ? checkoutText(title, 23, "#0F172A", true)
+                : text(title, home ? 21 : 23, home ? "#FFFFFF" : "#0B3A78", true);
+        if (home) limitFoodText(heading, 1);
+        col.addView(heading);
         if (sub != null && !sub.isEmpty()) {
-            col.addView(checkout ? checkoutText(sub, 12, "#64748B", false) : text(sub, 12, "#64748B", false));
+            TextView subtitle = checkout ? checkoutText(sub, 12, "#64748B", false)
+                    : text(sub, home ? 11 : 12, home ? "#E3F1FF" : "#64748B", false);
+            if (home) limitFoodText(subtitle, 2);
+            col.addView(subtitle);
         }
         row.addView(col, new LinearLayout.LayoutParams(0, -2, 1));
         savedCartButton = null;
@@ -3778,6 +3892,10 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
         if (currentScreen == 0 || currentScreen == 1) {
             FrameLayout cartIcon = new FrameLayout(this);
             savedCartButton = cartIconButton("Keranjang");
+            if (home) {
+                savedCartButton.setColorFilter(Color.WHITE);
+                savedCartButton.setBackground(round("#397ECA", dp(13)));
+            }
             savedCartButton.setOnClickListener(v -> openSavedCarts());
             cartIcon.addView(savedCartButton, new FrameLayout.LayoutParams(dp(46), dp(46), Gravity.BOTTOM | Gravity.LEFT));
             savedCartBadge = text("", 10, "#FFFFFF", true);
@@ -3793,6 +3911,14 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
         foodHeader.removeAllViews();
         foodHeader.addView(row, new LinearLayout.LayoutParams(-1, -2));
         if (checkout) checkoutDivider(foodHeader);
+        if (home) updateFoodHeaderPadding();
+    }
+
+    private void updateFoodHeaderPadding() {
+        if (foodHeader.getChildCount() == 0) return;
+        View row = foodHeader.getChildAt(0);
+        int inset = foodHomeInset();
+        row.setPadding(inset, dp(5), inset, dp(5));
     }
 
     private void handleBack() {

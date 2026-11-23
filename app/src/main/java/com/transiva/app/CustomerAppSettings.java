@@ -90,7 +90,8 @@ public final class CustomerAppSettings {
             boolean dark=isDarkMode(a);ACTIVITIES.put(a,dark);
             CustomerWindowPolicy.install(a);
             boolean home=a instanceof CustomerDashboardActivityScreenCore;
-            CustomerWindowPolicy.status(a.getWindow(), home?0xff071d57:dark?0xff05101d:0xff0b7cff);
+            boolean transport=a instanceof PassengerTransportActivityLegacyCore;
+            CustomerWindowPolicy.status(a.getWindow(), home?0xff071d57:transport?0xff072450:dark?0xff05101d:0xff0b7cff);
             CustomerWindowPolicy.navigation(a.getWindow(), home?0xff0b1633:dark?0xff05101d:0xff071426);
             a.getWindow().setBackgroundDrawable(new android.graphics.drawable.ColorDrawable(dark?DARK_PAGE:CustomerThemeColors.LIGHT_PAGE));
             View decor=a.getWindow().getDecorView();

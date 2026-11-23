@@ -68,6 +68,11 @@ public final class TransivaGoogleMapView extends FrameLayout implements OnMapRea
     private final ImageView centerPin;
     private View pinShadow;
     private boolean droppingPin;
+    private boolean pickerResumed;
+    private ValueAnimator pinHover;
+    private ValueAnimator pinLanding;
+    private Runnable restorePickerGestures;
+    private View landingRing;
     private final TextView centerAction;
     private boolean externalPickerAction;
     private final TextView centerLocationCard;
@@ -144,6 +149,9 @@ public final class TransivaGoogleMapView extends FrameLayout implements OnMapRea
             oval.setColor(0x4A172E45);
             pinShadow.setBackground(oval);
             addView(pinShadow,new LayoutParams(dp(15),dp(6),Gravity.CENTER));
+            landingRing = new View(context);
+            landingRing.setVisibility(GONE);
+            addView(landingRing, new LayoutParams(dp(36), dp(36), Gravity.CENTER));
             centerPin = new ImageView(context);
             centerPin.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
             centerPin.setImageResource(R.drawable.map_pickup_pin);
@@ -153,6 +161,7 @@ public final class TransivaGoogleMapView extends FrameLayout implements OnMapRea
             // Pin foot and its shadow meet at the camera target.
             centerPin.setTranslationY(-h/2f-dp(7));
             addView(centerPin, lp);
+            centerPin.addOnLayoutChangeListener((v,l,t,r,b,ol,ot,or,ob)->refreshPinHover());
 
             // 2.2: preview card di dalam peta dihapus; kandidat lokasi ditampilkan pada kartu Tujuan di atas peta.
             centerLocationCard = null;
@@ -351,50 +360,152 @@ public final class TransivaGoogleMapView extends FrameLayout implements OnMapRea
         if (pickerVisible && isReady()) chooseCenter();
     }
 
+    private static boolean pickerAnimationsEnabled() {
+        return android.os.Build.VERSION.SDK_INT < 26 || ValueAnimator.areAnimatorsEnabled();
+    }
+
+    private float pinGround() {
+        if (centerPin.getDrawable() == null || centerPin.getHeight() == 0) return -dp(21);
+        android.graphics.RectF art = new android.graphics.RectF(
+                centerPin.getDrawable().getBounds());
+        centerPin.getImageMatrix().mapRect(art);
+        return centerPin.getHeight() / 2f - art.bottom;
+    }
+
     private void chooseCenter() {
-        if (centerActionListener==null || droppingPin) return;
-        if (!pickerVisible || centerPin==null || !isReady()
-                || (android.os.Build.VERSION.SDK_INT>=26 && !android.animation.ValueAnimator.areAnimatorsEnabled())) {
+        if (centerActionListener == null || droppingPin) return;
+        if (!pickerVisible || centerPin == null || !isReady()) {
             centerActionListener.onCenterAction();
             return;
         }
-        droppingPin=true;
-        final GoogleMap map=googleMap;
+        GoogleMap map = googleMap;
         map.stopAnimation();
-        final LatLng selected=map.getCameraPosition().target;
-        final boolean scrolling=map.getUiSettings().isScrollGesturesEnabled();
-        final boolean zoom=map.getUiSettings().isZoomGesturesEnabled();
+        LatLng selected = map.getCameraPosition().target;
+        if (!pickerAnimationsEnabled()) {
+            dispatchPickerSelection(selected);
+            return;
+        }
+        droppingPin = true;
+        stopPinHover();
+        boolean scrolling = map.getUiSettings().isScrollGesturesEnabled();
+        boolean zoom = map.getUiSettings().isZoomGesturesEnabled();
         map.getUiSettings().setScrollGesturesEnabled(false);
         map.getUiSettings().setZoomGesturesEnabled(false);
-        centerPin.animate().cancel();
-        pinShadow.setScaleX(.72f);
-        pinShadow.animate().scaleX(1.2f).alpha(1f).setDuration(170).start();
-        centerPin.animate().translationY(-centerPin.getHeight()/2f).setDuration(185)
-                .setInterpolator(new android.view.animation.BounceInterpolator()).withEndAction(()->{
-                    droppingPin=false;
-                    map.getUiSettings().setScrollGesturesEnabled(scrolling);
-                    map.getUiSettings().setZoomGesturesEnabled(zoom);
-                    if (googleMap==map && pickerVisible && isAttachedToWindow()
-                            && selected.equals(map.getCameraPosition().target)) centerActionListener.onCenterAction();
-                    if (pickerVisible) liftPin();
-                }).start();
+        restorePickerGestures = () -> {
+            map.getUiSettings().setScrollGesturesEnabled(scrolling);
+            map.getUiSettings().setZoomGesturesEnabled(zoom);
+        };
+
+        float start = centerPin.getTranslationY();
+        float ground = pinGround();
+        GradientDrawable ring = new GradientDrawable();
+        ring.setShape(GradientDrawable.OVAL);
+        ring.setColor(Color.TRANSPARENT);
+        ring.setStroke(dp(2), "pickup".equals(selectionMode) ? 0xff08995a
+                : "waypoint".equals(selectionMode) ? 0xffeb9c25 : 0xffe64639);
+        landingRing.setBackground(ring);
+        landingRing.setAlpha(0f);
+        landingRing.setVisibility(VISIBLE);
+        ValueAnimator animation = ValueAnimator.ofFloat(0f, 1f);
+        animation.setDuration(390);
+        animation.setInterpolator(new android.view.animation.LinearInterpolator());
+        animation.addUpdateListener(tick -> {
+            float phase = (float) tick.getAnimatedValue();
+            float drop = Math.min(1f, phase / .43f);
+            centerPin.setTranslationY(start + (ground - start) * drop * drop);
+            float spread = Math.max(0f, (phase - .43f) / .57f);
+            landingRing.setScaleX(.5f + spread * .9f);
+            landingRing.setScaleY(.5f + spread * .9f);
+            landingRing.setAlpha(phase >= .43f ? .8f * (1f - spread) : 0f);
+            pinShadow.setScaleX(.85f + drop * .25f);
+            pinShadow.setAlpha(.65f + drop * .30f);
+        });
+        animation.addListener(new android.animation.AnimatorListenerAdapter() {
+            @Override public void onAnimationEnd(android.animation.Animator ignored) {
+                if (pinLanding != animation) return;
+                finishPinLanding();
+                if (googleMap == map && pickerVisible && isAttachedToWindow()
+                        && selected.equals(map.getCameraPosition().target) && centerActionListener != null) {
+                    dispatchPickerSelection(selected);
+                }
+                refreshPinHover();
+            }
+        });
+        pinLanding = animation;
+        animation.start();
     }
 
-    private void liftPin() {
-        if (centerPin==null || droppingPin) return;
-        centerPin.setTranslationY(-dp(39));
-        if (pinShadow!=null) {
-            pinShadow.animate().cancel();
-            pinShadow.setScaleX(1f);
-            pinShadow.setAlpha(.75f);
+    private void dispatchPickerSelection(LatLng selected) {
+        if (externalPickerAction && listener != null && valid(selected.latitude, selected.longitude)) {
+            listener.onCenterChanged(selected.latitude, selected.longitude);
         }
+        centerActionListener.onCenterAction();
+    }
+
+    private void stopPinHover() {
+        if (pinHover == null) return;
+        pinHover.cancel();
+        pinHover = null;
+    }
+
+    private void finishPinLanding() {
+        pinLanding = null;
+        droppingPin = false;
+        if (landingRing != null) landingRing.setVisibility(GONE);
+        if (restorePickerGestures != null) {
+            restorePickerGestures.run();
+            restorePickerGestures = null;
+        }
+    }
+
+    private void cancelPinMotion() {
+        stopPinHover();
+        ValueAnimator animation = pinLanding;
+        finishPinLanding();
+        if (animation != null) animation.cancel();
+    }
+
+    private void refreshPinHover() {
+        if (centerPin == null || droppingPin) return;
+        if (!pickerVisible || !pickerResumed || !isAttachedToWindow()) {
+            stopPinHover();
+            return;
+        }
+        if (pinHover != null) return;
+        float ground = pinGround();
+        centerPin.setTranslationY(ground - dp(9));
+        pinShadow.setScaleX(1f);
+        pinShadow.setAlpha(.75f);
+        if (!externalPickerAction || !pickerAnimationsEnabled()) return;
+        pinHover = ValueAnimator.ofFloat(0f, 1f);
+        pinHover.setDuration(880);
+        pinHover.setRepeatMode(ValueAnimator.REVERSE);
+        pinHover.setRepeatCount(ValueAnimator.INFINITE);
+        pinHover.setInterpolator(new android.view.animation.AccelerateDecelerateInterpolator());
+        pinHover.addUpdateListener(tick -> {
+            float lift = (float) tick.getAnimatedValue();
+            centerPin.setTranslationY(pinGround() - dp(9) - dp(5) * lift);
+            pinShadow.setScaleX(1f - .15f * lift);
+            pinShadow.setAlpha(.75f - .2f * lift);
+        });
+        pinHover.start();
+    }
+
+    @Override protected void onAttachedToWindow() {
+        super.onAttachedToWindow();
+        refreshPinHover();
+    }
+
+    @Override protected void onDetachedFromWindow() {
+        cancelPinMotion();
+        super.onDetachedFromWindow();
     }
 
     /** Menampilkan pin pemilih hanya saat pengguna sedang memilih titik. */
     public void showCenterPin(boolean show) {
         pickerVisible = show;
         if (pinShadow != null) pinShadow.setVisibility(show ? VISIBLE : GONE);
-        if (show) liftPin();
+        if (!show) cancelPinMotion();
         if (centerPin != null) {
             centerPin.setVisibility(show ? VISIBLE : GONE);
         }
@@ -403,6 +514,7 @@ public final class TransivaGoogleMapView extends FrameLayout implements OnMapRea
         }
         if (centerLocationCard != null) centerLocationCard.setVisibility(show ? VISIBLE : GONE);
         syncPickerMarkers();
+        refreshPinHover();
     }
 
     void hideCenterAction() {
@@ -411,6 +523,7 @@ public final class TransivaGoogleMapView extends FrameLayout implements OnMapRea
 
     public void showOrderAction(boolean show, String text) {
         pickerVisible = false;
+        cancelPinMotion();
         if (pinShadow != null) pinShadow.setVisibility(GONE);
         syncPickerMarkers();
         selectionMode = show ? "order" : selectionMode;
@@ -800,10 +913,12 @@ public final class TransivaGoogleMapView extends FrameLayout implements OnMapRea
     }
 
     public void onStartMap() { try { nativeMapView.onStart(); } catch (Exception ignored) {} }
-    public void onResumeMap() { try { nativeMapView.onResume(); } catch (Exception ignored) {} }
-    public void onPauseMap() { if (driverAnimator != null) driverAnimator.cancel(); try { nativeMapView.onPause(); } catch (Exception ignored) {} }
+    public void onResumeMap() { pickerResumed = true; refreshPinHover(); try { nativeMapView.onResume(); } catch (Exception ignored) {} }
+    public void onPauseMap() { pickerResumed = false; cancelPinMotion(); if (driverAnimator != null) driverAnimator.cancel(); try { nativeMapView.onPause(); } catch (Exception ignored) {} }
     public void onStopMap() { try { nativeMapView.onStop(); } catch (Exception ignored) {} }
     public void onDestroyMap() {
+        pickerResumed = false;
+        cancelPinMotion();
         TransivaNetworkMonitor.removeListener(networkListener);
         try { if (driverAnimator != null) driverAnimator.cancel(); } catch (Exception ignored) {}
         try { nativeMapView.onDestroy(); } catch (Exception ignored) {}

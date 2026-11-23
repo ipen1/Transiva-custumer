@@ -152,8 +152,8 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
     protected final Handler mainHandler = new Handler(Looper.getMainLooper());
 
     protected TransivaGoogleMapView mapView;
-    protected TextView pickupText, deliveryText, modeText, fareText, paymentSummaryText, driverAvailabilityText;
-    protected TextView distanceInfoText, durationInfoText, originalPriceText, finalPriceText, discountInfoText, wizardStepText;
+    protected TextView pickupText, deliveryText, fareText, paymentSummaryText, driverAvailabilityText;
+    protected TextView distanceInfoText, originalPriceText, finalPriceText, discountInfoText, wizardStepText;
     protected Button voucherChoiceBtn, noteChoiceBtn, paymentChoiceBtn;
     protected LinearLayout bookingDetailsCard;
     private boolean editingCheckoutPoint;
@@ -373,7 +373,7 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
          * ========================= */
         LinearLayout topCard = new LinearLayout(this);
         topCard.setOrientation(LinearLayout.VERTICAL);
-        topCard.setPadding(0, 0, 0, dp(6));
+        topCard.setPadding(0, 0, 0, dp(4));
         topCard.setBackgroundColor(Color.WHITE);
         root.addView(topCard, new LinearLayout.LayoutParams(-1, -2));
 
@@ -381,7 +381,8 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
         titleRow.setGravity(Gravity.CENTER_VERTICAL);
         titleRow.setBackground(new GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT,
                 new int[]{0xFF072450,0xFF075FE3}));
-        titleRow.setPadding(0,dp(2),dp(8),dp(2));
+        titleRow.setPadding(0,0,dp(11),0);
+        CustomerAppSettings.preserveArtwork(titleRow);
         topCard.addView(titleRow, new LinearLayout.LayoutParams(-1, -2));
         backBtn = smallButton("‹", "#00000000", "#FFFFFF", "#00000000");
         backBtn.setTextSize(27);
@@ -390,17 +391,15 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
         backBtn.setElevation(0);
         titleRow.addView(backBtn, new LinearLayout.LayoutParams(dp(48), dp(48)));
 
-        TextView title = text(serviceTitle(), compactScreen ? 19 : 21, "#FFFFFF", true);
+        TextView title = text(serviceTitle(), compactScreen ? 18 : 20, "#FFFFFF", true);
         titleRow.addView(title, new LinearLayout.LayoutParams(0, -2, 1));
         editRouteButton = smallButton("Ubah rute", "#FFFFFF", "#075BDD", "#A9CCFF");
         compactBookingButton(editRouteButton);
-        editRouteButton.setMinHeight(dp(48));
-        editRouteButton.setMinimumHeight(dp(48));
+        editRouteButton.setMinHeight(dp(36));
+        editRouteButton.setMinimumHeight(dp(36));
+        editRouteButton.setBackground(roundStroke("#FFFFFF","#FFFFFF",dp(11),1));
         editRouteButton.setOnClickListener(v -> toggleCheckoutRoute());
         titleRow.addView(editRouteButton, new LinearLayout.LayoutParams(-2, -2));
-        modeText = text("Pilih tujuan", 11, "#64748B", false);
-        modeText.setPadding(dp(3), 0, 0, dp(4));
-        topCard.addView(modeText);
         wizardStepText = text("", 10, "#0B7CFF", true);
         wizardStepText.setVisibility(View.GONE);
         topCard.addView(wizardStepText);
@@ -408,7 +407,8 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
         collapsedRoute = new LinearLayout(this);
         collapsedRoute.setGravity(Gravity.CENTER_VERTICAL);
         collapsedRoute.setPadding(dp(9), dp(4), dp(6), dp(4));
-        collapsedRoute.setBackground(roundStroke("#FFFDFC", "#D7E6F8", dp(14), 1));
+        collapsedRoute.setBackground(roundStroke("#FFFCF7", "#E9E4DA", dp(13), 1));
+        collapsedRoute.setElevation(dp(2));
         LinearLayout routeLabels = new LinearLayout(this);
         routeLabels.setOrientation(LinearLayout.VERTICAL);
         routePickup = checkoutEndpoint("Jemput", "#15803D", "pickup");
@@ -418,11 +418,13 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
         collapsedRoute.addView(routeLabels, new LinearLayout.LayoutParams(0, -2, 1));
         stopChip = smallButton("Singgah", "#FFF3DA", "#995100", "#FFF3DA");
         compactBookingButton(stopChip);
-        stopChip.setMinHeight(dp(48));
-        stopChip.setMinimumHeight(dp(48));
+        stopChip.setMinHeight(dp(36));
+        stopChip.setMinimumHeight(dp(36));
         stopChip.setOnClickListener(v -> toggleCheckoutRoute());
         collapsedRoute.addView(stopChip, new LinearLayout.LayoutParams(-2, -2));
-        topCard.addView(collapsedRoute, new LinearLayout.LayoutParams(-1, -2));
+        LinearLayout.LayoutParams summarySpace = new LinearLayout.LayoutParams(-1, -2);
+        summarySpace.setMargins(dp(10), dp(5), dp(10), dp(2));
+        topCard.addView(collapsedRoute, summarySpace);
 
         routeEditor = new ScrollView(this) {
             @Override protected void onMeasure(int widthSpec, int heightSpec) {
@@ -443,12 +445,21 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
         pointRow.setOrientation(LinearLayout.VERTICAL);
         routeEditor.addView(pointRow, new ScrollView.LayoutParams(-1, -2));
 
-        pickupBtn = compactPointButton("●  Jemput", "Lokasi Anda • ketuk untuk ubah   ›", "#16A34A");
-        deliveryBtn = compactPointButton("●  Mau ke mana?", "Cari tujuan / tempel link Maps   ›", "#EF4444");
-        pickupBtn.setBackground(roundStroke("#F0FAF5","#D4EBDD",dp(13),1));
-        deliveryBtn.setBackground(roundStroke("#FFF2EE","#F6DBD4",dp(13),1));
+        pickupBtn = compactPointButton("Jemput", "Lokasi Anda", "#116138");
+        deliveryBtn = compactPointButton("Mau ke mana?", "", "#B8201A");
+        pickupBtn.setBackground(roundStroke("#FAF8F2","#EDE7DC",dp(12),1));
+        deliveryBtn.setBackground(roundStroke("#FFF1EC","#F3E0D8",dp(12),1));
         pickupBtn.setMinimumHeight(dp(48));
-        deliveryBtn.setMinimumHeight(dp(48));
+        deliveryBtn.setMinimumHeight(dp(42));
+        pickupBtn.setTextSize(12);
+        deliveryBtn.setTextSize(12);
+        pickupBtn.setCompoundDrawablePadding(dp(9));
+        deliveryBtn.setCompoundDrawablePadding(dp(9));
+        pickupBtn.setCompoundDrawablesRelative(pointGlyph(R.drawable.ic_booking_pickup,18),null,null,null);
+        deliveryBtn.setCompoundDrawablesRelative(pointGlyph(R.drawable.ic_booking_destination,17),null,
+                pointGlyph(R.drawable.ic_smart_search,20),null);
+        pointCardText(pickupBtn, "Jemput\nLokasi Anda");
+        pointCardText(deliveryBtn, "Mau ke mana?");
         pointRow.addView(pickupBtn, new LinearLayout.LayoutParams(-1, -2));
         LinearLayout.LayoutParams deliveryLp = new LinearLayout.LayoutParams(-1, -2);
         deliveryLp.setMargins(0, dp(4), 0, 0);
@@ -462,8 +473,11 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
         pickupGpsBadge.setSingleLine(true);
         pickupGpsBadge.setEllipsize(android.text.TextUtils.TruncateAt.END);
         pickupGpsBadge.setPadding(dp(4), 0, dp(4), 0);
+        pickupGpsBadge.setGravity(Gravity.CENTER_VERTICAL);
+        pickupGpsBadge.setCompoundDrawablePadding(dp(4));
+        pickupGpsBadge.setCompoundDrawablesRelative(pointGlyph(R.drawable.ic_booking_gps,14),null,null,null);
         pickupGpsBadge.setOnClickListener(v -> showGpsPickupDialog());
-        pointUtilityRow.addView(pickupGpsBadge, new LinearLayout.LayoutParams(0, dp(36), 1));
+        pointUtilityRow.addView(pickupGpsBadge, new LinearLayout.LayoutParams(0, dp(35), 1));
         waypointHeaderAdd = smallButton("＋ Singgah", "#FFF7E8", "#95510C", "#EAC987");
         waypointHeaderAdd.setTextSize(10);
         waypointHeaderAdd.setMinHeight(0); waypointHeaderAdd.setMinimumHeight(0);
@@ -548,8 +562,8 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
                 if (selectingWaypoint || (!"pickup".equals(mode) && deliverySelectionLocked && !editingCheckoutPoint)) return;
                 destinationResolveGeneration++;
                 pendingDeliveryTitle = ""; pendingDeliverySubtitle = "";
-                if ("pickup".equals(mode)) { if (pickupBtn != null) pickupBtn.setText("●  Jemput di mana?\nMencari lokasi…"); }
-                else if (deliveryBtn != null) deliveryBtn.setText("●  Mau ke mana?\nMencari lokasi…");
+                if ("pickup".equals(mode)) { if (pickupBtn != null) pointCardText(pickupBtn, "●  Jemput di mana?\nMencari lokasi…"); }
+                else if (deliveryBtn != null) pointCardText(deliveryBtn, "●  Mau ke mana?\nMencari lokasi…");
             }
             @Override public void onGestureEnd() {
                 if (isRouteConfirmationLocked() || selectingWaypoint
@@ -573,12 +587,12 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
                         String subtitle = compactDisplayName(road);
                         if (subtitle.equalsIgnoreCase(title) || (!landmark.isEmpty() && subtitle.toLowerCase(Locale.ROOT).contains(landmark.toLowerCase(Locale.ROOT)))) subtitle = admin;
                         if (resolvingPickup) {
-                            if (pickupBtn != null) pickupBtn.setText("●  Jemput di mana?\n" + title + "?");
+                            if (pickupBtn != null) pointCardText(pickupBtn, "●  Jemput di mana?\n" + title + "?");
                             return;
                         }
                         pendingDeliveryTitle = title;
                         pendingDeliverySubtitle = subtitle;
-                        if (deliveryBtn != null) deliveryBtn.setText("●  Mau ke mana?\nKe " + title + "?");
+                        if (deliveryBtn != null) pointCardText(deliveryBtn, "●  Mau ke mana?\nKe " + title + "?");
                     }));
                 }, () -> featureRuntime.post(mainHandler, () -> { setLoading(false);toastDialog("Sistem sedang sibuk. Coba lagi."); }));
             }
@@ -623,11 +637,12 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
 
 
         pickPointBar=new LinearLayout(this);
-        pickPointBar.setPadding(dp(12),dp(6),dp(12),dp(6));
+        pickPointBar.setPadding(dp(13),dp(7),dp(13),dp(7));
         pickPointBar.setBackground(roundStroke("#FFFFFF","#D7E6F8",dp(16),1));
         pickPointAction=smallButton("Pilih lokasi ini","#075EE2","#FFFFFF","#075EE2");
         pickPointAction.setTextSize(14);
-        pickPointAction.setMinimumHeight(dp(48));
+        configureBookingPrimary(pickPointAction);
+        pickPointAction.setMinimumHeight(dp(44));
         pickPointAction.setOnClickListener(v->mapView.confirmPickerCenter());
         pickPointBar.addView(pickPointAction,new LinearLayout.LayoutParams(-1,-2));
         root.addView(pickPointBar,new LinearLayout.LayoutParams(-1,-2));
@@ -679,6 +694,10 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
 
         noteChoiceBtn=checkoutAction(driverNoteDraft.isEmpty()?"Catatan":"Catatan ✓");
         noteChoiceBtn.setContentDescription("Catatan untuk driver");
+        bookingControlIcon(paymentChoiceBtn, R.drawable.ic_nav2_wallet);
+        bookingControlIcon(voucherChoiceBtn, R.drawable.ic_booking_voucher);
+        bookingControlIcon(fareDetails, R.drawable.ic_booking_receipt);
+        bookingControlIcon(noteChoiceBtn, R.drawable.ic_booking_note);
         Button[] checkoutActions={paymentChoiceBtn,voucherChoiceBtn,fareDetails,noteChoiceBtn};
         placeCheckoutActions(quickTop,quickBottom,checkoutActions,
                 getResources().getConfiguration().screenWidthDp<320 || getResources().getConfiguration().fontScale>1.25f);
@@ -739,16 +758,14 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
         tripInfo.setGravity(Gravity.CENTER_VERTICAL);
         estimateRow.addView(tripInfo, new LinearLayout.LayoutParams(0, -2, 1));
 
-        distanceInfoText = text("TransRide • Jarak -", 11, "#0B3A78", true);
-        durationInfoText = text("Estimasi waktu -", 10, "#64748B", false);
+        distanceInfoText = text(serviceTitle() + " · Jarak —", 11, "#11264D", true);
         tripInfo.addView(distanceInfoText, new LinearLayout.LayoutParams(-1, -2));
-        durationInfoText.setPadding(0,dp(3),0,0);
-        tripInfo.addView(durationInfoText, new LinearLayout.LayoutParams(-1, -2));
 
         LinearLayout priceBox = new LinearLayout(this);
         priceBox.setOrientation(LinearLayout.VERTICAL);
         priceBox.setGravity(Gravity.END | Gravity.CENTER_VERTICAL);
-        estimateRow.addView(priceBox, new LinearLayout.LayoutParams(0, -2, 1));
+        estimateRow.addView(priceBox, new LinearLayout.LayoutParams(-2, -2));
+        priceBox.setPadding(dp(6),0,0,0);
 
         originalPriceText = text("", 10, "#94A3B8", false);
         originalPriceText.setGravity(Gravity.END);
@@ -760,6 +777,7 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
             if (!ordering && !locationQuoteReady && !quoteLoading && locationReady()) requestPaymentQuote();
         });
         finalPriceText.setGravity(Gravity.END | Gravity.CENTER_VERTICAL);
+        finalPriceText.setMaxWidth(dp(132));
         priceBox.addView(finalPriceText, new LinearLayout.LayoutParams(-1, -2));
 
         discountInfoText = text("", 9, "#16A34A", true);
@@ -778,7 +796,8 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
         orderBtn.setTextSize(14);
         orderBtn.setVisibility(View.GONE);
         orderBtn.setEnabled(false);
-        orderBtn.setMinimumHeight(dp(50));
+        configureBookingPrimary(orderBtn);
+        orderBtn.setMinimumHeight(dp(48));
         LinearLayout.LayoutParams orderLp = new LinearLayout.LayoutParams(-1, -2);
         orderLp.setMargins(0, dp(7), 0, 0);
         bottomCard.addView(orderBtn, orderLp);
@@ -798,10 +817,62 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
 
 
 
+    private android.graphics.drawable.Drawable pointGlyph(int id, int sizeDp) {
+        android.graphics.drawable.Drawable glyph = getDrawable(id);
+        if (glyph != null) glyph.setBounds(0, 0, dp(sizeDp), dp(sizeDp));
+        return glyph;
+    }
+
+    private void bookingControlIcon(Button button, int id) {
+        button.setCompoundDrawablePadding(dp(3));
+        button.setCompoundDrawablesRelative(pointGlyph(id, 13), null, null, null);
+    }
+
+    private void updatePickerLabel(String title) {
+        android.text.SpannableString caption = new android.text.SpannableString("◉  " + title);
+        android.graphics.drawable.Drawable pin = pointGlyph(R.drawable.ic_booking_confirm, 16);
+        if (pin != null) {
+            caption.setSpan(new android.text.style.ImageSpan(pin, android.text.style.ImageSpan.ALIGN_BOTTOM),
+                    0, 1, android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+        }
+        pickPointAction.setText(caption);
+        pickPointAction.setContentDescription(title);
+    }
+
+    private void configureBookingPrimary(Button button) {
+        GradientDrawable fill = new GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT,
+                new int[]{0xFF064FD6, 0xFF086AF2});
+        fill.setCornerRadius(dp(11));
+        button.setBackground(new android.graphics.drawable.RippleDrawable(
+                android.content.res.ColorStateList.valueOf(0x44FFFFFF), fill, null));
+        button.setElevation(0);
+    }
+
+    private void pointCardText(Button button, String copy) {
+        String value = copy.startsWith("●  ") ? copy.substring(3) : copy;
+        if (value.indexOf('\n') < 0) {
+            button.setText(value);
+            return;
+        }
+        int address = value.indexOf('\n') + 1;
+        android.text.SpannableString styled = new android.text.SpannableString(value);
+        styled.setSpan(new android.text.style.ForegroundColorSpan(0xFF173153), address,
+                value.length(), android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+        button.setText(styled);
+    }
+
+    private void showTripEstimate(double km, double minutes) {
+        distanceInfoText.setText(String.format(new Locale("id", "ID"),
+                "%s · %.1f km · ±%.0f menit", serviceTitle(), km, minutes));
+    }
+
     private TextView checkoutEndpoint(String label, String color, String point) {
         TextView view = text(label, 13, color, true);
         view.setGravity(Gravity.CENTER_VERTICAL);
-        view.setMinHeight(dp(27));
+        view.setCompoundDrawablePadding(dp(7));
+        view.setCompoundDrawablesRelative(pointGlyph("pickup".equals(point)
+                ? R.drawable.ic_booking_pickup : R.drawable.ic_booking_destination, 15),null,null,null);
+        view.setMinHeight(dp(24));
         view.setMaxLines(1);
         view.setEllipsize(android.text.TextUtils.TruncateAt.END);
         view.setFocusable(true);
@@ -822,12 +893,13 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
     }
 
     private Button checkoutAction(String label) {
-        Button button = smallButton(label, "#F1F7FF", "#122D50", "#D5E5F8");
+        Button button = smallButton(label, "#FFFFFF", "#122D50", "#E4E9F0");
+        button.setBackground(roundStroke("#FAFCFE","#E4E9F0",dp(11),1));
         button.setTextSize(11);
         button.setElevation(0);
         button.setMinWidth(0);
         button.setMinimumWidth(0);
-        button.setMinimumHeight(dp(48));
+        button.setMinimumHeight(dp(44));
         button.setPadding(dp(4), dp(3), dp(4), dp(3));
         button.setMaxLines(2);
         return button;
@@ -846,7 +918,6 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
         if (routeEditor == null) return;
         collapsedRoute.setVisibility(checkoutRouteVisible && !checkoutRouteExpanded ? View.VISIBLE : View.GONE);
         routeEditor.setVisibility(!checkoutRouteVisible || checkoutRouteExpanded ? View.VISIBLE : View.GONE);
-        modeText.setVisibility(checkoutRouteVisible ? View.GONE : View.VISIBLE);
         editRouteButton.setVisibility(checkoutRouteVisible ? View.VISIBLE : View.GONE);
         editRouteButton.setText(checkoutRouteExpanded ? "Tutup rute" : "Ubah rute");
         fitRouteButton.setVisibility(checkoutRouteVisible ? View.VISIBLE : View.GONE);
@@ -856,8 +927,8 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
             gpsParams.bottomMargin = margin;
             gpsBtn.setLayoutParams(gpsParams);
         }
-        routePickup.setText("●  " + compactDisplayName(firstNonEmpty(pickupAddress, "Lokasi jemput")));
-        routeDestination.setText("●  " + compactDisplayName(firstNonEmpty(deliveryAddress, "Tujuan")));
+        routePickup.setText( compactDisplayName(firstNonEmpty(pickupAddress, "Lokasi jemput")));
+        routeDestination.setText( compactDisplayName(firstNonEmpty(deliveryAddress, "Tujuan")));
         routePickup.setContentDescription("Ubah jemput. " + pickupAddress);
         routeDestination.setContentDescription("Ubah tujuan. " + deliveryAddress);
         int count = ecosystemFeatures.waypoints.length();
@@ -1247,7 +1318,7 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
 
     private String paymentButtonLabel() {
         if (DuitkuSandboxCheckout.METHOD.equals(paymentMethod)) return "QRIS";
-        return "balance".equals(paymentMethod) ? "💳 Transiva Pay" : "💵 Tunai";
+        return "balance".equals(paymentMethod) ? "Transiva Pay" : "Tunai";
     }
 
     protected void showPaymentDialog() {
@@ -1328,7 +1399,6 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
         originalPriceText.setVisibility(View.GONE);
         discountInfoText.setVisibility(View.GONE);
         distanceInfoText.setText("Memperbarui rute…");
-        durationInfoText.setText("");
         if (pickup) {
             pickupLat = selected.latitude;
             pickupLng = selected.longitude;
@@ -1350,8 +1420,8 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
     private void restoreConfirmedPointLabels() {
         pickupText.setText("Penjemputan: " + pickupAddress);
         deliveryText.setText("Pengantaran: " + deliveryAddress);
-        pickupBtn.setText("●  Jemput\n" + shortAddress(pickupAddress));
-        deliveryBtn.setText("●  Tujuan\n" + shortAddress(deliveryAddress));
+        pointCardText(pickupBtn, "●  Jemput\n" + shortAddress(pickupAddress));
+        pointCardText(deliveryBtn, "●  Tujuan\n" + shortAddress(deliveryAddress));
     }
 
     private void finishCheckoutPointEdit() {
@@ -1716,14 +1786,14 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
             pickupGpsSelected = false; pickupGpsPinned = true;
             pickupLat = row.latitude; pickupLng = row.longitude; pickupAddress = address;
             pickupText.setText("Penjemputan: " + address);
-            pickupBtn.setText("●  Jemput\n" + shortAddress(row.name));
+            pointCardText(pickupBtn, "●  Jemput\n" + shortAddress(row.name));
             updateGpsBadge(liveGpsBest);
             if (mapView != null) { mapView.setPickup(pickupLat, pickupLng, address); mapView.moveTo(pickupLat, pickupLng, 17f); }
         } else {
             deliveryLat = row.latitude; deliveryLng = row.longitude; deliveryAddress = address;
             deliverySelectionLocked = true;
             deliveryText.setText("Pengantaran: " + address);
-            deliveryBtn.setText("●  Tujuan\n" + shortAddress(row.name));
+            pointCardText(deliveryBtn, "●  Tujuan\n" + shortAddress(row.name));
             if (mapView != null) { mapView.setDelivery(deliveryLat, deliveryLng, address); mapView.moveTo(deliveryLat, deliveryLng, 17f); }
         }
         closePointSearch(); updateModeUI(); requestPaymentQuote();
@@ -1828,14 +1898,14 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
             pickupLat = 0;
             pickupLng = 0;
             pickupAddress = "Lokasi jemput belum dipilih";
-            pickupBtn.setText("●  Jemput\nCari lokasi / geser peta");
+            pointCardText(pickupBtn, "●  Jemput\nCari lokasi / geser peta");
             ++pickupAddressRequest; pickupAddressResolving = false;
             if (mapView != null) mapView.clearPickup();
         } else {
             deliveryLat = 0;
             deliveryLng = 0;
             deliveryAddress = "Lokasi tujuan belum dipilih";
-            deliveryBtn.setText("●  Tujuan\nCari lokasi / geser peta");
+            pointCardText(deliveryBtn, "●  Tujuan\nCari lokasi / geser peta");
             ++deliveryAddressRequest;
             deliverySelectionLocked = false; pendingDeliveryTitle = ""; pendingDeliverySubtitle = "";
             if (mapView != null) mapView.clearDelivery();
@@ -1858,7 +1928,7 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
         deliveryAddress = subtitle.isEmpty() ? title : title + ", " + subtitle;
         deliverySelectionLocked = true;
         deliveryText.setText("Pengantaran: " + deliveryAddress);
-        deliveryBtn.setText("●  Tujuan\n" + title + (subtitle.isEmpty() ? "" : "  •  " + subtitle));
+        pointCardText(deliveryBtn, "●  Tujuan\n" + title + (subtitle.isEmpty() ? "" : "  •  " + subtitle));
         deliveryBtn.setScaleX(0.97f); deliveryBtn.setScaleY(0.97f); deliveryBtn.setAlpha(0.72f);
         deliveryBtn.animate().scaleX(1f).scaleY(1f).alpha(1f).setDuration(260L).start();
         if (mapView != null) {
@@ -1884,7 +1954,7 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
             pickupAddress = "Mencari alamat jemput...";
 
             pickupText.setText("Penjemputan: " + pickupAddress);
-            pickupBtn.setText("●  Jemput\nMencari alamat...");
+            pointCardText(pickupBtn, "●  Jemput\nMencari alamat...");
             if (mapView != null) mapView.setPickup(pickupLat, pickupLng, pickupAddress);
 
             resolveAddressAsync(true, pickupLat, pickupLng);
@@ -1895,7 +1965,7 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
             deliveryAddress = "Mencari alamat pengantaran...";
 
             deliveryText.setText("Pengantaran: " + deliveryAddress);
-            deliveryBtn.setText("●  Tujuan\nMencari alamat...");
+            pointCardText(deliveryBtn, "●  Tujuan\nMencari alamat...");
             if (mapView != null) mapView.setDelivery(deliveryLat, deliveryLng, deliveryAddress);
 
             resolveAddressAsync(false, deliveryLat, deliveryLng);
@@ -1924,7 +1994,7 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
                 "GPS ±" + Math.round(loc.getAccuracy()) + " m")));
         pickupGpsBadge.setContentDescription(quality + ". Ketuk untuk detail lokasi.");
         boolean fresh = loc != null && Math.abs(System.currentTimeMillis()-loc.getTime()) <= 15000 && loc.hasAccuracy();
-        int color = !fresh || loc.getAccuracy()>50 ? 0xFFCC4444 : loc.getAccuracy()>20 ? 0xFFAD7900 : 0xFF16865B;
+        int color = !fresh || loc.getAccuracy()>50 ? 0xFFB64539 : 0xFF935D0F;
         pickupGpsBadge.setTextColor(!pickupGpsSelected ? 0xFF64748B : color);
     }
     private String gpsQuality(Location loc) {
@@ -1953,7 +2023,7 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
         pickupLat=loc.getLatitude(); pickupLng=loc.getLongitude();
         lastGpsAppliedAt=loc.getTime();
         pickupAddress="Mencari alamat lokasi terbaru…";
-        if (pickupBtn != null) pickupBtn.setText("●  Jemput\n"+shortAddress(pickupAddress));
+        if (pickupBtn != null) pointCardText(pickupBtn, "●  Jemput\n"+shortAddress(pickupAddress));
         updateGpsBadge(loc);
         if (pickupText != null) pickupText.setText("Penjemputan: "+pickupAddress);
         if (mapView != null) { mapView.setPickup(pickupLat,pickupLng,pickupAddress); if (force) mapView.moveTo(pickupLat,pickupLng,17f); }
@@ -2045,7 +2115,7 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
         deliveryLat = lat; deliveryLng = lng;
         deliveryAddress = firstNonEmpty(intent.getStringExtra("smart_destination_address"), intent.getStringExtra("smart_destination_label"), "Tujuan favorit");
         if (deliveryText != null) deliveryText.setText("Pengantaran: " + deliveryAddress);
-        if (deliveryBtn != null) deliveryBtn.setText("●  Tujuan\n" + deliveryAddress);
+        if (deliveryBtn != null) pointCardText(deliveryBtn, "●  Tujuan\n" + deliveryAddress);
         mode = "delivery";
         updateModeUI();
     }
@@ -2096,7 +2166,7 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
                         pickupLng = coordinate[1];
                         pickupAddress = "Mencari alamat jemput...";
                         pickupText.setText("Penjemputan: " + pickupAddress);
-                        pickupBtn.setText("●  Jemput\nMencari alamat...");
+                        pointCardText(pickupBtn, "●  Jemput\nMencari alamat...");
                         mode = "pickup";
                         if (mapView != null) {
                             mapView.setPickup(pickupLat, pickupLng, pickupAddress);
@@ -2108,7 +2178,7 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
                         deliveryLng = coordinate[1];
                         deliveryAddress = "Mencari alamat pengantaran...";
                         deliveryText.setText("Pengantaran: " + deliveryAddress);
-                        deliveryBtn.setText("●  Tujuan\\nMencari alamat...");
+                        pointCardText(deliveryBtn, "●  Tujuan\nMencari alamat...");
                         mode = "delivery";
                         if (mapView != null) {
                             mapView.setDelivery(deliveryLat, deliveryLng, deliveryAddress);
@@ -2174,13 +2244,13 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
                     if ("pickup".equals(selectedMode)) {
                         pickupGpsSelected = false; pickupGpsPinned = true;
                         pickupLat=c[0]; pickupLng=c[1]; pickupAddress="Mencari alamat jemput...";
-                        pickupText.setText("Penjemputan: "+pickupAddress); pickupBtn.setText("●  Lokasi Jemput\nMencari alamat...");
+                        pickupText.setText("Penjemputan: "+pickupAddress); pointCardText(pickupBtn, "●  Lokasi Jemput\nMencari alamat...");
                         if(mapView!=null){mapView.setPickup(pickupLat,pickupLng,pickupAddress);mapView.moveTo(pickupLat,pickupLng,17f);}
                         resolveAddressAsync(true,pickupLat,pickupLng);
                     } else {
                         deliverySelectionLocked = true;
                         deliveryLat=c[0]; deliveryLng=c[1]; deliveryAddress="Mencari alamat pengantaran...";
-                        deliveryText.setText("Pengantaran: "+deliveryAddress); deliveryBtn.setText("●  Mau ke mana?\nMencari alamat...");
+                        deliveryText.setText("Pengantaran: "+deliveryAddress); pointCardText(deliveryBtn, "●  Mau ke mana?\nMencari alamat...");
                         if(mapView!=null){mapView.setDelivery(deliveryLat,deliveryLng,deliveryAddress);mapView.moveTo(deliveryLat,deliveryLng,17f);}
                         resolveAddressAsync(false,deliveryLat,deliveryLng);
                     }
@@ -2322,13 +2392,13 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
         if (isPickup) {
             pickupAddress = address;
             pickupText.setText("Penjemputan: " + address);
-            pickupBtn.setText("●  Jemput\n" + shortAddress(address));
+            pointCardText(pickupBtn, "●  Jemput\n" + shortAddress(address));
             updateGpsBadge(liveGpsBest);
             if (mapView != null) mapView.setPickup(pickupLat, pickupLng, address);
         } else {
             deliveryAddress = address;
             deliveryText.setText("Pengantaran: " + address);
-            deliveryBtn.setText("●  Tujuan\n" + shortAddress(address));
+            pointCardText(deliveryBtn, "●  Tujuan\n" + shortAddress(address));
             if (mapView != null) mapView.setDelivery(deliveryLat, deliveryLng, address);
         }
         if (validCoordinate(pickupLat, pickupLng) && validCoordinate(deliveryLat, deliveryLng)) requestPaymentQuote();
@@ -2809,7 +2879,6 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
                 paymentSummaryText.setText("Pilih titik penjemputan dan pengantaran");
             }
             if (distanceInfoText != null) distanceInfoText.setText(serviceName() + " • Jarak -");
-            if (durationInfoText != null) durationInfoText.setText("Estimasi waktu -");
             if (finalPriceText != null) finalPriceText.setText("Rp -");
             if (originalPriceText != null) originalPriceText.setVisibility(View.GONE);
             if (discountInfoText != null) discountInfoText.setVisibility(View.GONE);
@@ -2836,8 +2905,7 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
                 (fallbackKm / 25.0) * 60.0
         );
 
-        distanceInfoText.setText(String.format(new Locale("id", "ID"), serviceName() + " • %.1f km", fallbackKm));
-        durationInfoText.setText(String.format(new Locale("id", "ID"), "± %.0f menit • estimasi perjalanan", fallbackMinutes));
+        showTripEstimate(fallbackKm, fallbackMinutes);
         finalPriceText.setTextSize(19);
         finalPriceText.setContentDescription("Sedang menghitung tarif");
         finalPriceText.setText("Menghitung...");
@@ -2940,8 +3008,7 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
                     distanceKm = Math.max(0.1, distanceKm);
                     durationMinutes = Math.max(1.0, durationMinutes);
 
-                    distanceInfoText.setText(String.format(new Locale("id", "ID"), serviceName() + " • %.1f km", distanceKm));
-                    durationInfoText.setText(String.format(new Locale("id", "ID"), "± %.0f menit • estimasi perjalanan", durationMinutes));
+                    showTripEstimate(distanceKm, durationMinutes);
 
                     if (!CustomerFinancialRules.validRideQuote(original, total)) {
                         paymentSummaryText.setText("Biaya belum tersedia");
@@ -2953,7 +3020,7 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
                     locationQuoteReady=true;
                     lastQuotedFare = total;
                     finalPriceText.setContentDescription("Tarif Rp " + formatMoney(total));
-                    finalPriceText.setText("Rp " + formatMoney(total));
+                    finalPriceText.setText("Rp" + formatMoney(total));
                     updateWizardState();
 
                     if (discount > 0 && original > total) {
@@ -3059,7 +3126,7 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
         if (pickPointBar != null) {
             pickPointBar.setVisibility(routeComplete || waypointDraft&&!selectingWaypoint ? View.GONE : View.VISIBLE);
             pickPointAction.setEnabled(mapReady && !ordering);
-            pickPointAction.setText(selectingWaypoint?"Pilih lokasi singgah":"Pilih lokasi ini");
+            updatePickerLabel(selectingWaypoint ? "Pilih lokasi singgah" : "Pilih lokasi ini");
         }
         renderCheckoutRoute();
         if (pickupBtn != null) pickupBtn.setContentDescription("Ubah titik jemput. " + pickupAddress);
@@ -3073,15 +3140,6 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
         }
         if (waypointBtn != null) waypointBtn.setVisibility(View.GONE);
         refreshWaypointHeader();
-        modeText.setText(
-                routeComplete ? "Ketuk titik untuk ubah"
-                        : selectingWaypoint ? "Pilih lokasi Singgah " + (waypointEditIndex + 1)
-                        : waypointDraft ? "Tentukan lokasi singgah"
-                        : editingCheckoutPoint ? (pickupMode ? "Geser pin jemput" : "Geser pin tujuan")
-                        : (pickupMode ? "Cek titik jemput" : "Cari atau pilih tujuan")
-        );
-        pickupBtn.setAlpha(routeComplete || pickupMode ? 1f : .80f);
-        deliveryBtn.setAlpha(routeComplete || !pickupMode ? 1f : .80f);
         if (mapView != null) {
             if (routeComplete) {
                 mapView.showOrderAction(false, "");

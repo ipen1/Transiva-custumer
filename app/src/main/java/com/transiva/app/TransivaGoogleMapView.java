@@ -764,6 +764,17 @@ public final class TransivaGoogleMapView extends FrameLayout implements OnMapRea
         if (m != null) driverMarkers.add(m);
     }
 
+    void clearTripDriver() {
+        if (driverAnimator != null) {
+            driverAnimator.cancel();
+            driverAnimator = null;
+        }
+        if (tripDriverMarker != null) {
+            tripDriverMarker.remove();
+            tripDriverMarker = null;
+        }
+    }
+
     public void setTripDriver(double lat, double lng, double bearing, boolean car, String name, String status) {
         if (!isReady() || !valid(lat, lng)) return;
         LatLng target = new LatLng(lat, lng);

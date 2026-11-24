@@ -15,7 +15,7 @@ import android.widget.Button;
 import android.widget.ImageView;
 import android.widget.FrameLayout;
 import android.widget.Toast;
-import android.text.format.DateUtils;
+import android.text.TextUtils;
 import android.widget.LinearLayout;
 import android.widget.ProgressBar;
 import android.widget.ScrollView;
@@ -134,42 +134,60 @@ public final class TransSendCourierDirectoryActivity extends CustomerAdaptiveAct
 
         LinearLayout header = new LinearLayout(this);
         header.setGravity(Gravity.CENTER_VERTICAL);
-        header.setPadding(dp(12), dp(8), dp(16), dp(8));
+        header.setPadding(dp(8), dp(2), dp(14), dp(2));
         header.setBackgroundColor(Color.WHITE);
         page.addView(header, new LinearLayout.LayoutParams(-1, -2));
 
         Button back = new Button(this);
-        back.setText("‹");
+        back.setText("←");
         back.setTextSize(24);
         back.setTextColor(Color.parseColor("#075BB8"));
-        back.setBackground(CustomerUiPrimitives.round("#EAF4FF",dp(15)));
+        back.setBackgroundColor(Color.TRANSPARENT);
         back.setContentDescription("Kembali");
         back.setOnClickListener(v -> finish());
         header.addView(back, new LinearLayout.LayoutParams(dp(48), dp(48)));
         TextView title = label(TITLE, 18, "#103769", true);
-        title.setPaddingRelative(dp(8), 0, 0, 0);
+        title.setPaddingRelative(dp(4), 0, 0, 0);
         header.addView(title, new LinearLayout.LayoutParams(0, -2, 1));
 
         LinearLayout body = new LinearLayout(this);
         body.setOrientation(LinearLayout.VERTICAL);
-        body.setPadding(dp(16), dp(16), dp(16), 0);
+        body.setPadding(dp(14), dp(8), dp(14), 0);
         page.addView(body, new LinearLayout.LayoutParams(-1, -2));
-        body.addView(label("Driver di regional Anda", 17, "#103769", true));
-        status = label("", 14, "#315678", false);
+
+        boolean stacked = getResources().getConfiguration().screenWidthDp < 330
+                || getResources().getConfiguration().fontScale > 1.2f;
+        LinearLayout directoryHeader = new LinearLayout(this);
+        directoryHeader.setOrientation(stacked ? LinearLayout.VERTICAL : LinearLayout.HORIZONTAL);
+        directoryHeader.setGravity(Gravity.CENTER_VERTICAL);
+        body.addView(directoryHeader, new LinearLayout.LayoutParams(-1, -2));
+
+        LinearLayout heading = new LinearLayout(this);
+        heading.setOrientation(LinearLayout.VERTICAL);
+        heading.addView(label("Driver di regional Anda", 15, "#103769", true));
+        status = label("", 12, "#315678", false);
         status.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);
-        status.setPadding(0, dp(6), 0, dp(8));
-        body.addView(status);
+        heading.addView(status);
+        directoryHeader.addView(heading, new LinearLayout.LayoutParams(stacked ? -1 : 0, -2, stacked ? 0 : 1));
+
         refresh = new Button(this);
         refresh.setAllCaps(false);
-        refresh.setMinHeight(dp(44));
-        refresh.setPadding(dp(14),dp(6),dp(14),dp(6));
+        refresh.setTextSize(12);
+        refresh.setMinHeight(dp(48));
+        refresh.setMinimumHeight(dp(48));
+        refresh.setMinimumWidth(dp(48));
+        refresh.setMinWidth(dp(48));
+        refresh.setPadding(dp(9), dp(3), dp(9), dp(3));
         refresh.setTextColor(Color.parseColor("#075BB8"));
-        refresh.setBackground(CustomerUiPrimitives.round("#E6F2FF",dp(14)));
+        refresh.setBackground(CustomerUiPrimitives.round("#E6F2FF",dp(12)));
         refresh.setOnClickListener(v -> {
             if (hasLocationPermission()) loadCouriers();
             else requestPermissions(new String[]{Manifest.permission.ACCESS_COARSE_LOCATION}, LOCATION_PERMISSION);
         });
-        body.addView(refresh, new LinearLayout.LayoutParams(-2, -2));
+        LinearLayout.LayoutParams refreshSpace = new LinearLayout.LayoutParams(-2, -2);
+        if (stacked) refreshSpace.topMargin = dp(4);
+        else refreshSpace.setMarginStart(dp(8));
+        directoryHeader.addView(refresh, refreshSpace);
         progress = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
         progress.setIndeterminate(true);
         progress.setVisibility(View.GONE);
@@ -180,7 +198,7 @@ public final class TransSendCourierDirectoryActivity extends CustomerAdaptiveAct
         page.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1));
         results = new LinearLayout(this);
         results.setOrientation(LinearLayout.VERTICAL);
-        results.setPadding(dp(16), dp(8), dp(16), dp(16));
+        results.setPadding(dp(14), dp(6), dp(14), dp(14));
         LinearLayout list = new LinearLayout(this);
         list.setOrientation(LinearLayout.VERTICAL);
         activeList=new LinearLayout(this);
@@ -310,37 +328,54 @@ public final class TransSendCourierDirectoryActivity extends CustomerAdaptiveAct
         nextPage.setVisibility(next == null ? View.GONE : View.VISIBLE);
         nextPage.setEnabled(true);
         finishLoading(shown.isEmpty() ? "Belum ada driver tersedia di " + region + "."
-                : region + " · Diurutkan dari jarak terdekat", "Perbarui Daftar");
+                : region + " · Jarak terdekat", "Perbarui");
         CustomerAppSettings.apply(this);
     }
 
     private void addCourier(JSONObject courier) {
         String name = courier.optString("name", "Kurir Transiva");
-        String state = courier.optString("driver_state","idle");
-        boolean idle="idle".equals(state), busy="busy".equals(state);
-        int distance = courier.optInt("distance_band_km");
-        double rating = courier.optDouble("rating");
-        String ratingText = "Belum ada rating";
-        if (rating >= 1 && rating <= 5) {
-            NumberFormat decimal = NumberFormat.getNumberInstance(INDONESIAN);
-            decimal.setMinimumFractionDigits(1);
-            decimal.setMaximumFractionDigits(1);
-            ratingText = "★ " + decimal.format(rating);
-        }
-        String distanceText = distance == 0 ? "Kurang dari 1 km" : distance + "–" + (distance + 1) + " km";
+        String state = courier.optString("driver_state", "idle");
+        boolean idle = "idle".equals(state);
+        boolean busy = "busy".equals(state);
+        boolean offline = !idle && !busy && "offline".equals(courier.optString("driver_presence"));
+        boolean dark = CustomerAppSettings.isDarkMode(this);
+
+        String marker = idle ? "Standby" : busy ? "Sibuk" : offline ? "Offline" : "Tidak tersedia";
+        String accent = idle ? (dark ? "#8EE2BB" : "#116444")
+                : busy ? (dark ? "#FCD387" : "#815009") : (dark ? "#C5D0DD" : "#485568");
+        String background = idle ? (dark ? "#142C29" : "#F1FBF6")
+                : busy ? (dark ? "#332A1D" : "#FFF8EB") : (dark ? "#222B38" : "#F0F3F7");
+        String border = idle ? (dark ? "#31584B" : "#C0E5D3")
+                : busy ? (dark ? "#655239" : "#EED29D") : (dark ? "#3C4758" : "#D6DFEA");
+        String pill = idle ? (dark ? "#214839" : "#D9F3E5")
+                : busy ? (dark ? "#554125" : "#FBE7B9") : (dark ? "#313D4D" : "#E1E7EF");
+
+        FrameLayout frame = new FrameLayout(this);
+        frame.setBackground(CustomerUiPrimitives.roundStroke(this, background, border, dp(13), 1));
+        frame.setClipToOutline(true);
+
+        LinearLayout card = new LinearLayout(this);
+        card.setOrientation(LinearLayout.VERTICAL);
+        card.setPaddingRelative(dp(13), dp(5), dp(8), dp(5));
+        card.setMinimumHeight(dp(58));
+        card.setGravity(Gravity.CENTER_VERTICAL);
+        frame.addView(card, new FrameLayout.LayoutParams(-1, -2));
+        View stripe = new View(this);
+        stripe.setBackgroundColor(Color.parseColor(idle ? "#27A45E" : busy ? "#E6A326" : "#87939F"));
+        stripe.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+        frame.addView(stripe, new FrameLayout.LayoutParams(dp(4), -1, Gravity.START));
 
         LinearLayout row = new LinearLayout(this);
         row.setGravity(Gravity.CENTER_VERTICAL);
-        row.setPadding(dp(12), dp(12), dp(12), dp(12));
-        row.setBackground(CustomerUiPrimitives.roundStroke(this,
-                idle?"#ECFAF2":busy?"#FFF4E0":"#F1F5F9",
-                idle?"#B6E5C8":busy?"#F2D199":"#D4E0EB", dp(16), 1));
+        row.setBaselineAligned(false);
+        card.addView(row, new LinearLayout.LayoutParams(-1, -2));
 
         FrameLayout avatar = new FrameLayout(this);
-        avatar.setBackground(CustomerUiPrimitives.round("#EAF4FF", dp(24)));
+        avatar.setBackground(CustomerUiPrimitives.round(dark ? "#26354A" : "#E5EFFF", dp(19)));
         avatar.setClipToOutline(true);
-        TextView initials = label(CallPeerIdentity.initials(name), 18, "#075BB8", true);
+        TextView initials = label(CallPeerIdentity.initials(name), 13, dark ? "#BED9FF" : "#075BB8", true);
         initials.setGravity(Gravity.CENTER);
+        initials.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
         avatar.addView(initials, new FrameLayout.LayoutParams(-1, -1));
         String photo = CallPeerIdentity.photoUrl(courier.optString("photo"));
         if (!photo.isEmpty()) {
@@ -349,35 +384,80 @@ public final class TransSendCourierDirectoryActivity extends CustomerAdaptiveAct
             avatar.addView(image, new FrameLayout.LayoutParams(-1, -1));
             RemoteImageLoader.loadCenterCrop(image, photo, 0);
         }
-        row.addView(avatar, new LinearLayout.LayoutParams(dp(46), dp(46)));
+        row.addView(avatar, new LinearLayout.LayoutParams(dp(38), dp(38)));
 
         LinearLayout details = new LinearLayout(this);
         details.setOrientation(LinearLayout.VERTICAL);
-        details.setPaddingRelative(dp(12), 0, 0, 0);
-        details.addView(label(name, 16, "#103769", true));
-        details.addView(label(idle?"Siap menerima":busy?"Sibuk · Bisa antre":"Tidak tersedia",
-                13,idle?"#126844":busy?"#815100":"#475569",true));
-        details.addView(label(distanceText + "  ·  " + ratingText, 14, "#315678", false));
-        long lastOrder = courier.optLong("last_order_epoch");
-        CharSequence ago = lastOrder > 0 ? DateUtils.getRelativeTimeSpanString(lastOrder * 1000L)
-                : "Belum ada catatan";
-        details.addView(label("Terakhir menerima: " + ago, 12, "#315678", false));
-        Button contact = new Button(this);
-        contact.setAllCaps(false);
-        contact.setText(busy?"Antre Driver":"Pilih Driver");
-        contact.setTextColor(Color.WHITE);
-        contact.setMinHeight(dp(46));
-        contact.setPadding(dp(14), dp(8), dp(14), dp(8));
-        contact.setBackground(CustomerUiPrimitives.gradient("#0759BF", "#087AF2", dp(13)));
-        contact.setOnClickListener(v -> selectDriver(courier));
-        LinearLayout.LayoutParams actionSpace = new LinearLayout.LayoutParams(-2, -2);
-        actionSpace.topMargin = dp(6);
-        if (idle || busy) details.addView(contact, actionSpace);
+        details.setPaddingRelative(dp(8), 0, dp(4), 0);
+        TextView driverName = label(name, 14, dark ? "#F1F5FB" : "#112C4B", true);
+        driverName.setMaxLines(2);
+        driverName.setEllipsize(TextUtils.TruncateAt.END);
+        details.addView(driverName);
+
+        details.addView(label(courierMetadata(courier), 12, dark ? "#C0CCDB" : "#425A73", false));
         row.addView(details, new LinearLayout.LayoutParams(0, -2, 1));
 
+        boolean stacked = getResources().getConfiguration().fontScale > 1.25f
+                || getResources().getConfiguration().screenWidthDp < 330;
+        LinearLayout actions = new LinearLayout(this);
+        actions.setGravity(Gravity.CENTER);
+        actions.setOrientation(stacked ? LinearLayout.HORIZONTAL : LinearLayout.VERTICAL);
+        if (stacked) {
+            actions.setGravity(Gravity.END | Gravity.CENTER_VERTICAL);
+            card.addView(actions, new LinearLayout.LayoutParams(-1, -2));
+        } else {
+            View divider = new View(this);
+            divider.setBackgroundColor(Color.parseColor(border));
+            row.addView(divider, new LinearLayout.LayoutParams(dp(1), dp(30)));
+            LinearLayout.LayoutParams actionColumn = new LinearLayout.LayoutParams(dp(86), -2);
+            actionColumn.setMarginStart(dp(7));
+            row.addView(actions, actionColumn);
+        }
+        TextView badge = label((idle ? "✓ " : busy ? "◷ " : offline ? "○ " : "") + marker, 11, accent, true);
+        badge.setContentDescription(marker);
+        badge.setGravity(Gravity.CENTER);
+        badge.setPadding(dp(6), dp(1), dp(6), dp(1));
+        badge.setBackground(CustomerUiPrimitives.round(pill, dp(9)));
+        actions.addView(badge, new LinearLayout.LayoutParams(stacked ? -2 : -1, -2));
+
+        if (idle || busy) {
+            Button contact = new Button(this);
+            contact.setAllCaps(false);
+            contact.setText(busy ? "Antre" : "Pilih");
+            contact.setContentDescription((busy ? "Antre dengan " : "Pilih ") + name);
+            contact.setTextSize(12);
+            contact.setTextColor(Color.WHITE);
+            contact.setMinHeight(dp(48));
+            contact.setMinimumHeight(dp(48));
+            contact.setMinWidth(dp(58));
+            contact.setMinimumWidth(dp(58));
+            contact.setPadding(dp(9), dp(4), dp(9), dp(4));
+            contact.setBackground(new android.graphics.drawable.RippleDrawable(
+                    android.content.res.ColorStateList.valueOf(0x33FFFFFF),
+                    CustomerUiPrimitives.round(busy ? "#8B510A" : "#075CC5", dp(10)), null));
+            contact.setOnClickListener(v -> selectDriver(courier));
+
+            LinearLayout.LayoutParams actionSpace = new LinearLayout.LayoutParams(stacked ? -2 : -1, -2);
+            if (stacked) actionSpace.setMarginStart(dp(6));
+            else actionSpace.topMargin = dp(3);
+            actions.addView(contact, actionSpace);
+        }
+
         LinearLayout.LayoutParams spacing = new LinearLayout.LayoutParams(-1, -2);
-        spacing.bottomMargin = dp(8);
-        results.addView(row, spacing);
+        spacing.bottomMargin = dp(5);
+        results.addView(frame, spacing);
+    }
+
+    private String courierMetadata(JSONObject courier) {
+        int distance = courier.optInt("distance_band_km", -1);
+        String distanceText = distance < 0 ? "Jarak belum tersedia"
+                : distance == 0 ? "< 1 km" : distance + "–" + (distance + 1) + " km";
+        double rating = courier.optDouble("rating");
+        if (rating < 1 || rating > 5 || Double.isNaN(rating)) return distanceText;
+        NumberFormat decimal = NumberFormat.getNumberInstance(INDONESIAN);
+        decimal.setMinimumFractionDigits(1);
+        decimal.setMaximumFractionDigits(1);
+        return distanceText + " · ★ " + decimal.format(rating);
     }
 
     private void selectDriver(JSONObject courier) {
@@ -637,7 +717,10 @@ public final class TransSendCourierDirectoryActivity extends CustomerAdaptiveAct
 
     private void finishLoading(String message, String action) {
         status.setText(message);
-        refresh.setText(action);
+        boolean compactRefresh = action.startsWith("Perbarui");
+        refresh.setText(compactRefresh ? "↻" : action);
+        refresh.setTextSize(compactRefresh ? 22 : 12);
+        refresh.setContentDescription(compactRefresh ? "Perbarui daftar driver" : action);
         refresh.setEnabled(true);
         progress.setVisibility(View.GONE);
     }

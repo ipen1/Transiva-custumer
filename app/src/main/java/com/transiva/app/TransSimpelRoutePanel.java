@@ -47,8 +47,14 @@ final class TransSimpelRoutePanel {
     private final Button order;
     private final Button trackOrder;
     private final LinearLayout pointActions;
-    private TransivaGoogleMapView waitingMap;
-    private boolean waitingMapResumed;
+    private TransivaGoogleMapView routeMap;
+    private boolean routeMapResumed;
+    private String mapOrder = "";
+    private org.json.JSONArray mapPoints;
+    private boolean fitMap, mapHasDriver, liveRouteRunning;
+    private org.json.JSONArray liveRoutePoints;
+    private long lastLiveRouteRequest;
+    private String liveRouteTarget = "";
     private final TextView pickupAddress;
     private final TextView stopAddress;
     private final TextView deliveryAddress;
@@ -170,7 +176,7 @@ final class TransSimpelRoutePanel {
                         ? dp(activity.getResources().getConfiguration().screenHeightDp)
                         : MeasureSpec.getSize(heightSpec);
                 int contentHeight=Math.max(0,height-getPaddingTop()-getPaddingBottom());
-                int limit=Math.round(contentHeight*.42f);
+                int limit=Math.round(contentHeight*(routeMap == null ? .42f : .56f));
                 if (limit!=routeHeightLimit) {
                     routeHeightLimit=limit;
                     // Recheck the scroll view even when LinearLayout reuses its child MeasureSpecs.
@@ -183,53 +189,139 @@ final class TransSimpelRoutePanel {
         return column;
     }
 
-    void resume() { active = true; resumeWaitingMap(); refresh(); }
+    void resume() { active = true; resumeRouteMap(); refresh(); }
     void pause() {
         active = false;
         main.removeCallbacks(poll);
-        if (waitingMapResumed) {
-            waitingMap.onPauseMap();
-            waitingMapResumed=false;
+        if (routeMapResumed) {
+            routeMap.onPauseMap();
+            routeMapResumed=false;
         }
     }
-    void close() { pause(); removeWaitingMap(); network.destroy(); }
+    void close() { pause(); removeRouteMap(); network.destroy(); }
 
-    private void resumeWaitingMap() {
-        if (active && waitingMap!=null && !waitingMapResumed) {
-            waitingMap.onResumeMap();
-            waitingMapResumed=true;
+    private void resumeRouteMap() {
+        if (active && routeMap!=null && !routeMapResumed) {
+            routeMap.onResumeMap();
+            routeMapResumed=true;
         }
     }
 
-    private void removeWaitingMap() {
-        if (waitingMap==null) return;
-        if (waitingMapResumed) waitingMap.onPauseMap();
-        waitingMapResumed=false;
-        waitingMap.onStopMap();
-        waitingMap.onDestroyMap();
-        view.removeView(waitingMap);
-        waitingMap=null;
+    private void removeRouteMap() {
+        if (routeMap==null) return;
+        if (routeMapResumed) routeMap.onPauseMap();
+        routeMapResumed=false;
+        routeMap.onStopMap();
+        routeMap.onDestroyMap();
+        view.removeView(routeMap);
+        routeMap=null;
+        mapPoints=null;
+        liveRoutePoints=null;
+        liveRouteTarget="";
+        mapHasDriver=false;
+        mapOrder="";
+        routeScroll.requestLayout();
     }
 
-    private void showWaitingMap(JSONObject update) {
-        org.json.JSONArray points=update.optJSONArray("map_points");
-        if (waitingMap!=null || points==null || points.length()<2) return;
-        JSONObject from=update.optJSONObject("pickup"), to=update.optJSONObject("delivery");
-        if (from==null || to==null) return;
+    private void showRouteMap(JSONObject update) {
+        if (update.optJSONObject("pickup")==null || update.optJSONObject("delivery")==null) return;
+        String key=update.optString("order_id",update.optString("state"));
+        if (!key.equals(mapOrder)) {
+            mapOrder=key;
+            mapPoints=null;
+            liveRoutePoints=null;
+            liveRouteTarget="";
+            if (routeMap!=null) routeMap.clearRoute();
+            fitMap=true;
+        }
+        if (update.has("map_points")) {
+            if (mapPoints==null) fitMap=true;
+            mapPoints=update.optJSONArray("map_points");
+        }
+        if (routeMap!=null) {
+            paintRouteMap();
+            return;
+        }
+
         TransivaGoogleMapView map=new TransivaGoogleMapView(activity,TransivaGoogleMapView.Mode.TRIP);
-        waitingMap=map;
-        view.addView(map,view.indexOfChild(trackOrder),new LinearLayout.LayoutParams(-1,dp(155)));
+        routeMap=map;
+        int screenHeight=activity.getResources().getConfiguration().screenHeightDp;
+        int mapHeight=Math.max(130, Math.min(280, Math.round(screenHeight*.37f)));
+        view.addView(map,1,new LinearLayout.LayoutParams(-1,dp(mapHeight)));
+        routeScroll.requestLayout();
+        map.useNumberedRideStops();
         map.initialize(null,new TransivaGoogleMapView.Listener() {
             @Override public void onReady(double lat,double lng) {
-                if (waitingMap!=map) return;
-                map.setPickup(from.optDouble("lat"),from.optDouble("lng"),"Jemput");
-                map.setDelivery(to.optDouble("lat"),to.optDouble("lng"),"Tujuan");
-                map.drawRideRoute(points);
+                if (routeMap==map) paintRouteMap();
             }
             @Override public void onCenterChanged(double lat,double lng) { }
         });
         map.onStartMap();
-        resumeWaitingMap();
+        resumeRouteMap();
+    }
+
+    private void paintRouteMap() {
+        TransivaGoogleMapView map=routeMap;
+        if (map==null || route==null || !map.isReady()) return;
+        JSONObject from=route.optJSONObject("pickup"), to=route.optJSONObject("delivery");
+        if (from==null || to==null) return;
+        map.setPickup(from.optDouble("lat"),from.optDouble("lng"),from.optString("address"));
+        map.setDelivery(to.optDouble("lat"),to.optDouble("lng"),to.optString("address"));
+        JSONObject driver=route.optJSONObject("driver_position");
+        if (driver!=null) {
+            map.setTripDriver(driver.optDouble("lat"),driver.optDouble("lng"),0,false,"Posisi driver","Lokasi terakhir");
+            if (!mapHasDriver) fitMap=true;
+        } else if (mapHasDriver) {
+            map.clearTripDriver();
+        }
+        mapHasDriver=driver!=null;
+        String status=route.optString("order_status");
+        JSONObject target=CustomerOrderState.targetsDelivery(status)?to:from;
+        if (driver!=null) requestLiveRoute(driver,target);
+        else if (liveRoutePoints!=null) {
+            liveRouteTarget="";
+            liveRoutePoints=null;
+            map.clearRoute();
+        }
+        org.json.JSONArray points=liveRoutePoints!=null?liveRoutePoints:mapPoints;
+        if (points!=null && points.length()>1) map.drawOsrmRoute(points,status);
+        if (fitMap) {
+            fitMap=false;
+            map.post(()->{ if(routeMap==map) map.fitAll(); });
+        }
+    }
+
+    private void requestLiveRoute(JSONObject driver, JSONObject target) {
+        final double fromLat=driver.optDouble("lat"), fromLng=driver.optDouble("lng");
+        final double toLat=target.optDouble("lat"), toLng=target.optDouble("lng");
+        if (!Double.isFinite(fromLat) || !Double.isFinite(fromLng)
+                || !Double.isFinite(toLat) || !Double.isFinite(toLng)) return;
+        final String targetKey=mapOrder+":"+toLat+":"+toLng;
+        boolean changed=!targetKey.equals(liveRouteTarget);
+        if (changed) {
+            liveRoutePoints=null;
+            liveRouteTarget=targetKey;
+        }
+        long now=android.os.SystemClock.elapsedRealtime();
+        if (liveRouteRunning || (!changed && now-lastLiveRouteRequest<25000)) return;
+        liveRouteRunning=true;
+        lastLiveRouteRequest=now;
+        if (!submit(()->{
+            try {
+                StableRouteEngine.Result result=StableRouteEngine.fetch(fromLat,fromLng,toLat,toLng);
+                post(()->{
+                    liveRouteRunning=false;
+                    if (!targetKey.equals(liveRouteTarget) || routeMap==null || route==null
+                            || route.optJSONObject("driver_position")==null) return;
+                    if (result.latLngPoints.length()>1) {
+                        liveRoutePoints=result.latLngPoints;
+                        routeMap.drawOsrmRoute(liveRoutePoints,route.optString("order_status"));
+                    }
+                });
+            } catch (Exception error) {
+                post(()->liveRouteRunning=false);
+            }
+        },()->liveRouteRunning=false)) liveRouteRunning=false;
     }
 
     private void openOrderedTrip() {
@@ -346,8 +438,8 @@ final class TransSimpelRoutePanel {
     private void refresh() {
         if (!active || busy || !available) return;
         JSONObject request=null;
-        if (route!=null && "waiting_driver".equals(route.optString("state")) && waitingMap==null) {
-            try { request=new JSONObject().put("map",true); }
+        if (route==null || "waiting_driver".equals(route.optString("state")) || "ordered".equals(route.optString("state"))) {
+            try { request=new JSONObject().put("map_live",true).put("map",mapPoints==null); }
             catch (org.json.JSONException ignored) { }
         }
         send("get",request);
@@ -365,8 +457,8 @@ final class TransSimpelRoutePanel {
         routeScroll.setVisibility(editable || ordered || waiting ? View.VISIBLE : View.GONE);
         pointActions.setVisibility(editable?View.VISIBLE:View.GONE);
         trackOrder.setVisibility(ordered && !route.optString("order_id").isEmpty()?View.VISIBLE:View.GONE);
-        if (waiting) showWaitingMap(route);
-        else removeWaitingMap();
+        if (waiting || ordered) showRouteMap(route);
+        else removeRouteMap();
         boolean food="food".equals(kind());
         boolean send="send".equals(kind());
         pickup.setEnabled(editable && !busy && !food);
@@ -549,6 +641,7 @@ final class TransSimpelRoutePanel {
         }
         if (updated!=null && (!wasReading || briefChanged || !sameSelection(updated,route))) render(updated);
         else if (!wasReading && route!=null) render(route);
+        else if (updated!=null && routeMap!=null) paintRouteMap();
         if (failure!=null && !"get".equals(action)) notice(failure);
         if (reply!=null && "order".equals(action) && "food".equals(kind())) {
             order.setVisibility(View.GONE);
@@ -567,8 +660,7 @@ final class TransSimpelRoutePanel {
                         .put("source",reply.optString("source","orders"));
             } catch (org.json.JSONException ignored) { }
             render(route);
-            if (waiting) refresh();
-            else openOrderedTrip();
+            refresh();
             return;
         }
         if (queuedPoint!=null) {
@@ -580,7 +672,11 @@ final class TransSimpelRoutePanel {
         if (active) {
             calculateIfReady();
             if (!busy && (route==null || "accepted".equals(route.optString("state"))
-                    || "waiting_driver".equals(route.optString("state")))) main.postDelayed(poll,3000);
+                    || "waiting_driver".equals(route.optString("state"))
+                    || "ordered".equals(route.optString("state"))
+                        && !CustomerOrderState.isEnded(route.optString("order_status")))) {
+                main.postDelayed(poll,route!=null && "ordered".equals(route.optString("state")) ? 5000 : 3000);
+            }
         }
     }
 

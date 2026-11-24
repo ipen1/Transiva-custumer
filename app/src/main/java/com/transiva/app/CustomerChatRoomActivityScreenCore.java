@@ -1630,12 +1630,14 @@ class CustomerChatRoomActivityScreenCore extends CustomerAdaptiveActivity {
                         JSONObject sent=response.optJSONObject("chat");
                         int sentId=sent==null?0:sent.optInt("id");
                         if (pending!=null) {
-                            if (sentId<=0 || displayedMessageIds.contains(sentId)) messagesBox.removeView(pending.root);
+                            if (response.optBoolean("contact_redacted") || sentId<=0 || displayedMessageIds.contains(sentId))
+                                messagesBox.removeView(pending.root);
                             else {
                                 pending.state.setText("Terkirim");
                                 acknowledgedBubbles.put(sentId,pending.root);
                             }
                         }
+                        if (response.optBoolean("contact_redacted")) toast("Kontak disensor. Lanjutkan percakapan di Transiva.");
                         loadMessages(false);
                     } else {
                         sending = false;

@@ -29,6 +29,7 @@ sed "s/__UUID_HASH__/$uuid_hash/g" schema.sql | "${client[@]}"
 "$TRANSIVA_TEST_PHP" web/migrations/upgrade_call_reliability.php
 "${client[@]}" courier_test < web/migrations/trans_simpel_ride.sql
 "${client[@]}" courier_test < web/migrations/tiva_simpel_handoff.sql
+"${client[@]}" courier_test < web/migrations/upgrade_order_location_corrections.sql
 "$TRANSIVA_TEST_PHP" routecache.php
 
 "$TRANSIVA_TEST_PHP" -d "sys_temp_dir=$workspace/tmp" -d "auto_prepend_file=$workspace/media-mime.php" \

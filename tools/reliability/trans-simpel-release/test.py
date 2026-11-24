@@ -1,4 +1,4 @@
-import json, urllib.request, urllib.error, subprocess
+import json, urllib.parse, urllib.request, urllib.error, subprocess
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
 import os
@@ -270,14 +270,24 @@ gid=g['contact']['id']
 assert action('accept',gid,actor='driver')[0]==200
 assert route(gid,'quote')[0]==409
 url='calculatePickupOngkir.php?pickup_lat=-0.9&pickup_lng=119.9&delivery_lat=-0.92&delivery_lng=119.92'
-code,q=request(url)
-assert code==200 and q['success'],(code,q)
+code,direct=request(url)
+assert code==200 and direct['success'],(code,direct)
+send_stops=[dict(latitude=-.915,longitude=119.91,address='Singgah paket')]
+code,q=request(url+'&'+urllib.parse.urlencode(dict(waypoints=json.dumps(send_stops))))
+assert code==200 and q['success'] and q['price']>direct['price'],(code,q)
 payload={'id':'tiva-send-case','courier_contact_id':gid,'item_name':'Buku kantor','receiver_name':'Customer','receiver_phone':'0811111111',
     'pickup_address':'Jemput','delivery_address':'Antar','pickup_lat':a['lat'],'pickup_lng':a['lng'],'delivery_lat':b['lat'],'delivery_lng':b['lng'],
-    'approved_price':q['price'],'payment_method':'cash','package_size':'small'}
+    'approved_price':q['price'],'payment_method':'cash','package_size':'small','waypoints':send_stops}
 code,send=request('create_pickup_order.php',payload)
 assert code==200 and send.get('status')=='taken',(code,send)
-assert db("SELECT CONCAT(status,':',CHAR_LENGTH(delivery_otp)) FROM pickup_orders WHERE order_id='"+send['order_id']+"'")=='taken:6'
+assert db("SELECT CONCAT(status,':',CHAR_LENGTH(delivery_otp)) FROM pickup_orders WHERE order_id='"+send['order_id']+"'")=='taken:0'
+assert db("SELECT COUNT(*) FROM ride_waypoints WHERE order_id='"+send['order_id']+"'")=='1'
+room='ROOM-'+gid
+phone='Kontak penerima 08 123-456-789'
+code,sent=request('sendChat.php',dict(room_id=room,order_id=gid,source='pickup_orders',message=phone))
+assert code==200 and sent['chat']['message']==phone and not sent['contact_redacted'],(code,sent)
+code,received=request('getChat.php?room_id='+room+'&order_id='+gid+'&source=pickup_orders',actor='driver')
+assert code==200 and any(m['message']==phone for m in received['messages']),(code,received)
 entry=next(o for o in action('active_list')[1]['orders'] if o['order_id']==send['order_id'])
 assert entry['source']=='pickup_orders' and entry['can_cancel'],entry
 send_payload=dict(order_id=send['order_id'],table='pickup_orders',trans_simpel_list=True)
@@ -285,7 +295,7 @@ code,cancelled=request('cancel_order.php',send_payload)
 assert code==200 and cancelled['success'],(code,cancelled)
 assert request('cancel_order.php',send_payload)[1]['already_canceled']
 assert all(o['order_id']!=send['order_id'] for o in action('active_list')[1]['orders'])
-print('PASS Tiva TransSend uses standard package confirmation and OTP')
+print('PASS Tiva TransSend uses standard package confirmation without OTP')
 
 db("UPDATE driver_profiles SET is_online=0")
 code,waiting=request('create_food_order.php',{**normal,'id':'regular-food-redispatch','items':[{'id':5,'qty':1}]})
@@ -334,3 +344,55 @@ code,decision=request('updateMerchantOrder.php',{'id':nid,'restaurant_id':111,'s
 assert not decision['success'] and decision['code']=='MERCHANT_RESPONSE_TIMEOUT',(code,decision)
 assert db(f"SELECT status FROM orders WHERE id={nid}")=='merchant_rejected'
 print('PASS late merchant response is rejected without advancing driver status')
+
+# Independent pickup fixture for location approvals, stop arrival and completion without OTP.
+db("""INSERT INTO pickup_orders(order_id,user_id,username,driver_username,status,pickup_lat,pickup_lng,
+    delivery_lat,delivery_lng,pickup_address,delivery_address,price,distance_km,delivery_otp,payment_method)
+    VALUES('PU-LOCATION-TEST',1,'buyer','anna_private','taken',-.9,119.9,-.92,119.92,'A','B',15000,2.5,'','cash')""")
+test_order='PU-LOCATION-TEST'
+source='pickup_orders'
+proposal=dict(order_id=test_order,source=source,point='pickup',latitude=-.904,longitude=119.903,address='Jemput baru')
+denied=request('driver_propose_location.php',proposal,actor='other-driver')
+assert denied[0]==404,denied
+code, response=request('driver_propose_location.php',proposal,actor='driver')
+assert code==200 and response['success'],(code,response)
+assert abs(float(db("SELECT pickup_lat FROM pickup_orders WHERE order_id='PU-LOCATION-TEST'"))+.9)<1e-7
+code, preview=request('get_pickup_order_status.php?order_id='+test_order)
+assert code==200 and preview['order']['location_proposal']['point_kind']=='pickup',(code,preview)
+location_id=int(db("SELECT MAX(id) FROM order_location_corrections"))
+action_body=dict(order_id=test_order,source=source,location_request_id=location_id)
+assert request('customer_order_action.php',{**action_body,'action':'approve_price','location_request_id':location_id+1})[0]==409
+code, answer=request('customer_order_action.php',{**action_body,'action':'reject_price'})
+assert code==200 and answer['success'],(code,answer)
+assert abs(float(db("SELECT pickup_lat FROM pickup_orders WHERE order_id='PU-LOCATION-TEST'"))+.9)<1e-7
+assert request('driver_propose_location.php',proposal,actor='driver')[0]==200
+location_id=int(db("SELECT MAX(id) FROM order_location_corrections"))
+code, answer=request('customer_order_action.php',{**action_body,'action':'approve_price','location_request_id':location_id})
+assert code==200 and answer['success'],(code,answer)
+assert abs(float(db("SELECT pickup_lat FROM pickup_orders WHERE order_id='PU-LOCATION-TEST'"))+.904)<1e-7
+pk=int(db("SELECT id FROM pickup_orders WHERE order_id='PU-LOCATION-TEST'"))
+def progress(new_status,lat,lng):
+    return request('driver_update_unified_status.php',dict(id=pk,source=source,status=new_status,driver_lat=lat,driver_lng=lng),actor='driver')
+for state in ['arrived_pickup','on_delivery']:
+    code,result=progress(state,-.904,119.903)
+    assert code==200 and result['success'],(state,code,result)
+code,response=request('driver_propose_location.php',{**proposal,'point':'stop','latitude':-.915,'longitude':119.91,'address':'Singgah'},actor='driver')
+assert code==200 and response['success'],(code,response)
+price_before=int(db("SELECT price FROM pickup_orders WHERE order_id='PU-LOCATION-TEST'"))
+location_id=int(db("SELECT MAX(id) FROM order_location_corrections"))
+code,answer=request('customer_order_action.php',{**action_body,'action':'approve_price','location_request_id':location_id})
+assert code==200 and answer['success'],(code,answer)
+assert int(db("SELECT price FROM pickup_orders WHERE order_id='PU-LOCATION-TEST'"))>=price_before+3000
+assert progress('arrived_delivery',-.92,119.92)[0]==409
+code,result=request('ride_ecosystem_order.php',dict(action='arrive_waypoint',order_id=test_order,source=source,sequence=1,driver_lat=-.915,driver_lng=119.91),actor='driver')
+assert code==200 and result['ecosystem']['waypoints'][0]['status']=='arrived',(code,result)
+assert result['smart_waiting']['active']['free_seconds']==180
+code,result=progress('arrived_delivery',-.92,119.92)
+assert code==200 and result['success'],(code,result)
+assert progress('finished',-.92,119.92)[0]==409
+code,result=request('customer_order_action.php',dict(order_id=test_order,source=source,action='confirm_received'))
+assert code==200 and result['success'],(code,result)
+code,result=progress('finished',-.92,119.92)
+assert code==200 and result['success'],(code,result)
+assert progress('finished',-.92,119.92)[1].get('idempotent') is True
+print('PASS location proposal approval/rejection, stop policy and OTP-free finish')

@@ -896,3 +896,14 @@ ALTER TABLE pickup_orders ADD COLUMN room_id VARCHAR(80), CHANGE status status E
 
 ALTER TABLE driver_profiles ADD id INT, ADD plate VARCHAR(40), ADD vehicle_photo TEXT, ADD location_accuracy DOUBLE, ADD location_speed DOUBLE, ADD location_bearing DOUBLE, ADD rating DECIMAL(4,2);
 UPDATE driver_profiles SET id=user_id;
+
+ALTER TABLE pickup_orders
+    ADD customer_received TINYINT NOT NULL DEFAULT 0,
+    ADD customer_received_at DATETIME NULL,
+    ADD original_price DECIMAL(12,2) NULL,
+    ADD price_change_status VARCHAR(24) NOT NULL DEFAULT 'none',
+    ADD price_change_requested DECIMAL(12,2) NULL,
+    ADD price_change_reason VARCHAR(255) NULL,
+    ADD price_change_driver VARCHAR(120) NULL,
+    ADD price_change_requested_at DATETIME NULL,
+    ADD price_change_resolved_at DATETIME NULL;

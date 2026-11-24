@@ -345,7 +345,7 @@ assert not decision['success'] and decision['code']=='MERCHANT_RESPONSE_TIMEOUT'
 assert db(f"SELECT status FROM orders WHERE id={nid}")=='merchant_rejected'
 print('PASS late merchant response is rejected without advancing driver status')
 
-# Independent pickup fixture for location approvals, stop arrival and completion without OTP.
+# Independent pickup fixture for direct endpoint correction, stop approval and completion.
 db("""INSERT INTO pickup_orders(order_id,user_id,username,driver_username,status,pickup_lat,pickup_lng,
     delivery_lat,delivery_lng,pickup_address,delivery_address,price,distance_km,delivery_otp,payment_method)
     VALUES('PU-LOCATION-TEST',1,'buyer','anna_private','taken',-.9,119.9,-.92,119.92,'A','B',15000,2.5,'','cash')""")
@@ -355,21 +355,17 @@ proposal=dict(order_id=test_order,source=source,point='pickup',latitude=-.904,lo
 denied=request('driver_propose_location.php',proposal,actor='other-driver')
 assert denied[0]==404,denied
 code, response=request('driver_propose_location.php',proposal,actor='driver')
-assert code==200 and response['success'],(code,response)
-assert abs(float(db("SELECT pickup_lat FROM pickup_orders WHERE order_id='PU-LOCATION-TEST'"))+.9)<1e-7
-code, preview=request('get_pickup_order_status.php?order_id='+test_order)
-assert code==200 and preview['order']['location_proposal']['point_kind']=='pickup',(code,preview)
-location_id=int(db("SELECT MAX(id) FROM order_location_corrections"))
-action_body=dict(order_id=test_order,source=source,location_request_id=location_id)
-assert request('customer_order_action.php',{**action_body,'action':'approve_price','location_request_id':location_id+1})[0]==409
-code, answer=request('customer_order_action.php',{**action_body,'action':'reject_price'})
-assert code==200 and answer['success'],(code,answer)
-assert abs(float(db("SELECT pickup_lat FROM pickup_orders WHERE order_id='PU-LOCATION-TEST'"))+.9)<1e-7
-assert request('driver_propose_location.php',proposal,actor='driver')[0]==200
-location_id=int(db("SELECT MAX(id) FROM order_location_corrections"))
-code, answer=request('customer_order_action.php',{**action_body,'action':'approve_price','location_request_id':location_id})
-assert code==200 and answer['success'],(code,answer)
-assert abs(float(db("SELECT pickup_lat FROM pickup_orders WHERE order_id='PU-LOCATION-TEST'"))+.904)<1e-7
+assert code==200 and response['success'] and response['applied'],(code,response)
+code, snapshot=request('get_pickup_order_status.php?order_id='+test_order)
+assert code==200 and snapshot['order']['location_proposal'] is None,(code,snapshot)
+assert abs(float(snapshot['order']['pickup_lat'])+.904)<1e-7
+assert int(snapshot['order']['price'])==15000 and snapshot['order']['price_change_status']=='none'
+assert db("SELECT state FROM order_location_corrections WHERE point_kind='pickup' ORDER BY id DESC LIMIT 1")=='approved'
+code,replay=request('driver_propose_location.php',proposal,actor='driver')
+assert code==200 and replay['idempotent'],(code,replay)
+assert db("SELECT COUNT(*) FROM order_location_corrections WHERE point_kind='pickup'")=='1'
+assert request('driver_propose_location.php',{**proposal,'point':'delivery'},actor='driver')[0]==409
+action_body=dict(order_id=test_order,source=source)
 pk=int(db("SELECT id FROM pickup_orders WHERE order_id='PU-LOCATION-TEST'"))
 def progress(new_status,lat,lng):
     return request('driver_update_unified_status.php',dict(id=pk,source=source,status=new_status,driver_lat=lat,driver_lng=lng),actor='driver')
@@ -377,17 +373,23 @@ for state in ['arrived_pickup','on_delivery']:
     code,result=progress(state,-.904,119.903)
     assert code==200 and result['success'],(state,code,result)
 code,response=request('driver_propose_location.php',{**proposal,'point':'stop','latitude':-.915,'longitude':119.91,'address':'Singgah'},actor='driver')
-assert code==200 and response['success'],(code,response)
+assert code==200 and response['success'] and response['applied'] is False,(code,response)
 price_before=int(db("SELECT price FROM pickup_orders WHERE order_id='PU-LOCATION-TEST'"))
 location_id=int(db("SELECT MAX(id) FROM order_location_corrections"))
 code,answer=request('customer_order_action.php',{**action_body,'action':'approve_price','location_request_id':location_id})
 assert code==200 and answer['success'],(code,answer)
 assert int(db("SELECT price FROM pickup_orders WHERE order_id='PU-LOCATION-TEST'"))>=price_before+3000
-assert progress('arrived_delivery',-.92,119.92)[0]==409
+correct_delivery={**proposal,'point':'delivery','latitude':-.923,'longitude':119.923,'address':'Tujuan diperbaiki'}
+price_after_stop=int(db("SELECT price FROM pickup_orders WHERE order_id='PU-LOCATION-TEST'"))
+code,result=request('driver_propose_location.php',correct_delivery,actor='driver')
+assert code==200 and result['applied'],(code,result)
+assert int(db("SELECT price FROM pickup_orders WHERE order_id='PU-LOCATION-TEST'"))==price_after_stop
+assert abs(float(db("SELECT delivery_lat FROM pickup_orders WHERE order_id='PU-LOCATION-TEST'"))+.923)<1e-7
+assert progress('arrived_delivery',-.923,119.923)[0]==409
 code,result=request('ride_ecosystem_order.php',dict(action='arrive_waypoint',order_id=test_order,source=source,sequence=1,driver_lat=-.915,driver_lng=119.91),actor='driver')
 assert code==200 and result['ecosystem']['waypoints'][0]['status']=='arrived',(code,result)
 assert result['smart_waiting']['active']['free_seconds']==180
-code,result=progress('arrived_delivery',-.92,119.92)
+code,result=progress('arrived_delivery',-.923,119.923)
 assert code==200 and result['success'],(code,result)
 assert progress('finished',-.92,119.92)[0]==409
 code,result=request('customer_order_action.php',dict(order_id=test_order,source=source,action='confirm_received'))
@@ -395,4 +397,20 @@ assert code==200 and result['success'],(code,result)
 code,result=progress('finished',-.92,119.92)
 assert code==200 and result['success'],(code,result)
 assert progress('finished',-.92,119.92)[1].get('idempotent') is True
-print('PASS location proposal approval/rejection, stop policy and OTP-free finish')
+print('PASS direct pickup/destination correction, protected fare, stop policy and OTP-free finish')
+
+# A ride updates its authoritative road-route snapshot alongside the coordinates.
+db("""INSERT INTO orders(order_id,user_id,driver,status,order_type,pickup_lat,pickup_lng,user_lat,user_lng,
+    delivery_lat,delivery_lng,pickup_address,delivery_address,price,original_price,escrow_amount,driver_settlement_status,payment_method)
+    VALUES('RIDE-LOCATION-TEST',1,'anna_private','driver_accepted','Transbike',-.9,119.9,-.9,119.9,
+    -.92,119.92,'A','B',17000,17000,17000,'held','balance')""")
+ride='RIDE-LOCATION-TEST'
+ride_id=int(db("SELECT id FROM orders WHERE order_id='RIDE-LOCATION-TEST'"))
+prior_cash=int(db("SELECT balance FROM users WHERE id=1"))
+code,answer=request('driver_propose_location.php',{**proposal,'order_id':ride,'source':'orders'},actor='driver')
+assert code==200 and answer['applied'],(code,answer)
+assert db(f"SELECT CONCAT(status,':',price,':',escrow_amount,':',duration_minutes) FROM orders WHERE id={ride_id}")=='driver_accepted:17000:17000:5'
+assert abs(float(db(f"SELECT user_lat FROM orders WHERE id={ride_id}"))+.904)<1e-7
+assert db(f"SELECT COUNT(*) FROM ride_server_routes WHERE order_db_id={ride_id} AND version=1")=='1'
+assert int(db("SELECT balance FROM users WHERE id=1"))==prior_cash
+print('PASS ride correction writes the road route and preserves held TransPay')

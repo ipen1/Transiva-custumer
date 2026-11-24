@@ -2334,12 +2334,11 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
         if(currentScreen==0)renderHomeResults();
         featureRuntime.executeLatest("food-merchants",CustomerLoadingCoordinator.CONTENT,()->{
             try{
-                String url=BASE_URL+"server/get_food_restaurants.php?page_only=1&user_id="+userId+"&limit="+requestedLimit+"&offset="+offset+"&q="+Uri.encode(query)+"&sort="+Uri.encode(sort)+"&refresh="+refresh;
+                String url=TransFoodCatalogClient.restaurants(userId,requestedLimit,offset,query,sort,refresh);
                 JSONObject cached=offset==0?TransivaHttpRepository.cachedCatalog(this,url):null;
                 if(cached!=null&&cached.optBoolean("success")&&cached.optJSONArray("restaurants")!=null)featureRuntime.post(mainHandler,()->acceptRestaurantPage(cached,cached.optJSONArray("restaurants"),offset,requestedLimit,context,replace,generation,true));
-                JSONObject response=TransivaHttpRepository.getJsonFresh(this,url,TIMEOUT_MS);
-                JSONArray rows=response.optJSONArray("restaurants");
-                if(!response.optBoolean("success")||rows==null)throw new Exception("Gagal memuat merchant");
+                JSONObject response=TransFoodCatalogClient.freshPage(this,url,"restaurants",TIMEOUT_MS,"Gagal memuat merchant");
+                JSONArray rows=response.getJSONArray("restaurants");
                 featureRuntime.post(mainHandler,()->acceptRestaurantPage(response,rows,offset,requestedLimit,context,replace,generation,false));
             }catch(Exception error){featureRuntime.post(mainHandler,()->{
                 if(generation!=restaurantGeneration||!context.equals(restaurantRequestContext()))return;
@@ -2437,14 +2436,13 @@ class TransFoodActivityScreenCore extends CustomerAdaptiveActivity {
         final int generation=++menuLoadGeneration;menusRequestLoading=true;menusRequestRid=rid;menusRequestQuery=requested;menusError="";failedMenusOffset=offset;
         final int limit = offset == 0 ? 8 : 16;
         if(showLoading&&menus.isEmpty()){setLoading(true);menusLoadFinished=false;}
-        final String url=BASE_URL+"server/get_food_menus.php?restaurant_id="+rid+"&q="+Uri.encode(requested)+"&limit="+limit+"&offset="+offset;
+        final String url=TransFoodCatalogClient.menus(rid,requested,limit,offset);
         Runnable rejected=()->featureRuntime.post(mainHandler,()->menuPageFailed(rid,generation,"Sistem sedang sibuk. Coba lagi."));
         featureRuntime.executeLatest("food-menus",CustomerLoadingCoordinator.CONTENT,()->{
             try{
                 JSONObject cached=offset==0?TransivaHttpRepository.cachedCatalog(this,url):null;
                 if(cached!=null&&cached.optJSONArray("menus")!=null)featureRuntime.post(mainHandler,()->acceptMenuPage(cached,rid,offset,limit,generation,true));
-                JSONObject response=TransivaHttpRepository.getJsonFresh(this,url,TIMEOUT_MS);
-                if(!response.optBoolean("success")||response.optJSONArray("menus")==null)throw new Exception(response.optString("message","Gagal memuat menu"));
+                JSONObject response=TransFoodCatalogClient.freshPage(this,url,"menus",TIMEOUT_MS,"Gagal memuat menu");
                 featureRuntime.post(mainHandler,()->acceptMenuPage(response,rid,offset,limit,generation,false));
             }catch(Exception error){featureRuntime.post(mainHandler,()->menuPageFailed(rid,generation,"Koneksi gagal. Data yang sudah tampil tetap tersedia."));}
         },rejected);

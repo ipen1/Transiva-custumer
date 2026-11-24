@@ -45,6 +45,10 @@ final class TransSimpelRoutePanel {
     private final TextView purchaseHint;
     private JSONObject tivaBrief;
     private final Button order;
+    private final Button trackOrder;
+    private final LinearLayout pointActions;
+    private TransivaGoogleMapView waitingMap;
+    private boolean waitingMapResumed;
     private final TextView pickupAddress;
     private final TextView stopAddress;
     private final TextView deliveryAddress;
@@ -86,7 +90,7 @@ final class TransSimpelRoutePanel {
         title.setTextSize(16);
         title.setTypeface(Typeface.DEFAULT,Typeface.BOLD);
         heading.addView(title,new LinearLayout.LayoutParams(0,-2,1));
-        LinearLayout actions = new LinearLayout(activity);
+        pointActions = new LinearLayout(activity);
         pickup = button("Jemput", () -> openPicker(PICKUP));
         delivery = button("Antar", () -> openPicker(DELIVERY));
         stop = button("+ Singgah", () -> openPicker(STOP));
@@ -98,7 +102,7 @@ final class TransSimpelRoutePanel {
         for (Button point : new Button[]{pickup, stop, delivery}) {
             LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(0,dp(44),1);
             params.setMargins(dp(2),0,dp(2),0);
-            actions.addView(point,params);
+            pointActions.addView(point,params);
         }
         briefButton=button("Tiva AI  ›",()->TivaSimpelBrief.show(activity,tivaBrief));
         style(briefButton,"#EFE8FF","#502B93");
@@ -107,7 +111,7 @@ final class TransSimpelRoutePanel {
         briefButton.setVisibility(View.GONE);
         heading.addView(briefButton,new LinearLayout.LayoutParams(-2,dp(48)));
         view.addView(heading,new LinearLayout.LayoutParams(-1,-2));
-        view.addView(actions);
+        view.addView(pointActions);
         pickupAddress = addressLine("Jemput","●",0xFF08785B,"pickup");
         stopAddress = addressLine("Singgah","◆",0xFF925200,"stop");
         deliveryAddress = addressLine("Antar","⚑",0xFF075BC8,"delivery");
@@ -132,6 +136,9 @@ final class TransSimpelRoutePanel {
         purchaseHint.setVisibility(View.GONE);
         view.addView(purchaseHint);
         view.addView(clearStop,new LinearLayout.LayoutParams(-2,dp(44)));
+        trackOrder=button("Buka peta perjalanan",this::openOrderedTrip);
+        trackOrder.setVisibility(View.GONE);
+        view.addView(trackOrder,new LinearLayout.LayoutParams(-1,dp(48)));
         quoteRetry = button("Hitung Ulang Ongkir", () -> {
             quotedRevision = -1;
             calculateIfReady();
@@ -176,9 +183,65 @@ final class TransSimpelRoutePanel {
         return column;
     }
 
-    void resume() { active = true; refresh(); }
-    void pause() { active = false; main.removeCallbacks(poll); }
-    void close() { pause(); network.destroy(); }
+    void resume() { active = true; resumeWaitingMap(); refresh(); }
+    void pause() {
+        active = false;
+        main.removeCallbacks(poll);
+        if (waitingMapResumed) {
+            waitingMap.onPauseMap();
+            waitingMapResumed=false;
+        }
+    }
+    void close() { pause(); removeWaitingMap(); network.destroy(); }
+
+    private void resumeWaitingMap() {
+        if (active && waitingMap!=null && !waitingMapResumed) {
+            waitingMap.onResumeMap();
+            waitingMapResumed=true;
+        }
+    }
+
+    private void removeWaitingMap() {
+        if (waitingMap==null) return;
+        if (waitingMapResumed) waitingMap.onPauseMap();
+        waitingMapResumed=false;
+        waitingMap.onStopMap();
+        waitingMap.onDestroyMap();
+        view.removeView(waitingMap);
+        waitingMap=null;
+    }
+
+    private void showWaitingMap(JSONObject update) {
+        org.json.JSONArray points=update.optJSONArray("map_points");
+        if (waitingMap!=null || points==null || points.length()<2) return;
+        JSONObject from=update.optJSONObject("pickup"), to=update.optJSONObject("delivery");
+        if (from==null || to==null) return;
+        TransivaGoogleMapView map=new TransivaGoogleMapView(activity,TransivaGoogleMapView.Mode.TRIP);
+        waitingMap=map;
+        view.addView(map,view.indexOfChild(trackOrder),new LinearLayout.LayoutParams(-1,dp(155)));
+        map.initialize(null,new TransivaGoogleMapView.Listener() {
+            @Override public void onReady(double lat,double lng) {
+                if (waitingMap!=map) return;
+                map.setPickup(from.optDouble("lat"),from.optDouble("lng"),"Jemput");
+                map.setDelivery(to.optDouble("lat"),to.optDouble("lng"),"Tujuan");
+                map.drawRideRoute(points);
+            }
+            @Override public void onCenterChanged(double lat,double lng) { }
+        });
+        map.onStartMap();
+        resumeWaitingMap();
+    }
+
+    private void openOrderedTrip() {
+        if (route==null || route.optString("order_id").isEmpty()) return;
+        String source=route.optString("source","orders");
+        Class<?> screen="food".equals(kind())?CustomerFoodOrderStatusActivity.class:CustomerTripActivity.class;
+        activity.startActivity(new Intent(activity,screen).putExtra("order_id",route.optString("order_id"))
+                .putExtra("status",route.optString("order_status"))
+                .putExtra("order_source",source).putExtra("source",source).putExtra("order_type",
+                        "food".equals(kind())?"TransFood":"shop".equals(kind())?"TransShop":
+                                "send".equals(kind())?"TransSend":"Trans Simpel"));
+    }
 
     void restore(Bundle state) {
         if (state == null) return;
@@ -281,7 +344,13 @@ final class TransSimpelRoutePanel {
     }
 
     private void refresh() {
-        if (active && !busy && available) send("get",null);
+        if (!active || busy || !available) return;
+        JSONObject request=null;
+        if (route!=null && "waiting_driver".equals(route.optString("state")) && waitingMap==null) {
+            try { request=new JSONObject().put("map",true); }
+            catch (org.json.JSONException ignored) { }
+        }
+        send("get",request);
     }
 
     private void render(JSONObject update) {
@@ -292,7 +361,12 @@ final class TransSimpelRoutePanel {
         String state=route.optString("state");
         boolean editable="accepted".equals(state);
         boolean ordered="ordered".equals(state);
-        routeScroll.setVisibility(editable || ordered ? View.VISIBLE : View.GONE);
+        boolean waiting="waiting_driver".equals(state);
+        routeScroll.setVisibility(editable || ordered || waiting ? View.VISIBLE : View.GONE);
+        pointActions.setVisibility(editable?View.VISIBLE:View.GONE);
+        trackOrder.setVisibility(ordered && !route.optString("order_id").isEmpty()?View.VISIBLE:View.GONE);
+        if (waiting) showWaitingMap(route);
+        else removeWaitingMap();
         boolean food="food".equals(kind());
         boolean send="send".equals(kind());
         pickup.setEnabled(editable && !busy && !food);
@@ -327,7 +401,9 @@ final class TransSimpelRoutePanel {
         if (amount>0 && assistedPurchase) {
             summary.setText("Ongkir  Rp "+NumberFormat.getIntegerInstance(new Locale("id","ID")).format(amount)+" · Tunai");
         }
-        summary.setVisibility(amount>0?View.VISIBLE:View.GONE);
+        if (waiting) summary.setText("Menunggu driver selesai"+(amount>0?" · Rp "+
+                NumberFormat.getIntegerInstance(new Locale("id","ID")).format(amount):""));
+        summary.setVisibility(waiting || amount>0?View.VISIBLE:View.GONE);
         boolean both=route.optJSONObject("pickup")!=null && route.optJSONObject("delivery")!=null;
         quoteRetry.setVisibility(editable && both && amount==0 && quotedRevision==revision ? View.VISIBLE : View.GONE);
         quoteRetry.setEnabled(!busy);
@@ -416,7 +492,8 @@ final class TransSimpelRoutePanel {
         }
         if (route.optLong("total")<=0) return;
         try {
-            send("order",new JSONObject().put("revision",route.optInt("revision")).put("total",route.optLong("total")));
+            send("order",new JSONObject().put("revision",route.optInt("revision"))
+                    .put("total",route.optLong("total")).put("queue_capable",true));
         } catch (org.json.JSONException error) {
             notice("Pesanan belum dapat dibuat.");
         }
@@ -480,15 +557,19 @@ final class TransSimpelRoutePanel {
             activity.finish();
             return;
         }
-        if (reply!=null && "order".equals(action)) {
-            order.setVisibility(View.GONE);
-            new AlertDialog.Builder(activity).setTitle("Order berhasil")
-                    .setMessage("ID order "+reply.optString("order_id"))
-                    .setNegativeButton("Kembali ke Chat",null)
-                    .setPositiveButton("Buka Pesan",(d,w)-> {
-                        activity.startActivity(new Intent(activity, CustomerChatActivity.class));
-                        activity.finish();
-                    }).show();
+        if (reply!=null && "order".equals(action) && route!=null) {
+            queuedPoint=null;
+            boolean waiting="waiting_driver".equals(reply.optString("status"));
+            try {
+                route.put("state",waiting?"waiting_driver":"ordered")
+                        .put("order_id",reply.optString("order_id"))
+                        .put("order_status",reply.optString("status","driver_accepted"))
+                        .put("source",reply.optString("source","orders"));
+            } catch (org.json.JSONException ignored) { }
+            render(route);
+            if (waiting) refresh();
+            else openOrderedTrip();
+            return;
         }
         if (queuedPoint!=null) {
             JSONObject point=queuedPoint;
@@ -498,7 +579,8 @@ final class TransSimpelRoutePanel {
         }
         if (active) {
             calculateIfReady();
-            if (!busy && (route==null || "accepted".equals(route.optString("state")))) main.postDelayed(poll,3000);
+            if (!busy && (route==null || "accepted".equals(route.optString("state"))
+                    || "waiting_driver".equals(route.optString("state")))) main.postDelayed(poll,3000);
         }
     }
 

@@ -29,6 +29,7 @@ public final class TivaSimpelActivity extends CustomerAdaptiveActivity {
     private final JSONArray options=new JSONArray();
     private LinearLayout messages, actions;
     private ScrollView scroll;
+    private boolean driverBusy;
     private String kind="", detail="", contact="", key=UUID.randomUUID().toString();
     private String status="", problem="";
     private boolean typing, reviewFood;
@@ -43,6 +44,7 @@ public final class TivaSimpelActivity extends CustomerAdaptiveActivity {
     @Override protected void onCreate(Bundle state) {
         super.onCreate(state);
         driver=getIntent().getIntExtra("driver_id",0);
+        driverBusy=getIntent().getBooleanExtra("driver_busy",false);
         driverName=CallPeerIdentity.first(getIntent().getStringExtra("driver_name"),"driver pilihanmu");
         lat=getIntent().getDoubleExtra("lat",0);
         lng=getIntent().getDoubleExtra("lng",0);
@@ -182,10 +184,16 @@ public final class TivaSimpelActivity extends CustomerAdaptiveActivity {
             info.setPadding(dp(12),dp(10),dp(12),dp(10));
             info.setBackground(CustomerUiPrimitives.round("#D5EBFF",dp(14)));
             messages.addView(info,new LinearLayout.LayoutParams(-1,-2));
-            serviceRow("food","Pesan makan",R.drawable.ic_service_food_premium,"#FFF0DC",
-                    "ride","Pesan ojek",R.drawable.ic_service_ride_premium,"#DCEFFF");
-            serviceRow("send","Kirim barang",R.drawable.ic_service_send_premium,"#EEE7FF",
-                    "shop","Belanja",R.drawable.ic_service_shop_premium,"#DCF8E9");
+            if (driverBusy) {
+                bubble("Driver sedang sibuk. Ojek dan Belanja bisa masuk antrean setelah driver menyetujui permintaan dan kamu memesan.",false);
+                serviceRow("ride","Pesan ojek",R.drawable.ic_service_ride_premium,"#DCEFFF",
+                        "shop","Belanja",R.drawable.ic_service_shop_premium,"#DCF8E9");
+            } else {
+                serviceRow("food","Pesan makan",R.drawable.ic_service_food_premium,"#FFF0DC",
+                        "ride","Pesan ojek",R.drawable.ic_service_ride_premium,"#DCEFFF");
+                serviceRow("send","Kirim barang",R.drawable.ic_service_send_premium,"#EEE7FF",
+                        "shop","Belanja",R.drawable.ic_service_shop_premium,"#DCF8E9");
+            }
             return;
         }
         bubble(question(kind),true);
@@ -765,6 +773,11 @@ public final class TivaSimpelActivity extends CustomerAdaptiveActivity {
 
     private void submit() {
         if (delivery==null || loading || !contact.isEmpty()) return;
+        if (driverBusy && ("food".equals(kind) || "send".equals(kind))) {
+            problem="Pilih driver yang siap menerima untuk layanan ini.";
+            render();
+            return;
+        }
         if ("food".equals(kind) && (foodQuote==null || android.os.SystemClock.elapsedRealtime()-quotedAt>120000L)) {
             quoteFood();
             return;
@@ -780,7 +793,7 @@ public final class TivaSimpelActivity extends CustomerAdaptiveActivity {
                     .put("food_items",foodCart);
             else draft.put("pickup",pickup).put("detail",detail);
             JSONObject data=TransSendContactClient.action("invite","").put("service","trans_simpel")
-                    .put("driver_id",driver).put("lat",lat).put("lng",lng).put("tiva",draft);
+                    .put("driver_id",driver).put("lat",lat).put("lng",lng).put("tiva",draft).put("queue_capable",true);
             return TransivaHttpRepository.postJsonIdempotent(this,ApiConfig.server("transsend_contact.php"),data,8000,key);
         },this::acceptResponse,true);
     }

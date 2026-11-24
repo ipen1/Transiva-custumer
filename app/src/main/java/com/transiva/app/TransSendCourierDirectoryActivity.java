@@ -276,7 +276,7 @@ public final class TransSendCourierDirectoryActivity extends CustomerAdaptiveAct
         if (!append) status.setText("Memuat driver di regional…");
         network.execute(() -> {
             try {
-                JSONObject point = new JSONObject().put("service","trans_simpel")
+                JSONObject point = new JSONObject().put("service","trans_simpel").put("queue_capable",true)
                         .put("lat", location.getLatitude()).put("lng", location.getLongitude());
                 if (cursor != null) point.put("after_band",cursor.getInt("after_band"))
                         .put("after_id",cursor.getInt("after_id"));
@@ -316,6 +316,8 @@ public final class TransSendCourierDirectoryActivity extends CustomerAdaptiveAct
 
     private void addCourier(JSONObject courier) {
         String name = courier.optString("name", "Kurir Transiva");
+        String state = courier.optString("driver_state","idle");
+        boolean idle="idle".equals(state), busy="busy".equals(state);
         int distance = courier.optInt("distance_band_km");
         double rating = courier.optDouble("rating");
         String ratingText = "Belum ada rating";
@@ -330,7 +332,9 @@ public final class TransSendCourierDirectoryActivity extends CustomerAdaptiveAct
         LinearLayout row = new LinearLayout(this);
         row.setGravity(Gravity.CENTER_VERTICAL);
         row.setPadding(dp(12), dp(12), dp(12), dp(12));
-        row.setBackground(CustomerUiPrimitives.roundStroke(this, "#FFFFFF", "#D4E6FA", dp(16), 1));
+        row.setBackground(CustomerUiPrimitives.roundStroke(this,
+                idle?"#ECFAF2":busy?"#FFF4E0":"#F1F5F9",
+                idle?"#B6E5C8":busy?"#F2D199":"#D4E0EB", dp(16), 1));
 
         FrameLayout avatar = new FrameLayout(this);
         avatar.setBackground(CustomerUiPrimitives.round("#EAF4FF", dp(24)));
@@ -351,6 +355,8 @@ public final class TransSendCourierDirectoryActivity extends CustomerAdaptiveAct
         details.setOrientation(LinearLayout.VERTICAL);
         details.setPaddingRelative(dp(12), 0, 0, 0);
         details.addView(label(name, 16, "#103769", true));
+        details.addView(label(idle?"Siap menerima":busy?"Sibuk · Bisa antre":"Tidak tersedia",
+                13,idle?"#126844":busy?"#815100":"#475569",true));
         details.addView(label(distanceText + "  ·  " + ratingText, 14, "#315678", false));
         long lastOrder = courier.optLong("last_order_epoch");
         CharSequence ago = lastOrder > 0 ? DateUtils.getRelativeTimeSpanString(lastOrder * 1000L)
@@ -358,7 +364,7 @@ public final class TransSendCourierDirectoryActivity extends CustomerAdaptiveAct
         details.addView(label("Terakhir menerima: " + ago, 12, "#315678", false));
         Button contact = new Button(this);
         contact.setAllCaps(false);
-        contact.setText("Pilih Driver");
+        contact.setText(busy?"Antre Driver":"Pilih Driver");
         contact.setTextColor(Color.WHITE);
         contact.setMinHeight(dp(46));
         contact.setPadding(dp(14), dp(8), dp(14), dp(8));
@@ -366,7 +372,7 @@ public final class TransSendCourierDirectoryActivity extends CustomerAdaptiveAct
         contact.setOnClickListener(v -> selectDriver(courier));
         LinearLayout.LayoutParams actionSpace = new LinearLayout.LayoutParams(-2, -2);
         actionSpace.topMargin = dp(6);
-        details.addView(contact, actionSpace);
+        if (idle || busy) details.addView(contact, actionSpace);
         row.addView(details, new LinearLayout.LayoutParams(0, -2, 1));
 
         LinearLayout.LayoutParams spacing = new LinearLayout.LayoutParams(-1, -2);
@@ -379,6 +385,7 @@ public final class TransSendCourierDirectoryActivity extends CustomerAdaptiveAct
         startActivityForResult(new Intent(this, TivaSimpelActivity.class)
                 .putExtra("driver_id", courier.optInt("id"))
                 .putExtra("driver_name", courier.optString("name"))
+                .putExtra("driver_busy","busy".equals(courier.optString("driver_state")))
                 .putExtra("lat", directoryLocation.getLatitude())
                 .putExtra("lng", directoryLocation.getLongitude())
                 .putExtra(TivaSimpelActivity.EXTRA_DRAFT,tivaDraft),TIVA_REQUEST);
@@ -499,7 +506,9 @@ public final class TransSendCourierDirectoryActivity extends CustomerAdaptiveAct
             JSONObject entry=contacts.optJSONObject(i);
             if (entry==null) continue;
             boolean accepted="accepted".equals(entry.optString("state"));
-            LinearLayout row=activityCard(entry.optString("peer_name","Driver"),accepted?"Chat siap dibuka":"Menunggu jawaban driver");
+            String state=entry.optBoolean("waiting_driver")?"Menunggu driver menyelesaikan pesanan aktif"
+                    :accepted?"Chat siap dibuka":"Menunggu jawaban driver";
+            LinearLayout row=activityCard(entry.optString("peer_name","Driver"),state);
             if (accepted) addActivityAction(row,"Buka chat",false,()->TransSendContactClient.openChat(this,entry));
             addActivityAction(row,"Batalkan",true,()->new TransivaAlertDialogBuilder(this)
                     .setTitle("Batalkan permintaan?")

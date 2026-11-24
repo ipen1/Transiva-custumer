@@ -193,21 +193,7 @@ public class CustomerOrderDetailActivity extends CustomerAdaptiveActivity {
         routePanel.addView(divider());
         routePanel.addView(infoRow("Pembayaran", paymentLabel(order.optString("payment_method")), "💳"));
 
-        String deliveryOtp = "simpel".equals(CustomerHistoryPolicy.serviceKey(order))
-                ? "" : order.optString("delivery_otp", "").trim();
-        if (isPickupOrder() && !isFinishedStatus(statusRaw) && !deliveryOtp.isEmpty()) {
-            routePanel.addView(divider());
-            routePanel.addView(infoRow("Kode OTP TransSend", deliveryOtp, "🔐"));
 
-            TextView otpHint = text(
-                    "Berikan kode OTP kepada driver hanya setelah paket benar-benar Anda terima.",
-                    12,
-                    Color.parseColor("#52667D"),
-                    false
-            );
-            otpHint.setPadding(dp(14), dp(10), dp(14), 0);
-            routePanel.addView(otpHint);
-        }
         route.addView(routePanel);
 
         LinearLayout totalBox = new LinearLayout(this);

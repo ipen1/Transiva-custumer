@@ -55,6 +55,12 @@ class TransPickupActivityScreenCore extends CustomerAdaptiveFragmentActivity {
     protected LinearLayout bottomSheet;
     private ScrollView packageScroll;
     private LinearLayout checkoutFooter;
+    private static final int ROUTE_POINT_REQUEST=684;
+    private org.json.JSONArray waypoints=new org.json.JSONArray();
+    private String editingPoint="";
+    private int editingStop=-1;
+    private Button stopMapBtn;
+    private int maxStops=2;
     private Button detailsButton;
     private boolean detailsOpen;
     private int locationGeneration;
@@ -83,7 +89,6 @@ class TransPickupActivityScreenCore extends CustomerAdaptiveFragmentActivity {
     protected double deliveryFee = 0, distanceKm = 0;
     private final CustomerFareQuoteGate pickupFareGate=new CustomerFareQuoteGate();
     private boolean pickupScreenClosed;
-    protected String otpCode = "";
     private boolean submittingOrder = false;
     private boolean recoveryScreen;
     private boolean recoveryBusy;
@@ -206,6 +211,7 @@ class TransPickupActivityScreenCore extends CustomerAdaptiveFragmentActivity {
                 renderStage();
                 if (validCoordinate(pickupLat, pickupLng)) mapView.setPickup(pickupLat, pickupLng, pickupAddress);
                 if (validCoordinate(deliveryLat, deliveryLng)) mapView.setDelivery(deliveryLat, deliveryLng, deliveryAddress);
+                mapView.setWaypoints(waypoints);
                 if (isCheckout()) {
                     fitCheckout();
                     drawPickupRoute();
@@ -255,8 +261,96 @@ class TransPickupActivityScreenCore extends CustomerAdaptiveFragmentActivity {
             button.setPadding(dp(8), dp(4), dp(8), dp(4));
         }
         addChoice(pointRow, pickupMapBtn, deliveryMapBtn);
-        pickupMapBtn.setOnClickListener(v -> selectMapMode("pickup"));
-        deliveryMapBtn.setOnClickListener(v -> selectMapMode("delivery"));
+        pickupMapBtn.setOnClickListener(v -> openRoutePoint("pickup",-1));
+        deliveryMapBtn.setOnClickListener(v -> openRoutePoint("delivery",-1));
+        stopMapBtn=outlineButton("+ Singgah");
+        stopMapBtn.setOnClickListener(v -> showStops());
+        header.addView(stopMapBtn,new LinearLayout.LayoutParams(-1,dp(44)));
+        TransivaNetworkExecutor.execute(() -> {
+            try {
+                JSONObject response=TransivaHttpRepository.postJson(this,ApiConfig.server("ride_stop_config.php"),
+                        new JSONObject().put("service_type","Transbike"),10000);
+                JSONObject config=response.optJSONObject("stop_pricing");
+                if (config==null) config=response.optJSONObject("data");
+                int limit=(config==null?response:config).optInt("max_stops",2);
+                runOnUiThread(()->{if (!pickupScreenClosed) maxStops=Math.max(0,Math.min(2,limit));});
+            } catch (Exception ignored) { }
+        });
+    }
+
+    private void showStops() {
+        if (submittingOrder) return;
+        if (!validCoordinate(pickupLat,pickupLng)) {
+            showInfo("Atur titik jemput", "Tetapkan titik jemput sebelum menambahkan persinggahan.");
+            return;
+        }
+        java.util.ArrayList<String> choices=new java.util.ArrayList<>();
+        for (int index=0;index<waypoints.length();index++) {
+            JSONObject point=waypoints.optJSONObject(index);
+            choices.add("Singgah "+(index+1)+" · "+point.optString("address"));
+        }
+        if (waypoints.length()<maxStops) choices.add("+ Tambah persinggahan");
+        if (choices.isEmpty()) {
+            showInfo("Persinggahan", "Persinggahan belum tersedia untuk layanan ini.");
+            return;
+        }
+        new TransivaAlertDialogBuilder(this).setTitle("Titik singgah")
+                .setItems(choices.toArray(new String[0]), (dialog,index)->{
+                    if(index==waypoints.length()) openRoutePoint("stop",index);
+                    else new TransivaAlertDialogBuilder(this).setTitle("Singgah "+(index+1))
+                            .setItems(new String[]{"Ubah lokasi","Hapus titik"}, (choice,action)->{
+                                if(action==0) openRoutePoint("stop",index);
+                                else { waypoints.remove(index); routePointsChanged(); }
+                            }).show();
+                }).show();
+    }
+
+    private void openRoutePoint(String kind,int stopIndex) {
+        if (submittingOrder) return;
+        if ("delivery".equals(kind) && !validCoordinate(pickupLat,pickupLng)) {
+            showInfo("Atur titik jemput", "Tetapkan titik jemput sebelum memilih tujuan.");
+            return;
+        }
+        editingPoint=kind;
+        editingStop=stopIndex;
+        Intent picker=new Intent(this,TransSendContactPointActivity.class).putExtra("point_kind",kind)
+                .putExtra("allow_search",true);
+        JSONObject current=stopIndex<0?null:waypoints.optJSONObject(stopIndex);
+        double lat=current!=null?current.optDouble("latitude"):"delivery".equals(kind)?deliveryLat:pickupLat;
+        double lng=current!=null?current.optDouble("longitude"):"delivery".equals(kind)?deliveryLng:pickupLng;
+        if (!validCoordinate(lat,lng) && validCoordinate(pickupLat,pickupLng)) { lat=pickupLat; lng=pickupLng; }
+        if (validCoordinate(lat,lng)) picker.putExtra("lat",lat).putExtra("lng",lng);
+        startActivityForResult(picker,ROUTE_POINT_REQUEST);
+    }
+
+    @Override protected void onActivityResult(int request,int result,Intent data) {
+        super.onActivityResult(request,result,data);
+        if(request!=ROUTE_POINT_REQUEST || result!=RESULT_OK || data==null || editingPoint.isEmpty()) return;
+        double lat=data.getDoubleExtra("lat",0),lng=data.getDoubleExtra("lng",0);
+        if(!validCoordinate(lat,lng)) return;
+        String pointAddress=firstNonEmpty(data.getStringExtra("address"),formatCoordinate(lat,lng));
+        if ("pickup".equals(editingPoint)) {
+            pickupLat=lat; pickupLng=lng; pickupAddress=pointAddress;
+            if(mapReady) mapView.setPickup(lat,lng,pointAddress);
+        } else if ("delivery".equals(editingPoint)) {
+            deliveryLat=lat; deliveryLng=lng; deliveryAddress=pointAddress;
+            if(mapReady) mapView.setDelivery(lat,lng,pointAddress);
+        } else if (editingStop>=0) {
+            try {
+                waypoints.put(editingStop,new JSONObject().put("latitude",lat).put("longitude",lng).put("address",pointAddress));
+            } catch (org.json.JSONException invalid) { return; }
+        }
+        editingPoint="";
+        routePointsChanged();
+        if (!hasRoutePoints() && "pickup".equals(mapSelectionMode)) selectMapMode("delivery");
+    }
+
+    private void routePointsChanged() {
+        pickupFareGate.invalidate();
+        stopMapBtn.setText(waypoints.length()==0?"+ Singgah":waypoints.length()+" titik singgah  ›");
+        if (mapReady) mapView.setWaypoints(waypoints);
+        if (hasRoutePoints()) openCheckout();
+        else renderStage();
     }
 
     private void buildBottomSheet(LinearLayout parent) {
@@ -290,6 +384,7 @@ class TransPickupActivityScreenCore extends CustomerAdaptiveFragmentActivity {
 
     private void renderStage() {
         boolean checkout = isCheckout();
+        stopMapBtn.setText(waypoints.length()==0?"+ Singgah":waypoints.length()+" titik singgah  ›");
         boolean pickup = "pickup".equals(mapSelectionMode);
         mapModeText.setText(checkout ? "03 · Checkout" : pickup ? "01 · Jemput" : "02 · Tujuan");
         setPointLabel(pickupMapBtn, "Jemput", pickupAddress, !checkout && pickup);
@@ -376,7 +471,9 @@ class TransPickupActivityScreenCore extends CustomerAdaptiveFragmentActivity {
     private void fitCheckout() {
         if (!mapReady || mapView == null || !isCheckout()) return;
         mapView.post(() -> {
-            if (!pickupScreenClosed && mapView != null && isCheckout()) mapView.fitPickupDeliveryInViewport();
+            if (!pickupScreenClosed && mapView != null && isCheckout()) {
+                if (waypoints.length()>0) mapView.fitAll(); else mapView.fitPickupDeliveryInViewport();
+            }
         });
     }
 
@@ -417,14 +514,25 @@ class TransPickupActivityScreenCore extends CustomerAdaptiveFragmentActivity {
 
     protected void drawPickupRoute() {
         if (!mapReady || !hasRoutePoints()) return;
-        final double fromLat = pickupLat, fromLng = pickupLng, toLat = deliveryLat, toLng = deliveryLng;
+        final double fromLat=pickupLat,fromLng=pickupLng,toLat=deliveryLat,toLng=deliveryLng;
+        final String stopsJson=waypoints.toString();
         networkScope.execute(() -> {
             try {
-                StableRouteEngine.Result route = StableRouteEngine.fetch(fromLat, fromLng, toLat, toLng);
+                org.json.JSONArray stops=new org.json.JSONArray(stopsJson);
+                org.json.JSONArray geometry=new org.json.JSONArray();
+                double startLat=fromLat,startLng=fromLng;
+                for (int index=0;index<=stops.length();index++) {
+                    JSONObject stop=stops.optJSONObject(index);
+                    double endLat=stop==null?toLat:stop.getDouble("latitude");
+                    double endLng=stop==null?toLng:stop.getDouble("longitude");
+                    org.json.JSONArray leg=StableRouteEngine.fetch(startLat,startLng,endLat,endLng).latLngPoints;
+                    for (int point=geometry.length()==0?0:1; point<leg.length();point++) geometry.put(leg.get(point));
+                    startLat=endLat;startLng=endLng;
+                }
                 networkScope.post(mainHandler, () -> {
-                    if (mapView != null && isCheckout() && fromLat == pickupLat && fromLng == pickupLng
-                            && toLat == deliveryLat && toLng == deliveryLng) {
-                        mapView.drawOsrmRoute(route.latLngPoints, "driver_accepted");
+                    if (mapView!=null && isCheckout() && fromLat==pickupLat && fromLng==pickupLng
+                            && toLat==deliveryLat && toLng==deliveryLng && stopsJson.equals(waypoints.toString())) {
+                        mapView.drawOsrmRoute(geometry,"driver_accepted");
                     }
                 });
             } catch (Exception ignored) { }
@@ -642,7 +750,7 @@ class TransPickupActivityScreenCore extends CustomerAdaptiveFragmentActivity {
 
     private String currentPickupQuoteKey() {
         return CustomerFareQuoteGate.key(pickupLat,pickupLng,deliveryLat,deliveryLng,
-                vehicleType,packageSize,fragile?"1":"0",paymentMethod,String.valueOf(userId));
+                vehicleType,packageSize,fragile?"1":"0",paymentMethod,String.valueOf(userId),waypoints.toString());
     }
     private boolean isPickupQuoteCurrent(long ticket,String key) {
         return !pickupScreenClosed && !submittingOrder && isCheckout() && pickupFareGate.isCurrent(ticket)
@@ -660,6 +768,7 @@ class TransPickupActivityScreenCore extends CustomerAdaptiveFragmentActivity {
         final double pLat=pickupLat,pLng=pickupLng,dLat=deliveryLat,dLng=deliveryLng;
         final String vehicle=vehicleType,size=packageSize;
         final boolean delicate=fragile;
+        final String stops=waypoints.toString();
         setLoading(true);
         if(priceText!=null)priceText.setText("Menghitung...");
         networkScope.execute(() -> {
@@ -668,7 +777,7 @@ class TransPickupActivityScreenCore extends CustomerAdaptiveFragmentActivity {
                         "?pickup_lat="+Uri.encode(String.valueOf(pLat))+"&pickup_lng="+Uri.encode(String.valueOf(pLng))+
                         "&delivery_lat="+Uri.encode(String.valueOf(dLat))+"&delivery_lng="+Uri.encode(String.valueOf(dLng))+
                         "&vehicle_type="+Uri.encode(vehicle)+"&package_size="+Uri.encode(size)+
-                        "&fragile="+(delicate?"1":"0")+"&_="+System.currentTimeMillis();
+                        "&fragile="+(delicate?"1":"0")+"&waypoints="+Uri.encode(stops)+"&_="+System.currentTimeMillis();
                 JSONObject res=getJson(url);
                 if(!res.optBoolean("success",false))throw new Exception(firstNonEmpty(res.optString("message"),"Gagal menghitung ongkir"));
                 final double quotedFee=res.optDouble("price",0),quotedDistance=res.optDouble("distance_km",0);
@@ -727,6 +836,7 @@ class TransPickupActivityScreenCore extends CustomerAdaptiveFragmentActivity {
         String receiverPhone = receiverPhoneInput.getText().toString().trim();
         if (deliveryFee <= 0 || !pickupFareGate.hasQuote(currentPickupQuoteKey())) { if(!pickupFareGate.isPending(currentPickupQuoteKey()))calculateOngkir(); return; }
         final double submittedPickupLat=pickupLat,submittedPickupLng=pickupLng,submittedDeliveryLat=deliveryLat,submittedDeliveryLng=deliveryLng;
+        final String submittedStops=waypoints.toString();
         final String submittedPickupAddress=pickupAddress,submittedDeliveryAddress=deliveryAddress;
         final String submittedSize=packageSize,submittedVehicle=vehicleType,submittedPayment=paymentMethod,submittedCategory=itemCategory;
         final boolean submittedFragile=fragile;
@@ -748,6 +858,7 @@ class TransPickupActivityScreenCore extends CustomerAdaptiveFragmentActivity {
                 p.put("package_size", submittedSize); p.put("vehicle_type", submittedVehicle); p.put("fragile", submittedFragile ? 1 : 0);
                 p.put("receiver_name", receiverName); p.put("receiver_phone", receiverPhone); p.put("note", submittedNote);
                 p.put("payment_method", submittedPayment);
+                p.put("waypoints", new org.json.JSONArray(submittedStops));
                 if ("balance".equals(submittedPayment) || !courierContactId.isEmpty()) p.put("approved_price", approvedPrice);
                 if (!courierContactId.isEmpty()) p.put("courier_contact_id", courierContactId);
                 JSONObject res = ReliableOrderClient.create(this, BASE_URL + "server/create_pickup_order.php", p, TIMEOUT_MS);
@@ -871,27 +982,18 @@ class TransPickupActivityScreenCore extends CustomerAdaptiveFragmentActivity {
         submittingOrder = true;
         setLoading(false);
         if (!recoveryScreen) updateCheckoutButton();
-        otpCode = response.optString("otp", "").trim();
-        String otpMessage = otpCode.isEmpty() ? "OTP dapat dilihat pada rincian pesanan di Aktivitas."
-                : "OTP penerima: " + otpCode + "\nBerikan OTP hanya setelah paket diterima.";
         recoveryReceipt = new TransivaAlertDialogBuilder(this)
                 .setTitle("Paket siap dikirim")
                 .setCancelable(false)
                 .setMessage(("driver_accepted".equals(response.optString("status"))
                         ? "Pesanan diterima kurir pilihan Anda." : "Pengiriman berhasil dibuat.")
-                        + "\n\nOrder ID: " + completedOrderId + "\n\n" + otpMessage)
+                        + "\n\nOrder ID: " + completedOrderId)
                 .setPositiveButton("Lihat Aktivitas", (dialog, which) -> {
                     startActivity(new Intent(this, CustomerHistoryActivity.class).putExtra("order_id", completedOrderId));
                     ReliableOrderClient.acknowledgePickup(this, completedOrderId);
                     finish();
                 })
                 .create();
-        if (!otpCode.isEmpty()) recoveryReceipt.setButton(android.app.AlertDialog.BUTTON_NEUTRAL, "Salin OTP",
-                (android.content.DialogInterface.OnClickListener) null);
-        recoveryReceipt.setOnShowListener(dialog -> {
-            Button copy = recoveryReceipt.getButton(android.app.AlertDialog.BUTTON_NEUTRAL);
-            if (copy != null) copy.setOnClickListener(v -> copyOtp());
-        });
         recoveryReceipt.show();
     }
 
@@ -903,6 +1005,10 @@ class TransPickupActivityScreenCore extends CustomerAdaptiveFragmentActivity {
         if (state == null) return;
         String draftOwner = state.getString("sendRecoveryOwner", "");
         if (!draftOwner.isEmpty() && !Integer.toString(userId).equals(draftOwner)) return;
+        editingPoint=state.getString("editingPoint","");
+        editingStop=state.getInt("editingStop",-1);
+        try { waypoints=new org.json.JSONArray(state.getString("sendStops","[]")); }
+        catch(org.json.JSONException ignored) { }
         pickupLat = state.getDouble("sendPickupLat");
         pickupLng = state.getDouble("sendPickupLng");
         deliveryLat = state.getDouble("sendDeliveryLat");
@@ -926,6 +1032,9 @@ class TransPickupActivityScreenCore extends CustomerAdaptiveFragmentActivity {
         out.putString("sendRecoveryOwner", Integer.toString(userId));
         out.putString("sendCompletedOrder", completedOrderId);
         if (recoveryScreen) return;
+        out.putString("editingPoint",editingPoint);
+        out.putInt("editingStop",editingStop);
+        out.putString("sendStops",waypoints.toString());
         out.putDouble("sendPickupLat", pickupLat);
         out.putDouble("sendPickupLng", pickupLng);
         out.putDouble("sendDeliveryLat", deliveryLat);
@@ -944,15 +1053,7 @@ class TransPickupActivityScreenCore extends CustomerAdaptiveFragmentActivity {
         out.putBoolean("sendFragile", fragile);
     }
 
-    private void copyOtp() {
-        if (otpCode == null || otpCode.trim().isEmpty()) {
-            showInfo("OTP", "OTP tersedia setelah order berhasil dibuat.");
-            return;
-        }
-        ClipboardManager cm = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
-        if (cm != null) cm.setPrimaryClip(ClipData.newPlainText("OTP TransSend", otpCode));
-        android.widget.Toast.makeText(this, "OTP berhasil disalin", android.widget.Toast.LENGTH_SHORT).show();
-    }
+
 
     private double parseMoney(String s) { try { return Double.parseDouble(firstNonEmpty(s, "0").replaceAll("[^0-9]", "")); } catch (Exception e) { return 0; } }
     private JSONObject getJson(String urlText) throws Exception {

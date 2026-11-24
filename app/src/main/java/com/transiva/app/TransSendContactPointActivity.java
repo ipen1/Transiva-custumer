@@ -134,6 +134,11 @@ public final class TransSendContactPointActivity extends CustomerAdaptiveActivit
         String title="delivery".equals(kind)?"Tentukan alamat pengantaran":"stop".equals(kind)?"Atur titik singgah":"Atur titik jemput";
         header.addView(text(title,19,Color.WHITE,true),new LinearLayout.LayoutParams(0,-2,1));
         page.addView(header);
+        if (getIntent().getBooleanExtra("allow_search",false)) {
+            Button search=button("Cari alamat atau tempel link Google Maps",0xFF124480);
+            search.setOnClickListener(v->searchPoint());
+            page.addView(search,new LinearLayout.LayoutParams(-1,dp(46)));
+        }
 
         FrameLayout viewport=new FrameLayout(this);
         mapView=new MapView(this);
@@ -252,6 +257,54 @@ public final class TransSendContactPointActivity extends CustomerAdaptiveActivit
             }
         }
         main.postDelayed(routePoll,4500L);
+    }
+
+    private void searchPoint() {
+        if (googleMap==null || confirming) return;
+        android.widget.EditText field=new android.widget.EditText(this);
+        field.setSingleLine(true);
+        field.setHint("Alamat, koordinat, atau link Maps");
+        new TransivaAlertDialogBuilder(this).setTitle("Cari titik").setView(field)
+                .setNegativeButton("Batal",null).setPositiveButton("Cari",(dialog,which)->{
+                    String query=field.getText().toString().trim();
+                    if (query.isEmpty()) return;
+                    LatLng center=googleMap.getCameraPosition().target;
+                    long selection=selectionVersion;
+                    address.setText("Mencari titik…");
+                    geocoder.execute(()->{
+                        double[] coordinates=null;
+                        try {
+                            String link=TransportMapsInput.findLink(query);
+                            if (!link.isEmpty()) {
+                                if (link.contains("maps.app.goo.gl/") || link.contains("goo.gl/maps")) {
+                                    JSONObject result=TransivaHttpRepository.postJson(this,ApiConfig.server("resolve_google_maps.php"),
+                                            new JSONObject().put("url",link),10000);
+                                    link=result.optString("url",link);
+                                }
+                                coordinates=TransportMapsInput.coordinates(link);
+                            } else {
+                                coordinates=TransportMapsInput.coordinates(query);
+                                if(coordinates==null) {
+                                    Geocoder search=new Geocoder(this,new Locale("id","ID"));
+                                    List<Address> results=search.getFromLocationName(query,1,Math.max(-90,center.latitude-.7),
+                                            Math.max(-180,center.longitude-.7),Math.min(90,center.latitude+.7),Math.min(180,center.longitude+.7));
+                                    if(results==null || results.isEmpty()) results=search.getFromLocationName(query,1);
+                                    if(results!=null && !results.isEmpty()) coordinates=new double[]{results.get(0).getLatitude(),results.get(0).getLongitude()};
+                                }
+                            }
+                        } catch (Exception ignored) { }
+                        double[] point=coordinates;
+                        main.post(()->{
+                            if (isFinishing() || isDestroyed() || confirming || selection!=selectionVersion || googleMap==null) return;
+                            if (point==null || !valid(point[0],point[1])) {
+                                updateSelection(googleMap.getCameraPosition().target);
+                                Toast.makeText(this,"Titik belum ditemukan. Coba alamat atau link lain.",Toast.LENGTH_LONG).show();
+                                return;
+                            }
+                            googleMap.animateCamera(CameraUpdateFactory.newLatLngZoom(new LatLng(point[0],point[1]),ZOOM));
+                        });
+                    });
+                }).show();
     }
 
     private boolean pointChanged() {

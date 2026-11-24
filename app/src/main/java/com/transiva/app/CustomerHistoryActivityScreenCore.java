@@ -1230,49 +1230,7 @@ class CustomerHistoryActivityScreenCore extends CustomerAdaptiveActivity {
         LinearLayout.LayoutParams badgeLp = new LinearLayout.LayoutParams(-1, -2);
         badgeLp.topMargin = dp(10); card.addView(badge, badgeLp);
 
-        // Khusus TransSend: OTP ditampilkan kepada customer, bukan tombol konfirmasi terima.
-        String deliveryOtp = "simpel".equals(CustomerHistoryPolicy.serviceKey(order))
-                ? "" : order.optString("delivery_otp", "").trim();
-        if (isPickupOrder(order) && isActiveStatus(status) && !deliveryOtp.isEmpty()) {
-            LinearLayout otpBox = new LinearLayout(this);
-            otpBox.setOrientation(LinearLayout.VERTICAL);
-            otpBox.setPadding(dp(13), dp(10), dp(13), dp(10));
-            otpBox.setBackground(roundStroke("#EFF8FF", "#79BFFF", 14, 1));
 
-            otpBox.addView(text("Kode OTP TransSend", 10, "#52708F", true));
-
-            LinearLayout otpRow = new LinearLayout(this);
-            otpRow.setGravity(Gravity.CENTER_VERTICAL);
-
-            TextView otpValue = text(deliveryOtp, 22, "#0B5EB7", true);
-            otpValue.setLetterSpacing(0.12f);
-            otpValue.setTextIsSelectable(true);
-            otpRow.addView(otpValue, new LinearLayout.LayoutParams(0, -2, 1));
-
-            Button copyOtp = outlineButton("Salin");
-            copyOtp.setOnClickListener(view -> copyOtpToClipboard(deliveryOtp));
-            LinearLayout.LayoutParams copyLp = new LinearLayout.LayoutParams(dp(82), dp(38));
-            copyLp.setMargins(dp(8), 0, 0, 0);
-            otpRow.addView(copyOtp, copyLp);
-
-            LinearLayout.LayoutParams otpRowLp = new LinearLayout.LayoutParams(-1, -2);
-            otpRowLp.setMargins(0, dp(3), 0, 0);
-            otpBox.addView(otpRow, otpRowLp);
-
-            TextView otpHint = text(
-                    "Berikan kode ini kepada driver setelah paket benar-benar Anda terima.",
-                    10,
-                    "#64748B",
-                    false
-            );
-            LinearLayout.LayoutParams hintLp = new LinearLayout.LayoutParams(-1, -2);
-            hintLp.setMargins(0, dp(4), 0, 0);
-            otpBox.addView(otpHint, hintLp);
-
-            LinearLayout.LayoutParams otpLp = new LinearLayout.LayoutParams(-1, -2);
-            otpLp.setMargins(0, dp(10), 0, 0);
-            card.addView(otpBox, otpLp);
-        }
 
         String mainLine = orderMainLine(order);
 
@@ -2060,12 +2018,7 @@ class CustomerHistoryActivityScreenCore extends CustomerAdaptiveActivity {
     }
 
     protected void confirmReceivedFromActivity(JSONObject order) {
-        new TransivaAlertDialogBuilder(this)
-                .setTitle("Terima pesanan ini?")
-                .setMessage("Pastikan pesanan sudah Anda terima dengan baik sebelum melakukan konfirmasi.")
-                .setNegativeButton("Batal", null)
-                .setPositiveButton("Ya, sudah diterima", (dialog, which) -> sendReceivedConfirmation(order))
-                .show();
+        CustomerOrderChangeState.confirmReceipt(this, () -> sendReceivedConfirmation(order));
     }
 
     protected void sendReceivedConfirmation(JSONObject order) {
@@ -2078,19 +2031,7 @@ class CustomerHistoryActivityScreenCore extends CustomerAdaptiveActivity {
 
         featureRuntime.execute(() -> {
             try {
-                JSONObject payload = new JSONObject();
-                payload.put(
-                        "order_id",
-                        first(order.optString("order_id"), order.optString("id"))
-                );
-                payload.put(
-                        "source",
-                        order.optString("source", "").contains("pickup")
-                                ? "pickup_orders"
-                                : "orders"
-                );
-                payload.put("action", "confirm_received");
-
+                JSONObject payload = CustomerOrderChangeState.receiptPayload(order);
                 JSONObject response = postJson(ACTION_URL, payload);
                 boolean success = response.optBoolean("success", false);
                 String message = first(
@@ -2854,7 +2795,7 @@ class CustomerHistoryActivityScreenCore extends CustomerAdaptiveActivity {
         String type = serviceType(order).toLowerCase(Locale.ROOT).trim();
 
         if (name.contains("transsend") || type.contains("pickup") || type.contains("send")) {
-            return false;
+            return true;
         }
 
         return name.contains("transride")
@@ -2866,20 +2807,7 @@ class CustomerHistoryActivityScreenCore extends CustomerAdaptiveActivity {
                 || type.contains("food");
     }
 
-    protected void copyOtpToClipboard(String otp) {
-        try {
-            ClipboardManager clipboard = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
-            if (clipboard == null) {
-                toast("Tidak dapat mengakses clipboard.");
-                return;
-            }
 
-            clipboard.setPrimaryClip(ClipData.newPlainText("OTP TransSend", otp));
-            toast("Kode OTP berhasil disalin.");
-        } catch (Exception ignored) {
-            toast("Gagal menyalin kode OTP.");
-        }
-    }
 
     protected String trackButtonLabel(
             JSONObject order

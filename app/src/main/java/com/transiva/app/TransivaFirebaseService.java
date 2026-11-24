@@ -549,6 +549,14 @@ public class TransivaFirebaseService extends FirebaseMessagingService {
             Intent intent = new Intent(this, CustomerTripActivity.class);
             intent.putExtra("order_id", orderId);
             intent.putExtra("from_fcm", true);
+            if (data!=null) {
+                String orderSource=first(data.get("source"),"");
+                if (!orderSource.isEmpty()) {
+                    intent.putExtra("source",orderSource);
+                    intent.putExtra("order_source",orderSource);
+                }
+                intent.putExtra("status",first(data.get("status"),""));
+            }
             return intent;
         }
 

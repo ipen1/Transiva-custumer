@@ -732,10 +732,14 @@ class CustomerTripActivityScreenCore extends CustomerAdaptiveActivity {
         if (mapView == null || !mapReady) return;
 
         lastDataAlreadyPushed = true;
-        String previewKey=pendingDestinationProposal==null?"":String.valueOf(pendingDestinationProposal.optLong("id"));
+        String previewKey=pendingLocationProposal!=null?"location:"+pendingLocationProposal.optLong("id"):
+                pendingDestinationProposal==null?"":"extension:"+pendingDestinationProposal.optLong("id");
         if(!previewKey.equals(proposalMapKey)){
             mapView.clearPlaces();proposalMapKey=previewKey;
-            if(pendingDestinationProposal!=null)mapView.addPlace(pendingDestinationProposal.optDouble("to_lat"),pendingDestinationProposal.optDouble("to_lng"),"Usulan tujuan tambahan","Menunggu persetujuan Anda",pendingDestinationProposal.optString("address"));
+            if (pendingLocationProposal!=null) mapView.addPlace(pendingLocationProposal.optDouble("latitude"),
+                    pendingLocationProposal.optDouble("longitude"),"Usulan lokasi driver",
+                    "Menunggu persetujuan Anda",pendingLocationProposal.optString("address"));
+            else if(pendingDestinationProposal!=null)mapView.addPlace(pendingDestinationProposal.optDouble("to_lat"),pendingDestinationProposal.optDouble("to_lng"),"Usulan tujuan tambahan","Menunggu persetujuan Anda",pendingDestinationProposal.optString("address"));
         }
         mapView.setWaypoints(destinationRouteStops);
 
@@ -777,12 +781,22 @@ class CustomerTripActivityScreenCore extends CustomerAdaptiveActivity {
     protected long destinationRequestId=0;
     protected double destinationRequestedPrice=0;
     protected void confirmPriceChange(){
-        final long shownId=destinationRequestId; final double shownPrice=destinationRequestedPrice;
-        new TransivaAlertDialogBuilder(this).setTitle("Setujui tujuan dan biaya?")
-            .setMessage(String.valueOf(paymentInfoText.getText())+"\n\nDengan menyetujui, tujuan tambahan dan total baru berlaku. Saldo TransPay tambahan dipotong jika menggunakan TransPay.")
-            .setNegativeButton("Batal",null).setPositiveButton("Setujui",(d,w)->sendCustomerAction("approve_price",shownId,shownPrice)).show();
+        final long shownId=destinationRequestId, shownLocation=locationRequestId; final double shownPrice=destinationRequestedPrice;
+        new TransivaAlertDialogBuilder(this).setTitle(shownLocation>0?"Apakah lokasi sudah benar?":"Setujui tujuan dan biaya?")
+            .setMessage(String.valueOf(paymentInfoText.getText())+(shownLocation>0
+                    ?"\n\nDengan menyetujui, rute dan total baru berlaku."
+                    :"\n\nDengan menyetujui, tujuan tambahan dan total baru berlaku. Saldo TransPay tambahan dipotong jika menggunakan TransPay."))
+            .setNegativeButton("Batal",null).setPositiveButton(shownLocation>0?"Ya":"Setujui",(d,w)->{
+                if (shownLocation==locationRequestId) sendCustomerAction("approve_price",shownId,shownPrice);
+                else showInfo("Usulan berubah","Tinjau usulan lokasi yang terbaru.");
+            }).show();
     }
+    private long locationRequestId;
+    private JSONObject pendingLocationProposal;
+
     protected void updatePaymentControls(JSONObject order,String status){
+        locationRequestId=CustomerOrderChangeState.locationRequest(order);
+        pendingLocationProposal=order.optJSONObject("location_proposal");
         if (waitingView != null && !trackingOnly) waitingView.bind(order.optJSONObject("smart_waiting"), status);
         JSONObject extension=order.optJSONObject("destination_extension");
         pendingDestinationProposal=extension!=null && "pending".equals(extension.optString("status"))?extension:null;
@@ -804,7 +818,8 @@ class CustomerTripActivityScreenCore extends CustomerAdaptiveActivity {
         String proposal=CustomerOrderChangeState.summary(order);
         if(!proposal.isEmpty()) line+="\n"+proposal;
         if(extensionTravelling && statusText!=null){statusText.setText("Dalam perjalanan ke tujuan tambahan");statusText.setVisibility(View.VISIBLE);}
-        if(approvePriceButton!=null)approvePriceButton.setText(destinationRequestId>0?"Setujui Tujuan & Biaya":"Setujui Harga");
+        if(rejectPriceButton!=null)rejectPriceButton.setText(locationRequestId>0?"Tidak":"Tolak");
+        if(approvePriceButton!=null)approvePriceButton.setText(locationRequestId>0?"Ya, setujui lokasi":destinationRequestId>0?"Setujui Tujuan & Biaya":"Setujui Harga");
         paymentInfoText.setText(line); paymentInfoText.setVisibility(View.VISIBLE); paymentInfoText.setBackground(round("#EFF6FF",dp(14)));
         receivedButton.setVisibility(CustomerOrderChangeState.canReceive(order) ? View.VISIBLE:View.GONE);
         View priceActions=null; android.view.ViewParent par=approvePriceButton==null?null:approvePriceButton.getParent(); if(par instanceof View) priceActions=(View)par;
@@ -812,8 +827,8 @@ class CustomerTripActivityScreenCore extends CustomerAdaptiveActivity {
     }
     protected void sendCustomerAction(String action){sendCustomerAction(action,destinationRequestId,destinationRequestedPrice);}
     protected void sendCustomerAction(String action,long requestId,double expectedPrice){
-        if(orderId.isEmpty()) return; setLoading(true); featureRuntime.execute(()->{ try{
-            JSONObject p=new JSONObject(); p.put("order_id",orderId); p.put("source",orderSource.contains("pickup")?"pickup_orders":"orders"); p.put("action",action); if(requestId>0)p.put("destination_request_id",requestId); if("approve_price".equals(action))p.put("expected_price",expectedPrice);
+        if(orderId.isEmpty()) return; final long shownLocation=locationRequestId; setLoading(true); featureRuntime.execute(()->{ try{
+            JSONObject p=new JSONObject(); p.put("order_id",orderId); p.put("source",orderSource.contains("pickup")?"pickup_orders":"orders"); p.put("action",action); if(requestId>0)p.put("destination_request_id",requestId); if(shownLocation>0&&!"confirm_received".equals(action))p.put("location_request_id",shownLocation); if("approve_price".equals(action))p.put("expected_price",expectedPrice);
             JSONObject r=postJson(CUSTOMER_ACTION_URL,p); boolean ok=r.optBoolean("success",false); String m=firstNonEmpty(r.optString("message",""),ok?"Berhasil":"Gagal");
             featureRuntime.post(mainHandler, ()->{setLoading(false); showInfo(ok?"Berhasil":"Gagal",m); fetchDriverPosition();});
         }catch(Exception e){TransivaCrashReporter.recordNetworkFailure(e,"POST",CUSTOMER_ACTION_URL);featureRuntime.post(mainHandler, ()->{setLoading(false);showInfo("Gagal",CustomerOrderChangeState.error(e));});}});
@@ -865,7 +880,7 @@ class CustomerTripActivityScreenCore extends CustomerAdaptiveActivity {
         final String status=lastStatus;
         final long generation = routeGeneration.get();
         final String targetKey = requestKey;
-        final boolean extensionRoute=destinationRouteActive;
+        final boolean extensionRoute=CustomerOrderState.targetsDelivery(lastStatus) && (destinationRouteActive || destinationRouteStops.length()>0);
         final org.json.JSONArray stops=destinationRouteStops;final double finalLat=deliveryLat,finalLng=deliveryLng;
         featureRuntime.execute(() -> {
             try{

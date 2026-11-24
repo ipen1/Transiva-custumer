@@ -1589,7 +1589,14 @@ class CustomerChatRoomActivityScreenCore extends CustomerAdaptiveActivity {
 
 
 
-    private void sendMessage() { sendChatContent(input.getText().toString().trim(), true); }
+    private void sendMessage() {
+        String draft = input.getText().toString().trim();
+        if (ChatPhoneNotice.detectsPhone(draft)) {
+            ChatPhoneNotice.confirm(this, () -> {
+                if (draft.equals(input.getText().toString().trim())) sendChatContent(draft, true);
+            });
+        } else sendChatContent(draft, true);
+    }
     protected void sendSticker(String wire) { sendChatContent(wire, false); }
     private void sendChatContent(String message, boolean clearDraft) {
         if (readOnly || sending || uploading || chatChrome.isRecording() || !chatRequests.current()

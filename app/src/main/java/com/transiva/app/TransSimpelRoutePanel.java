@@ -36,8 +36,6 @@ final class TransSimpelRoutePanel {
     private final android.widget.ScrollView routeScroll;
     private int routeHeightLimit;
     private final LinearLayout fareRow;
-    private final Button pickup;
-    private final Button delivery;
     private final Button stop;
     private final Button clearStop;
     private final Button quoteRetry;
@@ -46,7 +44,8 @@ final class TransSimpelRoutePanel {
     private JSONObject tivaBrief;
     private final Button order;
     private final Button trackOrder;
-    private final LinearLayout pointActions;
+    private final Button mapToggle;
+    private boolean mapExpanded = true;
     private TransivaGoogleMapView routeMap;
     private boolean routeMapResumed;
     private String mapOrder = "";
@@ -71,6 +70,8 @@ final class TransSimpelRoutePanel {
     private boolean readingRoute;
     private boolean available=true;
 
+    private final TextView routeTitle;
+
     TransSimpelRoutePanel(Activity activity, String id) {
         this.activity = activity;
         this.id = id;
@@ -90,41 +91,43 @@ final class TransSimpelRoutePanel {
         routeScroll.addView(view,new android.widget.ScrollView.LayoutParams(-1,-2));
         LinearLayout heading=new LinearLayout(activity);
         heading.setGravity(android.view.Gravity.CENTER_VERTICAL);
-        TextView title=new TextView(activity);
-        title.setText("Rute Trans Simpel");
+        routeTitle=new TextView(activity);
+        TextView title=routeTitle;
+        title.setText("Atur rute");
         title.setTextColor(0xFF102449);
-        title.setTextSize(16);
+        title.setTextSize(15);
+        title.setMaxLines(3);
         title.setTypeface(Typeface.DEFAULT,Typeface.BOLD);
         heading.addView(title,new LinearLayout.LayoutParams(0,-2,1));
-        pointActions = new LinearLayout(activity);
-        pickup = button("Jemput", () -> openPicker(PICKUP));
-        delivery = button("Antar", () -> openPicker(DELIVERY));
         stop = button("+ Singgah", () -> openPicker(STOP));
         clearStop = button("Hapus", this::removeStop);
-        style(pickup,"#E7F7F0","#096749");
-        style(delivery,"#EAF1FF","#164C9C");
-        style(stop,"#FFF4E1","#774508");
+        style(stop,"#F5F9FF","#075BC8");
         style(clearStop,"#F3F6FA","#41556C");
-        for (Button point : new Button[]{pickup, stop, delivery}) {
-            LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(0,dp(44),1);
-            params.setMargins(dp(2),0,dp(2),0);
-            pointActions.addView(point,params);
-        }
         briefButton=button("Tiva AI  ›",()->TivaSimpelBrief.show(activity,tivaBrief));
         style(briefButton,"#EFE8FF","#502B93");
         briefButton.setContentDescription("Buka percakapan Tiva AI");
         briefButton.setPadding(dp(10),0,dp(10),0);
         briefButton.setVisibility(View.GONE);
         heading.addView(briefButton,new LinearLayout.LayoutParams(-2,dp(48)));
+        mapToggle=button("Sembunyikan peta", () -> {
+            mapExpanded=!mapExpanded;
+            if (route!=null) render(route);
+            if (mapExpanded) refresh();
+        });
+        style(mapToggle,"#EAF1FF","#075BC8");
+        mapToggle.setVisibility(View.GONE);
+        heading.addView(mapToggle,new LinearLayout.LayoutParams(-2,dp(44)));
         view.addView(heading,new LinearLayout.LayoutParams(-1,-2));
-        view.addView(pointActions);
+
         pickupAddress = addressLine("Jemput","●",0xFF08785B,"pickup");
+        view.addView(stop,new LinearLayout.LayoutParams(-2,dp(44)));
         stopAddress = addressLine("Singgah","◆",0xFF925200,"stop");
-        deliveryAddress = addressLine("Antar","⚑",0xFF075BC8,"delivery");
+        deliveryAddress = addressLine("Antar","⚑",0xFFB52432,"delivery");
         View divider=new View(activity);
         divider.setBackgroundColor(0xFFDCE8F5);
         view.addView(divider,new LinearLayout.LayoutParams(-1,dp(1)));
         fareRow=new LinearLayout(activity);
+        fareRow.setOrientation(LinearLayout.VERTICAL);
         fareRow.setGravity(android.view.Gravity.CENTER_VERTICAL);
         view.addView(fareRow,new LinearLayout.LayoutParams(-1,-2));
         summary = new TextView(activity);
@@ -142,9 +145,10 @@ final class TransSimpelRoutePanel {
         purchaseHint.setVisibility(View.GONE);
         view.addView(purchaseHint);
         view.addView(clearStop,new LinearLayout.LayoutParams(-2,dp(44)));
-        trackOrder=button("Buka peta perjalanan",this::openOrderedTrip);
+        trackOrder=button("Buka peta",this::openOrderedTrip);
         trackOrder.setVisibility(View.GONE);
-        view.addView(trackOrder,new LinearLayout.LayoutParams(-1,dp(48)));
+        style(trackOrder,"#EAF1FF","#075BC8");
+        fareRow.addView(trackOrder,new LinearLayout.LayoutParams(-2,dp(44)));
         quoteRetry = button("Hitung Ulang Ongkir", () -> {
             quotedRevision = -1;
             calculateIfReady();
@@ -225,7 +229,9 @@ final class TransSimpelRoutePanel {
 
     private void showRouteMap(JSONObject update) {
         if (update.optJSONObject("pickup")==null || update.optJSONObject("delivery")==null) return;
-        String key=update.optString("order_id",update.optString("state"));
+        JSONObject from=update.optJSONObject("pickup"),to=update.optJSONObject("delivery");
+        String key=update.optString("order_id",update.optString("state"))+":"+from.optString("lat")
+                +":"+from.optString("lng")+":"+to.optString("lat")+":"+to.optString("lng");
         if (!key.equals(mapOrder)) {
             mapOrder=key;
             mapPoints=null;
@@ -246,7 +252,7 @@ final class TransSimpelRoutePanel {
         TransivaGoogleMapView map=new TransivaGoogleMapView(activity,TransivaGoogleMapView.Mode.TRIP);
         routeMap=map;
         int screenHeight=activity.getResources().getConfiguration().screenHeightDp;
-        int mapHeight=Math.max(130, Math.min(280, Math.round(screenHeight*.37f)));
+        int mapHeight=Math.max(112, Math.min(172, Math.round(screenHeight*.24f)));
         view.addView(map,1,new LinearLayout.LayoutParams(-1,dp(mapHeight)));
         routeScroll.requestLayout();
         map.useNumberedRideStops();
@@ -406,10 +412,18 @@ final class TransSimpelRoutePanel {
         line.setEllipsize(TextUtils.TruncateAt.END);
         line.setGravity(android.view.Gravity.CENTER_VERTICAL);
         line.setMinHeight(dp(44));
+        line.setBackground(surface("#F8FAFD","#E5ECF5"));
         line.setPadding(dp(6),dp(4),dp(4),dp(4));
-        line.setOnClickListener(v->new TransivaAlertDialogBuilder(activity)
+        line.setOnClickListener(v->{
+            if (route!=null && "accepted".equals(route.optString("state"))
+                    && !("pickup".equals(key) && "food".equals(kind()))) {
+                openPicker("pickup".equals(key)?PICKUP:"stop".equals(key)?STOP:DELIVERY);
+                return;
+            }
+            new TransivaAlertDialogBuilder(activity)
                 .setTitle(title).setMessage(route==null?"Belum diatur":address(key))
-                .setPositiveButton("Tutup",null).show());
+                .setPositiveButton("Tutup",null).show();
+        });
         line.setTag(icon+"  "+title);
         view.addView(line,new LinearLayout.LayoutParams(-1,-2));
         return line;
@@ -439,7 +453,7 @@ final class TransSimpelRoutePanel {
         if (!active || busy || !available) return;
         JSONObject request=null;
         if (route==null || "waiting_driver".equals(route.optString("state")) || "ordered".equals(route.optString("state"))) {
-            try { request=new JSONObject().put("map_live",true).put("map",mapPoints==null); }
+            try { request=new JSONObject().put("map_live",mapExpanded).put("map",mapExpanded && (mapPoints==null || mapPoints.length()<2)); }
             catch (org.json.JSONException ignored) { }
         }
         send("get",request);
@@ -455,15 +469,23 @@ final class TransSimpelRoutePanel {
         boolean ordered="ordered".equals(state);
         boolean waiting="waiting_driver".equals(state);
         routeScroll.setVisibility(editable || ordered || waiting ? View.VISIBLE : View.GONE);
-        pointActions.setVisibility(editable?View.VISIBLE:View.GONE);
+        String phase=route.optString("order_status");
+        String caption="arrived_pickup".equals(phase)?"Tiba di jemput":
+                "on_delivery".equals(phase)||"picked_up".equals(phase)?"Menuju antar":
+                "arrived_delivery".equals(phase)?"Tiba di tujuan":
+                "finished".equals(phase)||"completed".equals(phase)?"Selesai":"Menuju jemput";
+        routeTitle.setText(ordered?"Rute perjalanan\n"+caption:waiting?"Pesanan dalam antrean":"Atur rute");
+        briefButton.setVisibility(editable && tivaBrief!=null ? View.VISIBLE : View.GONE);
         trackOrder.setVisibility(ordered && !route.optString("order_id").isEmpty()?View.VISIBLE:View.GONE);
-        if (waiting || ordered) showRouteMap(route);
+        boolean canShowMap=(waiting || ordered) && route.optJSONObject("pickup")!=null
+                && route.optJSONObject("delivery")!=null;
+        mapToggle.setVisibility(canShowMap?View.VISIBLE:View.GONE);
+        mapToggle.setText(mapExpanded?"Tutup peta":"Tampil peta");
+        if (canShowMap && mapExpanded) showRouteMap(route);
         else removeRouteMap();
         boolean food="food".equals(kind());
         boolean send="send".equals(kind());
-        pickup.setEnabled(editable && !busy && !food);
-        stop.setVisibility(kind().isEmpty() || "ride".equals(kind())?View.VISIBLE:View.GONE);
-        delivery.setEnabled(editable && !busy);
+        stop.setVisibility(editable && (kind().isEmpty() || "ride".equals(kind()))?View.VISIBLE:View.GONE);
         stop.setEnabled(editable && !busy);
         boolean hasStop=route.optJSONObject("stop")!=null;
         stop.setText(hasStop?"Singgah":"+ Singgah");
@@ -659,8 +681,13 @@ final class TransSimpelRoutePanel {
                         .put("order_status",reply.optString("status","driver_accepted"))
                         .put("source",reply.optString("source","orders"));
             } catch (org.json.JSONException ignored) { }
-            render(route);
-            refresh();
+            Intent home=new Intent(activity,CustomerDashboardActivity.class)
+                    .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP)
+                    .putExtra("trans_simpel_created",reply.optString("order_id"))
+                    .putExtra("trans_simpel_contact",id)
+                    .putExtra("trans_simpel_waiting",waiting);
+            activity.startActivity(home);
+            activity.finish();
             return;
         }
         if (queuedPoint!=null) {

@@ -124,7 +124,7 @@ class CustomerDashboardActivityScreenCore extends CustomerAdaptiveActivity
     protected TextView orderHint;
     private SmartWaitingTextView dashboardWaiting;
     private boolean orderStatusVisible;
-    private final Runnable orderStatusRefresh=new Runnable(){public void run(){if(!orderStatusVisible)return;if(presenter!=null)presenter.pollOrder();uiHandler.postDelayed(this,5000L);}};
+    private final Runnable orderStatusRefresh=new Runnable(){public void run(){if(!orderStatusVisible)return;if(presenter!=null)presenter.pollOrder();refreshSimpelQueue();uiHandler.postDelayed(this,5000L);}};
     protected FrameLayout orderCard;
     protected JSONObject activeOrderJson;
     protected TextView loyaltyTierText;
@@ -254,6 +254,13 @@ class CustomerDashboardActivityScreenCore extends CustomerAdaptiveActivity
     }
 
     @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent);
+        consumeSimpelBooking();
+    }
+
+    @Override
     protected void onResume() {
         super.onResume();
         featureRuntime.onResume();
@@ -264,6 +271,8 @@ class CustomerDashboardActivityScreenCore extends CustomerAdaptiveActivity
         uiHandler.removeCallbacks(accountStatusRefresh);
         uiHandler.post(accountStatusRefresh);
         orderStatusVisible=true;uiHandler.removeCallbacks(orderStatusRefresh);uiHandler.postDelayed(orderStatusRefresh,5000L);
+        consumeSimpelBooking();
+        refreshSimpelQueue();
         TransivaNetworkMonitor.addListener(dashboardNetworkListener);
         if (firstDashboardLoad && presenter != null) {
             firstDashboardLoad = false;
@@ -2209,6 +2218,69 @@ class CustomerDashboardActivityScreenCore extends CustomerAdaptiveActivity
 
 
 
+    private TextView dashboardReceive;
+    private TextView simpelBookingHint;
+    private View simpelWaves;
+    private String simpelContact="", simpelOrderId="";
+    private boolean simpelQueue, simpelQueueRead;
+
+    private void consumeSimpelBooking() {
+        Intent intent=getIntent();
+        if (intent==null || !intent.hasExtra("trans_simpel_contact")) return;
+        simpelContact=first(intent.getStringExtra("trans_simpel_contact"),"");
+        simpelOrderId=first(intent.getStringExtra("trans_simpel_created"),"");
+        simpelQueue=intent.getBooleanExtra("trans_simpel_waiting",false);
+        intent.removeExtra("trans_simpel_contact");
+        intent.removeExtra("trans_simpel_created");
+        intent.removeExtra("trans_simpel_waiting");
+        renderSimpelBooking();
+        if (presenter!=null) presenter.pollOrder();
+    }
+
+    private void refreshSimpelQueue() {
+        if (!orderStatusVisible || !simpelQueue || simpelQueueRead || simpelContact.isEmpty()) return;
+        final String contact=simpelContact;
+        CustomerSessionGuard owner=CustomerSessionGuard.capture(this);
+        simpelQueueRead=true;
+        TransivaNetworkExecutor.execute(()->{
+            try {
+                JSONObject response=TransivaHttpRepository.postJson(this,ApiConfig.server("trans_simpel.php"),
+                        new JSONObject().put("action","get").put("contact_id",contact),10000);
+                JSONObject route=response.optJSONObject("route");
+                runOnUiThread(()->{
+                    simpelQueueRead=false;
+                    if (isFinishing() || isDestroyed() || !owner.matches(this) || !contact.equals(simpelContact) || route==null) return;
+                    String state=route.optString("state");
+                    if ("waiting_driver".equals(state)) return;
+                    simpelQueue=false;
+                    simpelOrderId=route.optString("order_id");
+                    if (!"ordered".equals(state) || CustomerOrderState.isEnded(route.optString("order_status"))) {
+                        simpelContact="";simpelOrderId="";
+                    }
+                    renderSimpelBooking();
+                    if (presenter!=null) presenter.pollOrder();
+                });
+            } catch(Exception ignored) { runOnUiThread(()->simpelQueueRead=false); }
+        },()->runOnUiThread(()->simpelQueueRead=false));
+    }
+
+    private void renderSimpelBooking() {
+        if (simpelBookingHint==null) return;
+        boolean matched=activeOrderJson!=null && !simpelOrderId.isEmpty()
+                && simpelOrderId.equals(activeOrderJson.optString("order_id"));
+        boolean tripStarted=matched && CustomerOrderState.targetsDelivery(activeOrderJson.optString("status"));
+        boolean visible=!simpelContact.isEmpty() && (simpelQueue || (!simpelOrderId.isEmpty() && !tripStarted));
+        simpelWaves.setVisibility(visible?View.VISIBLE:View.GONE);
+        simpelBookingHint.setVisibility(visible?View.VISIBLE:View.GONE);
+        if (visible) {
+            simpelBookingHint.setText(simpelQueue?"Trans Simpel · Menunggu driver selesai":
+                    matched?"Pesanan Trans Simpel aktif":"Trans Simpel · Memuat pesanan");
+        }
+        if (tripStarted) simpelContact="";
+    }
+    private boolean dashboardReceiveBusy;
+    private final java.util.Set<String> dashboardReceivedOrders = new java.util.HashSet<>();
+
     private void buildOrderSection() {
         orderCard = new FrameLayout(this);
         premiumOrder = new PremiumOrderStatusView(this, true, true);
@@ -2222,6 +2294,34 @@ class CustomerDashboardActivityScreenCore extends CustomerAdaptiveActivity
         orderHint = text("", 12, "#64748B", false);
         dashboardWaiting = new SmartWaitingTextView(this);
         premiumOrder.addView(dashboardWaiting, new LinearLayout.LayoutParams(-1, -2));
+        LinearLayout booking=new LinearLayout(this);
+        booking.setGravity(Gravity.CENTER_VERTICAL);
+        simpelWaves=new View(this) {
+            private final android.graphics.Paint paint=new android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG);
+            @Override protected void onDraw(android.graphics.Canvas canvas) {
+                float x=getWidth()/2f,y=getHeight()/2f;
+                boolean animate=android.os.Build.VERSION.SDK_INT<26 || android.animation.ValueAnimator.areAnimatorsEnabled();
+                float time=animate?(android.os.SystemClock.uptimeMillis()%1400L)/1400f:0.25f;
+                paint.setColor(0xff0966d8);
+                for (int ring=0;ring<3;ring++) {
+                    float phase=(time+ring/3f)%1f;
+                    paint.setStyle(android.graphics.Paint.Style.STROKE);
+                    paint.setStrokeWidth(dp(1));
+                    paint.setAlpha(Math.round(160*(1f-phase)));
+                    canvas.drawCircle(x,y,dp(3)+phase*dp(15),paint);
+                }
+                paint.setStyle(android.graphics.Paint.Style.FILL);
+                paint.setAlpha(255);
+                canvas.drawCircle(x,y,dp(4),paint);
+                if (animate && isShown()) postInvalidateDelayed(32);
+            }
+        };
+        simpelWaves.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+        booking.addView(simpelWaves,new LinearLayout.LayoutParams(dp(40),dp(40)));
+        simpelBookingHint=text("",12,"#1254A3",true);
+        booking.addView(simpelBookingHint,new LinearLayout.LayoutParams(0,-2,1));
+        premiumOrder.addView(booking);
+        renderSimpelBooking();
         dashboardCancel = text("Batalkan pesanan", 11, "#B54147", true);
         dashboardCancel.setGravity(Gravity.CENTER);
         dashboardCancel.setPadding(dp(12), dp(6), dp(12), dp(6));
@@ -2232,6 +2332,66 @@ class CustomerDashboardActivityScreenCore extends CustomerAdaptiveActivity
         cancelLp.gravity = Gravity.END; cancelLp.topMargin = dp(5);
         premiumOrder.addView(dashboardCancel, cancelLp);
         dashboardCancel.setOnClickListener(v -> confirmDashboardCancel());
+        dashboardReceive = text("Terima Pesanan", 13, "#047857", true);
+        dashboardReceive.setGravity(Gravity.CENTER);
+        dashboardReceive.setMinHeight(dp(48));
+        dashboardReceive.setBackground(Shape.roundStroke("#ECFDF5", "#86EFAC", dp(12), 1));
+        dashboardReceive.setVisibility(View.GONE);
+        premiumOrder.addView(dashboardReceive, new LinearLayout.LayoutParams(-1, -2));
+        dashboardReceive.setOnClickListener(v -> {
+            JSONObject order = activeOrderJson;
+            if (order != null && CustomerOrderChangeState.canReceive(order)) {
+                CustomerOrderChangeState.confirmReceipt(this, () -> receiveDashboardOrder(order));
+            }
+        });
+    }
+
+    private String receiptKey(JSONObject order) {
+        return order.optString("source") + "/" + first(order.optString("order_id"), order.optString("id"), "");
+    }
+
+    private void renderDashboardReceive() {
+        if (dashboardReceive == null) return;
+        boolean eligible = activeOrderJson != null && CustomerOrderChangeState.canReceive(activeOrderJson)
+                && !dashboardReceivedOrders.contains(receiptKey(activeOrderJson));
+        dashboardReceive.setVisibility(eligible ? View.VISIBLE : View.GONE);
+        dashboardReceive.setEnabled(!dashboardReceiveBusy);
+        dashboardReceive.setText(dashboardReceiveBusy ? "Memproses…" : "Terima Pesanan");
+    }
+
+    private void receiveDashboardOrder(JSONObject order) {
+        if (dashboardReceiveBusy || !sameDashboardOrder(order, activeOrderJson)
+                || !CustomerOrderChangeState.canReceive(activeOrderJson)) return;
+        CustomerSessionGuard owner = CustomerSessionGuard.capture(this);
+        dashboardReceiveBusy = true;
+        renderDashboardReceive();
+        TransivaNetworkExecutor.execute(() -> {
+            try {
+                if (!owner.matches(this)) throw new IllegalStateException("Sesi login berubah");
+                JSONObject response = TransivaHttpRepository.postJson(this,
+                        ApiConfig.server("customer_order_action.php"), CustomerOrderChangeState.receiptPayload(order), 15000);
+                runOnUiThread(() -> completeDashboardReceipt(owner, order, response.optBoolean("success"),
+                        response.optString("message", "Konfirmasi pesanan diproses.")));
+            } catch (Exception error) {
+                runOnUiThread(() -> completeDashboardReceipt(owner, order, false, CustomerOrderChangeState.error(error)));
+            }
+        }, () -> runOnUiThread(() -> completeDashboardReceipt(owner, order, false, "Sistem sedang sibuk. Coba lagi.")));
+    }
+
+    private void completeDashboardReceipt(CustomerSessionGuard owner, JSONObject order, boolean success, String message) {
+        dashboardReceiveBusy = false;
+        if (isFinishing() || isDestroyed() || !owner.matches(this)) return;
+        if (success) {
+            dashboardReceivedOrders.add(receiptKey(order));
+            RoyaltyRewardFeedback.completed(this, first(order.optString("order_id"), order.optString("id"), ""),
+                    order.optString("source", "orders"));
+        }
+        renderDashboardReceive();
+        if (presenter != null) presenter.refresh();
+        new TransivaAlertDialogBuilder(this).setTitle(success ? "Berhasil" : "Gagal")
+                .setMessage(message).setPositiveButton("OK", (dialog, which) -> {
+                    if (success) RoyaltyRewardFeedback.check(this);
+                }).show();
     }
 
     private void renderDashboardCancel() {
@@ -2711,6 +2871,10 @@ class CustomerDashboardActivityScreenCore extends CustomerAdaptiveActivity
                         catch (org.json.JSONException ignored) { }
                     }
                 }
+                if (live && !simpelOrderId.isEmpty() && activeOrderJson!=null
+                        && simpelOrderId.equals(activeOrderJson.optString("order_id")) && !sameDashboardOrder(order,activeOrderJson)) {
+                    simpelContact="";simpelOrderId="";
+                }
                 renderDashboardOrder(order, status);
                 if (orderHint != null) orderHint.setVisibility(View.GONE);
                 break;
@@ -2763,6 +2927,8 @@ class CustomerDashboardActivityScreenCore extends CustomerAdaptiveActivity
                     active ? "Pantau pesanan Anda  ›" : "Lihat pusat pesanan  ›");
         }
         renderDashboardCancel();
+        renderDashboardReceive();
+        renderSimpelBooking();
     }
 
     private void renderGrowthState(DashboardState state) {

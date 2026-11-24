@@ -339,8 +339,7 @@ public final class TransivaGoogleMapView extends FrameLayout implements OnMapRea
         updateCenterActionPosition(false);
         setOrderFocus(false);
         if (centerPin != null) {
-            centerPin.setImageResource(shopDeliveryClick != null
-                    ? R.drawable.map_shop_stop_pin : R.drawable.map_destination_pin);
+            centerPin.setImageResource(R.drawable.map_shop_stop_pin);
             centerPin.setVisibility(VISIBLE);
         }
         if (centerAction != null) {

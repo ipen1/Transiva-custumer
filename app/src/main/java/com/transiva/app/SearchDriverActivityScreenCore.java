@@ -898,20 +898,12 @@ class SearchDriverActivityScreenCore extends CustomerAdaptiveActivity {
                 i.putExtra("delivery_lat", deliveryLat);
                 i.putExtra("delivery_lng", deliveryLng);
             }
-            // HARD CLOSE MATCHMAKING TASK:
-            // Beberapa perangkat (terutama yang memiliki mode floating/freeform window)
-            // bisa mempertahankan SearchDriverActivity sebagai jendela kecil walaupun finish()
-            // dipanggil setelah CustomerTripActivity dibuka. Jadikan CustomerTrip sebagai root
-            // task baru agar layar/radar pencarian benar-benar dihancurkan.
             destroyLoops();
             if (matchingView != null) {
                 matchingView.stopMatching();
                 matchingView.setVisibility(View.GONE);
             }
 
-            i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK
-                    | Intent.FLAG_ACTIVITY_CLEAR_TASK
-                    | Intent.FLAG_ACTIVITY_CLEAR_TOP);
             startActivity(i);
             overridePendingTransition(0, 0);
             finish();

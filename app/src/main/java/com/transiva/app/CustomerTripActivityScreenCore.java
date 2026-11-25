@@ -70,6 +70,12 @@ class CustomerTripActivityScreenCore extends CustomerAdaptiveActivity {
         }
     };
 
+    private final android.content.BroadcastReceiver waitingUpdates=new android.content.BroadcastReceiver() {
+        @Override public void onReceive(android.content.Context context,Intent intent) {
+            if (resumed && orderId.equals(intent.getStringExtra("order_id"))) fetchDriverPosition();
+        }
+    };
+
     protected TransivaGoogleMapView mapView;
     private PremiumOrderStatusView tripStatus;
     protected TextView statusText;
@@ -316,9 +322,9 @@ class CustomerTripActivityScreenCore extends CustomerAdaptiveActivity {
         Button close = smallButton("‹", "#EDF5FF", "#1268D5", "#DCEBFF");
         close.setTextSize(23);
         close.setPadding(0, 0, 0, 0);
-        close.setContentDescription("Kembali ke beranda");
+        close.setContentDescription("Kembali");
         head.addView(close, new LinearLayout.LayoutParams(dp(48), dp(48)));
-        close.setOnClickListener(v -> goToHome());
+        close.setOnClickListener(v -> onBackPressed());
 
         LinearLayout heading = new LinearLayout(this);
         heading.setOrientation(LinearLayout.VERTICAL);
@@ -1378,7 +1384,8 @@ class CustomerTripActivityScreenCore extends CustomerAdaptiveActivity {
 
     @Override
     public void onBackPressed() {
-        if (finishedCountdownStarted) goHomeAfterFinished();
+        if (!isTaskRoot()) finish();
+        else if (finishedCountdownStarted) goHomeAfterFinished();
         else goToHome();
     }
 
@@ -1396,6 +1403,9 @@ class CustomerTripActivityScreenCore extends CustomerAdaptiveActivity {
 
     @Override protected void onStart() {
         super.onStart();
+        androidx.core.content.ContextCompat.registerReceiver(this,waitingUpdates,
+                new android.content.IntentFilter(TransivaFirebaseService.ACTION_WAITING_UPDATE),
+                androidx.core.content.ContextCompat.RECEIVER_NOT_EXPORTED);
         if (mapView != null) mapView.onStartMap();
     }
 
@@ -1420,6 +1430,7 @@ class CustomerTripActivityScreenCore extends CustomerAdaptiveActivity {
     }
 
     @Override protected void onStop() {
+        unregisterReceiver(waitingUpdates);
         if (mapView != null) mapView.onStopMap();
         super.onStop();
     }

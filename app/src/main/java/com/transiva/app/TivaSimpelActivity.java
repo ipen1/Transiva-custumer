@@ -31,7 +31,8 @@ public final class TivaSimpelActivity extends CustomerAdaptiveActivity {
     private ScrollView scroll;
     private boolean driverBusy;
     private String kind="", detail="", contact="", key=UUID.randomUUID().toString();
-    private String status="", problem="";
+    private String status="", problem="", menuSearch="";
+    private JSONObject acceptedContact;
     private boolean typing, reviewFood;
     private JSONArray foodCart=new JSONArray();
     private JSONObject pickup, delivery, restaurant, foodQuote, routeQuote;
@@ -53,13 +54,21 @@ public final class TivaSimpelActivity extends CustomerAdaptiveActivity {
         if (draft!=null) restoreDraft(draft);
         if (state!=null) {
             contact=state.getString("tiva.contact","");
+            opened=state.getBoolean("tiva.opened");
+            acceptedContact=parse(state,"tiva.accepted_contact");
             contactState=state.getString("tiva.contact_state","");
             status=state.getString("tiva.status","");
             key=state.getString("tiva.key",key);
         }
+        registerCustomBackNavigation();
         buildScreen();
         if (draft==null) showTyping(this::render);
         else render();
+    }
+
+    @Override public void onBackPressed() {
+        if (contact.isEmpty() && !kind.isEmpty() && !loading) chooseAnotherDriver();
+        else finish();
     }
 
     private void buildScreen() {
@@ -70,7 +79,7 @@ public final class TivaSimpelActivity extends CustomerAdaptiveActivity {
         header.setGravity(Gravity.CENTER_VERTICAL);
         header.setPadding(dp(8),dp(8),dp(14),dp(8));
         header.setBackground(CustomerUiPrimitives.gradient("#082D79","#0877DF",0));
-        Button back=button("‹",this::finish);
+        Button back=button("‹",this::onBackPressed);
         back.setBackgroundColor(0x00000000);
         back.setTextColor(0xFFFFFFFF);
         back.setTextSize(28);
@@ -133,6 +142,8 @@ public final class TivaSimpelActivity extends CustomerAdaptiveActivity {
         super.onSaveInstanceState(out);
         saveDraft(out);
         out.putString("tiva.contact",contact);
+        out.putBoolean("tiva.opened",opened);
+        save(out,"tiva.accepted_contact",acceptedContact);
         out.putString("tiva.contact_state",contactState);
         out.putString("tiva.status",status);
         out.putString("tiva.key",key);
@@ -141,6 +152,7 @@ public final class TivaSimpelActivity extends CustomerAdaptiveActivity {
     private void saveDraft(Bundle out) {
         out.putString("tiva.kind",kind);
         out.putString("tiva.detail",detail);
+        out.putString("tiva.menu_search",menuSearch);
         out.putString("tiva.cart",foodCart.toString());
         out.putBoolean("tiva.review",reviewFood);
         save(out,"tiva.pickup",pickup);
@@ -151,6 +163,7 @@ public final class TivaSimpelActivity extends CustomerAdaptiveActivity {
     private void restoreDraft(Bundle draft) {
         kind=draft.getString("tiva.kind","");
         detail=draft.getString("tiva.detail","");
+        menuSearch=draft.getString("tiva.menu_search","");
         pickup=parse(draft,"tiva.pickup");
         delivery=parse(draft,"tiva.delivery");
         restaurant=parse(draft,"tiva.restaurant");
@@ -243,7 +256,8 @@ public final class TivaSimpelActivity extends CustomerAdaptiveActivity {
                 } else addAction("Ubah alamat pengantaran",()->pick(DELIVERY));
                 addAction("Ganti pilihan",this::reset);
             }
-            if (!contact.isEmpty() && !terminal()) addAction("Batalkan permintaan",this::cancel);
+            if (acceptedContact!=null) addPrimary("Buka chat driver",()->TransSendContactClient.openChat(this,acceptedContact));
+            else if (!contact.isEmpty() && !terminal()) addAction("Batalkan permintaan",this::cancel);
             if (terminal()) addAction("Pilih driver lain",this::chooseAnotherDriver);
         }
         scroll.post(()->scroll.fullScroll(View.FOCUS_DOWN));
@@ -279,6 +293,28 @@ public final class TivaSimpelActivity extends CustomerAdaptiveActivity {
     private void foodControls() {
         if (restaurant!=null) bubble("Kamu pilih "+restaurant.optString("name")+". Mau pesan menu apa?",false);
         if (loading) { bubble("Lagi memuat pilihan…",false);return; }
+        if (restaurant==null) {
+            EditText query=new EditText(this);
+            query.setSingleLine(true);
+            query.setHint("Cari menu, misalnya bakso");
+            query.setText(menuSearch);
+            query.setFilters(new InputFilter[]{new InputFilter.LengthFilter(60)});
+            query.setImeOptions(android.view.inputmethod.EditorInfo.IME_ACTION_SEARCH);
+            actions.addView(query,new LinearLayout.LayoutParams(-1,-2));
+            Runnable search=()->{
+                ((android.view.inputmethod.InputMethodManager)getSystemService(INPUT_METHOD_SERVICE))
+                        .hideSoftInputFromWindow(query.getWindowToken(),0);
+                menuSearch=query.getText().toString().trim();
+                loadFood(0,0);
+            };
+            query.setOnEditorActionListener((view,action,event)->{
+                if (action!=android.view.inputmethod.EditorInfo.IME_ACTION_SEARCH) return false;
+                search.run();
+                return true;
+            });
+            addAction("Cari menu",search);
+            if (!menuSearch.isEmpty()) addAction("Hapus pencarian",()->{menuSearch="";loadFood(0,0);});
+        }
         if (foodCart.length()>0) {
             showCart(true);
             addPrimary(delivery==null?"Lanjut ke alamat":"Tinjau pesanan",()->showTyping(()->{
@@ -287,28 +323,38 @@ public final class TivaSimpelActivity extends CustomerAdaptiveActivity {
             }));
         }
         if (!problem.isEmpty()) bubble(problem,false);
-        if (options.length()==0 && problem.isEmpty()) bubble(restaurant==null
+        boolean searching=restaurant==null && !menuSearch.isEmpty();
+        if (options.length()==0 && problem.isEmpty()) bubble(searching
+                ? "Belum ada menu yang cocok pada halaman ini."
+                : restaurant==null
                 ?"Belum ada restoran yang tersedia di halaman ini.":"Menu di sini lagi kosong.",false);
         if (options.length()>0) {
-            TextView heading=label(restaurant==null?"Restoran sekitar":"Menu "+restaurant.optString("name"),19,"#10294A",true);
+            TextView heading=label(searching?"Hasil untuk "+menuSearch:restaurant==null?"Restoran sekitar":"Menu "+restaurant.optString("name"),19,"#10294A",true);
             heading.setPadding(0,dp(6),0,dp(3));
             actions.addView(heading);
         }
         for (int i=0;i<options.length();i++) {
             JSONObject item=options.optJSONObject(i);
             if (item==null) continue;
-            if (restaurant==null) {
+            if (searching) {
+                JSONObject store=item.optJSONObject("restaurant");
+                if (store==null) continue;
+                addFoodCard(item,store.optString("name")+" · "+menuPrice(item),
+                        R.drawable.ic_service_food_premium,false,()->{
+                    restaurant=store;
+                    clearOptions();
+                    more=false;
+                    startMenu(item);
+                    loadFood(store.optInt("id"),0);
+                });
+            } else if (restaurant==null) {
                 String distance=String.format(new java.util.Locale("id","ID"),"%.1f km",item.optDouble("distance_km",0));
                 addFoodCard(item,distance,R.drawable.ic_service_food_premium,true,()->{
                     restaurant=item;
                     showTyping(()->loadFood(item.optInt("id"),0));
                 });
             } else {
-                boolean required=item.optBoolean("requires_topping");
-                long price=item.optLong("price");
-                String cost=price>0?"Rp "+java.text.NumberFormat.getIntegerInstance(new java.util.Locale("id","ID")).format(price):"";
-                if (required) cost=cost.isEmpty()?"Pilih topping":"Mulai "+cost+" · pilih topping";
-                addFoodCard(item,cost,R.drawable.ic_service_food_premium,false,()->startMenu(item));
+                addFoodCard(item,menuPrice(item),R.drawable.ic_service_food_premium,false,()->startMenu(item));
             }
         }
         int restaurantId=restaurant==null?0:restaurant.optInt("id");
@@ -322,6 +368,13 @@ public final class TivaSimpelActivity extends CustomerAdaptiveActivity {
                     .setPositiveButton("Ganti restoran",(dialog,choice)->changeRestaurant()).show();
         });
         addAction("Ganti pilihan",this::reset);
+    }
+
+    private String menuPrice(JSONObject item) {
+        long price=item.optLong("price");
+        String cost=price>0?"Rp "+java.text.NumberFormat.getIntegerInstance(new java.util.Locale("id","ID")).format(price):"";
+        if (!item.optBoolean("requires_topping")) return cost;
+        return cost.isEmpty()?"Pilih topping":"Mulai "+cost+" · pilih topping";
     }
 
     private LinearLayout detailCard(LinearLayout parent,String title,String color) {
@@ -694,7 +747,8 @@ public final class TivaSimpelActivity extends CustomerAdaptiveActivity {
     private void detailControls() {
         EditText field=new EditText(this);
         field.setHint("Misalnya dua bungkus roti");
-        field.setFilters(new InputFilter[]{new InputFilter.LengthFilter(300)});
+        field.setInputType(android.text.InputType.TYPE_CLASS_TEXT | android.text.InputType.TYPE_TEXT_FLAG_MULTI_LINE);
+        field.setFilters(new InputFilter[]{new InputFilter.LengthFilter("shop".equals(kind)?2000:300)});
         field.setMaxLines(3);
         actions.addView(field,new LinearLayout.LayoutParams(-1,-2));
         addAction("Lanjut",()->{
@@ -755,12 +809,13 @@ public final class TivaSimpelActivity extends CustomerAdaptiveActivity {
     private void loadFood(int restaurantId,int offset) {
         if (loading) return;
         if (offset==0) {clearOptions();more=false;}
+        String search=restaurantId==0?menuSearch:"";
         perform(()->{
             JSONObject data=new JSONObject().put("lat",lat).put("lng",lng)
-                    .put("restaurant_id",restaurantId).put("offset",offset);
+                    .put("restaurant_id",restaurantId).put("offset",offset).put("q",search);
             return TransivaHttpRepository.postJson(this,ApiConfig.server("tiva_simpel_catalog.php"),data,9000);
         },response->{
-            JSONArray page=response.optJSONArray(restaurantId==0?"stores":"menus");
+            JSONArray page=response.optJSONArray(restaurantId==0 && search.isEmpty()?"stores":"menus");
             if (page!=null) for (int i=0;i<page.length();i++) options.put(page.opt(i));
             more=response.optBoolean("more");
             nextOffset=response.optInt("next_offset");
@@ -824,10 +879,10 @@ public final class TivaSimpelActivity extends CustomerAdaptiveActivity {
             case "accepted":
             case "ordered":
                 status="Driver sudah menerima permintaanmu.";
+                acceptedContact=entry;
                 if (visible && !opened && !entry.optString("room_id").isEmpty()) {
                     opened=true;
                     TransSendContactClient.openChat(this,entry);
-                    finish();
                 }
                 break;
             case "rejected":status="Driver belum bisa menerima. Kamu bisa pilih driver lain.";break;
@@ -865,7 +920,7 @@ public final class TivaSimpelActivity extends CustomerAdaptiveActivity {
         String before=contactState;
         if (result!=null) done.show(result);
         if (!error.isEmpty() && redraw) {problem=error;if (contact.isEmpty()) status="";}
-        if (!opened && (redraw || !before.equals(contactState))) render();
+        if (redraw || !before.equals(contactState)) render();
         main.removeCallbacks(poll);
         if (visible && !contact.isEmpty() && !terminal() && !opened) main.postDelayed(poll,2500);
     }

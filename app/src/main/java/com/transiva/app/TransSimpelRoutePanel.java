@@ -669,7 +669,6 @@ final class TransSimpelRoutePanel {
             order.setVisibility(View.GONE);
             activity.startActivity(new Intent(activity, CustomerFoodOrderStatusActivity.class)
                     .putExtra("order_id",reply.optString("order_id")).putExtra("status",reply.optString("status")));
-            activity.finish();
             return;
         }
         if (reply!=null && "order".equals(action) && route!=null) {
@@ -681,13 +680,17 @@ final class TransSimpelRoutePanel {
                         .put("order_status",reply.optString("status","driver_accepted"))
                         .put("source",reply.optString("source","orders"));
             } catch (org.json.JSONException ignored) { }
-            Intent home=new Intent(activity,CustomerDashboardActivity.class)
-                    .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP)
-                    .putExtra("trans_simpel_created",reply.optString("order_id"))
-                    .putExtra("trans_simpel_contact",id)
-                    .putExtra("trans_simpel_waiting",waiting);
-            activity.startActivity(home);
-            activity.finish();
+            render(route);
+            if (!waiting && !route.optString("order_id").isEmpty()) {
+                activity.startActivity(new Intent(activity,CustomerTripActivity.class)
+                        .putExtra("order_id",route.optString("order_id"))
+                        .putExtra("source",route.optString("source"))
+                        .putExtra("order_source",route.optString("source"))
+                        .putExtra("status",route.optString("order_status")));
+            } else if (active) {
+                main.removeCallbacks(poll);
+                main.postDelayed(poll,3000);
+            }
             return;
         }
         if (queuedPoint!=null) {

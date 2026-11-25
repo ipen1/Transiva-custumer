@@ -203,7 +203,7 @@ public class CustomerFoodOrderStatusActivity extends CustomerAdaptiveActivity {
     }
     private void startTick(){handler.removeCallbacks(tick);if(foreground&&terminal){lastTick=SystemClock.elapsedRealtime();handler.post(tick);}}
     private void home(){if(routed||!foreground)return;closeGame();routed=true;handler.removeCallbacksAndMessages(null);Intent home=new Intent(this,CustomerDashboardActivity.class);home.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP|Intent.FLAG_ACTIVITY_SINGLE_TOP);startActivity(home);finish();}
-    @Override public void onBackPressed(){if(gameOpen())closeGame();else if(getIntent().getBooleanExtra("return_to_checkout",false))finish();else home();}
+    @Override public void onBackPressed(){if(gameOpen())closeGame();else if(!isTaskRoot() || getIntent().getBooleanExtra("return_to_checkout",false))finish();else home();}
     @Override protected void onResume(){super.onResume();foreground=true;if(gameOpen())game.setForeground(true);runtime.onResume();fetch();startTick();}
     @Override protected void onPause(){if(gameOpen())game.setForeground(false);foreground=false;handler.removeCallbacks(tick);handler.removeCallbacks(poll);runtime.onPause();super.onPause();}
     @Override protected void onSaveInstanceState(Bundle out){super.onSaveInstanceState(out);out.putLong("remaining",remaining);}

@@ -2304,28 +2304,69 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
 
 
     protected void resolveAddressAsync(boolean isPickup, double lat, double lng) {
-        final long requestId = isPickup ? ++pickupAddressRequest : ++deliveryAddressRequest;
-        if(isPickup) { pickupAddressResolving=true; resolvingPickupLat=lat; resolvingPickupLng=lng; }
-        locationQuoteReady=false; ++quoteVersion; updateWizardState();
-        featureRuntime.execute(() -> {
-            String road = reverseAddress(lat, lng);
-            String localMerchant = findNearestPlaceName(lat, lng);
-            featureRuntime.post(mainHandler, () -> resolveNearestGooglePlace(lat, lng, (googleName) -> {
-                if (!isCurrentAddressRequest(isPickup, requestId, lat, lng)) return;
-                if(isPickup) pickupAddressResolving=false;
-                String nearName = firstNonEmpty(googleName, localMerchant, "");
-                String address;
-                if (!nearName.isEmpty() && !road.isEmpty()) address = "Dekat " + nearName + ", " + road;
-                else if (!nearName.isEmpty()) address = "Dekat " + nearName;
-                else if (!road.isEmpty()) address = road;
-                else address = String.format(Locale.US, "%.6f, %.6f", lat, lng);
-                applyResolvedAddress(isPickup, address);
-            }));
-        }, () -> featureRuntime.post(mainHandler, () -> {
-            if (!isCurrentAddressRequest(isPickup, requestId, lat, lng)) return;
-            if (isPickup) pickupAddressResolving = false;
-            applyResolvedAddress(isPickup, String.format(Locale.US, "%.6f, %.6f", lat, lng));
-        }));
+        long requestId = isPickup ? ++pickupAddressRequest : ++deliveryAddressRequest;
+        if (isPickup) {
+            pickupAddressResolving = true;
+            resolvingPickupLat = lat;
+            resolvingPickupLng = lng;
+        }
+        locationQuoteReady = false;
+        ++quoteVersion;
+        updateWizardState();
+        new ConfirmedAddressLookup(isPickup, requestId, lat, lng).start();
+    }
+
+    private final class ConfirmedAddressLookup {
+        private final boolean pickup;
+        private final long id;
+        private final double lat, lng;
+        private final String key;
+        private final CustomerTransportSession owner = CustomerTransportSession.capture(PassengerTransportActivityLegacyCore.this);
+        private final Runnable deadline = () -> complete("");
+        private String road = "", localMerchant = "";
+        private boolean finished;
+
+        ConfirmedAddressLookup(boolean pickup, long id, double lat, double lng) {
+            this.pickup = pickup;
+            this.id = id;
+            this.lat = lat;
+            this.lng = lng;
+            key = pickup ? "confirmed-pickup-address" : "confirmed-delivery-address";
+        }
+
+        void start() {
+            mainHandler.postDelayed(deadline, 8000L);
+            featureRuntime.executeLatest(key, CustomerLoadingCoordinator.CONTENT, () -> {
+                String result = reverseAddress(lat, lng);
+                featureRuntime.post(mainHandler, () -> {
+                    if (current()) road = result;
+                });
+                String nearby = findNearestPlaceName(lat, lng);
+                featureRuntime.post(mainHandler, () -> {
+                    if (!current()) return;
+                    localMerchant = nearby;
+                    resolveNearestGooglePlace(lat, lng, this::complete);
+                });
+            }, () -> featureRuntime.post(mainHandler, deadline));
+        }
+
+        private boolean current() {
+            return !finished && isCurrentAddressRequest(pickup, id, lat, lng)
+                    && owner.matches(PassengerTransportActivityLegacyCore.this);
+        }
+
+        private void complete(String googleName) {
+            if (!current()) return;
+            finished = true;
+            mainHandler.removeCallbacks(deadline);
+            featureRuntime.cancel(key);
+            if (pickup) pickupAddressResolving = false;
+            String landmark = cleanLandmarkName(firstNonEmpty(googleName, localMerchant, ""));
+            String address = road;
+            if (!landmark.isEmpty()) address = "Dekat " + landmark + (road.isEmpty() ? "" : ", " + road);
+            if (address.isEmpty()) address = String.format(Locale.US, "%.6f, %.6f", lat, lng);
+            applyResolvedAddress(pickup, address);
+        }
     }
 
     private boolean isCurrentAddressRequest(boolean pickup, long requestId, double lat, double lng) {
@@ -2420,6 +2461,7 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
             pointCardText(deliveryBtn, "●  Tujuan\n" + shortAddress(address));
             if (mapView != null) mapView.setDelivery(deliveryLat, deliveryLng, address);
         }
+        renderCheckoutRoute();
         if (validCoordinate(pickupLat, pickupLng) && validCoordinate(deliveryLat, deliveryLng)) requestPaymentQuote();
     }
 

@@ -633,7 +633,7 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
         fitRouteButton.setTextSize(20);
         fitRouteButton.setPadding(0, 0, 0, 0);
         fitRouteButton.setContentDescription("Tampilkan seluruh rute");
-        fitRouteButton.setOnClickListener(v -> { if (mapView != null) mapView.fitAll(); });
+        fitRouteButton.setOnClickListener(v -> { if (mapView != null) { mapView.cancelCheckoutPreview(); mapView.fitAll(); } });
         FrameLayout.LayoutParams fitParams = new FrameLayout.LayoutParams(dp(48), dp(48), Gravity.BOTTOM | Gravity.END);
         fitParams.setMargins(0, 0, dp(10), dp(10));
         mapBox.addView(fitRouteButton, fitParams);
@@ -2887,11 +2887,11 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
         locationQuoteReady=false;
         quoteLoading=false;
         updateWizardState();
+        if (checkoutRouteVisible) requestVisibleOsrmRoute();
         if(!locationReady()) return;
         quoteLoading=true;
         if (originalPriceText != null) originalPriceText.setVisibility(View.GONE);
         if (discountInfoText != null) discountInfoText.setVisibility(View.GONE);
-        requestVisibleOsrmRoute();
         if (!validCoordinate(pickupLat, pickupLng)
                 || !validCoordinate(deliveryLat, deliveryLng)) {
             if (paymentSummaryText != null) {
@@ -3191,6 +3191,7 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
         featureRuntime.execute(() -> {
             try {
                 JSONArray merged = new JSONArray();
+                java.util.List<Integer> legEnds = new java.util.ArrayList<>();
                 for (int i = 0; i < routeStops.length() - 1; i++) {
                     JSONArray a = routeStops.optJSONArray(i);
                     JSONArray b = routeStops.optJSONArray(i + 1);
@@ -3203,11 +3204,12 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
                         JSONArray pt = pts.optJSONArray(j);
                         if (pt != null) merged.put(pt);
                     }
+                    if (i < routeStops.length() - 2) legEnds.add(merged.length() - 1);
                 }
                 featureRuntime.post(mainHandler, () -> {
-                    if (!destroyed && previewRequest == routePreviewVersion && mapView != null) {
+                    if (!destroyed && checkoutRouteVisible && previewRequest == routePreviewVersion && mapView != null) {
                         mapView.setWaypoints(ecosystemFeatures.waypoints);
-                        mapView.drawRideRoute(merged);
+                        mapView.drawCheckoutRoute(merged, legEnds, routeStops.toString());
                     }
                 });
             } catch (Exception ignored) {}

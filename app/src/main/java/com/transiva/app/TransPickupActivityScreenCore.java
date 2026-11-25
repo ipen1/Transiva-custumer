@@ -192,7 +192,7 @@ class TransPickupActivityScreenCore extends CustomerAdaptiveFragmentActivity {
         FrameLayout.LayoutParams gpsLp = new FrameLayout.LayoutParams(dp(48), dp(48), Gravity.END | Gravity.BOTTOM);
         gpsLp.setMargins(0,0,dp(10),dp(10));
         viewport.addView(gpsMapBtn, gpsLp);
-        gpsMapBtn.setOnClickListener(v -> { if (isCheckout()) fitCheckout(); else loadPickupLocation(); });
+        gpsMapBtn.setOnClickListener(v -> { if (isCheckout()) { mapView.cancelCheckoutPreview(); fitCheckout(); } else loadPickupLocation(); });
 
         buildBottomSheet(layout);
         progressBar = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
@@ -635,6 +635,8 @@ class TransPickupActivityScreenCore extends CustomerAdaptiveFragmentActivity {
             try {
                 org.json.JSONArray stops=new org.json.JSONArray(stopsJson);
                 org.json.JSONArray geometry=new org.json.JSONArray();
+                org.json.JSONArray selection=new org.json.JSONArray().put(new org.json.JSONArray().put(fromLat).put(fromLng));
+                java.util.List<Integer> legEnds=new java.util.ArrayList<>();
                 double startLat=fromLat,startLng=fromLng;
                 for (int index=0;index<=stops.length();index++) {
                     JSONObject stop=stops.optJSONObject(index);
@@ -642,16 +644,28 @@ class TransPickupActivityScreenCore extends CustomerAdaptiveFragmentActivity {
                     double endLng=stop==null?toLng:stop.getDouble("longitude");
                     org.json.JSONArray leg=StableRouteEngine.fetch(startLat,startLng,endLat,endLng).latLngPoints;
                     for (int point=geometry.length()==0?0:1; point<leg.length();point++) geometry.put(leg.get(point));
+                    selection.put(new org.json.JSONArray().put(endLat).put(endLng));
+                    if (index<stops.length()) legEnds.add(geometry.length()-1);
                     startLat=endLat;startLng=endLng;
                 }
                 networkScope.post(mainHandler, () -> {
                     if (mapView!=null && isCheckout() && fromLat==pickupLat && fromLng==pickupLng
-                            && toLat==deliveryLat && toLng==deliveryLng && stopsJson.equals(waypoints.toString())) {
-                        mapView.drawOsrmRoute(geometry,"driver_accepted");
+                            && toLat==deliveryLat && toLng==deliveryLng && sameStopPositions(stops)) {
+                        mapView.drawCheckoutRoute(geometry,legEnds,selection.toString());
                     }
                 });
             } catch (Exception ignored) { }
         });
+    }
+
+    private boolean sameStopPositions(org.json.JSONArray requested) {
+        if (requested.length()!=waypoints.length()) return false;
+        for (int i=0;i<requested.length();i++) {
+            JSONObject old=requested.optJSONObject(i), current=waypoints.optJSONObject(i);
+            if (old==null || current==null || old.optDouble("latitude")!=current.optDouble("latitude")
+                    || old.optDouble("longitude")!=current.optDouble("longitude")) return false;
+        }
+        return true;
     }
 
     protected String formatCoordinate(double lat, double lng) {

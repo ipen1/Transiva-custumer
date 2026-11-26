@@ -91,6 +91,17 @@ class SearchDriverActivityScreenCore extends CustomerAdaptiveActivity {
     protected ImageView driverPhotoView;
     protected LinearLayout driverCard;
     protected WebView miniMap;
+    private RideSearchDroneView droneView;
+    private ScrollView searchScroll;
+    private double searchPickupLat, searchPickupLng;
+    private boolean foreground;
+    private Runnable pendingTripHandoff;
+    private final Runnable tripHandoff = () -> {
+        if (!foreground || pendingTripHandoff == null || isFinishing() || isDestroyed()) return;
+        Runnable open = pendingTripHandoff;
+        pendingTripHandoff = null;
+        open.run();
+    };
     protected Button cancelBtn;
     protected ProgressBar progressBar;
 
@@ -152,8 +163,14 @@ class SearchDriverActivityScreenCore extends CustomerAdaptiveActivity {
         requestedOrderType = firstNonEmpty(getIntent().getStringExtra("active_order_type"),
                 getIntent().getStringExtra("order_type"), savedOrderType);
         shopOrder = "TransShop".equalsIgnoreCase(requestedOrderType);
+        Bundle extras = getIntent().getExtras();
+        searchPickupLat = firstValidCoordValue(safeDouble(String.valueOf(extras == null ? null : extras.get("pickup_lat"))),
+                activeOrderId.equals(getStringPref("active_order_id")) ? getDoublePref("pickup_lat") : 0);
+        searchPickupLng = firstValidCoordValue(safeDouble(String.valueOf(extras == null ? null : extras.get("pickup_lng"))),
+                activeOrderId.equals(getStringPref("active_order_id")) ? getDoublePref("pickup_lng") : 0);
 
         buildLayout();
+        if (droneView != null) droneView.setOrigin(searchPickupLat,searchPickupLng);
         JSONObject orderReference = new JSONObject();
         try { orderReference.put("order_id", activeOrderId); }
         catch (org.json.JSONException ignored) { }
@@ -171,6 +188,12 @@ class SearchDriverActivityScreenCore extends CustomerAdaptiveActivity {
     private String entertainmentState = CustomerOrderState.PENDING;
     private String entertainmentLabel = "Mencari driver terdekat";
 
+    private boolean isRideSearch() {
+        String service = requestedOrderType.trim().toLowerCase(Locale.ROOT);
+        return "transride".equals(service) || "transbike".equals(service) || "transcar".equals(service)
+                || "ride".equals(service) || "car".equals(service);
+    }
+
     protected void buildLayout() {
         FrameLayout page = new FrameLayout(this);
         pageRoot = page;
@@ -178,6 +201,7 @@ class SearchDriverActivityScreenCore extends CustomerAdaptiveActivity {
                 : roundGradient("#020817", "#071A36", 0));
 
         ScrollView scroll = new ScrollView(this);
+        searchScroll = scroll;
         scroll.setFillViewport(true);
         page.addView(scroll, new FrameLayout.LayoutParams(-1, -1));
 
@@ -218,9 +242,19 @@ class SearchDriverActivityScreenCore extends CustomerAdaptiveActivity {
         LinearLayout.LayoutParams searchStatusLp = new LinearLayout.LayoutParams(-1, -2);
         searchStatusLp.topMargin = dp(16); root.addView(searchStatus, searchStatusLp);
         matchingView = new CustomerMatchmakingView(this, "car".equals(cachedDriverType), shopOrder);
-        LinearLayout.LayoutParams matchingLp = new LinearLayout.LayoutParams(-1, dp(192));
+        if (isRideSearch()) {
+            try {
+                droneView = new RideSearchDroneView(this,"car".equals(cachedDriverType),matchingView);
+            } catch (RuntimeException mapError) {
+                if (matchingView.getParent() instanceof android.view.ViewGroup) {
+                    ((android.view.ViewGroup)matchingView.getParent()).removeView(matchingView);
+                }
+            }
+        }
+        int mapHeight = Math.max(245, Math.min(355, getResources().getConfiguration().screenHeightDp / 2));
+        LinearLayout.LayoutParams matchingLp = new LinearLayout.LayoutParams(-1, dp(droneView == null ? 192 : mapHeight));
         matchingLp.setMargins(0, dp(12), 0, dp(14));
-        root.addView(matchingView, matchingLp);
+        root.addView(droneView == null ? matchingView : droneView, matchingLp);
 
         countdownLabel = text((shopOrder ? "MENCARI DI SEKITAR TOKO" : "MENCARI DI SEKITAR JEMPUT"), 10, "#8FCBFF", true);
         countdownLabel.setGravity(Gravity.CENTER);
@@ -329,24 +363,26 @@ class SearchDriverActivityScreenCore extends CustomerAdaptiveActivity {
         distLp.setMargins(0, dp(9), 0, 0);
         infoCol.addView(driverDistanceText, distLp);
 
-        miniMap = new CustomerThemedWebView(this);
-        miniMap.setBackgroundColor(Color.TRANSPARENT);
-        WebSettings settings = miniMap.getSettings();
-        settings.setJavaScriptEnabled(true);
-        settings.setAllowFileAccess(false);
-        settings.setAllowContentAccess(false);
-        settings.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
-        settings.setDomStorageEnabled(true);
-        miniMap.setWebViewClient(new WebViewClient() {
-            @Override public void onPageFinished(WebView view,String url) { if(view instanceof CustomerThemedWebView)((CustomerThemedWebView)view).refreshCustomerTheme(); }
-            @Override public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) { return true; }
-            @Override public boolean shouldOverrideUrlLoading(WebView view, String url) { return true; }
-        });
-        settings.setLoadWithOverviewMode(true);
-        settings.setUseWideViewPort(true);
-        LinearLayout.LayoutParams mapLp = new LinearLayout.LayoutParams(-1, dp(230));
-        mapLp.setMargins(0, dp(16), 0, 0);
-        driverCard.addView(miniMap, mapLp);
+        if (droneView == null) {
+            miniMap = new CustomerThemedWebView(this);
+            miniMap.setBackgroundColor(Color.TRANSPARENT);
+            WebSettings settings = miniMap.getSettings();
+            settings.setJavaScriptEnabled(true);
+            settings.setAllowFileAccess(false);
+            settings.setAllowContentAccess(false);
+            settings.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
+            settings.setDomStorageEnabled(true);
+            miniMap.setWebViewClient(new WebViewClient() {
+                @Override public void onPageFinished(WebView view,String url) { if(view instanceof CustomerThemedWebView)((CustomerThemedWebView)view).refreshCustomerTheme(); }
+                @Override public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) { return true; }
+                @Override public boolean shouldOverrideUrlLoading(WebView view, String url) { return true; }
+            });
+            settings.setLoadWithOverviewMode(true);
+            settings.setUseWideViewPort(true);
+            LinearLayout.LayoutParams mapLp = new LinearLayout.LayoutParams(-1, dp(230));
+            mapLp.setMargins(0, dp(16), 0, 0);
+            driverCard.addView(miniMap, mapLp);
+        }
 
         progressBar = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
         progressBar.setVisibility(View.GONE);
@@ -418,10 +454,14 @@ class SearchDriverActivityScreenCore extends CustomerAdaptiveActivity {
         userLat = location.getLatitude();
         userLng = location.getLongitude();
         hasUserLocation = true;
-        setSubtitle("Mencari driver aktif di sekitar Anda");
+        if (droneView != null && !CustomerGeoMath.valid(searchPickupLat,searchPickupLng)) {
+            droneView.setOrigin(userLat,userLng);
+        }
+        if (!driverFound && !isCanceling) setSubtitle("Mencari driver aktif di sekitar Anda");
     }
 
     protected void startLoops() {
+        if (droneView != null) droneView.resumeScanning();
         startMatchCountdown();
         mainHandler.removeCallbacks(driverMatchRunnable);
         mainHandler.removeCallbacks(checkOrderRunnable);
@@ -580,9 +620,12 @@ class SearchDriverActivityScreenCore extends CustomerAdaptiveActivity {
                 payload.put("type", normalizeDriverType(cachedDriverType));
                 payload.put("order_id", activeOrderId);
                 payload.put("search_phase", searchPhase);
-                if (hasUserLocation) {
-                    payload.put("latitude", userLat);
-                    payload.put("longitude", userLng);
+                boolean hasPickup = isRideSearch() && CustomerGeoMath.valid(searchPickupLat,searchPickupLng);
+                double originLat = hasPickup ? searchPickupLat : userLat;
+                double originLng = hasPickup ? searchPickupLng : userLng;
+                if (hasPickup || hasUserLocation) {
+                    payload.put("latitude", originLat);
+                    payload.put("longitude", originLng);
                     payload.put("max_km", searchPhase == 1 ? 12 : (searchPhase == 2 ? 24 : 40));
                     payload.put("limit", searchPhase == 1 ? 16 : (searchPhase == 2 ? 24 : 32));
                 }
@@ -604,8 +647,16 @@ class SearchDriverActivityScreenCore extends CustomerAdaptiveActivity {
                     matchingView.setSearchPhase(serverPhase);
                     matchingView.setOfferedDriver(activeOffer);
                     matchingView.setDriverCount(drivers.size());
-                    if (drivers.size() > 0 && hasUserLocation) {
-                        double nearest = nearestDistance(drivers);
+                    if (droneView != null && CustomerGeoMath.valid(originLat,originLng)) {
+                        java.util.Map<String,com.google.android.gms.maps.model.LatLng> positions = new java.util.LinkedHashMap<>();
+                        for (MatchDriver candidate : drivers) {
+                            positions.put(candidate.username.toLowerCase(Locale.ROOT),
+                                    new com.google.android.gms.maps.model.LatLng(candidate.lat,candidate.lng));
+                        }
+                        droneView.setDrivers(positions);
+                    }
+                    if (!drivers.isEmpty() && CustomerGeoMath.valid(originLat,originLng)) {
+                        double nearest = nearestDistance(drivers,originLat,originLng);
                         setSubtitle(nearest < 0.1 ? (shopOrder ? "Driver tersedia di dekat toko" : "Driver tersedia di dekat titik jemput")
                                 : "Driver terdekat sekitar " + String.format(Locale.US, "%.1f", nearest) + " km");
                     } else if (drivers.size() > 0) {
@@ -630,7 +681,7 @@ class SearchDriverActivityScreenCore extends CustomerAdaptiveActivity {
             if (d == null) continue;
             double lat = safeDouble(firstNonEmpty(d.optString("lat"), d.optString("latitude")));
             double lng = safeDouble(firstNonEmpty(d.optString("lng"), d.optString("longitude")));
-            if (lat == 0 || lng == 0) continue;
+            if (!CustomerGeoMath.valid(lat,lng)) continue;
             MatchDriver rd = new MatchDriver();
             rd.name = firstNonEmpty(d.optString("name"), d.optString("username"), "Driver");
             rd.username = firstNonEmpty(d.optString("username"), rd.name);
@@ -642,10 +693,10 @@ class SearchDriverActivityScreenCore extends CustomerAdaptiveActivity {
         return list;
     }
 
-    protected double nearestDistance(List<MatchDriver> drivers) {
+    private double nearestDistance(List<MatchDriver> drivers,double originLat,double originLng) {
         double best = 999999;
         for (MatchDriver d : drivers) {
-            best = Math.min(best, distanceKm(userLat, userLng, d.lat, d.lng));
+            best = Math.min(best, distanceKm(originLat, originLng, d.lat, d.lng));
         }
         return best == 999999 ? 0 : best;
     }
@@ -782,23 +833,25 @@ class SearchDriverActivityScreenCore extends CustomerAdaptiveActivity {
         stopMatchCountdown();
         destroyLoopsKeepScreen();
         matchingView.stopMatching();
-        matchingView.setVisibility(View.GONE);
+        if (droneView == null) matchingView.setVisibility(View.GONE);
         countdownLabel.setVisibility(View.GONE);
         countdownText.setVisibility(View.GONE);
         JSONObject order = data.optJSONObject("order");
         if (order == null) order = new JSONObject();
         String readyMessage = driverReadyMessage(order, data);
-        playDriverAcceptedEffect(readyMessage);
+        if (droneView == null) playDriverAcceptedEffect(readyMessage);
 
         titleText.setText("Driver Siap");
         setSubtitle(readyMessage);
         cancelBtn.setVisibility(View.GONE);
         driverCard.setVisibility(View.VISIBLE);
-        driverCard.setAlpha(0f);
-        driverCard.setScaleX(.88f);
-        driverCard.setScaleY(.88f);
-        driverCard.animate().alpha(1f).scaleX(1f).scaleY(1f).setStartDelay(850L).setDuration(520L)
-                .setInterpolator(new OvershootInterpolator(1.08f)).start();
+        if (allowCameraMotion()) {
+            driverCard.setAlpha(0f);
+            driverCard.setTranslationY(dp(14));
+            driverCard.animate().alpha(1f).translationY(0f)
+                    .setStartDelay(droneView == null ? 0 : 240L).setDuration(420L)
+                    .setInterpolator(new android.view.animation.DecelerateInterpolator()).start();
+        }
 
         JSONObject driver = data.optJSONObject("driver");
         if (driver == null) driver = new JSONObject();
@@ -852,6 +905,10 @@ class SearchDriverActivityScreenCore extends CustomerAdaptiveActivity {
 
         double driverLat = getJsonDouble(driver, "driver_lat", "lat", "latitude");
         double driverLng = getJsonDouble(driver, "driver_lng", "lng", "longitude");
+        if (!CustomerGeoMath.valid(driverLat,driverLng)) {
+            driverLat = getJsonDouble(data,"driver_lat");
+            driverLng = getJsonDouble(data,"driver_lng");
+        }
 
         double pickupLat = firstValidCoordValue(
                 getJsonDouble(order, "pickup_lat", "pickupLatitude", "pickup_latitude"),
@@ -875,12 +932,31 @@ class SearchDriverActivityScreenCore extends CustomerAdaptiveActivity {
         );
 
         saveTripPrefs(activeOrderId, driverType, pickupLat, pickupLng, deliveryLat, deliveryLng);
-        loadDriverMap(driverName, driverLat, driverLng, pickupLat, pickupLng);
+        long delay = 450;
+        if (droneView == null) {
+            loadDriverMap(driverName, driverLat, driverLng, pickupLat, pickupLng);
+        } else {
+            String assigned = firstNonEmpty(driver.optString("username"),order.optString("driver_username"),
+                    order.optString("driver"),data.optString("driver_username"));
+            droneView.setOrigin(pickupLat,pickupLng);
+            boolean visual = droneView.showAccepted(driverName,assigned,driverLat,driverLng);
+            titleText.setText("Driver siap menjemput");
+            searchStatus.setVisibility(View.GONE);
+            if (visual) searchScroll.post(() -> {
+                if (!foreground || isFinishing() || isDestroyed()) return;
+                int top = Math.max(0,droneView.getTop()-dp(10));
+                if (allowCameraMotion()) searchScroll.smoothScrollTo(0,top);
+                else searchScroll.scrollTo(0,top);
+            });
+            delay = !allowCameraMotion() ? 850 : visual ? 2350 : 1450;
+        }
+        pendingTripHandoff = () -> openNativeTrip(driverType, pickupLat, pickupLng, deliveryLat, deliveryLng);
+        if (foreground) mainHandler.postDelayed(tripHandoff, delay);
+    }
 
-        // Begitu server menyatakan driver benar-benar menerima order, layar pencarian
-        // harus berhenti. Beri jeda sangat singkat hanya untuk feedback visual,
-        // lalu langsung pindah ke CustomerTripActivity.
-        mainHandler.postDelayed(() -> openNativeTrip(driverType, pickupLat, pickupLng, deliveryLat, deliveryLng), 450);
+    private boolean allowCameraMotion() {
+        if (android.os.Build.VERSION.SDK_INT >= 26) return ValueAnimator.areAnimatorsEnabled();
+        return Settings.Global.getFloat(getContentResolver(),Settings.Global.ANIMATOR_DURATION_SCALE,1f) > 0f;
     }
 
     protected void openNativeTrip(String driverType, double pickupLat, double pickupLng, double deliveryLat, double deliveryLng) {
@@ -1221,6 +1297,9 @@ class SearchDriverActivityScreenCore extends CustomerAdaptiveActivity {
     }
 
     private void destroyLoops() {
+        mainHandler.removeCallbacks(tripHandoff);
+        pendingTripHandoff = null;
+        if (droneView != null) droneView.stopScanning();
         closeEntertainment();
         stopMatchCountdown();
         destroyed = true;
@@ -1229,15 +1308,24 @@ class SearchDriverActivityScreenCore extends CustomerAdaptiveActivity {
     }
 
     private void destroyLoopsKeepScreen() {
+        if (droneView != null) droneView.stopScanning();
         stopMatchCountdown();
         mainHandler.removeCallbacks(driverMatchRunnable);
         mainHandler.removeCallbacks(checkOrderRunnable);
     }
 
 
+    @Override protected void onStart() {
+        super.onStart();
+        if (droneView != null) droneView.startMap();
+    }
+
     @Override
     protected void onResume() {
         super.onResume();
+        foreground = true;
+        if (droneView != null) droneView.resumeMap();
+        if (pendingTripHandoff != null) mainHandler.postDelayed(tripHandoff,700);
         featureRuntime.onResume();
         if (entertainment != null) entertainment.setForeground(true);
         if (matchingView != null) matchingView.setAnimatingEnabled(!driverFound && !isCanceling);
@@ -1245,15 +1333,29 @@ class SearchDriverActivityScreenCore extends CustomerAdaptiveActivity {
 
     @Override
     protected void onPause() {
+        foreground = false;
+        mainHandler.removeCallbacks(tripHandoff);
+        if (droneView != null) droneView.pauseMap();
         if (entertainment != null) entertainment.setForeground(false);
         if (matchingView != null) matchingView.setAnimatingEnabled(false);
         featureRuntime.onPause();
         super.onPause();
     }
 
+    @Override protected void onStop() {
+        if (droneView != null) droneView.stopMap();
+        super.onStop();
+    }
+
+    @Override public void onLowMemory() {
+        super.onLowMemory();
+        if (droneView != null) droneView.lowMemory();
+    }
+
     @Override protected void onDestroy() {
         featureRuntime.destroy();
         destroyLoops();
+        if (droneView != null) droneView.close();
         try { if (miniMap != null) miniMap.destroy(); } catch (Exception ignored) {}
         super.onDestroy();
     }

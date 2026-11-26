@@ -8,8 +8,10 @@ import android.location.Location;
 import android.view.animation.LinearInterpolator;
 
 import com.google.android.gms.maps.CameraUpdate;
+import com.google.android.gms.maps.CameraUpdateFactory;
 import com.google.android.gms.maps.GoogleMap;
 import com.google.android.gms.maps.Projection;
+import com.google.android.gms.maps.model.CameraPosition;
 import com.google.android.gms.maps.model.Circle;
 import com.google.android.gms.maps.model.CircleOptions;
 import com.google.android.gms.maps.model.JointType;
@@ -136,7 +138,12 @@ final class CheckoutRouteAnimation {
             }
         });
         timeline.addListener(new AnimatorListenerAdapter() {
-            @Override public void onAnimationEnd(Animator ignored) { if (active) finish(); }
+            @Override public void onAnimationEnd(Animator ignored) {
+                if (active) {
+                    restore();
+                    orbit(map.getCameraPosition(), 0);
+                }
+            }
         });
         timeline.start();
     }
@@ -233,16 +240,33 @@ final class CheckoutRouteAnimation {
         restore();
     }
 
-    private void finish() {
-        active = false;
-        restore();
+    private void orbit(CameraPosition overview, int shot) {
+        if (!active) return;
+        if (shot == 3) {
+            active = false;
+            return;
+        }
+        float bearing = shot == 0 ? -25f : shot == 1 ? 28f : 7f;
+        float tilt = shot == 0 ? 34f : shot == 1 ? 40f : 20f;
+        // Pull back before rotating so the confirmed route remains framed.
+        float zoom = Math.max(map.getMinZoomLevel(), overview.zoom - (shot == 2 ? .42f : .85f));
+        CameraPosition position = new CameraPosition.Builder(overview)
+                .bearing(overview.bearing + bearing).tilt(tilt).zoom(zoom).build();
+        map.animateCamera(CameraUpdateFactory.newCameraPosition(position),
+                shot == 0 ? 640 : shot == 1 ? 1060 : 580, new GoogleMap.CancelableCallback() {
+                    @Override public void onFinish() { orbit(overview, shot + 1); }
+                    @Override public void onCancel() { cancel(); }
+                });
     }
 
     private void restore() {
         showFinalRoute();
         clearTrail();
         for (int i = 0; i < anchors.length; i++) {
-            if (pulses[i] != null) pulses[i].remove();
+            if (pulses[i] != null) {
+                pulses[i].remove();
+                pulses[i] = null;
+            }
             if (!anchors[i].equals(markers.get(i).getPosition())) markers.get(i).setPosition(anchors[i]);
         }
     }

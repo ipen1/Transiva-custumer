@@ -41,4 +41,23 @@ public class CustomerThemeColorsTest {
   assertEquals(0xffb91c1c,CustomerThemeColors.lightText(0xffb91c1c,0xffffffff));
   assertEquals(0x80718096,CustomerThemeColors.lightText(0x80718096,0xffffffff));
  }
+ @Test public void bookingAddressForegroundStaysReadableAndRestoresInLightMode(){
+  int[] addresses={0xff173153,0xff213953};
+  int[] darkCards={CustomerThemeColors.CARD,0xff40232d,0xff3c2d19,0xff12382f};
+  for(int address:addresses)for(int card:darkCards){
+   int night=CustomerThemeColors.foreground(address,card,true);
+   assertNotEquals(address,night);
+   assertTrue(CustomerThemeColors.contrast(night,card)>=4.5);
+   assertEquals(address,CustomerThemeColors.foreground(address,0xffffffff,false));
+  }
+ }
+ @Test public void textKeepsContrastOnTintedLightCardsAndEmbeddedDarkPanels(){
+  int[] tints={0xfffff4d6,0xffe7fff2,0xfffff1f2,0xfff1f5ff};
+  for(int tint:tints)for(int semantic:new int[]{0xff5db68e,0xffe87163,0xffe6a845,0xff6ba7ff}){
+   assertTrue(CustomerThemeColors.contrast(CustomerThemeColors.foreground(semantic,tint,false),tint)>=4.5);
+  }
+  int darkPanel=0xff40232d;
+  assertTrue(CustomerThemeColors.contrast(CustomerThemeColors.foreground(0xff173153,darkPanel,false),darkPanel)>=4.5);
+  assertEquals(0x00173153,CustomerThemeColors.foreground(0x00173153,darkPanel,true));
+ }
 }

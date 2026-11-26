@@ -244,17 +244,17 @@ class SearchDriverActivityScreenCore extends CustomerAdaptiveActivity {
         matchingView = new CustomerMatchmakingView(this, "car".equals(cachedDriverType), shopOrder);
         if (isRideSearch()) {
             try {
-                droneView = new RideSearchDroneView(this,"car".equals(cachedDriverType),matchingView);
+                droneView = new RideSearchDroneView(this,"car".equals(cachedDriverType));
             } catch (RuntimeException mapError) {
-                if (matchingView.getParent() instanceof android.view.ViewGroup) {
-                    ((android.view.ViewGroup)matchingView.getParent()).removeView(matchingView);
-                }
+                // Keep the search and cancellation available if Maps cannot initialize.
             }
         }
-        int mapHeight = Math.max(245, Math.min(355, getResources().getConfiguration().screenHeightDp / 2));
-        LinearLayout.LayoutParams matchingLp = new LinearLayout.LayoutParams(-1, dp(droneView == null ? 192 : mapHeight));
+        LinearLayout.LayoutParams matchingLp = new LinearLayout.LayoutParams(-1,
+                droneView == null ? dp(192) : rideMapHeight());
         matchingLp.setMargins(0, dp(12), 0, dp(14));
-        root.addView(droneView == null ? matchingView : droneView, matchingLp);
+        if (droneView != null) root.addView(droneView,matchingLp);
+        else if (!isRideSearch()) root.addView(matchingView,matchingLp);
+        else matchingView.setVisibility(View.GONE);
 
         countdownLabel = text((shopOrder ? "MENCARI DI SEKITAR TOKO" : "MENCARI DI SEKITAR JEMPUT"), 10, "#8FCBFF", true);
         countdownLabel.setGravity(Gravity.CENTER);
@@ -289,8 +289,28 @@ class SearchDriverActivityScreenCore extends CustomerAdaptiveActivity {
         cancelBtn.setTextColor(Color.parseColor("#F3B9BD"));
         cancelBtn.setBackground(roundStroke("#182B43", "#5C3E51", dp(14), 1));
         LinearLayout.LayoutParams cancelLp = new LinearLayout.LayoutParams(-1, dp(46));
-        root.addView(cancelBtn, cancelLp);
         cancelBtn.setOnClickListener(v -> confirmCancelOrder());
+        if (droneView == null) root.addView(cancelBtn,cancelLp);
+        else {
+            appTitle.setVisibility(View.GONE);
+            searchStatus.setVisibility(View.GONE);
+            secureLine.setVisibility(View.GONE);
+            root.removeView(titleText);
+            root.removeView(subtitleText);
+            root.removeView(countdownText);
+            root.removeView(countdownLabel);
+            titleText.setText("Mencari driver");
+            titleText.setTextSize(24);
+            subtitleText.setTextSize(12);
+            subtitleText.setMaxLines(2);
+            subtitleText.setEllipsize(android.text.TextUtils.TruncateAt.END);
+            countdownText.setTypeface(Typeface.MONOSPACE,Typeface.BOLD);
+            countdownText.setTextSize(29);
+            countdownText.setText("01:30");
+            cancelBtn.setMinHeight(dp(48));
+            cancelBtn.setBackground(roundStroke("#482737","#825168",dp(15),1));
+            droneView.installSearchControls(titleText,subtitleText,countdownLabel,countdownText,cancelBtn);
+        }
 
         driverCard = new LinearLayout(this);
         driverCard.setOrientation(LinearLayout.VERTICAL);
@@ -394,6 +414,20 @@ class SearchDriverActivityScreenCore extends CustomerAdaptiveActivity {
         CustomerAppSettings.apply(this);
     }
 
+    private int rideMapHeight() {
+        android.content.res.Configuration config=getResources().getConfiguration();
+        int minimum=300+Math.round(Math.max(0,config.fontScale-1f)*115);
+        return dp(Math.max(minimum,Math.min(620,config.screenHeightDp-90)));
+    }
+
+    @Override public void onConfigurationChanged(android.content.res.Configuration configuration) {
+        super.onConfigurationChanged(configuration);
+        if (droneView==null) return;
+        android.view.ViewGroup.LayoutParams params=droneView.getLayoutParams();
+        params.height=rideMapHeight();
+        droneView.setLayoutParams(params);
+    }
+
     protected void getUserLocationThenStart() {
         if (activeOrderId.length() == 0) {
             showInfo("Order Tidak Ada", "Order aktif tidak ditemukan.");
@@ -474,7 +508,10 @@ class SearchDriverActivityScreenCore extends CustomerAdaptiveActivity {
     protected void startMatchCountdown() {
         stopMatchCountdown();
         countdownRemainingMs = 90000L;
-        if (countdownText != null) countdownText.setText("00:30");
+        if (countdownText!=null) {
+            if (droneView!=null) countdownText.setTextSize(29);
+            countdownText.setText(droneView==null?"00:30":"01:30");
+        }
         if (countdownLabel != null) countdownLabel.setText((shopOrder ? "MENCARI DI SEKITAR TOKO" : "MENCARI DI SEKITAR JEMPUT"));
         setSearchPhase(1);
         matchCountdown = new CountDownTimer(90000L, 1000L) {
@@ -484,19 +521,24 @@ class SearchDriverActivityScreenCore extends CustomerAdaptiveActivity {
                 int phase = elapsed < 30000L ? 1 : (elapsed < 60000L ? 2 : 3);
                 setSearchPhase(phase);
                 long nextBoundary = phase == 1 ? 30000L : (phase == 2 ? 60000L : 90000L);
-                int seconds = Math.max(0, (int) Math.ceil((nextBoundary - elapsed) / 1000.0));
-                if (countdownText != null) {
-                    countdownText.setText(String.format(Locale.US, "00:%02d", seconds));
-                    float pulse = seconds <= 5 ? 1.06f : 1.0f;
-                    countdownText.animate().scaleX(pulse).scaleY(pulse).setDuration(160).withEndAction(() ->
-                            countdownText.animate().scaleX(1f).scaleY(1f).setDuration(160).start()).start();
+                long until = droneView==null ? nextBoundary-elapsed : millisUntilFinished;
+                int seconds = Math.max(0,(int)Math.ceil(until/1000.0));
+                if (countdownText!=null) {
+                    countdownText.setText(String.format(Locale.US,"%02d:%02d",seconds/60,seconds%60));
+                    if (seconds<=5 && allowCameraMotion()) {
+                        countdownText.animate().scaleX(1.06f).scaleY(1.06f).setDuration(160).withEndAction(() ->
+                                countdownText.animate().scaleX(1f).scaleY(1f).setDuration(160).start()).start();
+                    }
                 }
             }
 
             @Override public void onFinish() {
                 if (destroyed || isCanceling || driverFound) return;
                 setSearchPhase(3);
-                if (countdownText != null) countdownText.setText("LIVE");
+                if (countdownText!=null) {
+                    if (droneView!=null) countdownText.setTextSize(17);
+                    countdownText.setText(droneView==null?"LIVE":"Masih mencari");
+                }
             }
         }.start();
     }
@@ -647,14 +689,6 @@ class SearchDriverActivityScreenCore extends CustomerAdaptiveActivity {
                     matchingView.setSearchPhase(serverPhase);
                     matchingView.setOfferedDriver(activeOffer);
                     matchingView.setDriverCount(drivers.size());
-                    if (droneView != null && CustomerGeoMath.valid(originLat,originLng)) {
-                        java.util.Map<String,com.google.android.gms.maps.model.LatLng> positions = new java.util.LinkedHashMap<>();
-                        for (MatchDriver candidate : drivers) {
-                            positions.put(candidate.username.toLowerCase(Locale.ROOT),
-                                    new com.google.android.gms.maps.model.LatLng(candidate.lat,candidate.lng));
-                        }
-                        droneView.setDrivers(positions);
-                    }
                     if (!drivers.isEmpty() && CustomerGeoMath.valid(originLat,originLng)) {
                         double nearest = nearestDistance(drivers,originLat,originLng);
                         setSubtitle(nearest < 0.1 ? (shopOrder ? "Driver tersedia di dekat toko" : "Driver tersedia di dekat titik jemput")
@@ -936,19 +970,14 @@ class SearchDriverActivityScreenCore extends CustomerAdaptiveActivity {
         if (droneView == null) {
             loadDriverMap(driverName, driverLat, driverLng, pickupLat, pickupLng);
         } else {
-            String assigned = firstNonEmpty(driver.optString("username"),order.optString("driver_username"),
-                    order.optString("driver"),data.optString("driver_username"));
-            droneView.setOrigin(pickupLat,pickupLng);
-            boolean visual = droneView.showAccepted(driverName,assigned,driverLat,driverLng);
-            titleText.setText("Driver siap menjemput");
-            searchStatus.setVisibility(View.GONE);
-            if (visual) searchScroll.post(() -> {
+            boolean visual = droneView.showAccepted(driverName,driverLat,driverLng);
+            searchScroll.post(() -> {
                 if (!foreground || isFinishing() || isDestroyed()) return;
                 int top = Math.max(0,droneView.getTop()-dp(10));
                 if (allowCameraMotion()) searchScroll.smoothScrollTo(0,top);
                 else searchScroll.scrollTo(0,top);
             });
-            delay = !allowCameraMotion() ? 850 : visual ? 2350 : 1450;
+            delay = !allowCameraMotion()?1350:visual?2850:1750;
         }
         pendingTripHandoff = () -> openNativeTrip(driverType, pickupLat, pickupLng, deliveryLat, deliveryLng);
         if (foreground) mainHandler.postDelayed(tripHandoff, delay);
@@ -1137,7 +1166,7 @@ class SearchDriverActivityScreenCore extends CustomerAdaptiveActivity {
         isCanceling = false;
         cancelBtn.setEnabled(true);
         cancelBtn.setText("Batalkan pesanan");
-        titleText.setText("Mencari Driver...");
+        titleText.setText(droneView==null?"Mencari Driver...":"Mencari driver");
         showInfo("Pembatalan", message);
         startLoops();
     }
@@ -1325,7 +1354,9 @@ class SearchDriverActivityScreenCore extends CustomerAdaptiveActivity {
         super.onResume();
         foreground = true;
         if (droneView != null) droneView.resumeMap();
-        if (pendingTripHandoff != null) mainHandler.postDelayed(tripHandoff,700);
+        if (pendingTripHandoff!=null) {
+            mainHandler.postDelayed(tripHandoff,droneView!=null && allowCameraMotion()?2350:700);
+        }
         featureRuntime.onResume();
         if (entertainment != null) entertainment.setForeground(true);
         if (matchingView != null) matchingView.setAnimatingEnabled(!driverFound && !isCanceling);

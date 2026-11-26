@@ -9,6 +9,10 @@ import android.graphics.drawable.Drawable;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
+import android.text.Spannable;
+import android.text.SpannableString;
+import android.text.Spanned;
+import android.text.style.ForegroundColorSpan;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.ViewTreeObserver;
@@ -126,15 +130,54 @@ public final class CustomerAppSettings {
         for(int i=0;i<colors.length;i++){int c=source.getColorForState(STATES[i],source.getDefaultColor());colors[i]=text?CustomerThemeColors.text(c,bg):CustomerThemeColors.brand(CustomerThemeColors.surface(c,depth));}
         return new ColorStateList(STATES,colors);
     }
+    private static ColorStateList paletteText(ColorStateList source,int bg,boolean dark,int depth) {
+        return dark || CustomerThemeColors.luminance(bg)<.6 ? mapped(source,bg,true,depth) : lightText(source,bg);
+    }
     private static ColorStateList lightText(ColorStateList source,int bg){
         if(source==null)return null;
         int[] colors=new int[STATES.length];boolean changed=false;
         for(int i=0;i<colors.length;i++){int old=source.getColorForState(STATES[i],source.getDefaultColor());colors[i]=CustomerThemeColors.lightText(old,bg);changed|=old!=colors[i];}
         return changed?new ColorStateList(STATES,colors):source;
     }
+    /** Text spans draw over the TextView color. Retain their source color through theme changes. */
+    private static final class AdaptedForeground extends ForegroundColorSpan {
+        final int original;
+
+        AdaptedForeground(int original,int display) {
+            super(display);
+            this.original=original;
+        }
+    }
+
+    private static void paintTextSpans(TextView view,Snapshot snapshot,int background,boolean dark,boolean refresh) {
+        CharSequence text=view.getText();
+        if (snapshot.lastRichText.get()==text && !refresh) return;
+        if (!(text instanceof Spanned)) {
+            snapshot.lastRichText=new WeakReference<>(text);
+            return;
+        }
+        Spanned styled=(Spanned)text;
+        Spannable editable=styled instanceof Spannable?(Spannable)styled:null;
+        for (ForegroundColorSpan span:styled.getSpans(0,styled.length(),ForegroundColorSpan.class)) {
+            if (!(span instanceof AdaptedForeground) && span.getClass()!=ForegroundColorSpan.class) continue;
+            int original=span instanceof AdaptedForeground?((AdaptedForeground)span).original:span.getForegroundColor();
+            int color=CustomerThemeColors.foreground(original,background,dark);
+            if (color==span.getForegroundColor()) continue;
+            if (editable==null) editable=new SpannableString(styled);
+            int start=editable.getSpanStart(span),end=editable.getSpanEnd(span),flags=editable.getSpanFlags(span);
+            if (start<0 || end<=start) continue;
+            editable.removeSpan(span);
+            editable.setSpan(color==original?new ForegroundColorSpan(original):new AdaptedForeground(original,color),start,end,flags);
+        }
+        if (editable!=null && editable!=text) view.setText(editable);
+        snapshot.lastRichText=new WeakReference<>(view.getText());
+    }
+
     private static final class Snapshot {
         Drawable original;WeakReference<Drawable> applied=new WeakReference<>(null);
         boolean ready,dark;int sample,stateHash=Integer.MIN_VALUE,bgContext;
+        WeakReference<CharSequence> lastRichText=new WeakReference<>(null);
+        ColorStateList link,lastLink;
         ColorStateList text,lastText,hint,lastHint,tint,lastTint,button,lastButton,thumb,lastThumb,track,lastTrack,progress,lastProgress,indeterminate,lastIndeterminate;
     }
     private static void paint(View v,boolean dark,int depth,int inherited){
@@ -178,9 +221,18 @@ public final class CustomerAppSettings {
         if(v instanceof TextView){
             TextView t=(TextView)v;ColorStateList now=t.getTextColors();boolean fresh=!s.ready||now!=s.lastText;
             if(fresh)s.text=now;
-            if(fresh||mode||s.bgContext!=background){ColorStateList target=dark?mapped(s.text,background,true,depth):lightText(s.text,background);if(target!=null)t.setTextColor(target);s.lastText=t.getTextColors();}
-            if(t instanceof EditText){ColorStateList hint=t.getHintTextColors();boolean newHint=!s.ready||hint!=s.lastHint;if(newHint)s.hint=hint;
-                if(newHint||mode||s.bgContext!=background){ColorStateList target=dark?mapped(s.hint,background,true,depth):lightText(s.hint,background);if(target!=null)t.setHintTextColor(target);s.lastHint=t.getHintTextColors();}}
+            boolean contrastChanged=mode||s.bgContext!=background;
+            if(fresh||contrastChanged){ColorStateList target=paletteText(s.text,background,dark,depth);if(target!=null)t.setTextColor(target);s.lastText=t.getTextColors();}
+            paintTextSpans(t,s,background,dark,contrastChanged);
+            ColorStateList link=t.getLinkTextColors();boolean freshLink=!s.ready||link!=s.lastLink;
+            if(freshLink)s.link=link;
+            if(freshLink||contrastChanged){
+                ColorStateList target=paletteText(s.link,background,dark,depth);
+                if(target!=null && target!=link)t.setLinkTextColor(target);
+                s.lastLink=t.getLinkTextColors();
+            }
+            if(t instanceof EditText || t.getHint()!=null){ColorStateList hint=t.getHintTextColors();boolean newHint=!s.ready||hint!=s.lastHint;if(newHint)s.hint=hint;
+                if(newHint||mode||s.bgContext!=background){ColorStateList target=paletteText(s.hint,background,dark,depth);if(target!=null)t.setHintTextColor(target);s.lastHint=t.getHintTextColors();}}
         }
         if(v instanceof CompoundButton){
             CompoundButton button=(CompoundButton)v;ColorStateList now=button.getButtonTintList();boolean fresh=!s.ready||now!=s.lastButton;if(fresh)s.button=now;

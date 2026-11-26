@@ -1621,8 +1621,16 @@ class TransShopActivityScreenCore extends CustomerAdaptiveActivity {
     private void drawQuotedRoute() {
         if (!mapReady || mapView == null || quotedRoute == null
                 || !shopFareGate.hasQuote(currentShopQuoteKey())) return;
-        mapView.setWaypoints(shopWaypoints());
-        mapView.drawRideRoute(quotedRoute);
+        JSONArray stops = shopWaypoints();
+        mapView.setWaypoints(stops);
+        StringBuilder selection = new StringBuilder().append(pickupLat).append(',').append(pickupLng)
+                .append('|').append(deliveryLat).append(',').append(deliveryLng);
+        for (int i = 0; i < stops.length(); i++) {
+            JSONObject stop = stops.optJSONObject(i);
+            if (stop != null) selection.append('|').append(stop.optDouble("latitude"))
+                    .append(',').append(stop.optDouble("longitude"));
+        }
+        mapView.drawCheckoutRoute(quotedRoute, null, selection.toString());
     }
 
     private JSONArray decodeQuotedRoute(JSONArray coordinates) {

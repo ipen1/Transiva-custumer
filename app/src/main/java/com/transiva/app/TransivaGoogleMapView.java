@@ -92,6 +92,7 @@ public final class TransivaGoogleMapView extends FrameLayout implements OnMapRea
     private Marker deliveryMarker;
     private Marker tripDriverMarker;
     private Polyline routePolyline;
+    private Polyline checkoutCasing;
     private CheckoutRouteAnimation checkoutAnimation;
     private String checkoutGeometry = "";
     private String presentedCheckout = "";
@@ -178,7 +179,7 @@ public final class TransivaGoogleMapView extends FrameLayout implements OnMapRea
             centerAction.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
             centerAction.setGravity(Gravity.CENTER);
             centerAction.setPadding(dp(14), dp(8), dp(14), dp(8));
-            centerAction.setBackground(actionBackground("#16A34A"));
+            centerAction.setBackground(actionBackground("#137343"));
             centerAction.setElevation(dp(5));
             centerAction.setOnClickListener(v -> chooseCenter());
             centerPin.setOnClickListener(v -> chooseCenter());
@@ -229,6 +230,7 @@ public final class TransivaGoogleMapView extends FrameLayout implements OnMapRea
         try {
             googleMap.setMapStyle(dark?MapStyleOptions.loadRawResourceStyle(getContext(),R.raw.google_map_dark):null);
             appliedMapDark=dark;
+            applyCheckoutRouteColors();
         }catch(Exception ignored){}
     }
 
@@ -331,7 +333,7 @@ public final class TransivaGoogleMapView extends FrameLayout implements OnMapRea
                 centerAction.setText(shopDeliveryClick == null ? "Pilih lokasi ini"
                         : (delivery ? "Antar ke sini" : "Belanja di sini"));
                 // CTA utama selalu memakai biru Transiva; warna pin tetap membedakan jemput/tujuan.
-                centerAction.setBackground(actionBackground("#0B7CFF"));
+                centerAction.setBackground(actionBackground("#075BCC"));
             }
         }
     }
@@ -352,7 +354,7 @@ public final class TransivaGoogleMapView extends FrameLayout implements OnMapRea
         if (centerAction != null) {
             int n = Math.max(1, Math.min(2, sequence));
             centerAction.setText(actionLabel == null ? "TAMBAH STOP " + n : actionLabel);
-            centerAction.setBackground(actionBackground("#F59E0B"));
+            centerAction.setBackground(actionBackground("#8D4405"));
             centerAction.setVisibility(externalPickerAction ? GONE : VISIBLE);
         }
     }
@@ -546,7 +548,7 @@ public final class TransivaGoogleMapView extends FrameLayout implements OnMapRea
         if (centerLocationCard != null) centerLocationCard.setVisibility(GONE);
         if (centerAction != null) {
             centerAction.setText(text == null || text.trim().isEmpty() ? "PESAN SEKARANG" : text);
-            centerAction.setBackground(actionBackground("#0B7CFF"));
+            centerAction.setBackground(actionBackground("#075BCC"));
             centerAction.setVisibility(show && !externalPickerAction ? VISIBLE : GONE);
         }
     }
@@ -599,24 +601,25 @@ public final class TransivaGoogleMapView extends FrameLayout implements OnMapRea
     }
 
     public void clearPickup() {
+        clearRoute();
         if (pickupMarker != null) {
             pickupMarker.remove();
             pickupMarker = null;
         }
-        clearRoute();
     }
 
     public void clearDelivery() {
+        clearRoute();
         if (deliveryMarker != null) {
             deliveryMarker.remove();
             deliveryMarker = null;
         }
-        clearRoute();
     }
 
     public void clearRoute() {
         cancelCheckoutAnimation(true);
         checkoutGeometry = "";
+        removeCheckoutCasing();
         if (routePolyline != null) {
             routePolyline.remove();
             routePolyline = null;
@@ -666,7 +669,14 @@ public final class TransivaGoogleMapView extends FrameLayout implements OnMapRea
                     .anchor(0.5f, 1f)
                     .icon(icon(shopDeliveryClick != null ? R.drawable.map_shop_pickup_pin : R.drawable.map_pickup_pin, 42, 54))
                     .title(shopDeliveryClick != null ? "Lokasi Belanja" : "Lokasi Jemput"));
-        } else pickupMarker.setPosition(p);
+        } else if (!p.equals(pickupMarker.getPosition())) {
+            if (checkoutPreviewRunning() && checkoutAnimation.anchorsPickup(p)) {
+                pickupMarker.setSnippet(label == null ? "" : label);
+                return;
+            }
+            cancelCheckoutPreview();
+            pickupMarker.setPosition(p);
+        }
         if (pickupMarker != null) pickupMarker.setSnippet(label == null ? "" : label);
         syncPickerMarkers();
     }
@@ -680,7 +690,14 @@ public final class TransivaGoogleMapView extends FrameLayout implements OnMapRea
                     .anchor(0.5f, 1f)
                     .icon(icon(shopDeliveryClick != null ? R.drawable.map_shop_delivery_pin : R.drawable.map_destination_pin, 42, 54))
                     .title("Lokasi Pengantaran"));
-        } else deliveryMarker.setPosition(p);
+        } else if (!p.equals(deliveryMarker.getPosition())) {
+            if (checkoutPreviewRunning() && checkoutAnimation.anchorsDelivery(p)) {
+                deliveryMarker.setSnippet(label == null ? "" : label);
+                return;
+            }
+            cancelCheckoutPreview();
+            deliveryMarker.setPosition(p);
+        }
         if (deliveryMarker != null) deliveryMarker.setSnippet(label == null ? "" : label);
         syncPickerMarkers();
     }
@@ -858,30 +875,55 @@ public final class TransivaGoogleMapView extends FrameLayout implements OnMapRea
         driverAnimator.start();
     }
 
-    public void drawOsrmRoute(JSONArray latLngPoints, String status) {
-        if (!isReady() || latLngPoints == null || latLngPoints.length() < 2) return;
+    private List<LatLng> routePoints(JSONArray latLngPoints) {
         List<LatLng> points = new ArrayList<>();
-        for (int i = 0; i < latLngPoints.length(); i++) {
+        for (int i = 0; latLngPoints != null && i < latLngPoints.length(); i++) {
             JSONArray p = latLngPoints.optJSONArray(i);
             if (p == null || p.length() < 2) continue;
             double lat = p.optDouble(0, Double.NaN);
             double lng = p.optDouble(1, Double.NaN);
             if (valid(lat, lng)) points.add(new LatLng(lat, lng));
         }
+        return points;
+    }
+
+    public void drawOsrmRoute(JSONArray latLngPoints, String status) {
+        if (!isReady()) return;
+        List<LatLng> points = routePoints(latLngPoints);
         if (points.size() < 2) return;
+        cancelCheckoutPreview();
+        removeCheckoutCasing();
+        checkoutGeometry = "";
         int color = "on_delivery".equals(status) ? Color.rgb(22, 163, 74)
                 : ("arrived_pickup".equals(status) ? Color.rgb(245, 158, 11) : Color.rgb(37, 99, 235));
+        setRouteLine(points, color, 5.5f);
+    }
+
+    private void setRouteLine(List<LatLng> points, int color, float widthDp) {
         if (routePolyline != null) {
             if (!routePolyline.getPoints().equals(points)) routePolyline.setPoints(points);
+            routePolyline.setWidth(dpF(widthDp));
             routePolyline.setColor(color);
             return;
         }
-        routePolyline = googleMap.addPolyline(new PolylineOptions()
-                .addAll(points)
-                .width(dpF(5.5f))
-                .color(color)
-                .geodesic(false)
-                .zIndex(2f));
+        routePolyline = googleMap.addPolyline(new PolylineOptions().addAll(points).width(dpF(widthDp))
+                .color(color).geodesic(false).zIndex(2f)
+                .jointType(com.google.android.gms.maps.model.JointType.ROUND)
+                .startCap(new com.google.android.gms.maps.model.RoundCap())
+                .endCap(new com.google.android.gms.maps.model.RoundCap()));
+    }
+
+    private void applyCheckoutRouteColors() {
+        if (checkoutCasing == null || routePolyline == null) return;
+        boolean night = CustomerAppSettings.isDarkMode(getContext());
+        routePolyline.setColor(night ? 0xFF66C7FF : 0xFF1260D4);
+        checkoutCasing.setColor(night ? 0xFF11263D : 0xFFF1FAFF);
+    }
+
+    private void removeCheckoutCasing() {
+        if (checkoutCasing == null) return;
+        checkoutCasing.remove();
+        checkoutCasing = null;
     }
 
     public void drawRideRoute(JSONArray latLngPoints) {
@@ -890,25 +932,32 @@ public final class TransivaGoogleMapView extends FrameLayout implements OnMapRea
     }
 
     void drawCheckoutRoute(JSONArray geometry, List<Integer> legEnds, String selection) {
-        if (!isReady() || pickerVisible || pickupMarker == null || deliveryMarker == null) return;
+        if (!isReady() || pickerVisible || pickupMarker == null || deliveryMarker == null || geometry == null) return;
         String geometryKey = selection + '|' + geometry;
         if (geometryKey.equals(checkoutGeometry)) return;
+        List<LatLng> points = routePoints(geometry);
+        if (points.size() < 2) return;
         cancelCheckoutPreview();
-        drawOsrmRoute(geometry, "driver_accepted");
-        if (routePolyline == null || geometry.length() < 2) return;
+        setRouteLine(points, 0xFF1260D4, 6f);
+        if (checkoutCasing == null) {
+            checkoutCasing = googleMap.addPolyline(new PolylineOptions().addAll(points).width(dpF(10)).zIndex(1.8f)
+                    .jointType(com.google.android.gms.maps.model.JointType.ROUND)
+                    .startCap(new com.google.android.gms.maps.model.RoundCap())
+                    .endCap(new com.google.android.gms.maps.model.RoundCap()));
+        } else checkoutCasing.setPoints(points);
+        applyCheckoutRouteColors();
         checkoutGeometry = geometryKey;
-        List<LatLng> points = routePolyline.getPoints();
+
         List<Marker> markers = new ArrayList<>();
         markers.add(pickupMarker);
         markers.addAll(waypointMarkers);
         markers.add(deliveryMarker);
-        boolean matchingStops = legEnds.size() == waypointMarkers.size();
-        for (int end : legEnds) matchingStops &= end >= 0 && end < points.size();
+        if (legEnds == null || !validLegEnds(legEnds, points.size())) legEnds = nearestLegEnds(points);
         int width = getWidth(), height = getHeight();
-        boolean reducedMotion = !checkoutAnimationsEnabled();
         if (selection.equals(presentedCheckout)) return;
         presentedCheckout = selection;
-        if (reducedMotion || !pickerResumed || !matchingStops || width < dp(160) || height < dp(175)) {
+        if (!checkoutAnimationsEnabled() || !pickerResumed || !validLegEnds(legEnds, points.size())
+                || width < dp(160) || height < dp(175)) {
             if (pickerResumed) fitAll();
             return;
         }
@@ -916,11 +965,49 @@ public final class TransivaGoogleMapView extends FrameLayout implements OnMapRea
         LatLngBounds.Builder bounds = LatLngBounds.builder();
         for (LatLng point : points) bounds.include(point);
         for (Marker marker : markers) bounds.include(marker.getPosition());
-        int padding = Math.min(dp(72), (Math.min(width, height) - dp(24)) / 2);
+        int padding = Math.min(dp(70), (Math.min(width, height) - dp(24)) / 2);
         CameraUpdate overview = CameraUpdateFactory.newLatLngBounds(bounds.build(), width, height, padding);
-        checkoutAnimation = new CheckoutRouteAnimation(googleMap, routePolyline, points, markers,
-                legEnds, getResources().getDisplayMetrics().density, overview);
+        checkoutAnimation = new CheckoutRouteAnimation(googleMap, routePolyline, checkoutCasing, points,
+                markers, legEnds, getResources().getDisplayMetrics().density, overview);
         checkoutAnimation.start();
+    }
+
+    private boolean validLegEnds(List<Integer> legEnds, int pointCount) {
+        if (legEnds.size() != waypointMarkers.size()) return false;
+        int previous = 0;
+        for (int end : legEnds) {
+            if (end <= previous || end >= pointCount - 1) return false;
+            previous = end;
+        }
+        return true;
+    }
+
+    private List<Integer> nearestLegEnds(List<LatLng> points) {
+        // TransShop returns complete geometry without leg boundaries. Snap each ordered marker
+        // to a following vertex, leaving room for later stops and the destination.
+        List<Integer> ends = new ArrayList<>();
+        int first = 1;
+        for (int i = 0; i < waypointMarkers.size(); i++) {
+            LatLng stop = waypointMarkers.get(i).getPosition();
+            double longitudeScale = Math.cos(Math.toRadians(stop.latitude));
+            int last = points.size() - 1 - (waypointMarkers.size() - i);
+            int nearest = -1;
+            double best = Double.POSITIVE_INFINITY;
+            for (int index = first; index <= last; index++) {
+                LatLng point = points.get(index);
+                double latitude = point.latitude - stop.latitude;
+                double longitude = ((point.longitude - stop.longitude + 540) % 360 - 180) * longitudeScale;
+                double squareDistance = latitude * latitude + longitude * longitude;
+                if (squareDistance < best) {
+                    best = squareDistance;
+                    nearest = index;
+                }
+            }
+            if (nearest < 0) return ends;
+            ends.add(nearest);
+            first = nearest + 1;
+        }
+        return ends;
     }
 
     void cancelCheckoutPreview() {
@@ -955,7 +1042,7 @@ public final class TransivaGoogleMapView extends FrameLayout implements OnMapRea
             if (marker != null) { bounds.include(marker.getPosition()); count++; }
         }
         if (tripDriverMarker != null) { bounds.include(tripDriverMarker.getPosition()); count++; }
-        if (numberedRideStops && routePolyline != null) {
+        if ((numberedRideStops || checkoutCasing != null) && routePolyline != null) {
             for (LatLng point : routePolyline.getPoints()) { bounds.include(point); count++; }
         }
         if (count == 0) return;
@@ -963,7 +1050,7 @@ public final class TransivaGoogleMapView extends FrameLayout implements OnMapRea
             CameraUpdate overview;
             if (count == 1) {
                 overview = CameraUpdateFactory.newLatLngZoom(bounds.build().getCenter(), 16f);
-            } else if (numberedRideStops) {
+            } else if (numberedRideStops || checkoutCasing != null) {
                 int width = getWidth(), height = getHeight();
                 if (width < 2 || height < 2) return;
                 int padding = Math.min(dp(66), Math.max(0, (Math.min(width, height) - dp(12)) / 2));

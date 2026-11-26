@@ -33,8 +33,16 @@ final class CustomerThemeColors {
         if(alpha(c)<180||luminance(bg)<.6||contrast(composite(c,bg),bg)>=4.5)return c;
         int spread=Math.max(r(c),Math.max(g(c),b(c)))-Math.min(r(c),Math.min(g(c),b(c)));
         if(spread<65)return contrast(0xff52647c,bg)>=4.5?0xff52647c:0xff123555;
-        if(b(c)>r(c)*1.3&&b(c)>g(c)*1.1)return 0xff0964d6;
-        return c;
+        if(b(c)>r(c)*1.3&&b(c)>g(c)*1.1 && contrast(0xff0964d6,bg)>=4.5)return 0xff0964d6;
+        // Make pale semantic labels readable on both neutral and tinted light panels.
+        for(int step=1;step<=20;step++){
+            int candidate=0xff000000|((r(c)*(20-step)/20)<<16)|((g(c)*(20-step)/20)<<8)|(b(c)*(20-step)/20);
+            if(contrast(candidate,bg)>=4.5)return candidate;
+        }
+        return 0xff000000;
+    }
+    static int foreground(int original,int background,boolean dark) {
+        return dark || luminance(background)<.6 ? text(original,background) : lightText(original,background);
     }
     static int brand(int c) {
         if(alpha(c)<180 || b(c)<g(c)*1.05 || g(c)<r(c)*1.3)return c;
@@ -49,6 +57,7 @@ final class CustomerThemeColors {
     private static double linear(double x){return x<=.04045?x/12.92:Math.pow((x+.055)/1.055,2.4);}
     static double contrast(int a,int b){double x=luminance(a),y=luminance(b);return(Math.max(x,y)+.05)/(Math.min(x,y)+.05);}
     static int text(int original,int bg) {
+        if(alpha(original)==0)return original;
         int shown=composite(original,bg);
         if(contrast(shown,bg)>=4.5)return original;
         // Keep semantic colors recognizable, but brighten them against dark panels.
@@ -59,6 +68,7 @@ final class CustomerThemeColors {
         else if(b(original)>r(original)*1.3 && b(original)>g(original)*1.1)candidate=ACCENT;
         else candidate=luminance(original)>.16?MUTED:TEXT;
         if(contrast(candidate,bg)>=4.5)return candidate;
-        return contrast(0xffffffff,bg)>contrast(0xff102139,bg)?0xffffffff:0xff102139;
+        if(contrast(0xff102139,bg)>=4.5)return 0xff102139;
+        return contrast(0xffffffff,bg)>=contrast(0xff000000,bg)?0xffffffff:0xff000000;
     }
 }

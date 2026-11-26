@@ -9,8 +9,6 @@ import android.animation.ValueAnimator;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
-import android.graphics.Bitmap;
-import android.graphics.BitmapFactory;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Paint;
@@ -83,13 +81,14 @@ class SearchDriverActivityScreenCore extends CustomerAdaptiveActivity {
     protected TextView titleText;
     protected TextView subtitleText;
     protected TextView driverNameText;
-    protected TextView driverDistanceText;
     protected TextView driverAvatarText;
     protected TextView driverPlateText;
-    protected TextView driverRatingText;
     protected TextView acceptedBadgeText;
+    private TextView acceptedRating;
     protected ImageView driverPhotoView;
+    private static final long ACCEPTED_CARD_MS = 9000L;
     private ImageView acceptedVehiclePhoto;
+    private Button acceptedChatButton;
     private TextView acceptedVehicleModel;
     protected LinearLayout driverCard;
     protected WebView miniMap;
@@ -98,8 +97,11 @@ class SearchDriverActivityScreenCore extends CustomerAdaptiveActivity {
     private double searchPickupLat, searchPickupLng;
     private boolean foreground;
     private Runnable pendingTripHandoff;
+    private long handoffRemainingMs, handoffStartedAt;
+    private boolean handoffScheduled;
     private final Runnable tripHandoff = () -> {
         if (!foreground || pendingTripHandoff == null || isFinishing() || isDestroyed()) return;
+        handoffScheduled = false;
         Runnable open = pendingTripHandoff;
         pendingTripHandoff = null;
         open.run();
@@ -316,89 +318,75 @@ class SearchDriverActivityScreenCore extends CustomerAdaptiveActivity {
 
         driverCard = new LinearLayout(this);
         driverCard.setOrientation(LinearLayout.VERTICAL);
-        driverCard.setPadding(dp(18), dp(18), dp(18), dp(18));
-        driverCard.setBackground(roundStroke("#FFFFFF", "#CFE1F7", dp(26), 1));
+        driverCard.setPadding(dp(12), dp(10), dp(12), dp(12));
+        driverCard.setBackground(roundStroke("#FFFFFF", "#CFE1F7", dp(20), 1));
         driverCard.setElevation(dp(8));
         driverCard.setVisibility(View.GONE);
         LinearLayout.LayoutParams driverCardLp = new LinearLayout.LayoutParams(-1, -2);
-        driverCardLp.setMargins(0, dp(18), 0, 0);
+        driverCardLp.topMargin = dp(12);
         root.addView(driverCard, driverCardLp);
 
-        acceptedBadgeText = text("✓  DRIVER MENERIMA PESANAN", 11, "#08783E", true);
-        acceptedBadgeText.setGravity(Gravity.CENTER);
-        acceptedBadgeText.setPadding(dp(12), dp(7), dp(12), dp(7));
-        acceptedBadgeText.setBackground(round("#E9FFF3", dp(18)));
-        LinearLayout.LayoutParams badgeLp = new LinearLayout.LayoutParams(-2, -2);
-        badgeLp.gravity = Gravity.CENTER_HORIZONTAL;
-        badgeLp.setMargins(0, 0, 0, dp(16));
-        driverCard.addView(acceptedBadgeText, badgeLp);
-        if (droneView!=null) acceptedBadgeText.setText("Driver siap menjemput");
+        acceptedBadgeText = text("Driver siap menjemput", 12, "#08783E", true);
+        LinearLayout heading = new LinearLayout(this);
+        heading.setGravity(Gravity.CENTER_VERTICAL);
+        driverCard.addView(heading, new LinearLayout.LayoutParams(-1, -2));
+        heading.addView(acceptedBadgeText, new LinearLayout.LayoutParams(0, -2, 1));
+        acceptedRating = text("", 11, "#8A5A00", true);
+        heading.addView(acceptedRating, new LinearLayout.LayoutParams(-2, -2));
 
         LinearLayout row = new LinearLayout(this);
         row.setGravity(Gravity.CENTER_VERTICAL);
-        driverCard.addView(row, new LinearLayout.LayoutParams(-1, -2));
+        LinearLayout.LayoutParams rowLp = new LinearLayout.LayoutParams(-1, -2);
+        rowLp.topMargin = dp(8);
+        driverCard.addView(row, rowLp);
 
         FrameLayout avatarFrame = new FrameLayout(this);
-        avatarFrame.setBackground(roundStroke("#EAF3FF", "#BFD8F6", dp(22), 1));
-        LinearLayout.LayoutParams avFrameLp = new LinearLayout.LayoutParams(dp(78), dp(78));
-        avFrameLp.setMargins(0, 0, dp(14), 0);
-        row.addView(avatarFrame, avFrameLp);
+        avatarFrame.setBackground(round("#0B65D8", dp(14)));
+        avatarFrame.setClipToOutline(true);
+        LinearLayout.LayoutParams avatarLp = new LinearLayout.LayoutParams(dp(50), dp(50));
+        avatarLp.rightMargin = dp(10);
+        row.addView(avatarFrame, avatarLp);
 
-        driverAvatarText = text("D", 24, "#FFFFFF", true);
+        driverAvatarText = text("D", 19, "#FFFFFF", true);
         driverAvatarText.setGravity(Gravity.CENTER);
-        driverAvatarText.setBackground(round("#0B7CFF", dp(22)));
         avatarFrame.addView(driverAvatarText, new FrameLayout.LayoutParams(-1, -1));
 
         driverPhotoView = new ImageView(this);
-        driverPhotoView.setScaleType(ImageView.ScaleType.CENTER_CROP);
-        driverPhotoView.setBackground(round("#EAF3FF", dp(22)));
-        driverPhotoView.setClipToOutline(true);
-        driverPhotoView.setVisibility(View.GONE);
+        driverPhotoView.setContentDescription("Foto profil driver");
         avatarFrame.addView(driverPhotoView, new FrameLayout.LayoutParams(-1, -1));
 
-        LinearLayout infoCol = new LinearLayout(this);
-        infoCol.setOrientation(LinearLayout.VERTICAL);
-        row.addView(infoCol, new LinearLayout.LayoutParams(0, -2, 1));
+        LinearLayout identity = new LinearLayout(this);
+        identity.setOrientation(LinearLayout.VERTICAL);
+        row.addView(identity, new LinearLayout.LayoutParams(0, -2, 1));
 
-        driverNameText = text("Driver", 19, "#0B3A78", true);
-        infoCol.addView(driverNameText, new LinearLayout.LayoutParams(-1, -2));
-        if (droneView!=null) {
-            acceptedVehicleModel=text("",14,"#334F72",true);
-            infoCol.addView(acceptedVehicleModel);
-        }
+        driverNameText = text("Driver", 16, "#0B3A78", true);
+        driverNameText.setMaxLines(2);
+        driverNameText.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        identity.addView(driverNameText);
+        acceptedVehicleModel = text("", 13, "#334F72", true);
+        identity.addView(acceptedVehicleModel);
+        driverPlateText = text("", 12, "#475569", false);
+        identity.addView(driverPlateText);
 
-        LinearLayout metaRow = new LinearLayout(this);
-        metaRow.setGravity(Gravity.CENTER_VERTICAL);
-        LinearLayout.LayoutParams metaLp = new LinearLayout.LayoutParams(-1, -2);
-        metaLp.setMargins(0, dp(6), 0, 0);
-        infoCol.addView(metaRow, metaLp);
+        acceptedVehiclePhoto = new ImageView(this);
+        acceptedVehiclePhoto.setContentDescription("Foto kendaraan driver");
+        acceptedVehiclePhoto.setBackground(round("#EAF3FF", dp(10)));
+        acceptedVehiclePhoto.setClipToOutline(true);
+        acceptedVehiclePhoto.setVisibility(View.GONE);
+        LinearLayout.LayoutParams photoLp = new LinearLayout.LayoutParams(dp(64), dp(48));
+        photoLp.leftMargin = dp(8);
+        row.addView(acceptedVehiclePhoto, photoLp);
 
-        driverPlateText = text("Plat • -", 12, "#475569", true);
-        driverPlateText.setPadding(dp(9), dp(5), dp(9), dp(5));
-        driverPlateText.setBackground(round("#F1F5F9", dp(12)));
-        metaRow.addView(driverPlateText, new LinearLayout.LayoutParams(-2, -2));
+        acceptedChatButton = new Button(this);
+        acceptedChatButton.setAllCaps(false);
+        acceptedChatButton.setMinHeight(dp(48));
+        acceptedChatButton.setText("Chat driver");
+        acceptedChatButton.setTextColor(Color.WHITE);
+        acceptedChatButton.setBackground(round("#0B65D8", dp(12)));
+        LinearLayout.LayoutParams chatLp = new LinearLayout.LayoutParams(-1, -2);
+        chatLp.topMargin = dp(8);
+        driverCard.addView(acceptedChatButton, chatLp);
 
-        driverRatingText = text("⭐ 5.0", 12, "#8A5A00", true);
-        driverRatingText.setPadding(dp(9), dp(5), dp(9), dp(5));
-        driverRatingText.setBackground(round("#FFF8E1", dp(12)));
-        LinearLayout.LayoutParams ratingLp = new LinearLayout.LayoutParams(-2, -2);
-        ratingLp.setMargins(dp(8), 0, 0, 0);
-        metaRow.addView(driverRatingText, ratingLp);
-
-        driverDistanceText = text("Driver sedang menuju lokasi jemput", 13, "#64748B", false);
-        LinearLayout.LayoutParams distLp = new LinearLayout.LayoutParams(-1, -2);
-        distLp.setMargins(0, dp(9), 0, 0);
-        infoCol.addView(driverDistanceText, distLp);
-
-        if (droneView!=null) {
-            acceptedVehiclePhoto=new ImageView(this);
-            acceptedVehiclePhoto.setContentDescription("Foto kendaraan driver");
-            acceptedVehiclePhoto.setBackground(round("#E3EBF7",dp(14)));
-            acceptedVehiclePhoto.setClipToOutline(true);
-            LinearLayout.LayoutParams photoLp=new LinearLayout.LayoutParams(-1,dp(104));
-            photoLp.topMargin=dp(10);
-            driverCard.addView(acceptedVehiclePhoto,photoLp);
-        }
         if (droneView == null) {
             miniMap = new CustomerThemedWebView(this);
             miniMap.setBackgroundColor(Color.TRANSPARENT);
@@ -931,44 +919,38 @@ class SearchDriverActivityScreenCore extends CustomerAdaptiveActivity {
                 data.optString("driver_plate", ""),
                 "-"
         );
-        double rating = firstPositiveDouble(
-                driver.optDouble("rating", 0),
-                order.optDouble("driver_rating", 0),
-                data.optDouble("driver_rating", 0),
-                data.optDouble("rating", 0)
-        );
-        String driverPhoto = firstNonEmpty(
-                driver.optString("driver_photo", ""),
-                driver.optString("photo", ""),
-                data.optString("driver_photo", "")
-        );
-
+        double rating = driver.optDouble("rating", data.optDouble("driver_rating", 0));
+        acceptedRating.setText(rating > 0 ? "★ " + String.format(Locale.US, "%.1f", rating) : "");
         driverNameText.setText(driverName);
-        driverPlateText.setText("Plat • " + driverPlate);
-        driverRatingText.setText(rating > 0
-                ? "⭐ " + String.format(Locale.US, "%.1f", rating)
-                : "⭐ Driver baru");
-        driverDistanceText.setText("Driver sedang menuju lokasi jemput");
-        driverAvatarText.setText(driverName.substring(0, 1).toUpperCase(Locale.US));
-        loadDriverPhoto(driverPhoto);
+        driverPlateText.setText("-".equals(driverPlate) ? "Plat belum tersedia" : "Plat " + driverPlate);
+        driverAvatarText.setText(CallPeerIdentity.initials(driverName));
+        String portrait = CustomerDriverIdentity.portrait(driver, order, data);
+        RemoteImageLoader.loadCenterCrop(driverPhotoView, portrait, 0);
 
         String driverType = normalizeDriverType(firstNonEmpty(
-                order.optString("driver_type", ""),
-                order.optString("price_mode", ""),
-                data.optString("driver_type", ""),
-                data.optString("order_type", ""),
-                driver.optString("driver_type", ""),
-                getStringPref("active_driver_type"),
-                "bike"
-        ));
+                driver.optString("driver_type", ""), driver.optString("vehicle_type", ""),
+                order.optString("driver_type", ""), order.optString("price_mode", ""),
+                data.optString("driver_type", ""), data.optString("order_type", ""),
+                getStringPref("active_driver_type"), "bike"));
+        acceptedVehicleModel.setText(CustomerDriverIdentity.vehicleLabel(driver, order, data, "car".equals(driverType)));
+        String vehiclePhoto = CustomerDriverIdentity.vehiclePhoto(driver, order, data);
+        acceptedVehiclePhoto.setVisibility(vehiclePhoto.isEmpty() ? View.GONE : View.VISIBLE);
+        RemoteImageLoader.loadCenterCrop(acceptedVehiclePhoto, vehiclePhoto, 0);
 
-        if (acceptedVehicleModel!=null) {
-            boolean car="car".equals(driverType);
-            String model=driver.optString("vehicle_model").trim();
-            acceptedVehicleModel.setText(model.isEmpty()?(car?"Mobil":"Motor"):(car?"Mobil · ":"Motor · ")+model);
-            RemoteImageLoader.loadCenterCrop(acceptedVehiclePhoto,driver.optString("vehicle_photo"),
-                    car?R.drawable.ic_service_car_premium:R.drawable.ic_service_ride_premium);
-        }
+        String service = CallPeerIdentity.first(order.optString("order_type"), requestedOrderType);
+        String status = CallPeerIdentity.first(order.optString("status"), data.optString("status"), "driver_accepted");
+        acceptedChatButton.setOnClickListener(view -> {
+            pauseTripHandoff();
+            startActivity(new Intent(this, CustomerChatRoomActivity.class)
+                    .putExtra("assigned_order_chat", true)
+                    .putExtra("order_id", activeOrderId)
+                    .putExtra("order_source", "orders")
+                    .putExtra("order_type", service)
+                    .putExtra("order_status", status)
+                    .putExtra("participant_name", driverName)
+                    .putExtra("participant_photo", portrait));
+        });
+        CustomerAppSettings.applyToView(this, driverCard);
 
         double driverLat = getJsonDouble(driver, "driver_lat", "lat", "latitude");
         double driverLng = getJsonDouble(driver, "driver_lng", "lng", "longitude");
@@ -999,7 +981,6 @@ class SearchDriverActivityScreenCore extends CustomerAdaptiveActivity {
         );
 
         saveTripPrefs(activeOrderId, driverType, pickupLat, pickupLng, deliveryLat, deliveryLng);
-        long delay = 450;
         if (droneView == null) {
             loadDriverMap(driverName, driverLat, driverLng, pickupLat, pickupLng);
         } else {
@@ -1010,10 +991,10 @@ class SearchDriverActivityScreenCore extends CustomerAdaptiveActivity {
                 if (allowCameraMotion()) searchScroll.smoothScrollTo(0,top);
                 else searchScroll.scrollTo(0,top);
             });
-            delay = 4500;
         }
         pendingTripHandoff = () -> openNativeTrip(driverType, pickupLat, pickupLng, deliveryLat, deliveryLng);
-        if (foreground) mainHandler.postDelayed(tripHandoff, delay);
+        handoffRemainingMs = ACCEPTED_CARD_MS;
+        scheduleTripHandoff();
     }
 
     private boolean allowCameraMotion() {
@@ -1050,52 +1031,20 @@ class SearchDriverActivityScreenCore extends CustomerAdaptiveActivity {
         }
     }
 
-    protected double firstPositiveDouble(double... values) {
-        if (values == null) return 0;
-        for (double value : values) if (value > 0) return value;
-        return 0;
+
+    private void scheduleTripHandoff() {
+        if (!foreground || pendingTripHandoff == null || handoffScheduled) return;
+        handoffStartedAt = android.os.SystemClock.elapsedRealtime();
+        handoffScheduled = true;
+        mainHandler.postDelayed(tripHandoff, handoffRemainingMs);
     }
 
-    protected void loadDriverPhoto(String rawUrl) {
-        if (driverPhotoView == null) return;
-        String value = firstNonEmpty(rawUrl, "").trim();
-        if (value.length() == 0) {
-            driverPhotoView.setVisibility(View.GONE);
-            driverAvatarText.setVisibility(View.VISIBLE);
-            return;
-        }
-        final String photoUrl = value.startsWith("http://") || value.startsWith("https://")
-                ? value
-                : BASE_URL + (value.startsWith("/") ? value.substring(1) : value);
-
-        featureRuntime.execute(() -> {
-            HttpURLConnection conn = null;
-            try {
-                conn = CustomerApiClient.open(this, photoUrl);
-                conn.setConnectTimeout(10000);
-                conn.setReadTimeout(10000);
-                conn.setUseCaches(true);
-                conn.connect();
-                try (InputStream in = conn.getInputStream()) {
-                    Bitmap bitmap = BitmapFactory.decodeStream(in);
-                    if (bitmap != null) {
-                        featureRuntime.post(mainHandler, () -> {
-                            if (destroyed || driverPhotoView == null) return;
-                            driverPhotoView.setImageBitmap(bitmap);
-                            driverPhotoView.setVisibility(View.VISIBLE);
-                            driverAvatarText.setVisibility(View.GONE);
-                        });
-                    }
-                }
-            } catch (Exception ignored) {
-                featureRuntime.post(mainHandler, () -> {
-                    if (driverPhotoView != null) driverPhotoView.setVisibility(View.GONE);
-                    if (driverAvatarText != null) driverAvatarText.setVisibility(View.VISIBLE);
-                });
-            } finally {
-                if (conn != null) conn.disconnect();
-            }
-        });
+    private void pauseTripHandoff() {
+        if (!handoffScheduled) return;
+        handoffRemainingMs = Math.max(0, handoffRemainingMs
+                - (android.os.SystemClock.elapsedRealtime() - handoffStartedAt));
+        handoffScheduled = false;
+        mainHandler.removeCallbacks(tripHandoff);
     }
 
     protected void loadDriverMap(String driverName, double driverLat, double driverLng, double pickupLat, double pickupLng) {
@@ -1387,9 +1336,7 @@ class SearchDriverActivityScreenCore extends CustomerAdaptiveActivity {
         super.onResume();
         foreground = true;
         if (droneView != null) droneView.resumeMap();
-        if (pendingTripHandoff!=null) {
-            mainHandler.postDelayed(tripHandoff,droneView!=null?4500:700);
-        }
+        scheduleTripHandoff();
         featureRuntime.onResume();
         if (entertainment != null) entertainment.setForeground(true);
         if (matchingView != null) matchingView.setAnimatingEnabled(!driverFound && !isCanceling);
@@ -1398,7 +1345,7 @@ class SearchDriverActivityScreenCore extends CustomerAdaptiveActivity {
     @Override
     protected void onPause() {
         foreground = false;
-        mainHandler.removeCallbacks(tripHandoff);
+        pauseTripHandoff();
         if (droneView != null) droneView.pauseMap();
         if (entertainment != null) entertainment.setForeground(false);
         if (matchingView != null) matchingView.setAnimatingEnabled(false);

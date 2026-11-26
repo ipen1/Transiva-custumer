@@ -80,7 +80,6 @@ class CustomerTripActivityScreenCore extends CustomerAdaptiveActivity {
     private PremiumOrderStatusView tripStatus;
     protected TextView statusText;
     protected TextView driverNameText;
-    protected TextView driverTypeText;
     protected TextView driverPlateText;
     protected TextView tripInfoText;
     protected ImageView driverPhotoView;
@@ -356,10 +355,8 @@ class CustomerTripActivityScreenCore extends CustomerAdaptiveActivity {
         card.addView(driverBox, dlp);
 
         driverPhotoView = new ImageView(this);
-        driverPhotoView.setScaleType(ImageView.ScaleType.FIT_CENTER);
-        int fallbackAvatar = getResources().getIdentifier("car".equals(activeDriverType)
-                ? "ic_service_car_premium" : "ic_service_ride_premium", "drawable", getPackageName());
-        driverPhotoView.setImageResource(fallbackAvatar != 0 ? fallbackAvatar : android.R.drawable.ic_menu_myplaces);
+        driverPhotoView.setImageResource(R.drawable.ic_nav_profile);
+        driverPhotoView.setContentDescription("Foto profil driver");
         driverPhotoView.setBackground(round("#EAF4FF", dp(16)));
         driverPhotoView.setClipToOutline(true);
         driverBox.addView(driverPhotoView, new LinearLayout.LayoutParams(dp(40), dp(40)));
@@ -371,21 +368,21 @@ class CustomerTripActivityScreenCore extends CustomerAdaptiveActivity {
         driverBox.addView(info, ilp);
 
         driverNameText = text("Driver", 13, "#0B3A78", true);
-        driverTypeText = text("Driver Anda", 10, "#2563EB", true);
         driverPlateText = text("Plat —", 11, "#64748B", false);
-        driverPlateText.setSingleLine(true);
+        driverPlateText.setMaxLines(2);
         driverPlateText.setEllipsize(android.text.TextUtils.TruncateAt.END);
         driverNameText.setMaxLines(1);
         driverNameText.setEllipsize(android.text.TextUtils.TruncateAt.END);
         info.addView(driverNameText);
         info.addView(driverPlateText);
-        driverTypeText.setTextSize(10);
-        driverTypeText.setGravity(Gravity.CENTER);
-        driverTypeText.setPadding(dp(6), dp(5), dp(6), dp(5));
-        driverTypeText.setMaxLines(2);
-        driverTypeText.setBackground(round("#EDF5FF", dp(10)));
-        driverBox.addView(driverTypeText, new LinearLayout.LayoutParams(-2, -2));
-        vehiclePhotoView=new ImageView(this);vehiclePhotoView.setScaleType(ImageView.ScaleType.CENTER_CROP);vehiclePhotoView.setBackground(round("#EAF4FF",dp(12)));vehiclePhotoView.setClipToOutline(true);vehiclePhotoView.setVisibility(View.GONE);driverBox.addView(vehiclePhotoView,new LinearLayout.LayoutParams(dp(58),dp(48)));
+        vehiclePhotoView = new ImageView(this);
+        vehiclePhotoView.setBackground(round("#EAF4FF", dp(10)));
+        vehiclePhotoView.setClipToOutline(true);
+        vehiclePhotoView.setContentDescription("Foto kendaraan driver");
+        vehiclePhotoView.setVisibility(View.GONE);
+        LinearLayout.LayoutParams vehicleLp = new LinearLayout.LayoutParams(dp(52), dp(42));
+        vehicleLp.leftMargin = dp(8);
+        driverBox.addView(vehiclePhotoView, vehicleLp);
 
         statusText = text("Menghubungkan lokasi driver...", 12, "#536B83", false);
         statusText.setPadding(dp(2), dp(5), dp(2), dp(5));
@@ -481,20 +478,16 @@ class CustomerTripActivityScreenCore extends CustomerAdaptiveActivity {
         return row;
     }
 
-    private void loadTripPhoto(ImageView target,String raw,boolean vehicle){
-        if(target==null||raw==null||raw.trim().isEmpty())return;
-        final String value=raw.trim();if(value.equals(vehicle?loadedVehiclePhoto:loadedDriverPhoto))return;
-        if(vehicle)loadedVehiclePhoto=value;else loadedDriverPhoto=value;
-        final String url=value.startsWith("https://")||value.startsWith("http://")?value:BASE_URL+(value.startsWith("/")?value.substring(1):value);
-        featureRuntime.execute(()->{java.net.HttpURLConnection connection=null;try{
-            connection=(java.net.HttpURLConnection)new java.net.URL(url).openConnection();connection.setConnectTimeout(5000);connection.setReadTimeout(5000);
-            if(CustomerApi23Compat.contentLength(connection)>5*1024*1024)return;
-            try(java.io.InputStream input=connection.getInputStream()){
-                android.graphics.BitmapFactory.Options options=new android.graphics.BitmapFactory.Options();options.inSampleSize=4;
-                final Bitmap bitmap=android.graphics.BitmapFactory.decodeStream(input,null,options);
-                if(bitmap!=null)featureRuntime.post(mainHandler,()->{if(!isFinishing()&&!isDestroyed()&&value.equals(vehicle?loadedVehiclePhoto:loadedDriverPhoto)){target.setScaleType(ImageView.ScaleType.CENTER_CROP);target.setImageBitmap(bitmap);target.setVisibility(View.VISIBLE);}});
-            }
-        }catch(Exception ignored){}finally{if(connection!=null)connection.disconnect();}});
+    private void bindDriverPhotos(String portrait, String vehicle) {
+        if (!portrait.equals(loadedDriverPhoto)) {
+            loadedDriverPhoto = portrait;
+            RemoteImageLoader.loadCenterCrop(driverPhotoView, portrait, R.drawable.ic_nav_profile);
+        }
+        if (!vehicle.equals(loadedVehiclePhoto)) {
+            loadedVehiclePhoto = vehicle;
+            vehiclePhotoView.setVisibility(vehicle.isEmpty() ? View.GONE : View.VISIBLE);
+            RemoteImageLoader.loadCenterCrop(vehiclePhotoView, vehicle, 0);
+        }
     }
 
     protected void startTrackingOnce() {
@@ -598,8 +591,8 @@ class CustomerTripActivityScreenCore extends CustomerAdaptiveActivity {
         );
 
         activeDriverType = resolveDriverType(order, driver);
-        loadTripPhoto(driverPhotoView,firstNonEmpty(driver.optString("driver_photo"),driver.optString("photo"),order.optString("driver_photo")),false);
-        loadTripPhoto(vehiclePhotoView,firstNonEmpty(driver.optString("vehicle_photo"),order.optString("vehicle_photo")),true);
+        bindDriverPhotos(CustomerDriverIdentity.portrait(driver, order, res),
+                CustomerDriverIdentity.vehiclePhoto(driver, order, res));
         lastDriverName = driverName;
         lastStatus = status;
         if (tripStatus != null) {
@@ -647,9 +640,9 @@ class CustomerTripActivityScreenCore extends CustomerAdaptiveActivity {
         boolean hasDriverLocation = validCoord(lat, lng);
 
         driverNameText.setText(driverName);
-        String model=driver.optString("vehicle_model").trim();
-        String vehicleLabel="-".equals(plate)?"Pelat belum tersedia":"Pelat "+plate;
-        driverPlateText.setText(model.isEmpty()?vehicleLabel:model+" · "+vehicleLabel);
+        String vehicle = CustomerDriverIdentity.vehicleLabel(driver, order, res, "car".equals(activeDriverType));
+        String plateLabel = "-".equals(plate) ? "Plat belum tersedia" : "Plat " + plate;
+        driverPlateText.setText(vehicle + " · " + plateLabel);
         setStatusText(status, driverName, hasDriverLocation);
         // Data driver dan tombol aksi berubah dari polling server; pastikan view baru/
         // yang diperbarui tetap menggunakan tema customer yang sedang aktif.
@@ -934,10 +927,10 @@ class CustomerTripActivityScreenCore extends CustomerAdaptiveActivity {
 
     protected String resolveDriverType(JSONObject order, JSONObject driver) {
         String type = firstNonEmpty(
-                order.optString("driver_type", ""),
-                order.optString("price_mode", ""),
                 driver.optString("driver_type", ""),
                 driver.optString("vehicle_type", ""),
+                order.optString("driver_type", ""),
+                order.optString("price_mode", ""),
                 activeDriverType,
                 "motor"
         ).toLowerCase(Locale.US);

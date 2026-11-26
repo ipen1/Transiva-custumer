@@ -13,6 +13,7 @@ import android.os.Handler;
 import android.os.Looper;
 import android.provider.Settings;
 import android.view.Gravity;
+import android.view.MotionEvent;
 import android.view.View;
 import android.widget.FrameLayout;
 import android.widget.LinearLayout;
@@ -67,6 +68,17 @@ final class RideSearchDroneView extends FrameLayout implements CustomerAppSettin
         scrimParams.bottomMargin=dp(26);
         addView(scrim,scrimParams);
 
+        // Keep map touches away from Google Maps while leaving the controls above it interactive.
+        View mapTouchShield = new View(context);
+        mapTouchShield.setImportantForAccessibility(IMPORTANT_FOR_ACCESSIBILITY_NO);
+        mapTouchShield.setOnTouchListener((view, event) -> {
+            if (event.getActionMasked() == MotionEvent.ACTION_DOWN) {
+                view.getParent().requestDisallowInterceptTouchEvent(true);
+            }
+            return true;
+        });
+        addView(mapTouchShield, new LayoutParams(-1, -1));
+
         searchHeader = column();
         searchHeader.setPadding(dp(14),dp(12),dp(14),dp(12));
         searchHeader.setBackground(panel(0xDD10253F,0x8A729DBF,19));
@@ -103,15 +115,8 @@ final class RideSearchDroneView extends FrameLayout implements CustomerAppSettin
         applyStyle(CustomerAppSettings.isDarkMode(getContext()));
         map.getUiSettings().setMapToolbarEnabled(false);
         map.getUiSettings().setCompassEnabled(false);
-        map.getUiSettings().setRotateGesturesEnabled(false);
-        map.getUiSettings().setTiltGesturesEnabled(false);
-        map.setOnMarkerClickListener(marker->true);
-        map.setOnCameraMoveStartedListener(reason -> {
-            if (reason==GoogleMap.OnCameraMoveStartedListener.REASON_GESTURE && !accepted) {
-                stopOrbitAnimation();
-                scheduleOrbit(4300);
-            }
-        });
+        map.getUiSettings().setAllGesturesEnabled(false);
+        map.getUiSettings().setZoomControlsEnabled(false);
         map.setOnMapLoadedCallback(() -> {
             if (closed) return;
             loaded=true;

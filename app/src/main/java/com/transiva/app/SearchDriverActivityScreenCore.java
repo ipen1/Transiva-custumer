@@ -89,6 +89,8 @@ class SearchDriverActivityScreenCore extends CustomerAdaptiveActivity {
     protected TextView driverRatingText;
     protected TextView acceptedBadgeText;
     protected ImageView driverPhotoView;
+    private ImageView acceptedVehiclePhoto;
+    private TextView acceptedVehicleModel;
     protected LinearLayout driverCard;
     protected WebView miniMap;
     private RideSearchDroneView droneView;
@@ -330,6 +332,7 @@ class SearchDriverActivityScreenCore extends CustomerAdaptiveActivity {
         badgeLp.gravity = Gravity.CENTER_HORIZONTAL;
         badgeLp.setMargins(0, 0, 0, dp(16));
         driverCard.addView(acceptedBadgeText, badgeLp);
+        if (droneView!=null) acceptedBadgeText.setText("Driver siap menjemput");
 
         LinearLayout row = new LinearLayout(this);
         row.setGravity(Gravity.CENTER_VERTICAL);
@@ -359,6 +362,10 @@ class SearchDriverActivityScreenCore extends CustomerAdaptiveActivity {
 
         driverNameText = text("Driver", 19, "#0B3A78", true);
         infoCol.addView(driverNameText, new LinearLayout.LayoutParams(-1, -2));
+        if (droneView!=null) {
+            acceptedVehicleModel=text("",14,"#334F72",true);
+            infoCol.addView(acceptedVehicleModel);
+        }
 
         LinearLayout metaRow = new LinearLayout(this);
         metaRow.setGravity(Gravity.CENTER_VERTICAL);
@@ -383,6 +390,15 @@ class SearchDriverActivityScreenCore extends CustomerAdaptiveActivity {
         distLp.setMargins(0, dp(9), 0, 0);
         infoCol.addView(driverDistanceText, distLp);
 
+        if (droneView!=null) {
+            acceptedVehiclePhoto=new ImageView(this);
+            acceptedVehiclePhoto.setContentDescription("Foto kendaraan driver");
+            acceptedVehiclePhoto.setBackground(round("#E3EBF7",dp(14)));
+            acceptedVehiclePhoto.setClipToOutline(true);
+            LinearLayout.LayoutParams photoLp=new LinearLayout.LayoutParams(-1,dp(104));
+            photoLp.topMargin=dp(10);
+            driverCard.addView(acceptedVehiclePhoto,photoLp);
+        }
         if (droneView == null) {
             miniMap = new CustomerThemedWebView(this);
             miniMap.setBackgroundColor(Color.TRANSPARENT);
@@ -878,10 +894,19 @@ class SearchDriverActivityScreenCore extends CustomerAdaptiveActivity {
         titleText.setText("Driver Siap");
         setSubtitle(readyMessage);
         cancelBtn.setVisibility(View.GONE);
+        if (droneView!=null) {
+            if (driverCard.getParent() instanceof android.view.ViewGroup) {
+                ((android.view.ViewGroup)driverCard.getParent()).removeView(driverCard);
+            }
+            FrameLayout.LayoutParams sheet=new FrameLayout.LayoutParams(-1,-2,Gravity.BOTTOM);
+            sheet.setMargins(dp(10),0,dp(10),dp(12));
+            pageRoot.addView(driverCard,sheet);
+            driverCard.setElevation(dp(18));
+        }
         driverCard.setVisibility(View.VISIBLE);
         if (allowCameraMotion()) {
             driverCard.setAlpha(0f);
-            driverCard.setTranslationY(dp(14));
+            driverCard.setTranslationY(dp(droneView==null?14:108));
             driverCard.animate().alpha(1f).translationY(0f)
                     .setStartDelay(droneView == null ? 0 : 240L).setDuration(420L)
                     .setInterpolator(new android.view.animation.DecelerateInterpolator()).start();
@@ -937,6 +962,14 @@ class SearchDriverActivityScreenCore extends CustomerAdaptiveActivity {
                 "bike"
         ));
 
+        if (acceptedVehicleModel!=null) {
+            boolean car="car".equals(driverType);
+            String model=driver.optString("vehicle_model").trim();
+            acceptedVehicleModel.setText(model.isEmpty()?(car?"Mobil":"Motor"):(car?"Mobil · ":"Motor · ")+model);
+            RemoteImageLoader.loadCenterCrop(acceptedVehiclePhoto,driver.optString("vehicle_photo"),
+                    car?R.drawable.ic_service_car_premium:R.drawable.ic_service_ride_premium);
+        }
+
         double driverLat = getJsonDouble(driver, "driver_lat", "lat", "latitude");
         double driverLng = getJsonDouble(driver, "driver_lng", "lng", "longitude");
         if (!CustomerGeoMath.valid(driverLat,driverLng)) {
@@ -970,14 +1003,14 @@ class SearchDriverActivityScreenCore extends CustomerAdaptiveActivity {
         if (droneView == null) {
             loadDriverMap(driverName, driverLat, driverLng, pickupLat, pickupLng);
         } else {
-            boolean visual = droneView.showAccepted(driverName,driverLat,driverLng);
+            droneView.showAccepted(driverLat,driverLng);
             searchScroll.post(() -> {
                 if (!foreground || isFinishing() || isDestroyed()) return;
                 int top = Math.max(0,droneView.getTop()-dp(10));
                 if (allowCameraMotion()) searchScroll.smoothScrollTo(0,top);
                 else searchScroll.scrollTo(0,top);
             });
-            delay = !allowCameraMotion()?1350:visual?2850:1750;
+            delay = 4500;
         }
         pendingTripHandoff = () -> openNativeTrip(driverType, pickupLat, pickupLng, deliveryLat, deliveryLng);
         if (foreground) mainHandler.postDelayed(tripHandoff, delay);
@@ -1355,7 +1388,7 @@ class SearchDriverActivityScreenCore extends CustomerAdaptiveActivity {
         foreground = true;
         if (droneView != null) droneView.resumeMap();
         if (pendingTripHandoff!=null) {
-            mainHandler.postDelayed(tripHandoff,droneView!=null && allowCameraMotion()?2350:700);
+            mainHandler.postDelayed(tripHandoff,droneView!=null?4500:700);
         }
         featureRuntime.onResume();
         if (entertainment != null) entertainment.setForeground(true);

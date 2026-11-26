@@ -36,6 +36,7 @@ public final class TivaSimpelActivity extends CustomerAdaptiveActivity {
     private boolean typing, reviewFood;
     private JSONArray foodCart=new JSONArray();
     private JSONObject pickup, delivery, restaurant, foodQuote, routeQuote;
+    private String receiverName="", receiverPhone="";
     private long quotedAt;
     private int driver, nextOffset;
     private double lat,lng;
@@ -458,13 +459,24 @@ public final class TivaSimpelActivity extends CustomerAdaptiveActivity {
     }
 
     private boolean requiresRouteReview() {
-        return "ride".equals(kind) || "shop".equals(kind);
+        return "ride".equals(kind) || "shop".equals(kind) || "send".equals(kind);
     }
 
     private void quoteRoute() {
         if (!requiresRouteReview() || pickup==null || delivery==null || loading || !contact.isEmpty()) return;
         routeQuote=null;
         status="Aku hitung estimasi ongkirnya dulu, ya.";
+        if ("send".equals(kind)) {
+            perform(()->{
+                JSONObject result=TransSendContactClient.quote(this,pointIntent(pickup),pointIntent(delivery));
+                return result.put("quote",new JSONObject().put("total",result.optLong("price")));
+            },response->{
+                status="";
+                routeQuote=response.optJSONObject("quote");
+                quotedAt=android.os.SystemClock.elapsedRealtime();
+            },true);
+            return;
+        }
         perform(()->TransivaHttpRepository.postJson(this,ApiConfig.server("trans_simpel.php"),
                 new JSONObject().put("action","preview_route").put("kind",kind)
                         .put("origin",new JSONObject().put("lat",lat).put("lng",lng))
@@ -826,6 +838,36 @@ public final class TivaSimpelActivity extends CustomerAdaptiveActivity {
         for (int i=options.length()-1;i>=0;i--) options.remove(i);
     }
 
+    private Intent pointIntent(JSONObject point) {
+        return new Intent().putExtra("lat",point.optDouble("lat")).putExtra("lng",point.optDouble("lng"));
+    }
+
+    private void askRecipient() {
+        LinearLayout fields=new LinearLayout(this);
+        fields.setOrientation(LinearLayout.VERTICAL);
+        fields.setPadding(dp(20),dp(4),dp(20),0);
+        android.widget.EditText name=new android.widget.EditText(this);
+        name.setHint("Nama penerima");
+        name.setText(receiverName);
+        android.widget.EditText phone=new android.widget.EditText(this);
+        phone.setHint("Nomor HP penerima");
+        phone.setInputType(android.text.InputType.TYPE_CLASS_PHONE);
+        phone.setText(receiverPhone);
+        fields.addView(name);fields.addView(phone);
+        android.app.AlertDialog dialog=new TransivaAlertDialogBuilder(this).setTitle("Penerima paket")
+                .setView(fields).setNegativeButton("Kembali",null).setPositiveButton("Kirim pesanan",null).create();
+        dialog.setOnShowListener(ignored->dialog.getButton(android.app.AlertDialog.BUTTON_POSITIVE).setOnClickListener(v->{
+            String label=name.getText().toString().trim();
+            String number=phone.getText().toString().trim().replace(" ","").replace("-","");
+            if (label.isEmpty() || label.length()>100) { name.setError("Nama penerima wajib diisi"); return; }
+            if (!number.matches("[+]?[0-9]{8,16}")) { phone.setError("Periksa nomor HP penerima"); return; }
+            receiverName=label;receiverPhone=number;
+            dialog.dismiss();
+            submit();
+        }));
+        dialog.show();
+    }
+
     private void submit() {
         if (delivery==null || loading || !contact.isEmpty()) return;
         if (driverBusy && ("food".equals(kind) || "send".equals(kind))) {
@@ -841,12 +883,23 @@ public final class TivaSimpelActivity extends CustomerAdaptiveActivity {
             quoteRoute();
             return;
         }
-        status="Sedang mengirim permintaan ke "+driverName+"…";
+        if ("send".equals(kind) && receiverPhone.isEmpty()) {
+            askRecipient();
+            return;
+        }
+        long total=("food".equals(kind)?foodQuote:routeQuote).optLong("total");
+        if (total<=0) {
+            problem="Tarif belum tersedia. Hitung kembali.";
+            render();
+            return;
+        }
+        status="Sedang mengirim pesanan ke "+driverName+"…";
         perform(()->{
-            JSONObject draft=new JSONObject().put("key",key).put("kind",kind).put("delivery",delivery);
+            JSONObject draft=new JSONObject().put("key",key).put("kind",kind).put("delivery",delivery).put("authorized_total",total);
             if ("food".equals(kind)) draft.put("restaurant_id",restaurant.optInt("id"))
                     .put("food_items",foodCart);
             else draft.put("pickup",pickup).put("detail",detail);
+            if ("send".equals(kind)) draft.put("receiver_name",receiverName).put("receiver_phone",receiverPhone);
             JSONObject data=TransSendContactClient.action("invite","").put("service","trans_simpel")
                     .put("driver_id",driver).put("lat",lat).put("lng",lng).put("tiva",draft).put("queue_capable",true);
             return TransivaHttpRepository.postJsonIdempotent(this,ApiConfig.server("transsend_contact.php"),data,8000,key);

@@ -647,7 +647,9 @@ class CustomerTripActivityScreenCore extends CustomerAdaptiveActivity {
         boolean hasDriverLocation = validCoord(lat, lng);
 
         driverNameText.setText(driverName);
-        driverPlateText.setText("-".equals(plate) ? "Pelat belum tersedia" : "Pelat " + plate);
+        String model=driver.optString("vehicle_model").trim();
+        String vehicleLabel="-".equals(plate)?"Pelat belum tersedia":"Pelat "+plate;
+        driverPlateText.setText(model.isEmpty()?vehicleLabel:model+" · "+vehicleLabel);
         setStatusText(status, driverName, hasDriverLocation);
         // Data driver dan tombol aksi berubah dari polling server; pastikan view baru/
         // yang diperbarui tetap menggunakan tema customer yang sedang aktif.

@@ -46,6 +46,8 @@ final class TransSimpelRoutePanel {
     private final Button trackOrder;
     private final Button mapToggle;
     private boolean mapExpanded = true;
+    private boolean checkoutBlocked;
+    private final Button confirmDelivery, approveStop, rejectStop, cancelDraft;
     private TransivaGoogleMapView routeMap;
     private boolean routeMapResumed;
     private String mapOrder = "";
@@ -109,6 +111,14 @@ final class TransSimpelRoutePanel {
         briefButton.setPadding(dp(10),0,dp(10),0);
         briefButton.setVisibility(View.GONE);
         heading.addView(briefButton,new LinearLayout.LayoutParams(-2,dp(48)));
+        confirmDelivery=button("Konfirmasi diterima",()->customerAction("confirm_received"));
+        approveStop=button("Setujui tarif singgah",()->customerAction("approve_price"));
+        rejectStop=button("Tolak tarif singgah",()->customerAction("reject_price"));
+        cancelDraft=button("Batalkan permintaan",()->send("cancel_draft",null));
+        for (Button action:new Button[]{confirmDelivery,approveStop,rejectStop,cancelDraft}) {
+            action.setVisibility(View.GONE);
+            view.addView(action,new LinearLayout.LayoutParams(-1,dp(44)));
+        }
         mapToggle=button("Sembunyikan peta", () -> {
             mapExpanded=!mapExpanded;
             if (route!=null) render(route);
@@ -415,11 +425,6 @@ final class TransSimpelRoutePanel {
         line.setBackground(surface("#F8FAFD","#E5ECF5"));
         line.setPadding(dp(6),dp(4),dp(4),dp(4));
         line.setOnClickListener(v->{
-            if (route!=null && "accepted".equals(route.optString("state"))
-                    && !("pickup".equals(key) && "food".equals(kind()))) {
-                openPicker("pickup".equals(key)?PICKUP:"stop".equals(key)?STOP:DELIVERY);
-                return;
-            }
             new TransivaAlertDialogBuilder(activity)
                 .setTitle(title).setMessage(route==null?"Belum diatur":address(key))
                 .setPositiveButton("Tutup",null).show();
@@ -465,18 +470,25 @@ final class TransSimpelRoutePanel {
         if (route!=null && !route.isNull("total") && update.isNull("total")) quotedRevision=-1;
         route=update;
         String state=route.optString("state");
-        boolean editable="accepted".equals(state);
+        boolean editable="accepted".equals(state) && !directCheckout();
         boolean ordered="ordered".equals(state);
         boolean waiting="waiting_driver".equals(state);
-        routeScroll.setVisibility(editable || ordered || waiting ? View.VISIBLE : View.GONE);
+        routeScroll.setVisibility(editable || ordered || waiting || "accepted".equals(state) ? View.VISIBLE : View.GONE);
         String phase=route.optString("order_status");
         String caption="arrived_pickup".equals(phase)?"Tiba di jemput":
                 "on_delivery".equals(phase)||"picked_up".equals(phase)?"Menuju antar":
                 "arrived_delivery".equals(phase)?"Tiba di tujuan":
                 "finished".equals(phase)||"completed".equals(phase)?"Selesai":"Menuju jemput";
-        routeTitle.setText(ordered?"Rute perjalanan\n"+caption:waiting?"Pesanan dalam antrean":"Atur rute");
+        routeTitle.setText(ordered?"Rute perjalanan\n"+caption:waiting?"Pesanan dalam antrean":directCheckout()?"Menyiapkan pesanan":"Ringkasan rute");
         briefButton.setVisibility(editable && tivaBrief!=null ? View.VISIBLE : View.GONE);
-        trackOrder.setVisibility(ordered && !route.optString("order_id").isEmpty()?View.VISIBLE:View.GONE);
+        trackOrder.setVisibility(View.GONE);
+        confirmDelivery.setVisibility(ordered && "arrived_delivery".equals(phase)
+                && route.optInt("customer_received")==0?View.VISIBLE:View.GONE);
+        JSONObject proposal=route.optJSONObject("location_proposal");
+        approveStop.setVisibility(proposal==null?View.GONE:View.VISIBLE);
+        rejectStop.setVisibility(proposal==null?View.GONE:View.VISIBLE);
+        approveStop.setText("Setujui total Rp "+NumberFormat.getIntegerInstance(new Locale("id","ID")).format(route.optLong("requested_price")));
+        cancelDraft.setVisibility(checkoutBlocked && "accepted".equals(state)?View.VISIBLE:View.GONE);
         boolean canShowMap=(waiting || ordered) && route.optJSONObject("pickup")!=null
                 && route.optJSONObject("delivery")!=null;
         mapToggle.setVisibility(canShowMap?View.VISIBLE:View.GONE);
@@ -485,18 +497,20 @@ final class TransSimpelRoutePanel {
         else removeRouteMap();
         boolean food="food".equals(kind());
         boolean send="send".equals(kind());
-        stop.setVisibility(editable && (kind().isEmpty() || "ride".equals(kind()))?View.VISIBLE:View.GONE);
+        stop.setVisibility(View.GONE);
         stop.setEnabled(editable && !busy);
         boolean hasStop=route.optJSONObject("stop")!=null;
         stop.setText(hasStop?"Singgah":"+ Singgah");
         stop.setContentDescription(hasStop?"Ubah titik singgah":"Tambah titik singgah opsional");
-        clearStop.setVisibility(editable && hasStop?View.VISIBLE:View.GONE);
+        clearStop.setVisibility(View.GONE);
         clearStop.setEnabled(!busy);
         clearStop.setContentDescription("Hapus titik singgah");
         long amount=route.optLong("total",0);
+        pickupAddress.setVisibility(directCheckout()?View.GONE:View.VISIBLE);
+        deliveryAddress.setVisibility(directCheckout()?View.GONE:View.VISIBLE);
         showAddress(pickupAddress,"pickup");
         showAddress(stopAddress,"stop");
-        stopAddress.setVisibility(hasStop?View.VISIBLE:View.GONE);
+        stopAddress.setVisibility(hasStop && !directCheckout()?View.VISIBLE:View.GONE);
         showAddress(deliveryAddress,"delivery");
         summary.setText(amount>0?(food?"Total makanan + ongkir":ordered?"Total":"Estimasi")+"  Rp "
                 +NumberFormat.getIntegerInstance(new Locale("id","ID")).format(amount)+" · Tunai":"");
@@ -517,7 +531,10 @@ final class TransSimpelRoutePanel {
         }
         if (waiting) summary.setText("Menunggu driver selesai"+(amount>0?" · Rp "+
                 NumberFormat.getIntegerInstance(new Locale("id","ID")).format(amount):""));
-        summary.setVisibility(waiting || amount>0?View.VISIBLE:View.GONE);
+        if (directCheckout() && "accepted".equals(state)) summary.setText(checkoutBlocked
+                ?"Pesanan belum dapat diproses. Batalkan dan periksa tarif atau ketersediaan."
+                :"Driver menerima. Menyiapkan pesanan…");
+        summary.setVisibility(waiting || amount>0 || directCheckout() && "accepted".equals(state)?View.VISIBLE:View.GONE);
         boolean both=route.optJSONObject("pickup")!=null && route.optJSONObject("delivery")!=null;
         quoteRetry.setVisibility(editable && both && amount==0 && quotedRevision==revision ? View.VISIBLE : View.GONE);
         quoteRetry.setEnabled(!busy);
@@ -536,7 +553,29 @@ final class TransSimpelRoutePanel {
         return tivaBrief==null?"":tivaBrief.optString("kind");
     }
 
+    private boolean directCheckout() {
+        return tivaBrief!=null && tivaBrief.optLong("authorized_total")>0;
+    }
+
+    private void customerAction(String action) {
+        if (busy || route==null) return;
+        try {
+            JSONObject payload=new JSONObject().put("customer_action",action)
+                    .put("source",route.optString("source")).put("order_id",route.optString("order_id"));
+            JSONObject stop=route.optJSONObject("location_proposal");
+            if (stop!=null && !"confirm_received".equals(action)) payload.put("location_request_id",stop.optLong("id"))
+                    .put("expected_price",route.optLong("requested_price"));
+            send("customer_order_action",payload);
+        } catch (org.json.JSONException failure) { notice("Tindakan belum dapat dikirim."); }
+    }
+
     private void calculateIfReady() {
+        if (directCheckout()) {
+            if (active && !busy && !checkoutBlocked && route!=null && "accepted".equals(route.optString("state"))
+                    && ("food".equals(kind()) || "send".equals(kind()))) send("auto_order",null);
+            return;
+        }
+
         if ("send".equals(kind())) return;
 
         if (!active || busy || route==null || !"accepted".equals(route.optString("state"))
@@ -664,6 +703,19 @@ final class TransSimpelRoutePanel {
         if (updated!=null && (!wasReading || briefChanged || !sameSelection(updated,route))) render(updated);
         else if (!wasReading && route!=null) render(route);
         else if (updated!=null && routeMap!=null) paintRouteMap();
+        if ("auto_order".equals(action)) {
+            if (reply==null) {
+                checkoutBlocked=true;
+                if (route!=null) render(route);
+            } else {
+                if (active) refresh();
+                return;
+            }
+        }
+        if (("customer_order_action".equals(action) || "cancel_draft".equals(action)) && reply!=null) {
+            refresh();
+            return;
+        }
         if (failure!=null && !"get".equals(action)) notice(failure);
         if (reply!=null && "order".equals(action) && "food".equals(kind())) {
             order.setVisibility(View.GONE);
@@ -725,6 +777,38 @@ final class TransSimpelRoutePanel {
 
     private JSONObject request(JSONObject data) throws Exception {
         String action=data.optString("action");
+        if ("customer_order_action".equals(action)) {
+            data.put("action",data.optString("customer_action"));
+            return TransivaHttpRepository.postJson(activity,ApiConfig.server("customer_order_action.php"),data,12000);
+        }
+        if ("cancel_draft".equals(action)) {
+            return TransSendContactClient.contact(activity,TransSendContactClient.action("cancel",id));
+        }
+        if ("auto_order".equals(action)) {
+            long total=tivaBrief.optLong("authorized_total");
+            int revision=route.optInt("revision");
+            String key="tiva-auto-"+id+"-"+revision+"-"+total;
+            if ("food".equals(kind())) {
+                JSONObject payload=new JSONObject().put("tiva_contact_id",id).put("revision",revision)
+                        .put("payment_method","cash").put("quote_only",true);
+                JSONObject quote=TransivaHttpRepository.postJson(activity,ApiConfig.server("create_food_order.php"),payload,15000);
+                JSONObject cost=quote.optJSONObject("quote");
+                if (cost==null || cost.optLong("total")!=total) throw new IllegalStateException(
+                        quote.optBoolean("success")?"Harga makanan berubah. Periksa ulang pesanan.":quote.optString("message"));
+                payload.put("quote_only",false).put("total",total).put("id",key);
+                return TransivaHttpRepository.postJsonIdempotent(activity,ApiConfig.server("create_food_order.php"),payload,18000,key);
+            }
+            JSONObject from=route.getJSONObject("pickup"),to=route.getJSONObject("delivery");
+            JSONObject payload=new JSONObject().put("courier_contact_id",id).put("id",key)
+                    .put("pickup_lat",from.optDouble("lat")).put("pickup_lng",from.optDouble("lng"))
+                    .put("pickup_address",from.optString("address"))
+                    .put("delivery_lat",to.optDouble("lat")).put("delivery_lng",to.optDouble("lng"))
+                    .put("delivery_address",to.optString("address"))
+                    .put("item_name",tivaBrief.optString("detail")).put("package_size","small").put("payment_method","cash")
+                    .put("receiver_name",tivaBrief.optString("receiver_name")).put("receiver_phone",tivaBrief.optString("receiver_phone"))
+                    .put("approved_price",total);
+            return TransivaHttpRepository.postJsonIdempotent(activity,ApiConfig.server("create_pickup_order.php"),payload,18000,key);
+        }
         if ("food".equals(kind()) && ("order".equals(action) || "quote".equals(action))) {
             boolean quote="quote".equals(action);
             JSONObject payload=new JSONObject().put("tiva_contact_id",id).put("quote_only",quote)

@@ -63,7 +63,7 @@ public class CustomerArrivalAlertActivity extends CustomerAdaptiveActivity {
         TextView title = text(content.headline, 29, true);
         title.setPadding(dp(4), dp(14), dp(4), dp(12));
 
-        TextView body = text(content.body+("1".equals(getIntent().getStringExtra("smart_waiting"))?"\n\nSmart Waiting aktif: gratis 5 menit; lalu Rp500/menit tambahan yang dimulai.":""), 17, false);
+        TextView body = text(content.body+("1".equals(getIntent().getStringExtra("smart_waiting"))?"\n\nWaktu tunggu aktif. Lihat sisa waktu gratis dan tarif di detail perjalanan.":""), 17, false);
         body.setTextColor(Color.rgb(220, 235, 250));
 
         TextView hint = text("Ketuk layar untuk membuka detail perjalanan", 14, false);

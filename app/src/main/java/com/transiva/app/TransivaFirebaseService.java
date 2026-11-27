@@ -137,7 +137,8 @@ public class TransivaFirebaseService extends FirebaseMessagingService {
 
         String waitingEvent=data.get("event");
         if ("customer_order_status".equals(type)
-                && ("waiting_started".equals(waitingEvent) || "waiting_paused".equals(waitingEvent))) {
+                && ("waiting_started".equals(waitingEvent) || "waiting_paused".equals(waitingEvent)
+                    || "stop_added".equals(waitingEvent) || "location_proposed".equals(waitingEvent))) {
             sendBroadcast(new Intent(ACTION_WAITING_UPDATE).setPackage(getPackageName())
                     .putExtra("order_id",data.get("order_id")));
         }

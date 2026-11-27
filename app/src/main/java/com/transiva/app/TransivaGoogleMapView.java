@@ -500,7 +500,17 @@ public final class TransivaGoogleMapView extends FrameLayout implements OnMapRea
     }
 
     @Override public boolean dispatchTouchEvent(MotionEvent event) {
-        if (event.getActionMasked() == MotionEvent.ACTION_DOWN) cancelCheckoutAnimation(true);
+        int action=event.getActionMasked();
+        if (mode==Mode.TRIP && getParent()!=null) {
+            if (action==MotionEvent.ACTION_DOWN) {
+                getParent().requestDisallowInterceptTouchEvent(true);
+                if (googleMap!=null) googleMap.stopAnimation();
+                if (gestureListener!=null) gestureListener.onGestureStart();
+            } else if (action==MotionEvent.ACTION_UP || action==MotionEvent.ACTION_CANCEL) {
+                getParent().requestDisallowInterceptTouchEvent(false);
+            }
+        }
+        if (action==MotionEvent.ACTION_DOWN) cancelCheckoutAnimation(true);
         return super.dispatchTouchEvent(event);
     }
 

@@ -45,6 +45,7 @@ final class TransSimpelRoutePanel {
     private final Button order;
     private final Button trackOrder;
     private final Button mapToggle;
+    private final SmartWaitingTextView waitingView;
     private boolean mapExpanded = true;
     private boolean checkoutBlocked;
     private final Button confirmDelivery, approveStop, rejectStop, cancelDraft;
@@ -127,7 +128,9 @@ final class TransSimpelRoutePanel {
         style(mapToggle,"#EAF1FF","#075BC8");
         mapToggle.setVisibility(View.GONE);
         heading.addView(mapToggle,new LinearLayout.LayoutParams(-2,dp(44)));
-        view.addView(heading,new LinearLayout.LayoutParams(-1,-2));
+        view.addView(heading,0,new LinearLayout.LayoutParams(-1,-2));
+        waitingView=new SmartWaitingTextView(activity);
+        waitingView.setTripPresentation();
 
         pickupAddress = addressLine("Jemput","●",0xFF08785B,"pickup");
         view.addView(stop,new LinearLayout.LayoutParams(-2,dp(44)));
@@ -140,6 +143,7 @@ final class TransSimpelRoutePanel {
         fareRow.setOrientation(LinearLayout.VERTICAL);
         fareRow.setGravity(android.view.Gravity.CENTER_VERTICAL);
         view.addView(fareRow,new LinearLayout.LayoutParams(-1,-2));
+        view.addView(waitingView,new LinearLayout.LayoutParams(-1,-2));
         summary = new TextView(activity);
         summary.setTextColor(0xFF143052);
         summary.setTextSize(13);
@@ -241,7 +245,8 @@ final class TransSimpelRoutePanel {
         if (update.optJSONObject("pickup")==null || update.optJSONObject("delivery")==null) return;
         JSONObject from=update.optJSONObject("pickup"),to=update.optJSONObject("delivery");
         String key=update.optString("order_id",update.optString("state"))+":"+from.optString("lat")
-                +":"+from.optString("lng")+":"+to.optString("lat")+":"+to.optString("lng");
+                +":"+from.optString("lng")+":"+to.optString("lat")+":"+to.optString("lng")
+                +":"+String.valueOf(update.optJSONObject("ecosystem"));
         if (!key.equals(mapOrder)) {
             mapOrder=key;
             mapPoints=null;
@@ -283,9 +288,12 @@ final class TransSimpelRoutePanel {
         if (from==null || to==null) return;
         map.setPickup(from.optDouble("lat"),from.optDouble("lng"),from.optString("address"));
         map.setDelivery(to.optDouble("lat"),to.optDouble("lng"),to.optString("address"));
+        JSONObject ecosystem=route.optJSONObject("ecosystem");
+        map.setWaypoints(ecosystem==null?null:ecosystem.optJSONArray("waypoints"));
         JSONObject driver=route.optJSONObject("driver_position");
         if (driver!=null) {
-            map.setTripDriver(driver.optDouble("lat"),driver.optDouble("lng"),0,false,"Posisi driver","Lokasi terakhir");
+            map.setTripDriver(driver.optDouble("lat"),driver.optDouble("lng"),driver.optDouble("bearing",0),
+                    "car".equalsIgnoreCase(driver.optString("vehicle")),"Posisi driver","Lokasi terakhir");
             if (!mapHasDriver) fitMap=true;
         } else if (mapHasDriver) {
             map.clearTripDriver();
@@ -293,6 +301,17 @@ final class TransSimpelRoutePanel {
         mapHasDriver=driver!=null;
         String status=route.optString("order_status");
         JSONObject target=CustomerOrderState.targetsDelivery(status)?to:from;
+        if (CustomerOrderState.targetsDelivery(status) && ecosystem!=null) {
+            org.json.JSONArray stops=ecosystem.optJSONArray("waypoints");
+            for (int index=0;stops!=null && index<stops.length();index++) {
+                JSONObject stop=stops.optJSONObject(index);
+                if (stop==null || !"pending".equals(stop.optString("status"))) continue;
+                try {
+                    target=new JSONObject().put("lat",stop.optDouble("latitude")).put("lng",stop.optDouble("longitude"));
+                    break;
+                } catch (org.json.JSONException invalidStop) { continue; }
+            }
+        }
         if (driver!=null) requestLiveRoute(driver,target);
         else if (liveRoutePoints!=null) {
             liveRouteTarget="";
@@ -479,6 +498,7 @@ final class TransSimpelRoutePanel {
                 "on_delivery".equals(phase)||"picked_up".equals(phase)?"Menuju antar":
                 "arrived_delivery".equals(phase)?"Tiba di tujuan":
                 "finished".equals(phase)||"completed".equals(phase)?"Selesai":"Menuju jemput";
+        waitingView.bind(ordered?route.optJSONObject("smart_waiting"):null,phase);
         routeTitle.setText(ordered?"Rute perjalanan\n"+caption:waiting?"Pesanan dalam antrean":directCheckout()?"Menyiapkan pesanan":"Ringkasan rute");
         briefButton.setVisibility(editable && tivaBrief!=null ? View.VISIBLE : View.GONE);
         trackOrder.setVisibility(View.GONE);

@@ -85,14 +85,14 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
     }
     private JSONObject finalFareQuote;
     private String freeStopTime() {
-        int seconds=stopPricing==null?180:stopPricing.optInt("free_seconds",180);
+        int seconds=stopPricing.optInt("free_seconds");
         return seconds%60==0?(seconds/60)+" menit":(seconds/60)+" menit "+(seconds%60)+" detik";
     }
     private void updateStopSummary() {
         if(stopPricingText==null)return;
         int count=ecosystemFeatures.waypoints.length();
-        stopPricingText.setVisibility(count>0?View.VISIBLE:View.GONE);
-        if(count>0){
+        stopPricingText.setVisibility(count>0 && stopPricing!=null?View.VISIBLE:View.GONE);
+        if(count>0 && stopPricing!=null){
             int fee=finalFareQuote==null?(stopPricing==null?0:stopPricing.optInt("stop_fee")*count):finalFareQuote.optInt("stop_fee");
             stopPricingText.setText(count+" singgah"+(fee>0?" · Rp"+formatMoney(fee):"")+"\nTunggu gratis "+freeStopTime()+(stopPricing==null?"":" · lalu Rp"+formatMoney(stopPricing.optInt("rate_per_minute"))+"/menit"));
         }
@@ -108,8 +108,9 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
             if(q.optInt("point_discount")>0)body.append("\nPoin: −Rp").append(formatMoney(q.optInt("point_discount")));
             body.append("\nTotal sebelum biaya tunggu: Rp").append(formatMoney(q.optInt("price")));
         }else body.append("Tarif sedang disiapkan. Tunggu hingga total muncul sebelum memesan.");
-        if(ecosystemFeatures.waypoints.length()>0&&stopPricing!=null)body.append("\n\nDi setiap persinggahan: gratis ").append(freeStopTime()).append(", lalu Rp").append(formatMoney(stopPricing.optInt("rate_per_minute"))).append(" per menit tambahan yang dimulai.");
-        body.append("\n\nTunggu jemput dan tujuan akhir: gratis 5 menit, lalu Rp500/menit tambahan yang dimulai. Biaya tunggu dihitung terpisah, 100% untuk driver.");
+        if(stopPricing!=null) body.append("\n\nWaktu tunggu di jemput, singgah dan tujuan: gratis ")
+                .append(freeStopTime()).append(", lalu Rp").append(formatMoney(stopPricing.optInt("rate_per_minute")))
+                .append(" per menit tambahan yang dimulai. Biaya tunggu dihitung terpisah.");
         new TransivaAlertDialogBuilder(this).setTitle("Rincian perjalanan").setMessage(body.toString())
                 .setNeutralButton("Opsi perjalanan", (dialog, which) -> {
                     if (checkoutOptions != null) checkoutOptions.run();
@@ -967,8 +968,8 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
 
     protected void showScheduleDialog(Button target) {
         final java.util.Calendar c = java.util.Calendar.getInstance();
-        android.app.DatePickerDialog datePicker = new android.app.DatePickerDialog(this, (d, y, m, day) -> {
-            android.app.TimePickerDialog timePicker = new android.app.TimePickerDialog(this, (t, hour, minute) -> {
+        new android.app.DatePickerDialog(this, (d, y, m, day) -> {
+            new android.app.TimePickerDialog(this, (t, hour, minute) -> {
                 java.util.Calendar chosen = java.util.Calendar.getInstance();
                 chosen.set(y, m, day, hour, minute, 0);
                 if (chosen.getTimeInMillis() < System.currentTimeMillis() + 15 * 60 * 1000L) {
@@ -979,12 +980,8 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
                 java.text.SimpleDateFormat label = new java.text.SimpleDateFormat("dd/MM HH:mm", Locale.getDefault());
                 target.setText("🕒 " + label.format(chosen.getTime()));
                 if (!"cash".equals(paymentMethod)) { paymentMethod = "cash"; if (paymentChoiceBtn != null) paymentChoiceBtn.setText("💵 Tunai"); }
-            }, c.get(java.util.Calendar.HOUR_OF_DAY), c.get(java.util.Calendar.MINUTE), true);
-            TransivaAlertDialogBuilder.applyFade(timePicker);
-            timePicker.show();
-        }, c.get(java.util.Calendar.YEAR), c.get(java.util.Calendar.MONTH), c.get(java.util.Calendar.DAY_OF_MONTH));
-        TransivaAlertDialogBuilder.applyFade(datePicker);
-        datePicker.show();
+            }, c.get(java.util.Calendar.HOUR_OF_DAY), c.get(java.util.Calendar.MINUTE), true).show();
+        }, c.get(java.util.Calendar.YEAR), c.get(java.util.Calendar.MONTH), c.get(java.util.Calendar.DAY_OF_MONTH)).show();
     }
 
     protected void showVoucherDialog() {
@@ -2893,7 +2890,7 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
             i.putExtra("delivery_lng", String.valueOf(deliveryLng));
             i.putExtra("pickup_address", firstNonEmpty(pickupAddress, "Lokasi Jemput"));
             i.putExtra("delivery_address", firstNonEmpty(deliveryAddress, "Lokasi Pengantaran"));
-            CustomerPageTransition.openWithFade(this, i);
+            startActivity(i);
             finish();
         } catch (Exception e) {
             toastDialog("Order " + serviceName() + " berhasil dibuat. ID: " + orderId);

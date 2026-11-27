@@ -52,23 +52,34 @@ public final class SmartWaitingTextView extends LinearLayout {
         if(compact && active==null && fee<=0){setVisibility(GONE);return;}
         setVisibility(VISIBLE);
         if(active!=null){
-            long elapsed=active.optLong("elapsed_seconds")+Math.min(30,Math.max(0,(SystemClock.elapsedRealtime()-sampledAt)/1000)),free=active.optLong("free_seconds",300),rate=active.optLong("rate_per_minute",500);
+            long elapsed=active.optLong("elapsed_seconds")+Math.min(30,Math.max(0,(SystemClock.elapsedRealtime()-sampledAt)/1000)),free=active.optLong("free_seconds"),rate=active.optLong("rate_per_minute");
             long remaining=Math.max(0,free-elapsed);fee=Math.max(0,fee-active.optLong("fee"))+((Math.max(0,elapsed-free)+59)/60)*rate;
             String waitingLabel = active.optString("label");
             boolean stale = SystemClock.elapsedRealtime() - sampledAt > 30000;
             title.setText((tripPresentation ? "Tunggu · " : "SMART WAITING  •  ") + waitingLabel
                     + (stale ? " · Menunggu sinkronisasi" : ""));
-            clock.setText(remaining>0?String.format(Locale.US,"%02d:%02d gratis",remaining/60,remaining%60):money(fee)+" biaya tunggu");
+            boolean dark=CustomerAppSettings.isDarkMode(getContext());
+            int accent=WaitingClock.color(elapsed,free,dark);
+            GradientDrawable background=new GradientDrawable();
+            background.setColor(dark?0xff13273a:0xfff1f7fd);
+            background.setCornerRadius(dp(14));
+            background.setStroke(dp(1),accent);
+            setBackground(background);
+            title.setTextColor(dark?0xffbad0e8:0xff465e76);
+            detail.setTextColor(dark?0xffd4e4f2:0xff365572);
+            clock.setTextColor(accent);
+            clock.setText(WaitingClock.text(elapsed,free));
             if (tripPresentation) {
                 String freeLabel = free % 60 == 0 ? (free / 60) + " mnt" : (free / 60) + " mnt " + (free % 60) + " dtk";
-                String paidWaiting = remaining > 0 && fee > 0 ? " · Biaya tunggu " + money(fee) : "";
+                String paidWaiting = fee > 0 ? " · Biaya tunggu " + money(fee) : "";
                 detail.setText(money(rate) + "/mnt setelah " + freeLabel + " gratis" + paidWaiting
                         + " · Est. total " + money(state.optLong("base_total") + fee));
             } else {
                 detail.setText(money(rate)+"/menit setelah "+(free/60)+" menit "+(free%60)+" detik gratis\nTunggu "+money(fee)+"  •  Estimasi total "+money(state.optLong("base_total")+fee));
             }
         }else{
-            title.setText("SMART WAITING  •  "+(terminal?"Selesai":"Dihentikan"));clock.setText(money(fee)+" biaya tunggu");
+            clock.setTextColor(CustomerAppSettings.isDarkMode(getContext())?0xffadd2ff:0xff1267c8);
+            title.setText("Waktu tunggu · "+(terminal?"Selesai":"Dijeda"));clock.setText(money(fee)+" biaya tunggu");
             detail.setText("Total "+money(state.optLong("base_total")+fee)+"  •  "+sessions.length()+" titik tunggu");
         }
     }

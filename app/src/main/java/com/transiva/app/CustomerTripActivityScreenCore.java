@@ -355,6 +355,10 @@ class CustomerTripActivityScreenCore extends CustomerAdaptiveActivity {
         });
         mapView = new TransivaGoogleMapView(this, TransivaGoogleMapView.Mode.TRIP);
         mapView.setClipToOutline(false);
+        mapView.setGestureListener(new TransivaGoogleMapView.GestureListener() {
+            @Override public void onGestureStart() { firstFocus=false; driverCameraFocused=true; }
+            @Override public void onGestureEnd() {}
+        });
         mapSurface.addView(mapView, new FrameLayout.LayoutParams(-1, -1));
 
         LinearLayout mapControls = new LinearLayout(this);
@@ -362,7 +366,7 @@ class CustomerTripActivityScreenCore extends CustomerAdaptiveActivity {
                 || getResources().getConfiguration().fontScale > 1.2f;
         mapControls.setOrientation(stackMapControls ? LinearLayout.VERTICAL : LinearLayout.HORIZONTAL);
         mapControls.setGravity(Gravity.END | Gravity.CENTER_VERTICAL);
-        FrameLayout.LayoutParams controlsParams = new FrameLayout.LayoutParams(-1, -2, Gravity.BOTTOM);
+        FrameLayout.LayoutParams controlsParams = new FrameLayout.LayoutParams(-2, -2, Gravity.BOTTOM | Gravity.END);
         // Leave room for the Maps attribution along the bottom edge.
         controlsParams.setMargins(dp(12), 0, dp(12), dp(30));
         mapSurface.addView(mapControls, controlsParams);
@@ -370,11 +374,6 @@ class CustomerTripActivityScreenCore extends CustomerAdaptiveActivity {
         tripInfoText = text("Menyiapkan rute…", 11, "#344D67", true);
         tripInfoText.setPadding(dp(9), dp(7), dp(9), dp(7));
         tripInfoText.setBackground(roundStroke("#FFFFFF", "#DBE8F5", dp(12), 1));
-        LinearLayout.LayoutParams estimateParams = new LinearLayout.LayoutParams(
-                stackMapControls ? -1 : 0, -2, stackMapControls ? 0 : 1);
-        estimateParams.setMarginEnd(stackMapControls ? 0 : dp(8));
-        estimateParams.bottomMargin = stackMapControls ? dp(4) : 0;
-        mapControls.addView(tripInfoText, estimateParams);
 
         Button center = outlineButton("⌖  Pusatkan");
         center.setContentDescription("Pusatkan peta");
@@ -403,6 +402,7 @@ class CustomerTripActivityScreenCore extends CustomerAdaptiveActivity {
         LinearLayout.LayoutParams dlp = new LinearLayout.LayoutParams(-1, -2);
         dlp.setMargins(0, dp(8), 0, 0);
         card.addView(driverBox, dlp);
+        card.addView(tripInfoText, tripRow(6));
 
         driverPhotoView = new ImageView(this);
         driverPhotoView.setImageResource(R.drawable.ic_nav_profile);

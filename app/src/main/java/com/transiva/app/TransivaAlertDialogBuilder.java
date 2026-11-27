@@ -1,6 +1,7 @@
 package com.transiva.app;
 
 import android.app.AlertDialog;
+import android.app.Dialog;
 import android.content.Context;
 import android.content.DialogInterface;
 import android.graphics.Color;
@@ -37,6 +38,7 @@ public class TransivaAlertDialogBuilder extends AlertDialog.Builder {
     @Override
     public AlertDialog create() {
         final AlertDialog dialog = super.create();
+        applyFade(dialog);
         // Do not consume OnShowListener: forms use it to validate without dismissing.
         // Attach occurs before native AlertController has finished its first layout.
         // Run once just before drawing, after caller OnShowListener customizations.
@@ -54,6 +56,11 @@ public class TransivaAlertDialogBuilder extends AlertDialog.Builder {
             @Override public void onViewDetachedFromWindow(View view){}
         });
         return dialog;
+    }
+
+    static void applyFade(Dialog dialog) {
+        Window window = dialog.getWindow();
+        if (window != null) window.setWindowAnimations(R.style.CustomerDialogFade);
     }
 
     private void applyTransivaStyle(AlertDialog dialog) {

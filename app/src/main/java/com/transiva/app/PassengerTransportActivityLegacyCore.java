@@ -967,8 +967,8 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
 
     protected void showScheduleDialog(Button target) {
         final java.util.Calendar c = java.util.Calendar.getInstance();
-        new android.app.DatePickerDialog(this, (d, y, m, day) -> {
-            new android.app.TimePickerDialog(this, (t, hour, minute) -> {
+        android.app.DatePickerDialog datePicker = new android.app.DatePickerDialog(this, (d, y, m, day) -> {
+            android.app.TimePickerDialog timePicker = new android.app.TimePickerDialog(this, (t, hour, minute) -> {
                 java.util.Calendar chosen = java.util.Calendar.getInstance();
                 chosen.set(y, m, day, hour, minute, 0);
                 if (chosen.getTimeInMillis() < System.currentTimeMillis() + 15 * 60 * 1000L) {
@@ -979,8 +979,12 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
                 java.text.SimpleDateFormat label = new java.text.SimpleDateFormat("dd/MM HH:mm", Locale.getDefault());
                 target.setText("🕒 " + label.format(chosen.getTime()));
                 if (!"cash".equals(paymentMethod)) { paymentMethod = "cash"; if (paymentChoiceBtn != null) paymentChoiceBtn.setText("💵 Tunai"); }
-            }, c.get(java.util.Calendar.HOUR_OF_DAY), c.get(java.util.Calendar.MINUTE), true).show();
-        }, c.get(java.util.Calendar.YEAR), c.get(java.util.Calendar.MONTH), c.get(java.util.Calendar.DAY_OF_MONTH)).show();
+            }, c.get(java.util.Calendar.HOUR_OF_DAY), c.get(java.util.Calendar.MINUTE), true);
+            TransivaAlertDialogBuilder.applyFade(timePicker);
+            timePicker.show();
+        }, c.get(java.util.Calendar.YEAR), c.get(java.util.Calendar.MONTH), c.get(java.util.Calendar.DAY_OF_MONTH));
+        TransivaAlertDialogBuilder.applyFade(datePicker);
+        datePicker.show();
     }
 
     protected void showVoucherDialog() {
@@ -2889,7 +2893,7 @@ class PassengerTransportActivityLegacyCore extends CustomerAdaptiveActivity {
             i.putExtra("delivery_lng", String.valueOf(deliveryLng));
             i.putExtra("pickup_address", firstNonEmpty(pickupAddress, "Lokasi Jemput"));
             i.putExtra("delivery_address", firstNonEmpty(deliveryAddress, "Lokasi Pengantaran"));
-            startActivity(i);
+            CustomerPageTransition.openWithFade(this, i);
             finish();
         } catch (Exception e) {
             toastDialog("Order " + serviceName() + " berhasil dibuat. ID: " + orderId);

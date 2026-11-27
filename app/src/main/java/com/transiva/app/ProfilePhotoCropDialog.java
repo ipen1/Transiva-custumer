@@ -32,6 +32,7 @@ final class ProfilePhotoCropDialog extends Dialog {
     private int dp(int value) { return Math.round(value * getContext().getResources().getDisplayMetrics().density); }
     @Override protected void onCreate(Bundle state) {
         super.onCreate(state); requestWindowFeature(Window.FEATURE_NO_TITLE);
+        TransivaAlertDialogBuilder.applyFade(this);
         LinearLayout root = new LinearLayout(getContext()); root.setOrientation(LinearLayout.VERTICAL);
         root.setPadding(dp(18), dp(20), dp(18), dp(20)); root.setBackgroundColor(Color.rgb(11, 24, 43));
         TextView title = new TextView(getContext()); title.setText("Sesuaikan foto profil");

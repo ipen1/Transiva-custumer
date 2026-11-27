@@ -1369,7 +1369,7 @@ class TransShopActivityScreenCore extends CustomerAdaptiveActivity {
             i.putExtra("delivery_lng", String.valueOf(deliveryLng));
             i.putExtra("pickup_address", firstNonEmpty(pickupAddress, "Lokasi Belanja"));
             i.putExtra("delivery_address", firstNonEmpty(deliveryAddress, "Lokasi Pengantaran"));
-            startActivity(i);
+            CustomerPageTransition.openWithFade(this, i);
             finish();
         } catch (Exception e) {
             toastDialog("Order TransShop berhasil dibuat. ID: " + orderId);

@@ -1,6 +1,7 @@
 package com.transiva.app;
 
 import android.app.Activity;
+import android.app.ActivityOptions;
 import android.content.Intent;
 import android.os.SystemClock;
 import android.view.View;
@@ -66,6 +67,12 @@ public final class CustomerPageTransition {
 
         // Sama seperti Merchant: perpindahan stabil dengan cross-fade, tanpa slide tajam.
         activity.overridePendingTransition(android.R.anim.fade_in, android.R.anim.fade_out);
+    }
+
+    static void openWithFade(Activity activity, Intent intent) {
+        ActivityOptions options = ActivityOptions.makeCustomAnimation(
+                activity, R.anim.customer_fade_in, R.anim.customer_fade_out);
+        activity.startActivity(intent, options.toBundle());
     }
 
     /**

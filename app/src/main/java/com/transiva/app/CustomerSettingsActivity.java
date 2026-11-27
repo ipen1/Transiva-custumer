@@ -96,10 +96,12 @@ public class CustomerSettingsActivity extends CustomerAdaptiveActivity {
             String[] modes={"system","light","dark"};
             String mode=CustomerAppSettings.themeMode(this);
             int selected="dark".equals(mode)?2:"light".equals(mode)?1:0;
-            new AlertDialog.Builder(this).setTitle("Tema aplikasi")
+            AlertDialog themeDialog = new AlertDialog.Builder(this).setTitle("Tema aplikasi")
                     .setSingleChoiceItems(new String[]{"Ikuti tema HP (disarankan)","Terang","Gelap"}, selected, (dialog, which) -> {
                         CustomerAppSettings.setThemeMode(this,modes[which]); themeLabel.run(); dialog.dismiss();
-                    }).setNegativeButton("Batal",null).show();
+                    }).setNegativeButton("Batal",null).create();
+            TransivaAlertDialogBuilder.applyFade(themeDialog);
+            themeDialog.show();
         });
         preferenceCard.addView(themeChoice);
         root.addView(preferenceCard);

@@ -316,6 +316,7 @@ final class OrderChatStyle {
         AlertDialog dialog = new AlertDialog.Builder(activity, dark()?android.R.style.Theme_Material_Dialog_Alert:android.R.style.Theme_Material_Light_Dialog_Alert).setTitle(calls ? "Riwayat panggilan" : "Cari pesan")
                 .setView(pane).setNegativeButton("Tutup",null)
                 .setPositiveButton(calls ? "Muat ulang" : "Cari",null).create();
+        TransivaAlertDialogBuilder.applyFade(dialog);
         dialog.show();
         
         dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {

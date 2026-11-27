@@ -1,10 +1,14 @@
 package com.transiva.app;
 
+import android.app.AlertDialog;
 import android.content.Intent;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
+import android.text.Editable;
 import android.text.InputFilter;
+import android.text.InputType;
+import android.text.TextWatcher;
 import android.view.Gravity;
 import android.view.View;
 import android.widget.Button;
@@ -785,15 +789,90 @@ public final class TivaSimpelActivity extends CustomerAdaptiveActivity {
             toast("Stok menu ini sudah masuk keranjang semua.");
             return;
         }
-        android.widget.NumberPicker picker=new android.widget.NumberPicker(this);
-        picker.setMinValue(1);
-        picker.setMaxValue(limit);
-        new TransivaAlertDialogBuilder(this).setTitle("Jumlah porsi · "+item.optString("name"))
-                .setView(picker).setNegativeButton("Batal",null)
-                .setPositiveButton("Tambah ke keranjang",(dialog,choice)->{
-                    picker.clearFocus();
-                    addCartLine(item,selected,picker.getValue());
-                }).show();
+        LinearLayout panel = new LinearLayout(this);
+        panel.setOrientation(LinearLayout.VERTICAL);
+        panel.setGravity(Gravity.CENTER_HORIZONTAL);
+        panel.setPadding(dp(14), dp(4), dp(14), dp(6));
+        panel.setFocusableInTouchMode(true);
+
+        LinearLayout stepper = new LinearLayout(this);
+        stepper.setGravity(Gravity.CENTER);
+        panel.addView(stepper, new LinearLayout.LayoutParams(-1, -2));
+
+        EditText quantity = new EditText(this);
+        quantity.setInputType(InputType.TYPE_CLASS_NUMBER);
+        quantity.setFilters(new InputFilter[]{new InputFilter.LengthFilter(2)});
+        quantity.setText("1");
+        quantity.setSelectAllOnFocus(true);
+        quantity.setSingleLine();
+        quantity.setTextSize(24);
+        quantity.setTextColor(0xFF252A34);
+        quantity.setGravity(Gravity.CENTER);
+        quantity.setPadding(dp(6), dp(6), dp(6), dp(6));
+        quantity.setContentDescription("Jumlah porsi");
+        quantity.setBackground(CustomerUiPrimitives.roundStroke(this, "#EDF5FF", "#B9D3EF", dp(12), 1));
+
+        Button minus = button("−", () -> quantity.setText(String.valueOf(
+                Math.max(1, Math.min(limit, portionValue(quantity) - 1)))));
+        minus.setContentDescription("Kurangi porsi");
+        Button plus = button("+", () -> quantity.setText(String.valueOf(
+                Math.min(limit, portionValue(quantity) + 1))));
+        plus.setContentDescription("Tambah porsi");
+        minus.setTextSize(20);
+        plus.setTextSize(20);
+        stepper.addView(minus, new LinearLayout.LayoutParams(dp(48), dp(48)));
+        LinearLayout.LayoutParams valueParams = new LinearLayout.LayoutParams(dp(76), -2);
+        valueParams.setMargins(dp(8), 0, dp(8), 0);
+        quantity.setMinHeight(dp(54));
+        stepper.addView(quantity, valueParams);
+        stepper.addView(plus, new LinearLayout.LayoutParams(dp(48), dp(48)));
+
+        TextView hint = label("Maksimal " + limit + " porsi", 13, "#52647C", false);
+        hint.setGravity(Gravity.CENTER);
+        hint.setPadding(0, dp(6), 0, 0);
+        panel.addView(hint);
+        Runnable updateControls = () -> {
+            int count = portionValue(quantity);
+            minus.setEnabled(count > 1);
+            plus.setEnabled(count < limit);
+            minus.setAlpha(minus.isEnabled() ? 1f : .45f);
+            plus.setAlpha(plus.isEnabled() ? 1f : .45f);
+        };
+        quantity.addTextChangedListener(new TextWatcher() {
+            @Override public void beforeTextChanged(CharSequence text, int start, int count, int after) {}
+            @Override public void onTextChanged(CharSequence text, int start, int before, int count) {
+                updateControls.run();
+            }
+            @Override public void afterTextChanged(Editable text) {}
+        });
+        updateControls.run();
+
+        AlertDialog dialog = new TransivaAlertDialogBuilder(this)
+                .setTitle("Jumlah porsi · " + item.optString("name"))
+                .setView(panel).setNegativeButton("Batal", null)
+                .setPositiveButton("Tambah ke keranjang", null).create();
+        dialog.setOnShowListener(ignored -> {
+            panel.requestFocus();
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(view -> {
+                int count = portionValue(quantity);
+                if (count < 1 || count > limit) {
+                    quantity.requestFocus();
+                    quantity.setError("Isi 1 sampai " + limit + " porsi");
+                    return;
+                }
+                dialog.dismiss();
+                addCartLine(item, selected, count);
+            });
+        });
+        dialog.show();
+    }
+
+    private static int portionValue(EditText field) {
+        try {
+            return Integer.parseInt(field.getText().toString());
+        } catch (NumberFormatException ignored) {
+            return 0;
+        }
     }
 
     private void addCartLine(JSONObject item,JSONArray selected,int quantity) {

@@ -74,9 +74,12 @@ public final class TransSendCourierDirectoryActivity extends CustomerAdaptiveAct
         art.setImageResource(R.drawable.trans_simpel_banner);
         art.setAdjustViewBounds(true);
         art.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        card.setForeground(new android.graphics.drawable.RippleDrawable(
+                android.content.res.ColorStateList.valueOf(0x33FFFFFF), null,
+                new android.graphics.drawable.ColorDrawable(android.graphics.Color.WHITE)));
         art.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
         card.addView(art, new FrameLayout.LayoutParams(-1, -2));
-        card.setContentDescription("Trans Simpel. Chat driver dulu, baru pesan. Buka Trans Simpel.");
+        card.setContentDescription("Trans Simpel. Pilih layanan, tentukan lokasi, lalu pesan. Setelah pesan, chat dengan driver. Ketuk untuk membuka Trans Simpel.");
         card.setFocusable(true);
         card.setOnClickListener(v -> open(context));
         return card;

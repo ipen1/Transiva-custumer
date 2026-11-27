@@ -75,10 +75,10 @@ public final class TivaSimpelActivity extends CustomerAdaptiveActivity {
     private void buildScreen() {
         LinearLayout page=new LinearLayout(this);
         page.setOrientation(LinearLayout.VERTICAL);
-        page.setBackgroundColor(0xFFEAF5FF);
+        page.setBackgroundColor(0xFFF2F7FD);
         LinearLayout header=new LinearLayout(this);
         header.setGravity(Gravity.CENTER_VERTICAL);
-        header.setPadding(dp(8),dp(8),dp(14),dp(8));
+        header.setPadding(dp(6),dp(5),dp(14),dp(5));
         header.setBackground(CustomerUiPrimitives.gradient("#082D79","#0877DF",0));
         Button back=button("‹",this::onBackPressed);
         back.setBackgroundColor(0x00000000);
@@ -91,12 +91,12 @@ public final class TivaSimpelActivity extends CustomerAdaptiveActivity {
         avatar.setScaleType(ImageView.ScaleType.CENTER_CROP);
         avatar.setBackground(CustomerUiPrimitives.round("#E9F3FF",dp(24)));
         avatar.setClipToOutline(true);
-        header.addView(avatar,new LinearLayout.LayoutParams(dp(46),dp(46)));
+        header.addView(avatar,new LinearLayout.LayoutParams(dp(40),dp(40)));
         LinearLayout identity=new LinearLayout(this);
         identity.setOrientation(LinearLayout.VERTICAL);
         identity.setPadding(dp(10),0,0,0);
-        identity.addView(label("Tiva AI",22,"#FFFFFF",true));
-        identity.addView(label("Trans Simpel · "+driverName,13,"#E0F0FF",false));
+        identity.addView(label("Tiva AI",19,"#FFFFFF",true));
+        identity.addView(label("Trans Simpel · "+driverName,12,"#E0F0FF",false));
         header.addView(identity,new LinearLayout.LayoutParams(0,-2,1));
         page.addView(header);
         scroll=new ScrollView(this);
@@ -192,7 +192,7 @@ public final class TivaSimpelActivity extends CustomerAdaptiveActivity {
     private void render() {
         messages.removeAllViews();
         actions.removeAllViews();
-        bubble("Hai! Aku Tiva AI. Mau kubantu pesan apa?",false);
+        bubble("Hai! Mau kubantu pesan apa?",false);
         if (kind.isEmpty()) {
             TextView info=label("Setelah alamat dipilih, percakapan ini ikut dikirim ke driver.",14,"#194979",false);
             info.setPadding(dp(12),dp(10),dp(12),dp(10));
@@ -212,8 +212,13 @@ public final class TivaSimpelActivity extends CustomerAdaptiveActivity {
         }
         bubble(question(kind),true);
         if ("food".equals(kind)) {
-            bubble("Sebentar, aku cek dulu apa yang ada di sekitar kamu, ya.",false);
-            if (!reviewFood) { foodControls();return; }
+            if (!reviewFood) {
+                if (!loading && restaurant == null && menuSearch.isEmpty() && options.length() > 0) {
+                    bubble("Ini restoran di sekitarmu.", false);
+                }
+                foodControls();
+                return;
+            }
             showCart(false);
             if (delivery==null) bubble("Mau diantar ke mana?",false);
         } else {
@@ -266,7 +271,7 @@ public final class TivaSimpelActivity extends CustomerAdaptiveActivity {
 
     private static String question(String type) {
         switch (type) {
-            case "food":return "Mau pesan makan?";
+            case "food":return "Mau pesan makanan.";
             case "ride":return "Mau pesan ojek?";
             case "send":return "Mau kirim barang?";
             default:return "Mau belanja?";
@@ -295,25 +300,7 @@ public final class TivaSimpelActivity extends CustomerAdaptiveActivity {
         if (restaurant!=null) bubble("Kamu pilih "+restaurant.optString("name")+". Mau pesan menu apa?",false);
         if (loading) { bubble("Lagi memuat pilihan…",false);return; }
         if (restaurant==null) {
-            EditText query=new EditText(this);
-            query.setSingleLine(true);
-            query.setHint("Cari menu, misalnya bakso");
-            query.setText(menuSearch);
-            query.setFilters(new InputFilter[]{new InputFilter.LengthFilter(60)});
-            query.setImeOptions(android.view.inputmethod.EditorInfo.IME_ACTION_SEARCH);
-            actions.addView(query,new LinearLayout.LayoutParams(-1,-2));
-            Runnable search=()->{
-                ((android.view.inputmethod.InputMethodManager)getSystemService(INPUT_METHOD_SERVICE))
-                        .hideSoftInputFromWindow(query.getWindowToken(),0);
-                menuSearch=query.getText().toString().trim();
-                loadFood(0,0);
-            };
-            query.setOnEditorActionListener((view,action,event)->{
-                if (action!=android.view.inputmethod.EditorInfo.IME_ACTION_SEARCH) return false;
-                search.run();
-                return true;
-            });
-            addAction("Cari menu",search);
+            addMenuSearch();
             if (!menuSearch.isEmpty()) addAction("Hapus pencarian",()->{menuSearch="";loadFood(0,0);});
         }
         if (foodCart.length()>0) {
@@ -329,10 +316,20 @@ public final class TivaSimpelActivity extends CustomerAdaptiveActivity {
                 ? "Belum ada menu yang cocok pada halaman ini."
                 : restaurant==null
                 ?"Belum ada restoran yang tersedia di halaman ini.":"Menu di sini lagi kosong.",false);
+        LinearLayout restaurants = null;
         if (options.length()>0) {
             TextView heading=label(searching?"Hasil untuk "+menuSearch:restaurant==null?"Restoran sekitar":"Menu "+restaurant.optString("name"),19,"#10294A",true);
             heading.setPadding(0,dp(6),0,dp(3));
             actions.addView(heading);
+            if (!searching && restaurant == null) {
+                restaurants = new LinearLayout(this);
+                restaurants.setOrientation(LinearLayout.VERTICAL);
+                restaurants.setBackground(CustomerUiPrimitives.roundStroke(this, "#FFFFFF", "#D8E8F8", dp(15), 1));
+                restaurants.setClipToOutline(true);
+                LinearLayout.LayoutParams panel = new LinearLayout.LayoutParams(-1, -2);
+                panel.setMargins(0, dp(4), 0, dp(5));
+                actions.addView(restaurants, panel);
+            }
         }
         for (int i=0;i<options.length();i++) {
             JSONObject item=options.optJSONObject(i);
@@ -340,8 +337,8 @@ public final class TivaSimpelActivity extends CustomerAdaptiveActivity {
             if (searching) {
                 JSONObject store=item.optJSONObject("restaurant");
                 if (store==null) continue;
-                addFoodCard(item,store.optString("name")+" · "+menuPrice(item),
-                        R.drawable.ic_service_food_premium,false,()->{
+                addFoodCard(null,item,store.optString("name")+" · "+menuPrice(item),
+                        R.drawable.ic_service_food_premium,()->{
                     restaurant=store;
                     clearOptions();
                     more=false;
@@ -350,12 +347,12 @@ public final class TivaSimpelActivity extends CustomerAdaptiveActivity {
                 });
             } else if (restaurant==null) {
                 String distance=String.format(new java.util.Locale("id","ID"),"%.1f km",item.optDouble("distance_km",0));
-                addFoodCard(item,distance,R.drawable.ic_service_food_premium,true,()->{
+                addFoodCard(restaurants,item,distance,R.drawable.ic_service_food_premium,()->{
                     restaurant=item;
                     showTyping(()->loadFood(item.optInt("id"),0));
                 });
             } else {
-                addFoodCard(item,menuPrice(item),R.drawable.ic_service_food_premium,false,()->startMenu(item));
+                addFoodCard(null,item,menuPrice(item),R.drawable.ic_service_food_premium,()->startMenu(item));
             }
         }
         int restaurantId=restaurant==null?0:restaurant.optInt("id");
@@ -369,6 +366,51 @@ public final class TivaSimpelActivity extends CustomerAdaptiveActivity {
                     .setPositiveButton("Ganti restoran",(dialog,choice)->changeRestaurant()).show();
         });
         addAction("Ganti pilihan",this::reset);
+    }
+
+    private void addMenuSearch() {
+        LinearLayout searchRow = new LinearLayout(this);
+        boolean stack = getResources().getConfiguration().screenWidthDp < 330
+                || getResources().getConfiguration().fontScale > 1.25f;
+        searchRow.setOrientation(stack ? LinearLayout.VERTICAL : LinearLayout.HORIZONTAL);
+        searchRow.setGravity(Gravity.CENTER_VERTICAL);
+        searchRow.setPadding(dp(4), dp(3), dp(4), dp(3));
+        searchRow.setBackground(CustomerUiPrimitives.roundStroke(this, "#FFFFFF", "#B9D3EF", dp(14), 1));
+
+        EditText query = new EditText(this);
+        query.setSingleLine(true);
+        query.setHint("Contoh: bakso");
+        query.setText(menuSearch);
+        query.setTextSize(14);
+        query.setTextColor(0xFF10294A);
+        query.setHintTextColor(0xFF596F88);
+        query.setPadding(dp(9), dp(4), dp(7), dp(4));
+        query.setMinHeight(dp(48));
+        query.setBackground(null);
+        query.setCompoundDrawablesRelativeWithIntrinsicBounds(R.drawable.ic_smart_search, 0, 0, 0);
+        query.setCompoundDrawablePadding(dp(6));
+        query.setFilters(new InputFilter[]{new InputFilter.LengthFilter(60)});
+        query.setImeOptions(android.view.inputmethod.EditorInfo.IME_ACTION_SEARCH);
+        searchRow.addView(query, new LinearLayout.LayoutParams(stack ? -1 : 0, -2, stack ? 0 : 1));
+
+        Runnable search = () -> {
+            android.view.inputmethod.InputMethodManager keyboard =
+                    (android.view.inputmethod.InputMethodManager) getSystemService(INPUT_METHOD_SERVICE);
+            if (keyboard != null) keyboard.hideSoftInputFromWindow(query.getWindowToken(), 0);
+            menuSearch = query.getText().toString().trim();
+            loadFood(0, 0);
+        };
+        query.setOnEditorActionListener((view, action, event) -> {
+            if (action != android.view.inputmethod.EditorInfo.IME_ACTION_SEARCH) return false;
+            search.run();
+            return true;
+        });
+        Button submit = button("Cari menu", search);
+        submit.setTextSize(13);
+        submit.setTextColor(0xFFFFFFFF);
+        submit.setBackground(CustomerUiPrimitives.round("#075ACB", dp(10)));
+        searchRow.addView(submit, new LinearLayout.LayoutParams(stack ? -1 : -2, -2));
+        actions.addView(searchRow, new LinearLayout.LayoutParams(-1, -2));
     }
 
     private String menuPrice(JSONObject item) {
@@ -573,12 +615,14 @@ public final class TivaSimpelActivity extends CustomerAdaptiveActivity {
         row.addView(card,lp);
     }
 
-    private void addFoodCard(JSONObject item,String caption,int placeholder,boolean store,Runnable click) {
+    private void addFoodCard(LinearLayout restaurants, JSONObject item, String caption, int placeholder, Runnable click) {
+        boolean store = restaurants != null;
         LinearLayout row=new LinearLayout(this);
         row.setGravity(Gravity.CENTER_VERTICAL);
         row.setPadding(dp(8),dp(7),dp(9),dp(7));
-        row.setMinimumHeight(dp(66));
-        row.setBackground(CustomerUiPrimitives.roundStroke(this,"#FFFFFF","#D8E8F8",dp(15),1));
+        row.setMinimumHeight(dp(store ? 58 : 66));
+        if (!store) row.setBackground(CustomerUiPrimitives.roundStroke(this,"#FFFFFF","#D8E8F8",dp(15),1));
+
         ImageView photo=new ImageView(this);
         photo.setScaleType(ImageView.ScaleType.CENTER_CROP);
         photo.setImageResource(placeholder);
@@ -587,17 +631,18 @@ public final class TivaSimpelActivity extends CustomerAdaptiveActivity {
         photo.setClipToOutline(true);
         String url=ImageUrlResolver.resolve(item.optString("image"));
         if (url!=null && !url.isEmpty()) RemoteImageLoader.loadCenterCrop(photo,url,placeholder);
-        LinearLayout.LayoutParams photoParams=new LinearLayout.LayoutParams(dp(48),dp(48));
+        int photoSize = dp(store ? 42 : 48);
+        LinearLayout.LayoutParams photoParams=new LinearLayout.LayoutParams(photoSize,photoSize);
         photoParams.rightMargin=dp(10);
         row.addView(photo,photoParams);
         LinearLayout labels=new LinearLayout(this);
         labels.setOrientation(LinearLayout.VERTICAL);
-        labels.addView(label(item.optString("name"),16,"#10294A",true));
+        labels.addView(label(item.optString("name"),store ? 14 : 16,"#242A34",true));
         if (!store && !caption.isEmpty()) labels.addView(label(caption,13,"#215D43",true));
         row.addView(labels,new LinearLayout.LayoutParams(0,-2,1));
         if (store) {
             TextView distance=label(caption,13,"#16513F",true);
-            distance.setPadding(dp(8),dp(4),dp(8),dp(4));
+            distance.setPadding(dp(6),dp(3),dp(6),dp(3));
             distance.setBackground(CustomerUiPrimitives.round("#DEF6EB",dp(16)));
             row.addView(distance);
         }
@@ -605,10 +650,25 @@ public final class TivaSimpelActivity extends CustomerAdaptiveActivity {
         arrow.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
         row.addView(arrow);
         row.setFocusable(true);
+        row.setForeground(new android.graphics.drawable.RippleDrawable(
+                android.content.res.ColorStateList.valueOf(0x24075ACB), null,
+                new android.graphics.drawable.ColorDrawable(android.graphics.Color.WHITE)));
         row.setOnClickListener(v->click.run());
         LinearLayout.LayoutParams space=new LinearLayout.LayoutParams(-1,-2);
-        space.topMargin=dp(6);
-        actions.addView(row,space);
+        if (store) {
+            if (restaurants.getChildCount() > 0) {
+                View divider = new View(this);
+                divider.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+                divider.setBackgroundColor(0xFFD8E8F8);
+                LinearLayout.LayoutParams line = new LinearLayout.LayoutParams(-1, dp(1));
+                line.setMargins(dp(8), 0, dp(8), 0);
+                restaurants.addView(divider, line);
+            }
+            restaurants.addView(row, space);
+        } else {
+            space.topMargin = dp(6);
+            actions.addView(row, space);
+        }
     }
 
     private void showTyping(Runnable reply) {
@@ -979,9 +1039,9 @@ public final class TivaSimpelActivity extends CustomerAdaptiveActivity {
     }
 
     private void bubble(String copy,boolean mine) {
-        TextView view=label(copy,14,mine?"#FFFFFF":"#123259",false);
+        TextView view=label(copy,14,mine?"#FFFFFF":"#242A34",false);
         view.setPadding(dp(12),dp(9),dp(12),dp(9));
-        view.setBackground(CustomerUiPrimitives.round(mine?"#075DCF":"#FFFFFF",dp(15)));
+        view.setBackground(CustomerUiPrimitives.round(mine?"#075ACB":"#E4EFFD",dp(15)));
         LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-2,-2);
         lp.gravity=mine?Gravity.END:Gravity.START;
         lp.setMargins(mine?dp(38):0,0,mine?0:dp(32),dp(8));

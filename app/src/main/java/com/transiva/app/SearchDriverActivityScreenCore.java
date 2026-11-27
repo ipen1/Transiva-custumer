@@ -318,7 +318,7 @@ class SearchDriverActivityScreenCore extends CustomerAdaptiveActivity {
 
         driverCard = new LinearLayout(this);
         driverCard.setOrientation(LinearLayout.VERTICAL);
-        driverCard.setPadding(dp(12), dp(10), dp(12), dp(12));
+        driverCard.setPadding(dp(12), dp(10), dp(12), dp(10));
         driverCard.setBackground(roundStroke("#FFFFFF", "#CFE1F7", dp(20), 1));
         driverCard.setElevation(dp(8));
         driverCard.setVisibility(View.GONE);
@@ -330,6 +330,12 @@ class SearchDriverActivityScreenCore extends CustomerAdaptiveActivity {
         LinearLayout heading = new LinearLayout(this);
         heading.setGravity(Gravity.CENTER_VERTICAL);
         driverCard.addView(heading, new LinearLayout.LayoutParams(-1, -2));
+        View readyDot = new View(this);
+        readyDot.setBackground(round("#07965C", dp(4)));
+        readyDot.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+        LinearLayout.LayoutParams dotParams = new LinearLayout.LayoutParams(dp(7), dp(7));
+        dotParams.setMarginEnd(dp(6));
+        heading.addView(readyDot, dotParams);
         heading.addView(acceptedBadgeText, new LinearLayout.LayoutParams(0, -2, 1));
         acceptedRating = text("", 11, "#8A5A00", true);
         heading.addView(acceptedRating, new LinearLayout.LayoutParams(-2, -2));
@@ -365,15 +371,19 @@ class SearchDriverActivityScreenCore extends CustomerAdaptiveActivity {
         identity.addView(driverNameText);
         acceptedVehicleModel = text("", 13, "#334F72", true);
         identity.addView(acceptedVehicleModel);
-        driverPlateText = text("", 12, "#475569", false);
-        identity.addView(driverPlateText);
+        driverPlateText = text("", 11, "#244C77", true);
+        driverPlateText.setBackground(round("#E5F0FE", dp(5)));
+        driverPlateText.setPadding(dp(6), dp(2), dp(6), dp(2));
+        LinearLayout.LayoutParams plateParams = new LinearLayout.LayoutParams(-2, -2);
+        plateParams.topMargin = dp(2);
+        identity.addView(driverPlateText, plateParams);
 
         acceptedVehiclePhoto = new ImageView(this);
         acceptedVehiclePhoto.setContentDescription("Foto kendaraan driver");
         acceptedVehiclePhoto.setBackground(round("#EAF3FF", dp(10)));
         acceptedVehiclePhoto.setClipToOutline(true);
         acceptedVehiclePhoto.setVisibility(View.GONE);
-        LinearLayout.LayoutParams photoLp = new LinearLayout.LayoutParams(dp(64), dp(48));
+        LinearLayout.LayoutParams photoLp = new LinearLayout.LayoutParams(dp(57), dp(50));
         photoLp.leftMargin = dp(8);
         row.addView(acceptedVehiclePhoto, photoLp);
 
@@ -382,6 +392,8 @@ class SearchDriverActivityScreenCore extends CustomerAdaptiveActivity {
         acceptedChatButton.setMinHeight(dp(48));
         acceptedChatButton.setText("Chat driver");
         acceptedChatButton.setTextColor(Color.WHITE);
+        acceptedChatButton.setTextSize(14);
+        acceptedChatButton.setTypeface(Typeface.DEFAULT_BOLD);
         acceptedChatButton.setBackground(round("#0B65D8", dp(12)));
         LinearLayout.LayoutParams chatLp = new LinearLayout.LayoutParams(-1, -2);
         chatLp.topMargin = dp(8);
@@ -426,7 +438,7 @@ class SearchDriverActivityScreenCore extends CustomerAdaptiveActivity {
 
     @Override public void onConfigurationChanged(android.content.res.Configuration configuration) {
         super.onConfigurationChanged(configuration);
-        if (droneView==null) return;
+        if (droneView==null || driverFound) return;
         android.view.ViewGroup.LayoutParams params=droneView.getLayoutParams();
         params.height=rideMapHeight();
         droneView.setLayoutParams(params);
@@ -886,10 +898,20 @@ class SearchDriverActivityScreenCore extends CustomerAdaptiveActivity {
             if (driverCard.getParent() instanceof android.view.ViewGroup) {
                 ((android.view.ViewGroup)driverCard.getParent()).removeView(driverCard);
             }
+            ((android.view.ViewGroup) droneView.getParent()).removeView(droneView);
+            searchScroll.setVisibility(View.GONE);
+            pageRoot.addView(droneView, 0, new FrameLayout.LayoutParams(-1, -1));
             FrameLayout.LayoutParams sheet=new FrameLayout.LayoutParams(-1,-2,Gravity.BOTTOM);
             sheet.setMargins(dp(10),0,dp(10),dp(12));
             pageRoot.addView(driverCard,sheet);
-            driverCard.setElevation(dp(18));
+            driverCard.setElevation(dp(6));
+            // Keep the driver marker and the Maps attribution above the floating card.
+            driverCard.addOnLayoutChangeListener((view, left, top, right, bottom,
+                                                   oldLeft, oldTop, oldRight, oldBottom) -> {
+                if (bottom - top != oldBottom - oldTop) {
+                    droneView.setAcceptedCardInset(bottom - top + sheet.bottomMargin);
+                }
+            });
         }
         driverCard.setVisibility(View.VISIBLE);
         if (allowCameraMotion()) {
@@ -922,7 +944,7 @@ class SearchDriverActivityScreenCore extends CustomerAdaptiveActivity {
         double rating = driver.optDouble("rating", data.optDouble("driver_rating", 0));
         acceptedRating.setText(rating > 0 ? "★ " + String.format(Locale.US, "%.1f", rating) : "");
         driverNameText.setText(driverName);
-        driverPlateText.setText("-".equals(driverPlate) ? "Plat belum tersedia" : "Plat " + driverPlate);
+        driverPlateText.setText("-".equals(driverPlate) ? "Plat belum tersedia" : driverPlate);
         driverAvatarText.setText(CallPeerIdentity.initials(driverName));
         String portrait = CustomerDriverIdentity.portrait(driver, order, data);
         RemoteImageLoader.loadCenterCrop(driverPhotoView, portrait, 0);
@@ -985,12 +1007,6 @@ class SearchDriverActivityScreenCore extends CustomerAdaptiveActivity {
             loadDriverMap(driverName, driverLat, driverLng, pickupLat, pickupLng);
         } else {
             droneView.showAccepted(driverLat,driverLng);
-            searchScroll.post(() -> {
-                if (!foreground || isFinishing() || isDestroyed()) return;
-                int top = Math.max(0,droneView.getTop()-dp(10));
-                if (allowCameraMotion()) searchScroll.smoothScrollTo(0,top);
-                else searchScroll.scrollTo(0,top);
-            });
         }
         pendingTripHandoff = () -> openNativeTrip(driverType, pickupLat, pickupLng, deliveryLat, deliveryLng);
         handoffRemainingMs = ACCEPTED_CARD_MS;

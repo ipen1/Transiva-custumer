@@ -47,6 +47,7 @@ final class RideSearchDroneView extends FrameLayout implements CustomerAppSettin
     private LatLng pickup, acceptedPosition;
     private boolean loaded, started, resumed, closed, accepted, stopped;
     private Boolean lastDark;
+    private int acceptedCardInset;
 
     RideSearchDroneView(Context context, boolean car) {
         super(context);
@@ -184,6 +185,8 @@ final class RideSearchDroneView extends FrameLayout implements CustomerAppSettin
 
     boolean showAccepted(double lat,double lng) {
         accepted=true;
+        setClipToOutline(false);
+        setBackgroundColor(0xFF091B32);
         acceptedPosition=CustomerGeoMath.valid(lat,lng)?new LatLng(lat,lng):null;
         stopScanning();
         searchHeader.setVisibility(GONE);
@@ -195,9 +198,16 @@ final class RideSearchDroneView extends FrameLayout implements CustomerAppSettin
         return acceptedPosition!=null;
     }
 
+    void setAcceptedCardInset(int inset) {
+        acceptedCardInset = inset;
+        if (map != null && accepted) map.setPadding(0, 0, 0, acceptedCardInset);
+    }
+
     private void renderAccepted() {
         updateFallback();
-        if (map==null || closed || acceptedPosition==null || !loaded || !resumed) return;
+        if (map==null || closed || !loaded || !resumed) return;
+        map.setPadding(0, 0, 0, acceptedCardInset);
+        if (acceptedPosition == null) return;
         if (pickupMarker!=null) pickupMarker.setVisible(false);
         if (driverMarker==null) {
             driverMarker=map.addMarker(new MarkerOptions().position(acceptedPosition)

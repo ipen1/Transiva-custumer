@@ -299,24 +299,18 @@ class CustomerTripActivityScreenCore extends CustomerAdaptiveActivity {
 
     protected void buildLayout() {
         FrameLayout page = new FrameLayout(this);
-        page.setBackgroundColor(Color.parseColor("#F3F8FF"));
+        page.setBackgroundColor(Color.parseColor("#F8FAFD"));
 
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
-        root.setPadding(dp(12), dp(10), dp(12), dp(10));
         page.addView(root, new FrameLayout.LayoutParams(-1, -1));
-
-        LinearLayout card = new LinearLayout(this);
-        card.setOrientation(LinearLayout.VERTICAL);
-        android.widget.ScrollView tripScroll = new android.widget.ScrollView(this);
-        tripScroll.setClipToPadding(false);
-        root.addView(tripScroll, new LinearLayout.LayoutParams(-1, -1));
-        tripScroll.addView(card, new android.widget.ScrollView.LayoutParams(-1, -2));
 
         LinearLayout head = new LinearLayout(this);
         head.setOrientation(LinearLayout.HORIZONTAL);
         head.setGravity(Gravity.CENTER_VERTICAL);
-        card.addView(head, new LinearLayout.LayoutParams(-1, -2));
+        head.setPadding(dp(8), dp(2), dp(14), dp(2));
+        head.setBackgroundColor(Color.WHITE);
+        root.addView(head, new LinearLayout.LayoutParams(-1, -2));
 
         Button close = smallButton("‹", "#EDF5FF", "#1268D5", "#DCEBFF");
         close.setTextSize(23);
@@ -327,7 +321,6 @@ class CustomerTripActivityScreenCore extends CustomerAdaptiveActivity {
 
         LinearLayout heading = new LinearLayout(this);
         heading.setOrientation(LinearLayout.VERTICAL);
-        heading.addView(text("TRANSIVA", 10, "#1268D5", true));
         heading.addView(text("Perjalanan Anda", 19, "#0B3A78", true));
         LinearLayout.LayoutParams headingLp = new LinearLayout.LayoutParams(0, -2, 1);
         headingLp.setMargins(dp(9), 0, dp(6), 0);
@@ -339,7 +332,65 @@ class CustomerTripActivityScreenCore extends CustomerAdaptiveActivity {
         liveBadge.setBackground(round("#E8F8F1", dp(9)));
         head.addView(liveBadge, new LinearLayout.LayoutParams(-2, -2));
 
+        android.widget.ScrollView tripScroll = new android.widget.ScrollView(this);
+        tripScroll.setClipToPadding(false);
+        tripScroll.setFillViewport(true);
+        root.addView(tripScroll, new LinearLayout.LayoutParams(-1, 0, 1));
+        LinearLayout content = new LinearLayout(this);
+        content.setOrientation(LinearLayout.VERTICAL);
+        tripScroll.addView(content, new android.widget.ScrollView.LayoutParams(-1, -2));
+
+        FrameLayout mapSurface = new FrameLayout(this);
+        content.addView(mapSurface, new LinearLayout.LayoutParams(-1, dp(196)));
+        tripScroll.addOnLayoutChangeListener((view, left, top, right, bottom,
+                                              oldLeft, oldTop, oldRight, oldBottom) -> {
+            int viewportHeight = bottom - top;
+            if (viewportHeight <= 0 || viewportHeight == oldBottom - oldTop) return;
+            android.view.ViewGroup.LayoutParams mapParams = mapSurface.getLayoutParams();
+            int mapHeight = Math.min(dp(520), Math.round(viewportHeight * .55f));
+            if (mapParams.height != mapHeight) {
+                mapParams.height = mapHeight;
+                mapSurface.setLayoutParams(mapParams);
+            }
+        });
+        mapView = new TransivaGoogleMapView(this, TransivaGoogleMapView.Mode.TRIP);
+        mapView.setClipToOutline(false);
+        mapSurface.addView(mapView, new FrameLayout.LayoutParams(-1, -1));
+
+        LinearLayout mapControls = new LinearLayout(this);
+        boolean stackMapControls = getResources().getConfiguration().screenWidthDp < 340
+                || getResources().getConfiguration().fontScale > 1.2f;
+        mapControls.setOrientation(stackMapControls ? LinearLayout.VERTICAL : LinearLayout.HORIZONTAL);
+        mapControls.setGravity(Gravity.END | Gravity.CENTER_VERTICAL);
+        FrameLayout.LayoutParams controlsParams = new FrameLayout.LayoutParams(-1, -2, Gravity.BOTTOM);
+        // Leave room for the Maps attribution along the bottom edge.
+        controlsParams.setMargins(dp(12), 0, dp(12), dp(30));
+        mapSurface.addView(mapControls, controlsParams);
+
+        tripInfoText = text("Menyiapkan rute…", 11, "#344D67", true);
+        tripInfoText.setPadding(dp(9), dp(7), dp(9), dp(7));
+        tripInfoText.setBackground(roundStroke("#FFFFFF", "#DBE8F5", dp(12), 1));
+        LinearLayout.LayoutParams estimateParams = new LinearLayout.LayoutParams(
+                stackMapControls ? -1 : 0, -2, stackMapControls ? 0 : 1);
+        estimateParams.setMarginEnd(stackMapControls ? 0 : dp(8));
+        estimateParams.bottomMargin = stackMapControls ? dp(4) : 0;
+        mapControls.addView(tripInfoText, estimateParams);
+
+        Button center = outlineButton("⌖  Pusatkan");
+        center.setContentDescription("Pusatkan peta");
+        center.setMinHeight(dp(48));
+        center.setBackground(roundStroke("#FFFFFF", "#DCE8F6", dp(12), 1));
+        mapControls.addView(center, new LinearLayout.LayoutParams(-2, -2));
+        center.setOnClickListener(v -> { if (mapView != null) mapView.fitAll(); });
+
+        LinearLayout card = new LinearLayout(this);
+        card.setOrientation(LinearLayout.VERTICAL);
+        card.setPadding(dp(14), dp(12), dp(14), dp(10));
+        card.setBackground(roundStroke("#FFFFFF", "#E1EAF5", dp(22), 1));
+        content.addView(card, new LinearLayout.LayoutParams(-1, -2));
+
         tripStatus = new PremiumOrderStatusView(this, true);
+        tripStatus.setEmbedded();
         tripStatus.setActionVisible(false);
         tripStatus.setReferenceVisible(false);
         tripStatus.bind(null, "Menyiapkan perjalanan", "");
@@ -348,8 +399,7 @@ class CustomerTripActivityScreenCore extends CustomerAdaptiveActivity {
         LinearLayout driverBox = new LinearLayout(this);
         driverBox.setOrientation(LinearLayout.HORIZONTAL);
         driverBox.setGravity(Gravity.CENTER_VERTICAL);
-        driverBox.setPadding(dp(9), dp(6), dp(9), dp(6));
-        driverBox.setBackground(roundStroke("#FFFFFF", "#E2E8F0", dp(18), 1));
+        driverBox.setPadding(0, dp(8), 0, dp(2));
         LinearLayout.LayoutParams dlp = new LinearLayout.LayoutParams(-1, -2);
         dlp.setMargins(0, dp(8), 0, 0);
         card.addView(driverBox, dlp);
@@ -359,7 +409,7 @@ class CustomerTripActivityScreenCore extends CustomerAdaptiveActivity {
         driverPhotoView.setContentDescription("Foto profil driver");
         driverPhotoView.setBackground(round("#EAF4FF", dp(16)));
         driverPhotoView.setClipToOutline(true);
-        driverBox.addView(driverPhotoView, new LinearLayout.LayoutParams(dp(40), dp(40)));
+        driverBox.addView(driverPhotoView, new LinearLayout.LayoutParams(dp(44), dp(44)));
 
         LinearLayout info = new LinearLayout(this);
         info.setOrientation(LinearLayout.VERTICAL);
@@ -371,7 +421,7 @@ class CustomerTripActivityScreenCore extends CustomerAdaptiveActivity {
         driverPlateText = text("Plat —", 11, "#64748B", false);
         driverPlateText.setMaxLines(2);
         driverPlateText.setEllipsize(android.text.TextUtils.TruncateAt.END);
-        driverNameText.setMaxLines(1);
+        driverNameText.setMaxLines(2);
         driverNameText.setEllipsize(android.text.TextUtils.TruncateAt.END);
         info.addView(driverNameText);
         info.addView(driverPlateText);
@@ -380,7 +430,7 @@ class CustomerTripActivityScreenCore extends CustomerAdaptiveActivity {
         vehiclePhotoView.setClipToOutline(true);
         vehiclePhotoView.setContentDescription("Foto kendaraan driver");
         vehiclePhotoView.setVisibility(View.GONE);
-        LinearLayout.LayoutParams vehicleLp = new LinearLayout.LayoutParams(dp(52), dp(42));
+        LinearLayout.LayoutParams vehicleLp = new LinearLayout.LayoutParams(dp(56), dp(44));
         vehicleLp.leftMargin = dp(8);
         driverBox.addView(vehiclePhotoView, vehicleLp);
 
@@ -388,8 +438,8 @@ class CustomerTripActivityScreenCore extends CustomerAdaptiveActivity {
         statusText.setPadding(dp(2), dp(5), dp(2), dp(5));
         card.addView(statusText, new LinearLayout.LayoutParams(-1, -2));
         entertainmentButton = CustomerPasangAntar.launcher(this, this::openEntertainment);
+        entertainmentButton.setBackground(round("#075DCE", dp(12)));
         entertainmentButton.setVisibility(View.GONE);
-        card.addView(entertainmentButton, tripRow(7));
 
         waitingView = new SmartWaitingTextView(this);
         waitingView.setTripPresentation();
@@ -406,42 +456,7 @@ class CustomerTripActivityScreenCore extends CustomerAdaptiveActivity {
         approvePriceButton=smallButton("Setujui Harga", "#DBEAFE", "#1D4ED8", "#93C5FD"); approvePriceButton.setMinHeight(dp(48)); approvePriceButton.setOnClickListener(v->confirmPriceChange()); priceActions.addView(approvePriceButton,new LinearLayout.LayoutParams(0,-2,1));
         rejectPriceButton=smallButton("Tolak", "#FEE2E2", "#B91C1C", "#FCA5A5"); rejectPriceButton.setMinHeight(dp(48)); rejectPriceButton.setOnClickListener(v->sendCustomerAction("reject_price")); LinearLayout.LayoutParams rej=new LinearLayout.LayoutParams(0,-2,1); rej.setMargins(dp(8),0,0,0); priceActions.addView(rejectPriceButton,rej); LinearLayout.LayoutParams palp=new LinearLayout.LayoutParams(-1,-2); palp.setMargins(0,dp(8),0,0); card.addView(priceActions,palp);
 
-        LinearLayout mapCard = new LinearLayout(this);
-        mapCard.setOrientation(LinearLayout.VERTICAL);
-        mapCard.setPadding(dp(5), dp(5), dp(5), dp(2));
-        mapCard.setBackground(roundStroke("#FFFFFF", "#DCE8F6", dp(18), 1));
-        card.addView(mapCard, tripRow(8));
-
-        mapView = new TransivaGoogleMapView(this, TransivaGoogleMapView.Mode.TRIP);
-        mapView.setBackground(round("#EDF4FC", dp(14)));
-        mapView.setClipToOutline(true);
-        int mapHeight = Math.max(195, Math.min(360, (int)(getResources().getConfiguration().screenHeightDp * .40f)));
-        mapCard.addView(mapView, new LinearLayout.LayoutParams(-1, dp(mapHeight)));
-        mapView.initialize(null, new TransivaGoogleMapView.Listener() {
-            @Override public void onReady(double lat, double lng) {
-                if (mapView == null || finishedCountdownStarted || isDestroyed()) return;
-                mapReady = true;
-                pushAllMarkersToMap();
-            }
-            @Override public void onCenterChanged(double lat, double lng) { }
-        });
-
-        LinearLayout mapFooter = new LinearLayout(this);
-        boolean stackMapFooter = getResources().getConfiguration().screenWidthDp < 340
-                || getResources().getConfiguration().fontScale > 1.2f;
-        mapFooter.setOrientation(stackMapFooter ? LinearLayout.VERTICAL : LinearLayout.HORIZONTAL);
-        mapFooter.setGravity(Gravity.CENTER_VERTICAL);
-        mapFooter.setPadding(dp(6), dp(3), dp(2), 0);
-        mapCard.addView(mapFooter, new LinearLayout.LayoutParams(-1, -2));
-        tripInfoText = text("Menyiapkan rute…", 11, "#536B83", false);
-        tripInfoText.setPadding(0, dp(3), dp(5), dp(3));
-        mapFooter.addView(tripInfoText, new LinearLayout.LayoutParams(stackMapFooter ? -1 : 0, -2, stackMapFooter ? 0 : 1));
-        Button liveBtn = outlineButton("⌖  Pusatkan");
-        liveBtn.setContentDescription("Pusatkan peta");
-        liveBtn.setMinHeight(dp(48));
-        liveBtn.setBackground(round("#EDF5FF", dp(12)));
-        mapFooter.addView(liveBtn, new LinearLayout.LayoutParams(stackMapFooter ? -1 : -2, -2));
-        liveBtn.setOnClickListener(v -> { if (mapView != null) mapView.fitAll(); });
+        card.addView(entertainmentButton, tripRow(8));
 
         LinearLayout safetyRow = new LinearLayout(this);
         safetyRow.setOrientation(LinearLayout.HORIZONTAL);
@@ -449,8 +464,8 @@ class CustomerTripActivityScreenCore extends CustomerAdaptiveActivity {
                 || getResources().getConfiguration().fontScale > 1.15f) safetyRow.setOrientation(LinearLayout.VERTICAL);
         Button shareBtn = outlineButton("Bagikan trip"); shareBtn.setMinHeight(dp(48));
         shareTripButton = shareBtn;
-        shareBtn.setTextColor(Color.WHITE);
-        shareBtn.setBackground(roundStroke("#167CFF", "#167CFF", dp(12), 1));
+        shareBtn.setTextColor(Color.parseColor("#0753BD"));
+        shareBtn.setBackground(roundStroke("#EAF3FF", "#CADFF8", dp(12), 1));
         Button sosBtn = outlineButton("SOS · Bantuan"); sosBtn.setMinHeight(dp(48));
         sosBtn.setTextColor(Color.parseColor("#B54147"));
         sosBtn.setBackground(roundStroke("#FFF4F4", "#F2D8DB", dp(12), 1));
@@ -470,6 +485,14 @@ class CustomerTripActivityScreenCore extends CustomerAdaptiveActivity {
 
         setContentView(page);
         CustomerAppSettings.apply(this);
+        mapView.initialize(null, new TransivaGoogleMapView.Listener() {
+            @Override public void onReady(double lat, double lng) {
+                if (mapView == null || finishedCountdownStarted || isDestroyed()) return;
+                mapReady = true;
+                pushAllMarkersToMap();
+            }
+            @Override public void onCenterChanged(double lat, double lng) { }
+        });
     }
 
     private LinearLayout.LayoutParams tripRow(int top) {
